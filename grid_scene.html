@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Grid Scene with Three.js</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #0a0a0a;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            text-align: center;
+        }
+        
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        #gameContainer {
+            border: 2px solid #0066ff;
+            background-color: #1a1a1a;
+            display: inline-block;
+            margin: 0 auto 20px;
+        }
+        
+        .controls {
+            color: #aaa;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        
+        .controls p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>2D Grid Scene (Three.js)</h1>
+        <div id="gameContainer"></div>
+        <div class="controls">
+            <p><strong>Controls:</strong></p>
+            <p>W - Move Up | A - Move Left | S - Move Down | D - Move Right</p>
+            <p style="margin-top: 15px; font-size: 12px;">Blue and Red circles take turns. Each player makes 5 moves per turn.</p>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="grid_scene.js"></script>
+</body>
+</html>

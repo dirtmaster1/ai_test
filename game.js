@@ -97,23 +97,26 @@ distantGlow.position.z = -corridorLength / 2;
 scene.add(distantGlow);
 
 const clock = new THREE.Clock();
+let shouldAnimate = true;
 
 function animate() {
     requestAnimationFrame(animate);
     
-    const t = clock.getElapsedTime();
-    
-    // Subtle camera movement down the corridor
-    camera.position.x = Math.sin(t * 0.2) * 0.5;
-    camera.position.z = -t * 10;
-    camera.lookAt(0, 2, camera.position.z - 50);
-    
-    // Loop camera back to start when it reaches the end
-    if (camera.position.z < -corridorLength + 50) {
-        clock.start();
+    if (shouldAnimate) {
+        const t = clock.getElapsedTime();
+        
+        // Subtle camera movement down the corridor
+        camera.position.x = Math.sin(t * 0.2) * 0.5;
+        camera.position.z = -t * 10;
+        camera.lookAt(0, 2, camera.position.z - 50);
+        
+        // Loop camera back to start when it reaches the end
+        if (camera.position.z < -corridorLength + 50) {
+            clock.start();
+        }
+        
+        renderer.render(scene, camera);
     }
-    
-    renderer.render(scene, camera);
 }
 
 animate();
@@ -163,8 +166,17 @@ document.body.appendChild(titleOverlay);
 titleOverlay.addEventListener('click', () => {
     titleOverlay.remove();
     
+    // Stop the corridor animation
+    shouldAnimate = false;
+    
     // Clear the current corridor scene
     scene.clear();
+    
+    // Remove fog that was set on the scene
+    scene.fog = null;
+    
+    // Set a simple background
+    scene.background = new THREE.Color(0x1a1a1a);
     
     // Create blue cube
     const cubeGeo = new THREE.BoxGeometry(2, 2, 2);
