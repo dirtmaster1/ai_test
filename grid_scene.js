@@ -38,22 +38,38 @@ class GridScene {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
         
-        // Circle properties
+        // Blue character properties
         this.circle = {
             gridX: 5,
             gridY: 5,
             radius: 20,
             mesh: null,
-            color: 'blue'
+            color: 'blue',
+            baseColorHex: 0x0066ff,
+            facing: 'right',
+            directionPointer: null,
+            hitPoints: 10,
+            hitAnimEndTime: 0,
+            isDead: false,
+            fadeFrames: 0,
+            removedFromScene: false
         };
         
-        // Red circle properties
+        // Red character properties
         this.redCircle = {
             gridX: 4,
             gridY: 4,
             radius: 20,
             mesh: null,
-            color: 'red'
+            color: 'red',
+            baseColorHex: 0xff3333,
+            facing: 'right',
+            directionPointer: null,
+            hitPoints: 10,
+            hitAnimEndTime: 0,
+            isDead: false,
+            fadeFrames: 0,
+            removedFromScene: false
         };
         
         // Turn system
@@ -62,6 +78,10 @@ class GridScene {
         this.maxMovesPerTurn = 5;
         this.turnInfo = null;
         this.redMoveTimer = 0;
+        this.isGameOver = false;
+        this.victoryStartTime = 0;
+        this.victoryFadeDurationMs = 5000;
+        this.restartTriggered = false;
         
         // Obstacles
         this.obstacles = this.generateObstacles();
@@ -76,6 +96,7 @@ class GridScene {
         this.setupCircle();
         this.setupRedCircle();
         this.setupUI();
+        this.setupAttackListener();
         
         // Start animation loop
         this.animate();
@@ -175,6 +196,10 @@ class GridScene {
         const geometry = new THREE.CircleGeometry(this.circle.radius, 32);
         const material = new THREE.MeshBasicMaterial({ color: 0x0066ff });
         this.circle.mesh = new THREE.Mesh(geometry, material);
+
+        this.circle.directionPointer = this.createDirectionPointer(0xffffff);
+        this.circle.mesh.add(this.circle.directionPointer);
+        this.updateCharacterFacing(this.circle, this.circle.facing);
         
         // Add circle outline
         const outlineGeometry = new THREE.CircleGeometry(this.circle.radius, 32);
@@ -192,6 +217,10 @@ class GridScene {
         const geometry = new THREE.CircleGeometry(this.redCircle.radius, 32);
         const material = new THREE.MeshBasicMaterial({ color: 0xff3333 });
         this.redCircle.mesh = new THREE.Mesh(geometry, material);
+
+        this.redCircle.directionPointer = this.createDirectionPointer(0xffffff);
+        this.redCircle.mesh.add(this.redCircle.directionPointer);
+        this.updateCharacterFacing(this.redCircle, this.redCircle.facing);
         
         // Add circle outline
         const outlineGeometry = new THREE.CircleGeometry(this.redCircle.radius, 32);
@@ -223,39 +252,138 @@ class GridScene {
         
         this.redCircle.mesh.position.set(x, y, 0);
     }
+
+    createDirectionPointer(color) {
+        const pointerShape = new THREE.Shape();
+        pointerShape.moveTo(8, 0);
+        pointerShape.lineTo(-6, 5);
+        pointerShape.lineTo(-6, -5);
+        pointerShape.closePath();
+
+        const pointerGeometry = new THREE.ShapeGeometry(pointerShape);
+        const pointerMaterial = new THREE.MeshBasicMaterial({ color });
+        const pointerMesh = new THREE.Mesh(pointerGeometry, pointerMaterial);
+        pointerMesh.position.set(0, 0, 1);
+
+        return pointerMesh;
+    }
+
+    updateCharacterFacing(character, facing) {
+        if (!character || !character.directionPointer) {
+            return;
+        }
+
+        character.facing = facing;
+
+        const rotationByDirection = {
+            right: 0,
+            down: -Math.PI / 2,
+            left: Math.PI,
+            up: Math.PI / 2
+        };
+
+        character.directionPointer.rotation.z = rotationByDirection[facing] ?? 0;
+    }
     
     setupUI() {
-        // Create HTML overlay for text
-        const uiContainer = document.createElement('div');
-        uiContainer.id = 'uiOverlay';
-        uiContainer.style.position = 'absolute';
-        uiContainer.style.top = '0';
-        uiContainer.style.left = '0';
-        uiContainer.style.width = '100%';
-        uiContainer.style.pointerEvents = 'none';
-        uiContainer.style.color = '#fff';
-        uiContainer.style.fontFamily = 'Arial, sans-serif';
-        uiContainer.style.fontSize = '14px';
-        uiContainer.style.padding = '10px';
+        // Create side panel for all character info
+        const sidePanel = document.createElement('div');
+        sidePanel.id = 'sidePanel';
+        sidePanel.style.position = 'absolute';
+        sidePanel.style.left = '-200px';
+        sidePanel.style.top = '50%';
+        sidePanel.style.transform = 'translateY(-50%)';
+        sidePanel.style.pointerEvents = 'none';
+        sidePanel.style.color = '#fff';
+        sidePanel.style.fontFamily = 'Arial, sans-serif';
+        sidePanel.style.fontSize = '14px';
+        sidePanel.style.lineHeight = '1.6';
         
-        this.positionText = document.createElement('div');
-        this.positionText.id = 'positionText';
-        uiContainer.appendChild(this.positionText);
+        // Blue character section
+        const blueSection = document.createElement('div');
+        blueSection.style.marginBottom = '30px';
         
-        this.turnInfo = document.createElement('div');
-        this.turnInfo.id = 'turnInfo';
-        this.turnInfo.style.marginTop = '10px';
-        this.turnInfo.style.fontSize = '16px';
-        this.turnInfo.style.fontWeight = 'bold';
-        uiContainer.appendChild(this.turnInfo);
+        const blueTitle = document.createElement('div');
+        blueTitle.style.fontSize = '16px';
+        blueTitle.style.fontWeight = 'bold';
+        blueTitle.style.color = '#0066ff';
+        blueTitle.textContent = 'Blue (Player)';
+        this.blueTitle = blueTitle;
+        blueSection.appendChild(blueTitle);
+        
+        this.bluePositionText = document.createElement('div');
+        this.bluePositionText.id = 'bluePosition';
+        blueSection.appendChild(this.bluePositionText);
+        
+        this.blueHPText = document.createElement('div');
+        this.blueHPText.id = 'blueHP';
+        blueSection.appendChild(this.blueHPText);
+        
+        this.blueTurnInfo = document.createElement('div');
+        this.blueTurnInfo.id = 'blueTurnInfo';
+        this.blueTurnInfo.style.fontWeight = 'bold';
+        this.blueTurnInfo.style.marginTop = '5px';
+        blueSection.appendChild(this.blueTurnInfo);
+        this.blueSection = blueSection;
+        
+        sidePanel.appendChild(blueSection);
+        
+        // Red character section
+        const redSection = document.createElement('div');
+        
+        const redTitle = document.createElement('div');
+        redTitle.style.fontSize = '16px';
+        redTitle.style.fontWeight = 'bold';
+        redTitle.style.color = '#ff3333';
+        redTitle.textContent = 'Red (AI)';
+        this.redTitle = redTitle;
+        redSection.appendChild(redTitle);
+        
+        this.redPositionText = document.createElement('div');
+        this.redPositionText.id = 'redPosition';
+        redSection.appendChild(this.redPositionText);
+        
+        this.redHPText = document.createElement('div');
+        this.redHPText.id = 'redHP';
+        redSection.appendChild(this.redHPText);
+        
+        this.redTurnInfo = document.createElement('div');
+        this.redTurnInfo.id = 'redTurnInfo';
+        this.redTurnInfo.style.fontWeight = 'bold';
+        this.redTurnInfo.style.marginTop = '5px';
+        redSection.appendChild(this.redTurnInfo);
+        this.redSection = redSection;
+        
+        sidePanel.appendChild(redSection);
+
+        this.victoryText = document.createElement('div');
+        this.victoryText.id = 'victoryText';
+        this.victoryText.textContent = 'Victory!';
+        this.victoryText.style.position = 'absolute';
+        this.victoryText.style.top = '50%';
+        this.victoryText.style.left = '50%';
+        this.victoryText.style.transform = 'translate(-50%, -50%)';
+        this.victoryText.style.fontFamily = 'Arial, sans-serif';
+        this.victoryText.style.fontSize = '96px';
+        this.victoryText.style.fontWeight = '900';
+        this.victoryText.style.letterSpacing = '4px';
+        this.victoryText.style.color = '#ffd700';
+        this.victoryText.style.textShadow = '0 0 16px rgba(255, 215, 0, 0.6), 0 0 32px rgba(255, 140, 0, 0.45)';
+        this.victoryText.style.pointerEvents = 'none';
+        this.victoryText.style.opacity = '0';
+        this.victoryText.style.display = 'none';
+        this.victoryText.style.zIndex = '20';
         
         this.container.style.position = 'relative';
-        this.container.appendChild(uiContainer);
+        this.container.appendChild(sidePanel);
+        this.container.appendChild(this.victoryText);
     }
     
     setupInputListeners() {
         document.addEventListener('keydown', (e) => {
             const key = e.key.toUpperCase();
+
+            if (this.isGameOver) return;
             
             // Only accept input during blue's turn
             if (this.currentTurn !== 'blue') return;
@@ -273,9 +401,37 @@ class GridScene {
         });
     }
     
+    setupAttackListener() {
+        // Create raycaster and mouse vector for click detection
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        
+        this.renderer.domElement.addEventListener('click', (event) => {
+            // Only allow attacks during blue's turn
+            if (this.isGameOver) return;
+            if (this.currentTurn !== 'blue') return;
+            if (this.circle.isDead || this.redCircle.isDead || !this.redCircle.mesh) return;
+            
+            // Calculate mouse position in normalized device coordinates
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Update the picking ray with the camera and mouse position
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            
+            // Calculate objects intersecting the picking ray
+            const intersects = this.raycaster.intersectObject(this.redCircle.mesh);
+            
+            if (intersects.length > 0) {
+                this.attackRedCharacter();
+            }
+        });
+    }
+    
     handleMovement(key) {
         // Only allow movement during blue's turn
-        if (this.currentTurn !== 'blue' || this.movesThisTurn >= this.maxMovesPerTurn) {
+        if (this.isGameOver || this.currentTurn !== 'blue' || this.movesThisTurn >= this.maxMovesPerTurn || this.circle.isDead) {
             return;
         }
         
@@ -310,8 +466,20 @@ class GridScene {
             return; // Can't move into obstacle
         }
         
+        const dx = newX - this.circle.gridX;
+        const dy = newY - this.circle.gridY;
+
         this.circle.gridX = newX;
         this.circle.gridY = newY;
+        if (dx > 0) {
+            this.updateCharacterFacing(this.circle, 'right');
+        } else if (dx < 0) {
+            this.updateCharacterFacing(this.circle, 'left');
+        } else if (dy > 0) {
+            this.updateCharacterFacing(this.circle, 'down');
+        } else if (dy < 0) {
+            this.updateCharacterFacing(this.circle, 'up');
+        }
         
         this.updateCirclePosition();
         this.movesThisTurn++;
@@ -327,8 +495,74 @@ class GridScene {
         this.movesThisTurn = 0;
     }
     
+    attackRedCharacter() {
+        // Check if blue has at least 3 moves available
+        const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
+        if (movesLeft < 3 || this.circle.isDead || this.redCircle.isDead) {
+            return; // Not enough moves to attack
+        }
+        
+        // Apply damage
+        const attackDamage = 5;
+        this.redCircle.hitPoints -= attackDamage;
+        this.playHitAnimation(this.redCircle);
+        
+        // Ensure hit points don't go below 0
+        if (this.redCircle.hitPoints < 0) {
+            this.redCircle.hitPoints = 0;
+        }
+
+        if (this.redCircle.hitPoints <= 0) {
+            this.markCharacterDead(this.redCircle);
+        }
+        
+        // Consume 3 moves
+        this.movesThisTurn += 3;
+        
+        // Switch turn if blue has made 5 moves
+        if (this.movesThisTurn >= this.maxMovesPerTurn) {
+            this.switchTurn();
+        }
+    }
+
+    playHitAnimation(character) {
+        if (!character || !character.mesh || character.removedFromScene) {
+            return;
+        }
+
+        character.hitAnimEndTime = performance.now() + 1000;
+    }
+
+    updateHitAnimation(character, nowMs) {
+        if (!character || !character.mesh || character.removedFromScene) {
+            return;
+        }
+
+        if (!character.hitAnimEndTime || nowMs >= character.hitAnimEndTime) {
+            character.mesh.scale.set(1, 1, 1);
+            character.mesh.material.color.setHex(character.baseColorHex);
+            character.hitAnimEndTime = 0;
+            return;
+        }
+
+        const durationMs = 1000;
+        const remainingMs = character.hitAnimEndTime - nowMs;
+        const progress = 1 - (remainingMs / durationMs);
+
+        // Pulse size quickly and taper out over the 1 second window.
+        const envelope = 1 - progress;
+        const pulse = 1 + (Math.sin(progress * Math.PI * 10) * 0.18 * envelope);
+        character.mesh.scale.set(pulse, pulse, 1);
+
+        // Flash toward white while preserving base color identity.
+        const flashAmount = Math.abs(Math.sin(progress * Math.PI * 12)) * 0.65 * envelope;
+        const baseColor = new THREE.Color(character.baseColorHex);
+        const hitColor = baseColor.clone().lerp(new THREE.Color(0xffffff), flashAmount);
+        character.mesh.material.color.copy(hitColor);
+    }
+    
     moveRedCircle() {
-        if (this.currentTurn !== 'red' || this.movesThisTurn >= this.maxMovesPerTurn) {
+        if (this.isGameOver || this.currentTurn !== 'red' || this.movesThisTurn >= this.maxMovesPerTurn || this.redCircle.isDead) {
             return;
         }
         
@@ -419,8 +653,21 @@ class GridScene {
             }
         }
         
+        const redDx = newX - this.redCircle.gridX;
+        const redDy = newY - this.redCircle.gridY;
+
         this.redCircle.gridX = newX;
         this.redCircle.gridY = newY;
+
+        if (redDx > 0) {
+            this.updateCharacterFacing(this.redCircle, 'right');
+        } else if (redDx < 0) {
+            this.updateCharacterFacing(this.redCircle, 'left');
+        } else if (redDy > 0) {
+            this.updateCharacterFacing(this.redCircle, 'down');
+        } else if (redDy < 0) {
+            this.updateCharacterFacing(this.redCircle, 'up');
+        }
         
         this.updateRedCirclePosition();
         this.movesThisTurn++;
@@ -430,16 +677,152 @@ class GridScene {
             this.switchTurn();
         }
     }
+
+    markCharacterDead(character) {
+        if (character.isDead) {
+            return;
+        }
+
+        character.isDead = true;
+        character.fadeFrames = 0;
+
+        if (character.hitPoints < 0) {
+            character.hitPoints = 0;
+        }
+
+        // If dead character had the active turn, pass turn immediately.
+        if ((character === this.circle && this.currentTurn === 'blue') ||
+            (character === this.redCircle && this.currentTurn === 'red')) {
+            this.switchTurn();
+        }
+    }
+
+    fadeAndRemoveCharacter(character) {
+        if (!character.isDead || !character.mesh || character.removedFromScene) {
+            return;
+        }
+
+        const fadeDurationFrames = 60;
+        character.fadeFrames += 1;
+
+        const opacity = Math.max(0, 1 - (character.fadeFrames / fadeDurationFrames));
+        character.mesh.material.transparent = true;
+        character.mesh.material.opacity = opacity;
+
+        // Fade child visuals (outline) as well.
+        character.mesh.children.forEach((child) => {
+            if (child.material) {
+                child.material.transparent = true;
+                child.material.opacity = opacity;
+            }
+        });
+
+        if (character.fadeFrames >= fadeDurationFrames) {
+            this.scene.remove(character.mesh);
+            character.mesh = null;
+            character.removedFromScene = true;
+        }
+    }
+
+    getAICharacters() {
+        return [this.redCircle];
+    }
+
+    areAllAICharactersDead() {
+        const aiCharacters = this.getAICharacters();
+        return aiCharacters.length > 0 && aiCharacters.every((character) => character.isDead);
+    }
+
+    startVictorySequence() {
+        if (this.isGameOver) {
+            return;
+        }
+
+        this.isGameOver = true;
+        this.victoryStartTime = performance.now();
+        this.victoryText.style.display = 'block';
+        this.victoryText.style.opacity = '1';
+    }
+
+    updateVictorySequence() {
+        if (!this.isGameOver) {
+            return;
+        }
+
+        const elapsedMs = performance.now() - this.victoryStartTime;
+        const progress = Math.min(1, elapsedMs / this.victoryFadeDurationMs);
+        this.victoryText.style.opacity = String(1 - progress);
+
+        if (progress >= 1 && !this.restartTriggered) {
+            this.restartTriggered = true;
+            window.location.reload();
+        }
+    }
     
     update() {
-        // Update UI text
-        this.positionText.textContent = `Blue: (${Math.round(this.circle.gridX)}, ${Math.round(this.circle.gridY)}) | Red: (${Math.round(this.redCircle.gridX)}, ${Math.round(this.redCircle.gridY)})`;
+        const nowMs = performance.now();
+
+        // Update blue character info
+        this.bluePositionText.textContent = `Position: (${this.circle.gridX}, ${this.circle.gridY})`;
+        this.blueHPText.textContent = `HP: ${this.circle.hitPoints}`;
         
-        // Turn indicator with color
-        const turnColor = this.currentTurn === 'blue' ? '#0066ff' : '#ff3333';
+        // Update red character info
+        this.redPositionText.textContent = `Position: (${this.redCircle.gridX}, ${this.redCircle.gridY})`;
+        this.redHPText.textContent = `HP: ${this.redCircle.hitPoints}`;
+
+        // Dead characters are grayed out and show status.
+        const deadColor = '#666666';
+        const aliveInfoColor = '#ffffff';
+
+        this.blueSection.style.opacity = this.circle.isDead ? '0.65' : '1';
+        this.redSection.style.opacity = this.redCircle.isDead ? '0.65' : '1';
+
+        this.blueTitle.style.color = this.circle.isDead ? deadColor : '#0066ff';
+        this.redTitle.style.color = this.redCircle.isDead ? deadColor : '#ff3333';
+
+        this.bluePositionText.style.color = this.circle.isDead ? deadColor : aliveInfoColor;
+        this.blueHPText.style.color = this.circle.isDead ? deadColor : aliveInfoColor;
+        this.redPositionText.style.color = this.redCircle.isDead ? deadColor : aliveInfoColor;
+        this.redHPText.style.color = this.redCircle.isDead ? deadColor : aliveInfoColor;
+
+        // Update turn/dead indicators.
         const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
-        this.turnInfo.textContent = `${this.currentTurn.toUpperCase()}'s Turn - ${movesLeft} moves left`;
-        this.turnInfo.style.color = turnColor;
+
+        if (this.circle.isDead) {
+            this.blueTurnInfo.textContent = 'Status: DEAD';
+            this.blueTurnInfo.style.color = deadColor;
+        } else if (this.currentTurn === 'blue') {
+            this.blueTurnInfo.textContent = `Status: ${movesLeft} moves left`;
+            this.blueTurnInfo.style.color = '#0066ff';
+        } else {
+            this.blueTurnInfo.textContent = 'Status: Waiting';
+            this.blueTurnInfo.style.color = '#9aa0aa';
+        }
+
+        if (this.redCircle.isDead) {
+            this.redTurnInfo.textContent = 'Status: DEAD';
+            this.redTurnInfo.style.color = deadColor;
+        } else if (this.currentTurn === 'red') {
+            this.redTurnInfo.textContent = `Status: ${movesLeft} moves left`;
+            this.redTurnInfo.style.color = '#ff3333';
+        } else {
+            this.redTurnInfo.textContent = 'Status: Waiting';
+            this.redTurnInfo.style.color = '#9aa0aa';
+        }
+
+        this.fadeAndRemoveCharacter(this.circle);
+        this.fadeAndRemoveCharacter(this.redCircle);
+        this.updateHitAnimation(this.circle, nowMs);
+        this.updateHitAnimation(this.redCircle, nowMs);
+
+        if (!this.isGameOver && this.areAllAICharactersDead()) {
+            this.startVictorySequence();
+        }
+
+        if (this.isGameOver) {
+            this.updateVictorySequence();
+            return;
+        }
         
         // Control red circle movement with a timer (every 30 frames = ~500ms at 60fps)
         this.redMoveTimer++;
