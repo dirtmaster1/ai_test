@@ -2,8 +2,10 @@
 class GridScene {
     constructor(containerId = 'gameContainer') {
         // Grid settings
-        this.gridWidth = 10;
-        this.gridHeight = 10;
+        this.gridWidth = 100;
+        this.gridHeight = 100;
+        this.viewWidth = 10;
+        this.viewHeight = 10;
         this.cellSize = 64;
         
         // Create container
@@ -18,15 +20,15 @@ class GridScene {
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x1a1a1a);
         
-        const width = this.gridWidth * this.cellSize;
-        const height = this.gridHeight * this.cellSize;
+        const viewW = this.viewWidth * this.cellSize;
+        const viewH = this.viewHeight * this.cellSize;
         
-        // Orthographic camera for 2D-like view
+        // Orthographic camera for 2D-like view (shows 10x10 viewport)
         this.camera = new THREE.OrthographicCamera(
-            -width / 2,
-            width / 2,
-            height / 2,
-            -height / 2,
+            -viewW / 2,
+            viewW / 2,
+            viewH / 2,
+            -viewH / 2,
             0.1,
             1000
         );
@@ -34,14 +36,14 @@ class GridScene {
         
         // Renderer
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(width, height);
+        this.renderer.setSize(viewW, viewH);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
         
         // Blue character properties
         this.circle = {
-            gridX: 5,
-            gridY: 5,
+            gridX: 50,
+            gridY: 50,
             radius: 20,
             mesh: null,
             color: 'blue',
@@ -57,8 +59,8 @@ class GridScene {
         
         // Red character properties
         this.redCircle = {
-            gridX: 4,
-            gridY: 4,
+            gridX: 45,
+            gridY: 45,
             radius: 20,
             mesh: null,
             color: 'red',
@@ -81,7 +83,7 @@ class GridScene {
         this.isGameOver = false;
         this.gameOutcome = null;
         this.victoryStartTime = 0;
-        this.victoryFadeDurationMs = 5000;
+        this.victoryFadeDurationMs = 3000;
         this.restartTriggered = false;
         
         // Obstacles
@@ -98,6 +100,7 @@ class GridScene {
         this.setupRedCircle();
         this.setupUI();
         this.setupAttackListener();
+        this.updateCamera();
         
         // Start animation loop
         this.animate();
@@ -137,9 +140,8 @@ class GridScene {
     }
     
     generateObstacles() {
-        // Generate 7 random obstacles (5-10 range, picking 7 for balance)
         const obstacles = [];
-        const numObstacles = 7;
+        const numObstacles = 700;
         const startingPositions = [
             { x: this.circle.gridX, y: this.circle.gridY },
             { x: this.redCircle.gridX, y: this.redCircle.gridY }
@@ -252,6 +254,15 @@ class GridScene {
         const y = (height / 2) - (this.redCircle.gridY * this.cellSize + this.cellSize / 2);
         
         this.redCircle.mesh.position.set(x, y, 0);
+    }
+
+    updateCamera() {
+        const width = this.gridWidth * this.cellSize;
+        const height = this.gridHeight * this.cellSize;
+        const x = (this.circle.gridX * this.cellSize + this.cellSize / 2) - width / 2;
+        const y = (height / 2) - (this.circle.gridY * this.cellSize + this.cellSize / 2);
+        this.camera.position.x = x;
+        this.camera.position.y = y;
     }
 
     createDirectionPointer(color) {
@@ -483,6 +494,7 @@ class GridScene {
         }
         
         this.updateCirclePosition();
+        this.updateCamera();
         this.movesThisTurn++;
         
         // Switch turn if blue has made 5 moves
@@ -901,6 +913,7 @@ class GridScene {
     
     animate() {
         this.update();
+        this.updateCamera();
         this.renderer.render(this.scene, this.camera);
         requestAnimationFrame(() => this.animate());
     }

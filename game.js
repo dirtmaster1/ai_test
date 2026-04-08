@@ -153,61 +153,18 @@ subtitle.style.letterSpacing = '0.1em';
 titleOverlay.appendChild(subtitle);
 
 // Add link to gothic font if not already loaded
-if (!document.querySelector('link[href*="Creepster"]')) {
-    const fontLink = document.createElement('link');
-    fontLink.href = 'https://fonts.googleapis.com/css2?family=Creepster&family=Gripen&family=Permanent+Marker&display=swap';
-    fontLink.rel = 'stylesheet';
-    document.head.appendChild(fontLink);
-}
+// if (!document.querySelector('link[href*="Creepster"]')) {
+//     const fontLink = document.createElement('link');
+//     fontLink.href = 'https://fonts.googleapis.com/css2?family=Creepster&family=Gripen&family=Permanent+Marker&display=swap';
+//     fontLink.rel = 'stylesheet';
+//     document.head.appendChild(fontLink);
+// }
 
 document.body.appendChild(titleOverlay);
 
 // Handle title overlay click - switch to blue cube scene
 titleOverlay.addEventListener('click', () => {
-    titleOverlay.remove();
-    
-    // Stop the corridor animation
-    shouldAnimate = false;
-    
-    // Clear the current corridor scene
-    scene.clear();
-    
-    // Remove fog that was set on the scene
-    scene.fog = null;
-    
-    // Set a simple background
-    scene.background = new THREE.Color(0x1a1a1a);
-    
-    // Create blue cube
-    const cubeGeo = new THREE.BoxGeometry(2, 2, 2);
-    const cubeMat = new THREE.MeshPhongMaterial({ color: 0x0066ff });
-    const cube = new THREE.Mesh(cubeGeo, cubeMat);
-    cube.castShadow = true;
-    cube.receiveShadow = true;
-    scene.add(cube);
-    
-    // Add light for the cube
-    const cubeLight = new THREE.DirectionalLight(0xffffff, 1);
-    cubeLight.position.set(5, 10, 5);
-    cubeLight.castShadow = true;
-    scene.add(cubeLight);
-    
-    const cubeAmbient = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(cubeAmbient);
-    
-    // Update camera to view cube
-    camera.position.set(0, 0, 5);
-    camera.lookAt(0, 0, 0);
-    
-    // Rotate cube animation
-    function animateCube() {
-        requestAnimationFrame(animateCube);
-        cube.rotation.x += 0.01;
-        cube.rotation.y += 0.01;
-        renderer.render(scene, camera);
-    }
-    
-    animateCube();
+    window.location.href = 'grid_scene.html';
 });
 
 // Handle window resize
