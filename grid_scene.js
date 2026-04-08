@@ -79,6 +79,7 @@ class GridScene {
         this.turnInfo = null;
         this.redMoveTimer = 0;
         this.isGameOver = false;
+        this.gameOutcome = null;
         this.victoryStartTime = 0;
         this.victoryFadeDurationMs = 5000;
         this.restartTriggered = false;
@@ -565,6 +566,11 @@ class GridScene {
         if (this.isGameOver || this.currentTurn !== 'red' || this.movesThisTurn >= this.maxMovesPerTurn || this.redCircle.isDead) {
             return;
         }
+
+        // AI prefers attacking when it has enough moves for a hit.
+        if (this.redAIAttackBlueCharacter()) {
+            return;
+        }
         
         // Calculate direction towards blue circle
         const dx = this.circle.gridX - this.redCircle.gridX;
@@ -678,6 +684,44 @@ class GridScene {
         }
     }
 
+    redAIAttackBlueCharacter() {
+        if (this.isGameOver || this.currentTurn !== 'red' || this.circle.isDead || this.redCircle.isDead) {
+            return false;
+        }
+
+        const dx = Math.abs(this.circle.gridX - this.redCircle.gridX);
+        const dy = Math.abs(this.circle.gridY - this.redCircle.gridY);
+        const isInAttackRange = dx <= 1 && dy <= 1;
+        if (!isInAttackRange) {
+            return false;
+        }
+
+        const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
+        if (movesLeft < 3) {
+            return false;
+        }
+
+        const attackDamage = 5;
+        this.circle.hitPoints -= attackDamage;
+        this.playHitAnimation(this.circle);
+
+        if (this.circle.hitPoints < 0) {
+            this.circle.hitPoints = 0;
+        }
+
+        if (this.circle.hitPoints <= 0) {
+            this.markCharacterDead(this.circle);
+        }
+
+        this.movesThisTurn += 3;
+
+        if (this.movesThisTurn >= this.maxMovesPerTurn) {
+            this.switchTurn();
+        }
+
+        return true;
+    }
+
     markCharacterDead(character) {
         if (character.isDead) {
             return;
@@ -739,7 +783,26 @@ class GridScene {
         }
 
         this.isGameOver = true;
+        this.gameOutcome = 'victory';
         this.victoryStartTime = performance.now();
+        this.victoryText.textContent = 'Victory!';
+        this.victoryText.style.color = '#ffd700';
+        this.victoryText.style.textShadow = '0 0 16px rgba(255, 215, 0, 0.6), 0 0 32px rgba(255, 140, 0, 0.45)';
+        this.victoryText.style.display = 'block';
+        this.victoryText.style.opacity = '1';
+    }
+
+    startGameOverSequence() {
+        if (this.isGameOver) {
+            return;
+        }
+
+        this.isGameOver = true;
+        this.gameOutcome = 'defeat';
+        this.victoryStartTime = performance.now();
+        this.victoryText.textContent = 'Game Over';
+        this.victoryText.style.color = '#ff4d4d';
+        this.victoryText.style.textShadow = '0 0 16px rgba(255, 77, 77, 0.6), 0 0 32px rgba(128, 0, 0, 0.45)';
         this.victoryText.style.display = 'block';
         this.victoryText.style.opacity = '1';
     }
@@ -814,6 +877,10 @@ class GridScene {
         this.fadeAndRemoveCharacter(this.redCircle);
         this.updateHitAnimation(this.circle, nowMs);
         this.updateHitAnimation(this.redCircle, nowMs);
+
+        if (!this.isGameOver && this.circle.isDead) {
+            this.startGameOverSequence();
+        }
 
         if (!this.isGameOver && this.areAllAICharactersDead()) {
             this.startVictorySequence();
