@@ -1,4 +1,4 @@
-// 2D Grid Scene with Movable Circle using Three.js
+// Dungeon Crawler - Grid Scene
 class GridScene {
     constructor(containerId = 'gameContainer') {
         // Grid settings
@@ -18,7 +18,7 @@ class GridScene {
         
         // Scene, Camera, Renderer setup
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x1a1a1a);
+        this.scene.background = new THREE.Color(0x000000);
         
         const viewW = this.viewWidth * this.cellSize;
         const viewH = this.viewHeight * this.cellSize;
@@ -40,14 +40,12 @@ class GridScene {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
         
-        // Blue character properties
-        this.circle = {
+        // Wizard (player) character
+        this.wizard = {
             gridX: 50,
             gridY: 50,
-            radius: 20,
             mesh: null,
-            color: 'blue',
-            baseColorHex: 0x0066ff,
+            baseColorHex: 0xffffff,
             facing: 'right',
             directionPointer: null,
             hitPoints: 10,
@@ -56,15 +54,13 @@ class GridScene {
             fadeFrames: 0,
             removedFromScene: false
         };
-        
-        // Red character properties
-        this.redCircle = {
+
+        // Goblin (AI) character
+        this.goblin = {
             gridX: 45,
             gridY: 45,
-            radius: 20,
             mesh: null,
-            color: 'red',
-            baseColorHex: 0xff3333,
+            baseColorHex: 0xffffff,
             facing: 'right',
             directionPointer: null,
             hitPoints: 10,
@@ -78,26 +74,62 @@ class GridScene {
         this.currentTurn = 'blue'; // 'blue' or 'red'
         this.movesThisTurn = 0;
         this.maxMovesPerTurn = 5;
-        this.turnInfo = null;
-        this.redMoveTimer = 0;
+        this.goblinMoveTimer = 0;
         this.isGameOver = false;
         this.gameOutcome = null;
         this.victoryStartTime = 0;
         this.victoryFadeDurationMs = 3000;
         this.restartTriggered = false;
         
-        // Obstacles
-        this.obstacles = this.generateObstacles();
-        
+        // Dungeon tile types
+        this.TILE_VOID  = 0;  // Void darkness
+        this.TILE_FLOOR = 1;  // Walkable stone floor
+        this.TILE_WALL  = 2;  // Impassable stone wall
+
+        // Generate dungeon and place characters inside rooms
+        const dungeon = this.generateDungeonMap();
+        this.dungeonMap = dungeon.map;
+        if (dungeon.rooms.length >= 1) {
+            // Wizard always starts in the first room's centre
+            const r0 = dungeon.rooms[0];
+            this.wizard.gridX = Math.floor(r0.x + r0.w / 2);
+            this.wizard.gridY = Math.floor(r0.y + r0.h / 2);
+
+            // Find a floor tile that is 2–4 cells (Chebyshev) from the wizard.
+            // Room centres are always far apart, so we scan tiles directly.
+            const MIN_DIST = 2;
+            const MAX_DIST = 4;
+            const wx = this.wizard.gridX;
+            const wy = this.wizard.gridY;
+            const candidates = [];
+            for (let y = wy - MAX_DIST; y <= wy + MAX_DIST; y++) {
+                for (let x = wx - MAX_DIST; x <= wx + MAX_DIST; x++) {
+                    if (x < 0 || x >= this.gridWidth || y < 0 || y >= this.gridHeight) continue;
+                    if (this.dungeonMap[y][x] !== this.TILE_FLOOR) continue;
+                    const dist = Math.max(Math.abs(x - wx), Math.abs(y - wy));
+                    if (dist >= MIN_DIST && dist <= MAX_DIST) candidates.push({ x, y });
+                }
+            }
+            if (candidates.length > 0) {
+                const pick = candidates[Math.floor(Math.random() * candidates.length)];
+                this.goblin.gridX = pick.x;
+                this.goblin.gridY = pick.y;
+            } else {
+                // Fallback: last room's centre
+                const rN = dungeon.rooms[dungeon.rooms.length - 1];
+                this.goblin.gridX = Math.floor(rN.x + rN.w / 2);
+                this.goblin.gridY = Math.floor(rN.y + rN.h / 2);
+            }
+        }
+
         // Input handling
         this.keysPressed = {};
         this.setupInputListeners();
         
         // Setup scene
         this.setupGrid();
-        this.setupObstacles();
-        this.setupCircle();
-        this.setupRedCircle();
+        this.setupWizard();
+        this.setupGoblin();
         this.setupUI();
         this.setupAttackListener();
         this.updateCamera();
@@ -107,162 +139,339 @@ class GridScene {
     }
     
     setupGrid() {
-        // Create grid lines using line segments
-        const gridMaterial = new THREE.LineBasicMaterial({ color: 0x444444 });
-        const gridGroup = new THREE.Group();
-        
-        const width = this.gridWidth * this.cellSize;
-        const height = this.gridHeight * this.cellSize;
-        
-        // Vertical lines
-        for (let x = 0; x <= this.gridWidth; x++) {
-            const points = [
-                new THREE.Vector3(x * this.cellSize - width / 2, height / 2, 0),
-                new THREE.Vector3(x * this.cellSize - width / 2, -height / 2, 0)
-            ];
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geometry, gridMaterial);
-            gridGroup.add(line);
+        const TILE_RES = 16; // canvas pixels per grid cell
+        const canvasW  = this.gridWidth  * TILE_RES;
+        const canvasH  = this.gridHeight * TILE_RES;
+        const canvas   = document.createElement('canvas');
+        canvas.width   = canvasW;
+        canvas.height  = canvasH;
+        const ctx = canvas.getContext('2d');
+
+        for (let cy = 0; cy < this.gridHeight; cy++) {
+            for (let cx = 0; cx < this.gridWidth; cx++) {
+                const tile = this.dungeonMap[cy][cx];
+                this.drawDungeonTile(ctx, tile, cx * TILE_RES, cy * TILE_RES, TILE_RES, cx, cy);
+            }
         }
-        
-        // Horizontal lines
-        for (let y = 0; y <= this.gridHeight; y++) {
-            const points = [
-                new THREE.Vector3(-width / 2, y * this.cellSize - height / 2, 0),
-                new THREE.Vector3(width / 2, y * this.cellSize - height / 2, 0)
-            ];
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geometry, gridMaterial);
-            gridGroup.add(line);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+
+        const worldW = this.gridWidth  * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
+        const geo  = new THREE.PlaneGeometry(worldW, worldH);
+        const mat  = new THREE.MeshBasicMaterial({ map: texture });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.z = -2;
+        this.scene.add(mesh);
+    }
+
+    drawDungeonTile(ctx, tileType, px, py, T, cx, cy) {
+        if (tileType === this.TILE_VOID) {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(px, py, T, T);
+        } else if (tileType === this.TILE_WALL) {
+            this.drawWallTile(ctx, px, py, T, cx, cy);
+        } else {
+            this.drawFloorTile(ctx, px, py, T, cx, cy);
         }
-        
-        this.scene.add(gridGroup);
+    }
+
+    drawWallTile(ctx, px, py, T, cx, cy) {
+        const H = T >> 1;
+
+        // Dark cold-stone base
+        ctx.fillStyle = '#0e1218';
+        ctx.fillRect(px, py, T, T);
+
+        // Mortar joints – running-bond brickwork
+        ctx.fillStyle = '#07080f';
+        ctx.fillRect(px, py + H, T, 1);          // horizontal seam
+        if ((cx + cy) % 2 === 0) {               // vertical seam alternates per row
+            ctx.fillRect(px + H, py, 1, H);
+        } else {
+            ctx.fillRect(px + H, py + H + 1, 1, H - 1);
+        }
+
+        // Top-edge ambient highlight (cold ceiling light)
+        ctx.fillStyle = 'rgba(100, 140, 220, 0.09)';
+        ctx.fillRect(px, py, T, 2);
+        ctx.fillStyle = 'rgba(80, 110, 190, 0.05)';
+        ctx.fillRect(px, py + 2, 2, H - 2);
+
+        // Bottom / right shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.70)';
+        ctx.fillRect(px, py + T - 2, T, 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.50)';
+        ctx.fillRect(px + T - 2, py, 2, T);
+
+        // Stone micro-texture variation
+        const s = (cx * 1664525 + cy * 214013) >>> 0;
+        if (s % 9 < 2) {
+            ctx.fillStyle = 'rgba(255,255,255,0.025)';
+            ctx.fillRect(px + 1 + (s % (H - 2)), py + 1 + ((s >> 8) % (H - 2)), H - 2, H - 2);
+        }
+        if (s % 11 === 3) {
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.fillRect(px + 1 + (s % (T - 3)), py + 1 + ((s >> 4) % (T - 3)), 2, 2);
+        }
+    }
+
+    drawFloorTile(ctx, px, py, T, cx, cy) {
+        const s = (cx * 1664525 ^ cy * 214013 ^ 0xDEAD) >>> 0;
+        const v = s % 5;
+
+        // Dark warm stone slab with subtle per-tile colour variation
+        ctx.fillStyle = `rgb(${22 + v * 2},${17 + v},12)`;
+        ctx.fillRect(px, py, T, T);
+
+        // Grout lines (top and left edges)
+        ctx.fillStyle = 'rgba(0,0,0,0.60)';
+        ctx.fillRect(px, py, T, 1);
+        ctx.fillRect(px, py, 1, T);
+
+        // Top-left highlight (faint torch / ambient light)
+        ctx.fillStyle = 'rgba(255,220,140,0.055)';
+        ctx.fillRect(px + 1, py + 1, T - 2, 1);
+        ctx.fillRect(px + 1, py + 2, 1, T - 3);
+
+        // Bottom-right inner shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(px + 1, py + T - 2, T - 2, 1);
+        ctx.fillRect(px + T - 2, py + 1,   1, T - 2);
+
+        // Random crack
+        if (s % 8 === 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            const crackX = px + 2 + (s       % (T - 5));
+            const crackY = py + 2 + ((s >> 8) % (T - 5));
+            ctx.fillRect(crackX,     crackY, 4, 1);
+            ctx.fillRect(crackX + 3, crackY, 1, 3);
+        }
+
+        // Small pebble / debris
+        if (s % 13 === 5) {
+            ctx.fillStyle = 'rgba(0,0,0,0.50)';
+            ctx.fillRect(px + 2 + (s % (T - 5)), py + 2 + ((s >> 5) % (T - 5)), 2, 2);
+        }
     }
     
-    generateObstacles() {
-        const obstacles = [];
-        const numObstacles = 700;
-        const startingPositions = [
-            { x: this.circle.gridX, y: this.circle.gridY },
-            { x: this.redCircle.gridX, y: this.redCircle.gridY }
-        ];
-        
-        for (let i = 0; i < numObstacles; i++) {
-            let x, y, isValid;
-            
-            // Generate random position that doesn't overlap with circles or other obstacles
-            do {
-                isValid = true;
-                x = Math.floor(Math.random() * this.gridWidth);
-                y = Math.floor(Math.random() * this.gridHeight);
-                
-                // Check if position is already taken
-                if (startingPositions.some(pos => pos.x === x && pos.y === y)) {
-                    isValid = false;
+    generateDungeonMap() {
+        const VOID  = this.TILE_VOID;
+        const FLOOR = this.TILE_FLOOR;
+        const WALL  = this.TILE_WALL;
+
+        // Initialise every cell as void darkness
+        const map = Array.from({ length: this.gridHeight }, () =>
+            new Array(this.gridWidth).fill(VOID)
+        );
+
+        const rooms = [];
+
+        // Place rooms via random attempts with overlap reject
+        for (let attempt = 0; attempt < 120; attempt++) {
+            const rw = 5  + Math.floor(Math.random() * 12); // 5-16 wide
+            const rh = 4  + Math.floor(Math.random() * 9);  // 4-12 tall
+            const rx = 2  + Math.floor(Math.random() * (this.gridWidth  - rw - 4));
+            const ry = 2  + Math.floor(Math.random() * (this.gridHeight - rh - 4));
+
+            // Reject if overlaps any existing room (2-cell padding)
+            const overlaps = rooms.some(r =>
+                rx < r.x + r.w + 2 && rx + rw + 2 > r.x &&
+                ry < r.y + r.h + 2 && ry + rh + 2 > r.y
+            );
+            if (overlaps) continue;
+
+            rooms.push({ x: rx, y: ry, w: rw, h: rh });
+
+            // Carve room floor
+            for (let y = ry; y < ry + rh; y++) {
+                for (let x = rx; x < rx + rw; x++) {
+                    map[y][x] = FLOOR;
                 }
-                if (obstacles.some(obs => obs.x === x && obs.y === y)) {
-                    isValid = false;
-                }
-            } while (!isValid);
-            
-            obstacles.push({ x, y });
+            }
         }
-        
-        return obstacles;
-    }
-    
-    setupObstacles() {
-        // Create visual representation of obstacles
-        const width = this.gridWidth * this.cellSize;
-        const height = this.gridHeight * this.cellSize;
-        
-        this.obstacles.forEach(obstacle => {
-            // Create a small square to represent the obstacle
-            const geometry = new THREE.PlaneGeometry(this.cellSize - 4, this.cellSize - 4);
-            const material = new THREE.MeshBasicMaterial({ color: 0x004488 }); // Darker blue
-            const mesh = new THREE.Mesh(geometry, material);
-            
-            const x = (obstacle.x * this.cellSize + this.cellSize / 2) - width / 2;
-            const y = (height / 2) - (obstacle.y * this.cellSize + this.cellSize / 2);
-            
-            mesh.position.set(x, y, -1); // Slightly behind circles
-            this.scene.add(mesh);
-        });
+
+        // Connect adjacent rooms with 2-wide L-shaped corridors
+        for (let i = 1; i < rooms.length; i++) {
+            const a  = rooms[i - 1];
+            const b  = rooms[i];
+            const ax = Math.floor(a.x + a.w / 2);
+            const ay = Math.floor(a.y + a.h / 2);
+            const bx = Math.floor(b.x + b.w / 2);
+            const by = Math.floor(b.y + b.h / 2);
+
+            // Horizontal leg
+            const hMin = Math.min(ax, bx);
+            const hMax = Math.max(ax, bx);
+            for (let x = hMin; x <= hMax; x++) {
+                map[ay][x] = FLOOR;
+                if (ay + 1 < this.gridHeight) map[ay + 1][x] = FLOOR;
+            }
+
+            // Vertical leg
+            const vMin = Math.min(ay, by);
+            const vMax = Math.max(ay, by);
+            for (let y = vMin; y <= vMax; y++) {
+                map[y][bx] = FLOOR;
+                if (bx + 1 < this.gridWidth) map[y][bx + 1] = FLOOR;
+            }
+        }
+
+        // Surround floor with wall tiles
+        for (let y = 0; y < this.gridHeight; y++) {
+            for (let x = 0; x < this.gridWidth; x++) {
+                if (map[y][x] !== VOID) continue;
+                let nearFloor = false;
+                outer:
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const ny = y + dy, nx = x + dx;
+                        if (ny >= 0 && ny < this.gridHeight &&
+                            nx >= 0 && nx < this.gridWidth  &&
+                            map[ny][nx] === FLOOR) {
+                            nearFloor = true;
+                            break outer;
+                        }
+                    }
+                }
+                if (nearFloor) map[y][x] = WALL;
+            }
+        }
+
+        return { map, rooms };
     }
     
     isObstacle(gridX, gridY) {
-        return this.obstacles.some(obs => obs.x === gridX && obs.y === gridY);
+        if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+            return true;
+        }
+        return this.dungeonMap[gridY][gridX] !== this.TILE_FLOOR;
     }
     
-    setupCircle() {
-        // Create blue circle
-        const geometry = new THREE.CircleGeometry(this.circle.radius, 32);
-        const material = new THREE.MeshBasicMaterial({ color: 0x0066ff });
-        this.circle.mesh = new THREE.Mesh(geometry, material);
+    createSpriteTexture(rows) {
+        const canvas = document.createElement('canvas');
+        canvas.width  = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 16, 16);
+        rows.forEach((row, y) => {
+            row.forEach((color, x) => {
+                if (color !== null) {
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            });
+        });
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+    }
 
-        this.circle.directionPointer = this.createDirectionPointer(0xffffff);
-        this.circle.mesh.add(this.circle.directionPointer);
-        this.updateCharacterFacing(this.circle, this.circle.facing);
-        
-        // Add circle outline
-        const outlineGeometry = new THREE.CircleGeometry(this.circle.radius, 32);
-        const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x0044cc, linewidth: 2 });
-        const outline = new THREE.LineSegments(outlineGeometry, outlineMaterial);
-        outline.position.copy(this.circle.mesh.position);
-        this.circle.mesh.add(outline);
-        
-        this.updateCirclePosition();
-        this.scene.add(this.circle.mesh);
+    createWizardTexture() {
+        const _ = null;
+        const DH = '#0a2f7a'; // dark hat blue
+        const LH = '#1a5cc8'; // lighter hat highlight
+        const GS = '#ffd700'; // gold star on hat
+        const SK = '#ffbb88'; // skin
+        const EY = '#1a0800'; // eye
+        const WB = '#d0d0d0'; // white beard
+        const RB = '#1050b0'; // robe body
+        const RL = '#3a7ee0'; // robe highlight stripe
+        const ST = '#5d3a28'; // wooden staff
+        return this.createSpriteTexture([
+//          0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+            [_,  _,  _,  _,  _,  _,  DH, DH, DH, _,  _,  _,  _,  _,  _,  _ ],  // 0  hat tip
+            [_,  _,  _,  _,  _,  DH, DH, LH, DH, DH, _,  _,  _,  _,  _,  _ ],  // 1
+            [_,  _,  _,  _,  DH, DH, LH, DH, DH, DH, DH, _,  _,  _,  _,  _ ],  // 2
+            [_,  _,  _,  DH, DH, GS, DH, DH, DH, DH, DH, _,  _,  _,  _,  _ ],  // 3  gold star
+            [_,  _,  DH, DH, DH, DH, DH, DH, DH, DH, DH, DH, _,  _,  _,  _ ],  // 4
+            [_,  _,  DH, DH, LH, DH, DH, DH, DH, LH, DH, DH, _,  _,  _,  _ ],  // 5  hat brim
+            [_,  _,  _,  SK, SK, SK, SK, SK, SK, SK, SK, _,  _,  _,  _,  _ ],  // 6  face
+            [_,  _,  _,  SK, EY, SK, SK, EY, SK, SK, SK, _,  _,  _,  _,  _ ],  // 7  eyes
+            [_,  _,  _,  SK, SK, SK, SK, SK, SK, SK, SK, _,  _,  _,  _,  _ ],  // 8
+            [_,  ST, WB, WB, WB, WB, WB, WB, WB, WB, WB, _,  _,  _,  _,  _ ],  // 9  beard / staff
+            [_,  ST, WB, RB, RB, RB, RB, RB, RB, RB, WB, _,  _,  _,  _,  _ ],  // 10 robe
+            [_,  ST, WB, RB, RL, RB, RB, RL, RB, RB, WB, _,  _,  _,  _,  _ ],  // 11 highlight
+            [GS, ST, WB, RB, RB, RB, RB, RB, RB, RB, WB, _,  _,  _,  _,  _ ],  // 12 staff gem
+            [_,  _,  WB, RB, RB, RB, RB, RB, RB, RB, WB, _,  _,  _,  _,  _ ],  // 13
+            [_,  _,  WB, WB, RB, RB, RB, RB, RB, WB, WB, _,  _,  _,  _,  _ ],  // 14 robe base
+            [_,  _,  _,  WB, WB, RB, RB, RB, WB, WB, _,  _,  _,  _,  _,  _ ],  // 15 feet
+        ]);
     }
-    
-    setupRedCircle() {
-        // Create red circle
-        const geometry = new THREE.CircleGeometry(this.redCircle.radius, 32);
-        const material = new THREE.MeshBasicMaterial({ color: 0xff3333 });
-        this.redCircle.mesh = new THREE.Mesh(geometry, material);
 
-        this.redCircle.directionPointer = this.createDirectionPointer(0xffffff);
-        this.redCircle.mesh.add(this.redCircle.directionPointer);
-        this.updateCharacterFacing(this.redCircle, this.redCircle.facing);
-        
-        // Add circle outline
-        const outlineGeometry = new THREE.CircleGeometry(this.redCircle.radius, 32);
-        const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xcc0000, linewidth: 2 });
-        const outline = new THREE.LineSegments(outlineGeometry, outlineMaterial);
-        outline.position.copy(this.redCircle.mesh.position);
-        this.redCircle.mesh.add(outline);
-        
-        this.updateRedCirclePosition();
-        this.scene.add(this.redCircle.mesh);
+    createGoblinTexture() {
+        const _ = null;
+        const GR = '#4aaa30'; // goblin green skin
+        const DG = '#2a6618'; // dark green (ears, shadows)
+        const YE = '#ffee00'; // glowing yellow eyes
+        const BK = '#0a0800'; // very dark (mouth cavity)
+        const TB = '#fffacc'; // tusk / fang ivory
+        const IR = '#5a5a7a'; // iron armor
+        const LI = '#9090b8'; // iron highlight
+        const RU = '#252535'; // iron rivet / shadow
+        const BR = '#8c4a20'; // leather belt
+        const LG = '#3a1e0e'; // leather pants
+        const BT = '#181010'; // boots
+        const SW = '#d4d4e8'; // sword blade
+        const SH = '#707080'; // sword shade
+        return this.createSpriteTexture([
+//          0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+            [_,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _,  _ ],  //  0  empty
+            [_,  _,  _,  _,  GR, GR, GR, GR, GR, _,  _,  _,  _,  _,  _,  _ ],  //  1  head top
+            [_,  _,  DG, GR, GR, GR, GR, GR, GR, GR, DG, _,  _,  _,  _,  _ ],  //  2  head + pointy ears
+            [_,  _,  _,  GR, YE, GR, GR, GR, YE, GR, _,  _,  _,  _,  _,  _ ],  //  3  glowing eyes
+            [_,  _,  _,  GR, GR, GR, DG, GR, GR, GR, _,  _,  _,  _,  _,  _ ],  //  4  nose
+            [_,  _,  _,  GR, TB, BK, BK, BK, TB, GR, _,  _,  _,  _,  _,  _ ],  //  5  fangs / grin
+            [_,  _,  _,  IR, IR, IR, IR, IR, IR, IR, _,  _,  _,  _,  _,  _ ],  //  6  gorget / collar
+            [SW, SH, IR, LI, IR, IR, RU, IR, IR, LI, IR, _,  _,  _,  _,  _ ],  //  7  chest plate + sword
+            [_,  SW, IR, IR, IR, BR, BR, IR, IR, IR, _,  _,  _,  _,  _,  _ ],  //  8  belt
+            [_,  SW, GR, IR, IR, IR, IR, IR, IR, GR, _,  _,  _,  _,  _,  _ ],  //  9  lower torso + arms
+            [_,  _,  GR, _,  LG, LG, LG, LG, _,  GR, _,  _,  _,  _,  _,  _ ],  // 10  thighs + arms
+            [_,  _,  GR, _,  LG, LG, LG, LG, _,  GR, _,  _,  _,  _,  _,  _ ],  // 11  knees  + arms
+            [_,  _,  _,  _,  LG, LG, _,  LG, LG, _,  _,  _,  _,  _,  _,  _ ],  // 12  legs split
+            [_,  _,  _,  _,  LG, LG, _,  LG, LG, _,  _,  _,  _,  _,  _,  _ ],  // 13  legs
+            [_,  _,  _,  _,  BT, BT, _,  BT, BT, _,  _,  _,  _,  _,  _,  _ ],  // 14  boots
+            [_,  _,  _,  BT, BT, _,  _,  _,  BT, BT, _,  _,  _,  _,  _,  _ ],  // 15  boot toes
+        ]);
+    }
+
+    setupCharacterSprite(character, texture, pointerColor) {
+        const size = this.cellSize - 4;
+        const geometry = new THREE.PlaneGeometry(size, size);
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, color: 0xffffff });
+        character.mesh = new THREE.Mesh(geometry, material);
+        character.directionPointer = this.createDirectionPointer(pointerColor);
+        character.mesh.add(character.directionPointer);
+        this.updateCharacterFacing(character, character.facing);
+        this.updateCharacterPosition(character);
+        this.scene.add(character.mesh);
+    }
+
+    setupWizard() {
+        this.setupCharacterSprite(this.wizard, this.createWizardTexture(), 0x00eeff);
+    }
+
+    setupGoblin() {
+        this.setupCharacterSprite(this.goblin, this.createGoblinTexture(), 0xff6600);
     }
     
-    updateCirclePosition() {
-        const width = this.gridWidth * this.cellSize;
-        const height = this.gridHeight * this.cellSize;
-        
-        const x = (this.circle.gridX * this.cellSize + this.cellSize / 2) - width / 2;
-        const y = (height / 2) - (this.circle.gridY * this.cellSize + this.cellSize / 2);
-        
-        this.circle.mesh.position.set(x, y, 0);
-    }
-    
-    updateRedCirclePosition() {
-        const width = this.gridWidth * this.cellSize;
-        const height = this.gridHeight * this.cellSize;
-        
-        const x = (this.redCircle.gridX * this.cellSize + this.cellSize / 2) - width / 2;
-        const y = (height / 2) - (this.redCircle.gridY * this.cellSize + this.cellSize / 2);
-        
-        this.redCircle.mesh.position.set(x, y, 0);
+    updateCharacterPosition(character) {
+        const worldW = this.gridWidth  * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
+        const x = (character.gridX * this.cellSize + this.cellSize / 2) - worldW / 2;
+        const y = (worldH / 2) - (character.gridY * this.cellSize + this.cellSize / 2);
+        character.mesh.position.set(x, y, 0);
     }
 
     updateCamera() {
-        const width = this.gridWidth * this.cellSize;
-        const height = this.gridHeight * this.cellSize;
-        const x = (this.circle.gridX * this.cellSize + this.cellSize / 2) - width / 2;
-        const y = (height / 2) - (this.circle.gridY * this.cellSize + this.cellSize / 2);
-        this.camera.position.x = x;
-        this.camera.position.y = y;
+        const worldW = this.gridWidth  * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
+        this.camera.position.x = (this.wizard.gridX * this.cellSize + this.cellSize / 2) - worldW / 2;
+        this.camera.position.y = (worldH / 2) - (this.wizard.gridY * this.cellSize + this.cellSize / 2);
     }
 
     createDirectionPointer(color) {
@@ -422,7 +631,7 @@ class GridScene {
             // Only allow attacks during blue's turn
             if (this.isGameOver) return;
             if (this.currentTurn !== 'blue') return;
-            if (this.circle.isDead || this.redCircle.isDead || !this.redCircle.mesh) return;
+            if (this.wizard.isDead || this.goblin.isDead || !this.goblin.mesh) return;
             
             // Calculate mouse position in normalized device coordinates
             const rect = this.renderer.domElement.getBoundingClientRect();
@@ -432,72 +641,49 @@ class GridScene {
             // Update the picking ray with the camera and mouse position
             this.raycaster.setFromCamera(this.mouse, this.camera);
             
-            // Calculate objects intersecting the picking ray
-            const intersects = this.raycaster.intersectObject(this.redCircle.mesh);
+            // Check if the goblin was clicked
+            const intersects = this.raycaster.intersectObject(this.goblin.mesh);
             
             if (intersects.length > 0) {
-                this.attackRedCharacter();
+                this.wizardAttackGoblin();
             }
         });
     }
     
     handleMovement(key) {
-        // Only allow movement during blue's turn
-        if (this.isGameOver || this.currentTurn !== 'blue' || this.movesThisTurn >= this.maxMovesPerTurn || this.circle.isDead) {
+        if (this.isGameOver || this.currentTurn !== 'blue' || this.movesThisTurn >= this.maxMovesPerTurn || this.wizard.isDead) {
             return;
         }
         
-        let newX = this.circle.gridX;
-        let newY = this.circle.gridY;
+        let newX = this.wizard.gridX;
+        let newY = this.wizard.gridY;
         
-        // Calculate new position based on key press
         switch (key) {
-            case 'W':
-                newY = Math.max(0, this.circle.gridY - 1);
-                break;
-            case 'S':
-                newY = Math.min(this.gridHeight - 1, this.circle.gridY + 1);
-                break;
-            case 'A':
-                newX = Math.max(0, this.circle.gridX - 1);
-                break;
-            case 'D':
-                newX = Math.min(this.gridWidth - 1, this.circle.gridX + 1);
-                break;
-            default:
-                return; // No valid move
+            case 'W': newY = Math.max(0, this.wizard.gridY - 1);                       break;
+            case 'S': newY = Math.min(this.gridHeight - 1, this.wizard.gridY + 1);     break;
+            case 'A': newX = Math.max(0, this.wizard.gridX - 1);                       break;
+            case 'D': newX = Math.min(this.gridWidth - 1, this.wizard.gridX + 1);      break;
+            default:  return;
         }
         
-        // Check if new position is occupied by red circle
-        if (newX === this.redCircle.gridX && newY === this.redCircle.gridY) {
-            return; // Can't move to occupied cell
-        }
+        if (newX === this.goblin.gridX && newY === this.goblin.gridY) return;
+        if (this.isObstacle(newX, newY)) return;
         
-        // Check if new position is an obstacle
-        if (this.isObstacle(newX, newY)) {
-            return; // Can't move into obstacle
-        }
-        
-        const dx = newX - this.circle.gridX;
-        const dy = newY - this.circle.gridY;
+        const dx = newX - this.wizard.gridX;
+        const dy = newY - this.wizard.gridY;
 
-        this.circle.gridX = newX;
-        this.circle.gridY = newY;
-        if (dx > 0) {
-            this.updateCharacterFacing(this.circle, 'right');
-        } else if (dx < 0) {
-            this.updateCharacterFacing(this.circle, 'left');
-        } else if (dy > 0) {
-            this.updateCharacterFacing(this.circle, 'down');
-        } else if (dy < 0) {
-            this.updateCharacterFacing(this.circle, 'up');
-        }
+        this.wizard.gridX = newX;
+        this.wizard.gridY = newY;
+
+        if      (dx > 0) this.updateCharacterFacing(this.wizard, 'right');
+        else if (dx < 0) this.updateCharacterFacing(this.wizard, 'left');
+        else if (dy > 0) this.updateCharacterFacing(this.wizard, 'down');
+        else if (dy < 0) this.updateCharacterFacing(this.wizard, 'up');
         
-        this.updateCirclePosition();
+        this.updateCharacterPosition(this.wizard);
         this.updateCamera();
         this.movesThisTurn++;
         
-        // Switch turn if blue has made 5 moves
         if (this.movesThisTurn >= this.maxMovesPerTurn) {
             this.switchTurn();
         }
@@ -508,31 +694,20 @@ class GridScene {
         this.movesThisTurn = 0;
     }
     
-    attackRedCharacter() {
-        // Check if blue has at least 3 moves available
+    wizardAttackGoblin() {
         const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
-        if (movesLeft < 3 || this.circle.isDead || this.redCircle.isDead) {
-            return; // Not enough moves to attack
-        }
+        if (movesLeft < 3 || this.wizard.isDead || this.goblin.isDead) return;
         
-        // Apply damage
         const attackDamage = 5;
-        this.redCircle.hitPoints -= attackDamage;
-        this.playHitAnimation(this.redCircle);
+        this.goblin.hitPoints -= attackDamage;
+        this.playHitAnimation(this.goblin);
         
-        // Ensure hit points don't go below 0
-        if (this.redCircle.hitPoints < 0) {
-            this.redCircle.hitPoints = 0;
-        }
-
-        if (this.redCircle.hitPoints <= 0) {
-            this.markCharacterDead(this.redCircle);
+        if (this.goblin.hitPoints <= 0) {
+            this.goblin.hitPoints = 0;
+            this.markCharacterDead(this.goblin);
         }
         
-        // Consume 3 moves
         this.movesThisTurn += 3;
-        
-        // Switch turn if blue has made 5 moves
         if (this.movesThisTurn >= this.maxMovesPerTurn) {
             this.switchTurn();
         }
@@ -567,169 +742,99 @@ class GridScene {
         const pulse = 1 + (Math.sin(progress * Math.PI * 10) * 0.18 * envelope);
         character.mesh.scale.set(pulse, pulse, 1);
 
-        // Flash toward white while preserving base color identity.
+        // Flash: for sprite-based characters (baseColorHex === white) flash red;
+        // for solid-color characters flash toward white as normal.
         const flashAmount = Math.abs(Math.sin(progress * Math.PI * 12)) * 0.65 * envelope;
         const baseColor = new THREE.Color(character.baseColorHex);
-        const hitColor = baseColor.clone().lerp(new THREE.Color(0xffffff), flashAmount);
+        const flashTarget = character.baseColorHex === 0xffffff
+            ? new THREE.Color(0xff4444)
+            : new THREE.Color(0xffffff);
+        const hitColor = baseColor.clone().lerp(flashTarget, flashAmount);
         character.mesh.material.color.copy(hitColor);
     }
     
-    moveRedCircle() {
-        if (this.isGameOver || this.currentTurn !== 'red' || this.movesThisTurn >= this.maxMovesPerTurn || this.redCircle.isDead) {
+    moveGoblin() {
+        if (this.isGameOver || this.currentTurn !== 'red' || this.movesThisTurn >= this.maxMovesPerTurn || this.goblin.isDead) {
             return;
         }
 
-        // AI prefers attacking when it has enough moves for a hit.
-        if (this.redAIAttackBlueCharacter()) {
-            return;
-        }
+        if (this.goblinAttackWizard()) return;
         
-        // Calculate direction towards blue circle
-        const dx = this.circle.gridX - this.redCircle.gridX;
-        const dy = this.circle.gridY - this.redCircle.gridY;
-        
-        // Determine the best move to get closer
+        const dx = this.wizard.gridX - this.goblin.gridX;
+        const dy = this.wizard.gridY - this.goblin.gridY;
         const absDx = Math.abs(dx);
         const absDy = Math.abs(dy);
         
-        let newX = this.redCircle.gridX;
-        let newY = this.redCircle.gridY;
+        let newX = this.goblin.gridX;
+        let newY = this.goblin.gridY;
         
-        // Prioritize moving along the axis with greater distance
         if (absDx > absDy) {
-            // Move horizontally first
-            if (dx > 0) {
-                newX = Math.min(this.gridWidth - 1, this.redCircle.gridX + 1); // Move right
-            } else if (dx < 0) {
-                newX = Math.max(0, this.redCircle.gridX - 1); // Move left
-            }
+            if (dx > 0) newX = Math.min(this.gridWidth  - 1, this.goblin.gridX + 1);
+            else        newX = Math.max(0,                   this.goblin.gridX - 1);
         } else {
-            // Move vertically first
-            if (dy > 0) {
-                newY = Math.min(this.gridHeight - 1, this.redCircle.gridY + 1); // Move down
-            } else if (dy < 0) {
-                newY = Math.max(0, this.redCircle.gridY - 1); // Move up
-            }
+            if (dy > 0) newY = Math.min(this.gridHeight - 1, this.goblin.gridY + 1);
+            else        newY = Math.max(0,                   this.goblin.gridY - 1);
         }
-        
-        // Check if new position is occupied by blue circle
-        if (newX === this.circle.gridX && newY === this.circle.gridY) {
-            // Can't move there, try alternative move
-            // If we were trying to move horizontally, try vertical instead
+
+        // Resolve primary-direction block: try the alternate axis
+        const blocked = (x, y) => (x === this.wizard.gridX && y === this.wizard.gridY) || this.isObstacle(x, y);
+
+        if (blocked(newX, newY)) {
             if (absDx > absDy) {
-                newX = this.redCircle.gridX; // Reset X
-                if (dy > 0) {
-                    newY = Math.min(this.gridHeight - 1, this.redCircle.gridY + 1);
-                } else if (dy < 0) {
-                    newY = Math.max(0, this.redCircle.gridY - 1);
-                }
+                newX = this.goblin.gridX;
+                if (dy > 0) newY = Math.min(this.gridHeight - 1, this.goblin.gridY + 1);
+                else        newY = Math.max(0,                   this.goblin.gridY - 1);
             } else {
-                // If we were trying to move vertically, try horizontal instead
-                newY = this.redCircle.gridY; // Reset Y
-                if (dx > 0) {
-                    newX = Math.min(this.gridWidth - 1, this.redCircle.gridX + 1);
-                } else if (dx < 0) {
-                    newX = Math.max(0, this.redCircle.gridX - 1);
-                }
+                newY = this.goblin.gridY;
+                if (dx > 0) newX = Math.min(this.gridWidth  - 1, this.goblin.gridX + 1);
+                else        newX = Math.max(0,                   this.goblin.gridX - 1);
             }
-            
-            // Check if alternative move is also blocked
-            if ((newX === this.circle.gridX && newY === this.circle.gridY) || this.isObstacle(newX, newY)) {
-                // Can't move anywhere this turn (blocked in both directions)
+            if (blocked(newX, newY)) {
                 this.movesThisTurn++;
-                if (this.movesThisTurn >= this.maxMovesPerTurn) {
-                    this.switchTurn();
-                }
-                return;
-            }
-        } else if (this.isObstacle(newX, newY)) {
-            // Hit an obstacle, try alternative move
-            if (absDx > absDy) {
-                newX = this.redCircle.gridX; // Reset X
-                if (dy > 0) {
-                    newY = Math.min(this.gridHeight - 1, this.redCircle.gridY + 1);
-                } else if (dy < 0) {
-                    newY = Math.max(0, this.redCircle.gridY - 1);
-                }
-            } else {
-                newY = this.redCircle.gridY; // Reset Y
-                if (dx > 0) {
-                    newX = Math.min(this.gridWidth - 1, this.redCircle.gridX + 1);
-                } else if (dx < 0) {
-                    newX = Math.max(0, this.redCircle.gridX - 1);
-                }
-            }
-            
-            // Check if alternative move is also blocked
-            if ((newX === this.circle.gridX && newY === this.circle.gridY) || this.isObstacle(newX, newY)) {
-                // Can't move anywhere this turn
-                this.movesThisTurn++;
-                if (this.movesThisTurn >= this.maxMovesPerTurn) {
-                    this.switchTurn();
-                }
+                if (this.movesThisTurn >= this.maxMovesPerTurn) this.switchTurn();
                 return;
             }
         }
         
-        const redDx = newX - this.redCircle.gridX;
-        const redDy = newY - this.redCircle.gridY;
+        const moveDx = newX - this.goblin.gridX;
+        const moveDy = newY - this.goblin.gridY;
 
-        this.redCircle.gridX = newX;
-        this.redCircle.gridY = newY;
+        this.goblin.gridX = newX;
+        this.goblin.gridY = newY;
 
-        if (redDx > 0) {
-            this.updateCharacterFacing(this.redCircle, 'right');
-        } else if (redDx < 0) {
-            this.updateCharacterFacing(this.redCircle, 'left');
-        } else if (redDy > 0) {
-            this.updateCharacterFacing(this.redCircle, 'down');
-        } else if (redDy < 0) {
-            this.updateCharacterFacing(this.redCircle, 'up');
-        }
+        if      (moveDx > 0) this.updateCharacterFacing(this.goblin, 'right');
+        else if (moveDx < 0) this.updateCharacterFacing(this.goblin, 'left');
+        else if (moveDy > 0) this.updateCharacterFacing(this.goblin, 'down');
+        else if (moveDy < 0) this.updateCharacterFacing(this.goblin, 'up');
         
-        this.updateRedCirclePosition();
+        this.updateCharacterPosition(this.goblin);
         this.movesThisTurn++;
-        
-        // Switch turn if red has made 5 moves
-        if (this.movesThisTurn >= this.maxMovesPerTurn) {
-            this.switchTurn();
-        }
+        if (this.movesThisTurn >= this.maxMovesPerTurn) this.switchTurn();
     }
 
-    redAIAttackBlueCharacter() {
-        if (this.isGameOver || this.currentTurn !== 'red' || this.circle.isDead || this.redCircle.isDead) {
+    goblinAttackWizard() {
+        if (this.isGameOver || this.currentTurn !== 'red' || this.wizard.isDead || this.goblin.isDead) {
             return false;
         }
 
-        const dx = Math.abs(this.circle.gridX - this.redCircle.gridX);
-        const dy = Math.abs(this.circle.gridY - this.redCircle.gridY);
-        const isInAttackRange = dx <= 1 && dy <= 1;
-        if (!isInAttackRange) {
-            return false;
-        }
+        const dx = Math.abs(this.wizard.gridX - this.goblin.gridX);
+        const dy = Math.abs(this.wizard.gridY - this.goblin.gridY);
+        if (dx > 1 || dy > 1) return false;
 
         const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
-        if (movesLeft < 3) {
-            return false;
-        }
+        if (movesLeft < 3) return false;
 
         const attackDamage = 5;
-        this.circle.hitPoints -= attackDamage;
-        this.playHitAnimation(this.circle);
+        this.wizard.hitPoints -= attackDamage;
+        this.playHitAnimation(this.wizard);
 
-        if (this.circle.hitPoints < 0) {
-            this.circle.hitPoints = 0;
-        }
-
-        if (this.circle.hitPoints <= 0) {
-            this.markCharacterDead(this.circle);
+        if (this.wizard.hitPoints <= 0) {
+            this.wizard.hitPoints = 0;
+            this.markCharacterDead(this.wizard);
         }
 
         this.movesThisTurn += 3;
-
-        if (this.movesThisTurn >= this.maxMovesPerTurn) {
-            this.switchTurn();
-        }
+        if (this.movesThisTurn >= this.maxMovesPerTurn) this.switchTurn();
 
         return true;
     }
@@ -747,8 +852,8 @@ class GridScene {
         }
 
         // If dead character had the active turn, pass turn immediately.
-        if ((character === this.circle && this.currentTurn === 'blue') ||
-            (character === this.redCircle && this.currentTurn === 'red')) {
+        if ((character === this.wizard && this.currentTurn === 'blue') ||
+            (character === this.goblin && this.currentTurn === 'red')) {
             this.switchTurn();
         }
     }
@@ -781,7 +886,7 @@ class GridScene {
     }
 
     getAICharacters() {
-        return [this.redCircle];
+        return [this.goblin];
     }
 
     areAllAICharactersDead() {
@@ -837,33 +942,28 @@ class GridScene {
     update() {
         const nowMs = performance.now();
 
-        // Update blue character info
-        this.bluePositionText.textContent = `Position: (${this.circle.gridX}, ${this.circle.gridY})`;
-        this.blueHPText.textContent = `HP: ${this.circle.hitPoints}`;
-        
-        // Update red character info
-        this.redPositionText.textContent = `Position: (${this.redCircle.gridX}, ${this.redCircle.gridY})`;
-        this.redHPText.textContent = `HP: ${this.redCircle.hitPoints}`;
+        this.bluePositionText.textContent = `Position: (${this.wizard.gridX}, ${this.wizard.gridY})`;
+        this.blueHPText.textContent = `HP: ${this.wizard.hitPoints}`;
+        this.redPositionText.textContent  = `Position: (${this.goblin.gridX}, ${this.goblin.gridY})`;
+        this.redHPText.textContent  = `HP: ${this.goblin.hitPoints}`;
 
-        // Dead characters are grayed out and show status.
-        const deadColor = '#666666';
+        const deadColor     = '#666666';
         const aliveInfoColor = '#ffffff';
 
-        this.blueSection.style.opacity = this.circle.isDead ? '0.65' : '1';
-        this.redSection.style.opacity = this.redCircle.isDead ? '0.65' : '1';
+        this.blueSection.style.opacity = this.wizard.isDead ? '0.65' : '1';
+        this.redSection.style.opacity  = this.goblin.isDead ? '0.65' : '1';
 
-        this.blueTitle.style.color = this.circle.isDead ? deadColor : '#0066ff';
-        this.redTitle.style.color = this.redCircle.isDead ? deadColor : '#ff3333';
+        this.blueTitle.style.color = this.wizard.isDead ? deadColor : '#0066ff';
+        this.redTitle.style.color  = this.goblin.isDead ? deadColor : '#ff3333';
 
-        this.bluePositionText.style.color = this.circle.isDead ? deadColor : aliveInfoColor;
-        this.blueHPText.style.color = this.circle.isDead ? deadColor : aliveInfoColor;
-        this.redPositionText.style.color = this.redCircle.isDead ? deadColor : aliveInfoColor;
-        this.redHPText.style.color = this.redCircle.isDead ? deadColor : aliveInfoColor;
+        this.bluePositionText.style.color = this.wizard.isDead ? deadColor : aliveInfoColor;
+        this.blueHPText.style.color       = this.wizard.isDead ? deadColor : aliveInfoColor;
+        this.redPositionText.style.color  = this.goblin.isDead ? deadColor : aliveInfoColor;
+        this.redHPText.style.color        = this.goblin.isDead ? deadColor : aliveInfoColor;
 
-        // Update turn/dead indicators.
         const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
 
-        if (this.circle.isDead) {
+        if (this.wizard.isDead) {
             this.blueTurnInfo.textContent = 'Status: DEAD';
             this.blueTurnInfo.style.color = deadColor;
         } else if (this.currentTurn === 'blue') {
@@ -874,7 +974,7 @@ class GridScene {
             this.blueTurnInfo.style.color = '#9aa0aa';
         }
 
-        if (this.redCircle.isDead) {
+        if (this.goblin.isDead) {
             this.redTurnInfo.textContent = 'Status: DEAD';
             this.redTurnInfo.style.color = deadColor;
         } else if (this.currentTurn === 'red') {
@@ -885,12 +985,12 @@ class GridScene {
             this.redTurnInfo.style.color = '#9aa0aa';
         }
 
-        this.fadeAndRemoveCharacter(this.circle);
-        this.fadeAndRemoveCharacter(this.redCircle);
-        this.updateHitAnimation(this.circle, nowMs);
-        this.updateHitAnimation(this.redCircle, nowMs);
+        this.fadeAndRemoveCharacter(this.wizard);
+        this.fadeAndRemoveCharacter(this.goblin);
+        this.updateHitAnimation(this.wizard, nowMs);
+        this.updateHitAnimation(this.goblin, nowMs);
 
-        if (!this.isGameOver && this.circle.isDead) {
+        if (!this.isGameOver && this.wizard.isDead) {
             this.startGameOverSequence();
         }
 
@@ -902,12 +1002,11 @@ class GridScene {
             this.updateVictorySequence();
             return;
         }
-        
-        // Control red circle movement with a timer (every 30 frames = ~500ms at 60fps)
-        this.redMoveTimer++;
-        if (this.redMoveTimer >= 30) {
-            this.moveRedCircle();
-            this.redMoveTimer = 0;
+
+        this.goblinMoveTimer++;
+        if (this.goblinMoveTimer >= 30) {
+            this.moveGoblin();
+            this.goblinMoveTimer = 0;
         }
     }
     
