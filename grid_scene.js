@@ -4,7 +4,7 @@ class GridScene {
         // Grid settings
         this.gridWidth = 100;
         this.gridHeight = 100;
-        this.viewWidth = 10;
+        this.viewWidth = 15;
         this.viewHeight = 10;
         this.cellSize = 64;
         
@@ -23,7 +23,7 @@ class GridScene {
         const viewW = this.viewWidth * this.cellSize;
         const viewH = this.viewHeight * this.cellSize;
         
-        // Orthographic camera for 2D-like view (shows 10x10 viewport)
+        // Orthographic camera for 2D-like view (shows 15x10 viewport)
         this.camera = new THREE.OrthographicCamera(
             -viewW / 2,
             viewW / 2,
@@ -507,75 +507,28 @@ class GridScene {
     }
     
     setupUI() {
-        // Create side panel for all character info
-        const sidePanel = document.createElement('div');
-        sidePanel.id = 'sidePanel';
-        sidePanel.style.position = 'absolute';
-        sidePanel.style.left = '-200px';
-        sidePanel.style.top = '50%';
-        sidePanel.style.transform = 'translateY(-50%)';
-        sidePanel.style.pointerEvents = 'none';
-        sidePanel.style.color = '#fff';
-        sidePanel.style.fontFamily = 'Arial, sans-serif';
-        sidePanel.style.fontSize = '14px';
-        sidePanel.style.lineHeight = '1.6';
-        
-        // Blue character section
-        const blueSection = document.createElement('div');
-        blueSection.style.marginBottom = '30px';
-        
-        const blueTitle = document.createElement('div');
-        blueTitle.style.fontSize = '16px';
-        blueTitle.style.fontWeight = 'bold';
-        blueTitle.style.color = '#0066ff';
-        blueTitle.textContent = 'Blue (Player)';
-        this.blueTitle = blueTitle;
-        blueSection.appendChild(blueTitle);
-        
-        this.bluePositionText = document.createElement('div');
-        this.bluePositionText.id = 'bluePosition';
-        blueSection.appendChild(this.bluePositionText);
-        
-        this.blueHPText = document.createElement('div');
-        this.blueHPText.id = 'blueHP';
-        blueSection.appendChild(this.blueHPText);
-        
-        this.blueTurnInfo = document.createElement('div');
-        this.blueTurnInfo.id = 'blueTurnInfo';
-        this.blueTurnInfo.style.fontWeight = 'bold';
-        this.blueTurnInfo.style.marginTop = '5px';
-        blueSection.appendChild(this.blueTurnInfo);
-        this.blueSection = blueSection;
-        
-        sidePanel.appendChild(blueSection);
-        
-        // Red character section
-        const redSection = document.createElement('div');
-        
-        const redTitle = document.createElement('div');
-        redTitle.style.fontSize = '16px';
-        redTitle.style.fontWeight = 'bold';
-        redTitle.style.color = '#ff3333';
-        redTitle.textContent = 'Red (AI)';
-        this.redTitle = redTitle;
-        redSection.appendChild(redTitle);
-        
-        this.redPositionText = document.createElement('div');
-        this.redPositionText.id = 'redPosition';
-        redSection.appendChild(this.redPositionText);
-        
-        this.redHPText = document.createElement('div');
-        this.redHPText.id = 'redHP';
-        redSection.appendChild(this.redHPText);
-        
-        this.redTurnInfo = document.createElement('div');
-        this.redTurnInfo.id = 'redTurnInfo';
-        this.redTurnInfo.style.fontWeight = 'bold';
-        this.redTurnInfo.style.marginTop = '5px';
-        redSection.appendChild(this.redTurnInfo);
-        this.redSection = redSection;
-        
-        sidePanel.appendChild(redSection);
+        const hudRoot = document.getElementById('battleHud') || this.container;
+        hudRoot.style.pointerEvents = 'none';
+
+        const blueCard = this.createCombatCard('Blue Wizard', 'Player', '#4f86ff');
+        this.blueSection = blueCard.card;
+        this.blueTitle = blueCard.name;
+        this.blueRoleText = blueCard.role;
+        this.blueHPText = blueCard.hpText;
+        this.blueHPFill = blueCard.hpFill;
+        this.blueMovesText = blueCard.moves;
+        this.blueAccentColor = blueCard.accentColor;
+        hudRoot.appendChild(blueCard.card);
+
+        const redCard = this.createCombatCard('Goblin Warrior', 'AI', '#d34c4c');
+        this.redSection = redCard.card;
+        this.redTitle = redCard.name;
+        this.redRoleText = redCard.role;
+        this.redHPText = redCard.hpText;
+        this.redHPFill = redCard.hpFill;
+        this.redMovesText = redCard.moves;
+        this.redAccentColor = redCard.accentColor;
+        hudRoot.appendChild(redCard.card);
 
         this.victoryText = document.createElement('div');
         this.victoryText.id = 'victoryText';
@@ -596,8 +549,115 @@ class GridScene {
         this.victoryText.style.zIndex = '20';
         
         this.container.style.position = 'relative';
-        this.container.appendChild(sidePanel);
         this.container.appendChild(this.victoryText);
+    }
+
+    createCombatCard(name, role, accentColor) {
+        const card = document.createElement('div');
+        card.style.marginBottom = '12px';
+        card.style.padding = '12px';
+        card.style.border = `1px solid ${accentColor}`;
+        card.style.borderRadius = '6px';
+        card.style.background = 'linear-gradient(180deg, rgba(22, 22, 20, 0.94), rgba(12, 12, 12, 0.94))';
+        card.style.boxShadow = `inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.15)}`;
+        card.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'baseline';
+        header.style.gap = '10px';
+        header.style.marginBottom = '10px';
+
+        const nameText = document.createElement('div');
+        nameText.style.fontSize = '16px';
+        nameText.style.fontWeight = 'bold';
+        nameText.style.color = accentColor;
+        nameText.textContent = name;
+
+        const roleText = document.createElement('div');
+        roleText.style.fontSize = '10px';
+        roleText.style.letterSpacing = '0.14em';
+        roleText.style.textTransform = 'uppercase';
+        roleText.style.color = '#b6aa8f';
+        roleText.textContent = role;
+
+        header.appendChild(nameText);
+        header.appendChild(roleText);
+        card.appendChild(header);
+
+        const hpLabelRow = document.createElement('div');
+        hpLabelRow.style.display = 'flex';
+        hpLabelRow.style.justifyContent = 'space-between';
+        hpLabelRow.style.fontSize = '11px';
+        hpLabelRow.style.color = '#bcb29c';
+        hpLabelRow.style.marginBottom = '6px';
+
+        const hpLabel = document.createElement('div');
+        hpLabel.textContent = 'Vitality';
+
+        const hpText = document.createElement('div');
+        hpText.style.color = '#f0e8d2';
+
+        hpLabelRow.appendChild(hpLabel);
+        hpLabelRow.appendChild(hpText);
+        card.appendChild(hpLabelRow);
+
+        const hpTrack = document.createElement('div');
+        hpTrack.style.height = '10px';
+        hpTrack.style.marginBottom = '10px';
+        hpTrack.style.border = '1px solid rgba(255,255,255,0.12)';
+        hpTrack.style.borderRadius = '999px';
+        hpTrack.style.background = 'rgba(0, 0, 0, 0.42)';
+        hpTrack.style.overflow = 'hidden';
+
+        const hpFill = document.createElement('div');
+        hpFill.style.height = '100%';
+        hpFill.style.width = '100%';
+        hpFill.style.background = `linear-gradient(90deg, ${accentColor}, ${this.hexToRgba(accentColor, 0.55)})`;
+        hpTrack.appendChild(hpFill);
+        card.appendChild(hpTrack);
+
+        const moves = document.createElement('div');
+        moves.style.marginBottom = '8px';
+        moves.style.fontSize = '12px';
+        moves.style.color = '#bcb29c';
+
+        card.appendChild(moves);
+
+        return { card, name: nameText, role: roleText, hpText, hpFill, moves, accentColor };
+    }
+
+    hexToRgba(hex, alpha) {
+        const value = hex.replace('#', '');
+        const bigint = parseInt(value, 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    setCombatCardActiveState(card, accentColor, isActive, isDead) {
+        if (isDead) {
+            card.style.borderColor = '#5b5b5b';
+            card.style.background = 'linear-gradient(180deg, rgba(26, 26, 26, 0.9), rgba(16, 16, 16, 0.9))';
+            card.style.boxShadow = 'inset 0 0 0 1px rgba(120, 120, 120, 0.10)';
+            card.style.transform = 'translateX(0)';
+            return;
+        }
+
+        if (isActive) {
+            card.style.borderColor = accentColor;
+            card.style.background = `linear-gradient(180deg, ${this.hexToRgba(accentColor, 0.24)}, rgba(18, 18, 18, 0.96))`;
+            card.style.boxShadow = `0 0 0 1px ${this.hexToRgba(accentColor, 0.30)}, 0 0 22px ${this.hexToRgba(accentColor, 0.22)}, inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.18)}`;
+            card.style.transform = 'translateX(2px)';
+            return;
+        }
+
+        card.style.borderColor = this.hexToRgba(accentColor, 0.7);
+        card.style.background = 'linear-gradient(180deg, rgba(22, 22, 20, 0.94), rgba(12, 12, 12, 0.94))';
+        card.style.boxShadow = `inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.15)}`;
+        card.style.transform = 'translateX(0)';
     }
     
     setupInputListeners() {
@@ -941,11 +1001,14 @@ class GridScene {
     
     update() {
         const nowMs = performance.now();
+        const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
+        const blueHpRatio = Math.max(0, this.wizard.hitPoints / 10);
+        const redHpRatio = Math.max(0, this.goblin.hitPoints / 10);
 
-        this.bluePositionText.textContent = `Position: (${this.wizard.gridX}, ${this.wizard.gridY})`;
-        this.blueHPText.textContent = `HP: ${this.wizard.hitPoints}`;
-        this.redPositionText.textContent  = `Position: (${this.goblin.gridX}, ${this.goblin.gridY})`;
-        this.redHPText.textContent  = `HP: ${this.goblin.hitPoints}`;
+        this.blueHPText.textContent = `${this.wizard.hitPoints} / 10`;
+        this.blueHPFill.style.width = `${blueHpRatio * 100}%`;
+        this.redHPText.textContent  = `${this.goblin.hitPoints} / 10`;
+        this.redHPFill.style.width = `${redHpRatio * 100}%`;
 
         const deadColor     = '#666666';
         const aliveInfoColor = '#ffffff';
@@ -956,33 +1019,36 @@ class GridScene {
         this.blueTitle.style.color = this.wizard.isDead ? deadColor : '#0066ff';
         this.redTitle.style.color  = this.goblin.isDead ? deadColor : '#ff3333';
 
-        this.bluePositionText.style.color = this.wizard.isDead ? deadColor : aliveInfoColor;
+        this.blueRoleText.style.color = this.wizard.isDead ? deadColor : '#b6aa8f';
+        this.redRoleText.style.color = this.goblin.isDead ? deadColor : '#b6aa8f';
         this.blueHPText.style.color       = this.wizard.isDead ? deadColor : aliveInfoColor;
-        this.redPositionText.style.color  = this.goblin.isDead ? deadColor : aliveInfoColor;
         this.redHPText.style.color        = this.goblin.isDead ? deadColor : aliveInfoColor;
+        this.blueHPFill.style.opacity = this.wizard.isDead ? '0.35' : '1';
+        this.redHPFill.style.opacity = this.goblin.isDead ? '0.35' : '1';
 
-        const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
+        this.setCombatCardActiveState(this.blueSection, this.blueAccentColor, this.currentTurn === 'blue', this.wizard.isDead);
+        this.setCombatCardActiveState(this.redSection, this.redAccentColor, this.currentTurn === 'red', this.goblin.isDead);
 
         if (this.wizard.isDead) {
-            this.blueTurnInfo.textContent = 'Status: DEAD';
-            this.blueTurnInfo.style.color = deadColor;
+            this.blueMovesText.textContent = 'Defeated';
+            this.blueMovesText.style.color = deadColor;
         } else if (this.currentTurn === 'blue') {
-            this.blueTurnInfo.textContent = `Status: ${movesLeft} moves left`;
-            this.blueTurnInfo.style.color = '#0066ff';
+            this.blueMovesText.textContent = `${movesLeft} of ${this.maxMovesPerTurn} actions remaining`;
+            this.blueMovesText.style.color = '#bcb29c';
         } else {
-            this.blueTurnInfo.textContent = 'Status: Waiting';
-            this.blueTurnInfo.style.color = '#9aa0aa';
+            this.blueMovesText.textContent = '';
+            this.blueMovesText.style.color = '#bcb29c';
         }
 
         if (this.goblin.isDead) {
-            this.redTurnInfo.textContent = 'Status: DEAD';
-            this.redTurnInfo.style.color = deadColor;
+            this.redMovesText.textContent = 'Defeated';
+            this.redMovesText.style.color = deadColor;
         } else if (this.currentTurn === 'red') {
-            this.redTurnInfo.textContent = `Status: ${movesLeft} moves left`;
-            this.redTurnInfo.style.color = '#ff3333';
+            this.redMovesText.textContent = `${movesLeft} of ${this.maxMovesPerTurn} actions remaining`;
+            this.redMovesText.style.color = '#bcb29c';
         } else {
-            this.redTurnInfo.textContent = 'Status: Waiting';
-            this.redTurnInfo.style.color = '#9aa0aa';
+            this.redMovesText.textContent = '';
+            this.redMovesText.style.color = '#bcb29c';
         }
 
         this.fadeAndRemoveCharacter(this.wizard);
