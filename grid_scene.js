@@ -23,7 +23,6 @@ class GridScene {
         const viewW = this.viewWidth * this.cellSize;
         const viewH = this.viewHeight * this.cellSize;
 
-        // Orthographic camera for 2D-like view (shows 15x10 viewport)
         this.camera = new THREE.OrthographicCamera(
             -viewW / 2,
             viewW / 2,
@@ -34,7 +33,6 @@ class GridScene {
         );
         this.camera.position.z = 500;
 
-        // Renderer
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(viewW, viewH);
         this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -48,7 +46,10 @@ class GridScene {
             accentColor: '#4f86ff',
             pointerColor: 0x00eeff,
             spriteRows: this.getWizardSpriteRows(),
-            portraitLabel: 'WZ'
+            portraitLabel: 'WZ',
+            hitPoints: 6,
+            maxHitPoints: 6,
+            attackDamage: 4
         });
 
         this.dwarf = this.createCharacter({
@@ -59,7 +60,8 @@ class GridScene {
             accentColor: '#c78a3b',
             pointerColor: 0xffb347,
             spriteRows: this.getDwarfSpriteRows(),
-            portraitLabel: 'DW'
+            portraitLabel: 'DW',
+            attackDamage: 6
         });
 
         this.goblin = this.createCharacter({
@@ -70,20 +72,35 @@ class GridScene {
             accentColor: '#d34c4c',
             pointerColor: 0xff6600,
             spriteRows: this.getGoblinSpriteRows(),
-            portraitLabel: 'GB'
+            portraitLabel: 'GB',
+            hitPoints: 8,
+            maxHitPoints: 8
         });
 
-        this.characters = [this.wizard, this.dwarf, this.goblin];
+        this.orc = this.createCharacter({
+            id: 'orc-brute',
+            name: 'Orc Brute',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#9b3f2a',
+            pointerColor: 0xff8855,
+            spriteRows: this.getOrcSpriteRows(),
+            portraitLabel: 'OR',
+            hitPoints: 12,
+            maxHitPoints: 12,
+            attackDamage: 6
+        });
+
+        this.characters = [this.wizard, this.dwarf, this.goblin, this.orc];
         this.playerParty = [this.wizard, this.dwarf];
-        this.aiParty = [this.goblin];
-        this.playerActiveIndex = 0;
-        this.aiActionIndex = 0;
+        this.aiParty = [this.goblin, this.orc];
         this.characterHud = new Map();
 
         // Turn system
-        this.currentTurn = 'player';
-        this.movesThisTurn = 0;
-        this.maxMovesPerTurn = 5;
+        this.turnOrder = [...this.characters];
+        this.activeTurnIndex = 0;
+        this.turnTransitionDelay = 18;
+        this.turnTransitionFrames = 0;
         this.goblinMoveTimer = 0;
         this.isGameOver = false;
         this.gameOutcome = null;
@@ -96,23 +113,20 @@ class GridScene {
         this.TILE_FLOOR = 1;
         this.TILE_WALL = 2;
 
-        // Generate dungeon and place characters inside rooms
         const dungeon = this.generateDungeonMap();
         this.dungeonMap = dungeon.map;
         this.placeCharacters(dungeon.rooms);
+        this.beginCurrentTurn();
 
-        // Input handling
         this.keysPressed = {};
         this.setupInputListeners();
 
-        // Setup scene
         this.setupGrid();
         this.setupCharacters();
         this.setupUI();
         this.setupAttackListener();
         this.updateCamera();
 
-        // Start animation loop
         this.animate();
     }
 
@@ -132,10 +146,12 @@ class GridScene {
             baseColorHex: 0xffffff,
             facing: 'right',
             directionPointer: null,
-            hitPoints: 10,
-            maxHitPoints: 10,
-            attackDamage: 5,
-            attackCost: 3,
+            hitPoints: config.hitPoints ?? 10,
+            maxHitPoints: config.maxHitPoints ?? 10,
+            attackDamage: config.attackDamage ?? 5,
+            attackCost: config.attackCost ?? 3,
+            maxActionsPerTurn: config.maxActionsPerTurn ?? 5,
+            actionsRemaining: 0,
             hitAnimEndTime: 0,
             isDead: false,
             fadeFrames: 0,
@@ -160,39 +176,37 @@ class GridScene {
             this.getCellKey(this.wizard.gridX, this.wizard.gridY)
         ]);
 
-        const dwarfSpawn = this.findNearbyFloorTile(
-            this.wizard.gridX,
-            this.wizard.gridY,
-            1,
-            3,
-            occupiedCells
-        );
-        if (dwarfSpawn) {
-            this.dwarf.gridX = dwarfSpawn.x;
-            this.dwarf.gridY = dwarfSpawn.y;
-            occupiedCells.add(this.getCellKey(dwarfSpawn.x, dwarfSpawn.y));
-        } else {
-            this.dwarf.gridX = this.wizard.gridX;
-            this.dwarf.gridY = Math.min(this.gridHeight - 1, this.wizard.gridY + 1);
-            occupiedCells.add(this.getCellKey(this.dwarf.gridX, this.dwarf.gridY));
-        }
+        this.placeCharacterNear(this.dwarf, this.wizard.gridX, this.wizard.gridY, 1, 3, occupiedCells, {
+            x: this.wizard.gridX,
+            y: Math.min(this.gridHeight - 1, this.wizard.gridY + 1)
+        });
+        occupiedCells.add(this.getCellKey(this.dwarf.gridX, this.dwarf.gridY));
 
-        const goblinSpawn = this.findNearbyFloorTile(
-            this.wizard.gridX,
-            this.wizard.gridY,
-            2,
-            5,
-            occupiedCells
-        );
-        if (goblinSpawn) {
-            this.goblin.gridX = goblinSpawn.x;
-            this.goblin.gridY = goblinSpawn.y;
+        this.placeCharacterNear(this.goblin, this.wizard.gridX, this.wizard.gridY, 3, 6, occupiedCells, this.findFallbackRoomCenter(rooms, -1));
+        occupiedCells.add(this.getCellKey(this.goblin.gridX, this.goblin.gridY));
+
+        this.placeCharacterNear(this.orc, this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells, this.findFallbackRoomCenter(rooms, -2));
+    }
+
+    placeCharacterNear(character, originX, originY, minDistance, maxDistance, occupiedCells, fallbackPosition) {
+        const spawn = this.findNearbyFloorTile(originX, originY, minDistance, maxDistance, occupiedCells);
+        if (spawn) {
+            character.gridX = spawn.x;
+            character.gridY = spawn.y;
             return;
         }
 
-        const fallbackRoom = rooms[rooms.length - 1];
-        this.goblin.gridX = Math.floor(fallbackRoom.x + fallbackRoom.w / 2);
-        this.goblin.gridY = Math.floor(fallbackRoom.y + fallbackRoom.h / 2);
+        character.gridX = fallbackPosition.x;
+        character.gridY = fallbackPosition.y;
+    }
+
+    findFallbackRoomCenter(rooms, roomOffsetFromEnd) {
+        const roomIndex = Math.max(0, rooms.length + roomOffsetFromEnd);
+        const room = rooms[roomIndex] || rooms[rooms.length - 1];
+        return {
+            x: Math.floor(room.x + room.w / 2),
+            y: Math.floor(room.y + room.h / 2)
+        };
     }
 
     findNearbyFloorTile(originX, originY, minDistance, maxDistance, occupiedCells = new Set()) {
@@ -561,6 +575,40 @@ class GridScene {
         ];
     }
 
+    getOrcSpriteRows() {
+        const _ = null;
+        const OG = '#7d8c2f';
+        const DG = '#495518';
+        const EY = '#140800';
+        const SK = '#b58d5f';
+        const MK = '#23120a';
+        const TU = '#efe1b4';
+        const PL = '#7d4730';
+        const PH = '#b36a48';
+        const BD = '#4f2c1c';
+        const AX = '#d4d3d0';
+        const SH = '#74726b';
+        const BT = '#1e140f';
+        return [
+            [_, _, _, _, _, _, DG, DG, DG, _, _, _, _, _, _, _],
+            [_, _, _, _, DG, OG, OG, OG, OG, DG, _, _, _, _, _, _],
+            [_, _, _, DG, OG, OG, OG, OG, OG, OG, DG, _, _, _, _, _],
+            [_, _, _, OG, SK, OG, OG, OG, OG, SK, OG, _, _, _, _, _],
+            [_, _, _, OG, OG, MK, OG, OG, MK, OG, OG, _, _, _, _, _],
+            [_, _, _, OG, TU, MK, MK, MK, TU, OG, OG, _, _, _, _, _],
+            [AX, SH, BD, PL, PL, PL, PL, PL, PL, PL, BD, _, _, _, _, _],
+            [_, AX, BD, PH, PL, PL, PH, PL, PL, PH, BD, _, _, _, _, _],
+            [_, _, BD, PL, PL, PL, PL, PL, PL, PL, BD, _, _, _, _, _],
+            [_, _, OG, BD, PL, PL, PL, PL, PL, BD, OG, _, _, _, _, _],
+            [_, _, OG, _, BD, BD, BD, BD, BD, _, OG, _, _, _, _, _],
+            [_, _, OG, _, BD, BD, BD, BD, BD, _, OG, _, _, _, _, _],
+            [_, _, _, _, BD, BD, _, _, BD, BD, _, _, _, _, _, _],
+            [_, _, _, _, BD, BD, _, _, BD, BD, _, _, _, _, _, _],
+            [_, _, _, _, BT, BT, _, _, BT, BT, _, _, _, _, _, _],
+            [_, _, _, BT, BT, _, _, _, _, BT, BT, _, _, _, _, _]
+        ];
+    }
+
     createPortraitCanvas(rows, accentColor, label) {
         const canvas = document.createElement('canvas');
         canvas.width = 72;
@@ -645,45 +693,68 @@ class GridScene {
         return group.filter((character) => !character.isDead);
     }
 
-    getActivePlayerCharacter() {
-        const livingPlayers = this.getLivingCharacters(this.playerParty);
-        if (livingPlayers.length === 0) {
+    getAliveTurnOrder() {
+        return this.turnOrder.filter((character) => !character.isDead);
+    }
+
+    getActiveTurnCharacter() {
+        const aliveTurnOrder = this.getAliveTurnOrder();
+        if (aliveTurnOrder.length === 0) {
             return null;
         }
 
-        const selected = this.playerParty[this.playerActiveIndex];
-        if (selected && !selected.isDead) {
-            return selected;
+        const currentCharacter = this.turnOrder[this.activeTurnIndex];
+        if (currentCharacter && !currentCharacter.isDead) {
+            return currentCharacter;
         }
 
-        this.playerActiveIndex = this.playerParty.indexOf(livingPlayers[0]);
-        return livingPlayers[0];
+        const fallbackCharacter = aliveTurnOrder[0];
+        this.activeTurnIndex = this.turnOrder.indexOf(fallbackCharacter);
+        return fallbackCharacter;
     }
 
-    cycleActivePlayerCharacter(direction = 1) {
-        const livingPlayers = this.getLivingCharacters(this.playerParty);
-        if (livingPlayers.length <= 1) {
+    isPlayerTurn() {
+        const activeCharacter = this.getActiveTurnCharacter();
+        return Boolean(activeCharacter && activeCharacter.team === 'player');
+    }
+
+    beginCurrentTurn() {
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (!activeCharacter) {
             return;
         }
 
-        const activeCharacter = this.getActivePlayerCharacter();
-        const activeIndex = livingPlayers.indexOf(activeCharacter);
-        const nextIndex = (activeIndex + direction + livingPlayers.length) % livingPlayers.length;
-        this.playerActiveIndex = this.playerParty.indexOf(livingPlayers[nextIndex]);
+        activeCharacter.actionsRemaining = activeCharacter.maxActionsPerTurn;
+        this.turnTransitionFrames = this.turnTransitionDelay;
+        this.goblinMoveTimer = 0;
         this.updateCamera();
     }
 
-    setActivePlayerByPartyIndex(index) {
-        const candidate = this.playerParty[index];
-        if (!candidate || candidate.isDead) {
+    endCurrentTurn() {
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter) {
+            activeCharacter.actionsRemaining = 0;
+        }
+
+        const aliveTurnOrder = this.getAliveTurnOrder();
+        if (aliveTurnOrder.length === 0) {
             return;
         }
-        this.playerActiveIndex = index;
-        this.updateCamera();
+
+        let nextIndex = this.activeTurnIndex;
+        for (let step = 0; step < this.turnOrder.length; step++) {
+            nextIndex = (nextIndex + 1) % this.turnOrder.length;
+            const candidate = this.turnOrder[nextIndex];
+            if (candidate && !candidate.isDead) {
+                this.activeTurnIndex = nextIndex;
+                this.beginCurrentTurn();
+                return;
+            }
+        }
     }
 
     updateCamera() {
-        const focusCharacter = this.getActivePlayerCharacter() || this.getLivingCharacters(this.aiParty)[0] || this.characters[0];
+        const focusCharacter = this.getActiveTurnCharacter() || this.getAliveTurnOrder()[0] || this.characters[0];
         if (!focusCharacter) {
             return;
         }
@@ -743,8 +814,8 @@ class GridScene {
         hudRoot.style.pointerEvents = 'none';
         hudRoot.innerHTML = '';
 
-        const playerSection = this.createPartySection('Player Party', 'Controlled units');
-        const enemySection = this.createPartySection('Enemy Party', 'Hostiles');
+        const playerSection = this.createPartySection('Player Party', 'Acts individually in turn order');
+        const enemySection = this.createPartySection('Enemy Party', 'Victory when every enemy falls');
         hudRoot.appendChild(playerSection.section);
         hudRoot.appendChild(enemySection.section);
 
@@ -835,7 +906,9 @@ class GridScene {
         portraitFrame.style.flex = '0 0 72px';
         portraitFrame.style.borderRadius = '4px';
         portraitFrame.style.overflow = 'hidden';
-        portraitFrame.style.boxShadow = `0 0 0 1px ${this.hexToRgba(character.accentColor, 0.28)}`;
+        portraitFrame.style.border = `1px solid ${this.hexToRgba(character.accentColor, 0.30)}`;
+        portraitFrame.style.boxShadow = `0 0 0 1px ${this.hexToRgba(character.accentColor, 0.22)}`;
+        portraitFrame.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease';
         portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor, character.portraitLabel));
 
         const textColumn = document.createElement('div');
@@ -894,13 +967,13 @@ class GridScene {
         hpTrack.appendChild(hpFill);
         card.appendChild(hpTrack);
 
-        const moves = document.createElement('div');
-        moves.style.marginBottom = '8px';
-        moves.style.fontSize = '12px';
-        moves.style.color = '#bcb29c';
-        card.appendChild(moves);
+        const actionText = document.createElement('div');
+        actionText.style.marginBottom = '8px';
+        actionText.style.fontSize = '12px';
+        actionText.style.color = '#bcb29c';
+        card.appendChild(actionText);
 
-        return { card, nameText, roleText, hpText, hpFill, moves };
+        return { card, portraitFrame, nameText, roleText, hpText, hpFill, actionText };
     }
 
     hexToRgba(hex, alpha) {
@@ -912,28 +985,26 @@ class GridScene {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
-    setCombatCardActiveState(card, accentColor, isTeamActive, isSelected, isDead) {
+    setCombatCardActiveState(card, portraitFrame, accentColor, isActiveTurn, isDead) {
         if (isDead) {
             card.style.borderColor = '#5b5b5b';
             card.style.background = 'linear-gradient(180deg, rgba(26, 26, 26, 0.9), rgba(16, 16, 16, 0.9))';
             card.style.boxShadow = 'inset 0 0 0 1px rgba(120, 120, 120, 0.10)';
             card.style.transform = 'translateX(0)';
+            portraitFrame.style.borderColor = '#5b5b5b';
+            portraitFrame.style.boxShadow = '0 0 0 1px rgba(120, 120, 120, 0.14)';
+            portraitFrame.style.transform = 'scale(1)';
             return;
         }
 
-        if (isSelected) {
+        if (isActiveTurn) {
             card.style.borderColor = accentColor;
-            card.style.background = `linear-gradient(180deg, ${this.hexToRgba(accentColor, 0.34)}, rgba(18, 18, 18, 0.96))`;
-            card.style.boxShadow = `0 0 0 1px ${this.hexToRgba(accentColor, 0.36)}, 0 0 28px ${this.hexToRgba(accentColor, 0.26)}, inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.22)}`;
+            card.style.background = `linear-gradient(180deg, ${this.hexToRgba(accentColor, 0.30)}, rgba(18, 18, 18, 0.96))`;
+            card.style.boxShadow = `0 0 0 1px ${this.hexToRgba(accentColor, 0.34)}, 0 0 24px ${this.hexToRgba(accentColor, 0.24)}, inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.20)}`;
             card.style.transform = 'translateX(4px)';
-            return;
-        }
-
-        if (isTeamActive) {
-            card.style.borderColor = accentColor;
-            card.style.background = `linear-gradient(180deg, ${this.hexToRgba(accentColor, 0.22)}, rgba(18, 18, 18, 0.96))`;
-            card.style.boxShadow = `0 0 0 1px ${this.hexToRgba(accentColor, 0.26)}, 0 0 16px ${this.hexToRgba(accentColor, 0.18)}, inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.16)}`;
-            card.style.transform = 'translateX(2px)';
+            portraitFrame.style.borderColor = accentColor;
+            portraitFrame.style.boxShadow = `0 0 0 2px ${this.hexToRgba(accentColor, 0.55)}, 0 0 18px ${this.hexToRgba(accentColor, 0.50)}, inset 0 0 18px ${this.hexToRgba(accentColor, 0.14)}`;
+            portraitFrame.style.transform = 'scale(1.04)';
             return;
         }
 
@@ -941,6 +1012,9 @@ class GridScene {
         card.style.background = 'linear-gradient(180deg, rgba(22, 22, 20, 0.94), rgba(12, 12, 12, 0.94))';
         card.style.boxShadow = `inset 0 0 0 1px ${this.hexToRgba(accentColor, 0.15)}`;
         card.style.transform = 'translateX(0)';
+        portraitFrame.style.borderColor = this.hexToRgba(accentColor, 0.30);
+        portraitFrame.style.boxShadow = `0 0 0 1px ${this.hexToRgba(accentColor, 0.22)}`;
+        portraitFrame.style.transform = 'scale(1)';
     }
 
     setupInputListeners() {
@@ -951,7 +1025,7 @@ class GridScene {
                 return;
             }
 
-            if (key === 'TAB') {
+            if (key === ' ') {
                 e.preventDefault();
             }
 
@@ -961,22 +1035,12 @@ class GridScene {
 
             this.keysPressed[key] = true;
 
-            if (this.currentTurn === 'player') {
-                if (key === 'TAB' || key === 'E') {
-                    this.cycleActivePlayerCharacter(1);
-                    return;
-                }
-                if (key === 'Q') {
-                    this.cycleActivePlayerCharacter(-1);
-                    return;
-                }
-                if (key >= '1' && key <= String(this.playerParty.length)) {
-                    this.setActivePlayerByPartyIndex(Number(key) - 1);
-                    return;
-                }
+            if (!this.isPlayerTurn()) {
+                return;
             }
 
-            if (this.currentTurn !== 'player') {
+            if (key === ' ') {
+                this.endCurrentTurn();
                 return;
             }
 
@@ -994,11 +1058,11 @@ class GridScene {
         this.mouse = new THREE.Vector2();
 
         this.renderer.domElement.addEventListener('click', (event) => {
-            if (this.isGameOver || this.currentTurn !== 'player') {
+            if (this.isGameOver || !this.isPlayerTurn()) {
                 return;
             }
 
-            const activeCharacter = this.getActivePlayerCharacter();
+            const activeCharacter = this.getActiveTurnCharacter();
             if (!activeCharacter || activeCharacter.isDead) {
                 return;
             }
@@ -1026,13 +1090,13 @@ class GridScene {
     }
 
     handleMovement(key) {
-        const activeCharacter = this.getActivePlayerCharacter();
+        const activeCharacter = this.getActiveTurnCharacter();
         if (
             this.isGameOver ||
-            this.currentTurn !== 'player' ||
-            this.movesThisTurn >= this.maxMovesPerTurn ||
+            !this.isPlayerTurn() ||
             !activeCharacter ||
-            activeCharacter.isDead
+            activeCharacter.isDead ||
+            activeCharacter.actionsRemaining <= 0
         ) {
             return;
         }
@@ -1079,41 +1143,26 @@ class GridScene {
 
         this.updateCharacterPosition(activeCharacter);
         this.updateCamera();
-        this.movesThisTurn++;
+        activeCharacter.actionsRemaining -= 1;
 
-        if (this.movesThisTurn >= this.maxMovesPerTurn) {
-            this.switchTurn();
+        if (activeCharacter.actionsRemaining <= 0) {
+            this.endCurrentTurn();
         }
-    }
-
-    switchTurn() {
-        this.currentTurn = this.currentTurn === 'player' ? 'ai' : 'player';
-        this.movesThisTurn = 0;
-
-        if (this.currentTurn === 'player') {
-            this.getActivePlayerCharacter();
-            return;
-        }
-
-        this.aiActionIndex = 0;
     }
 
     characterAttack(attacker, target) {
         if (!attacker || !target || attacker.isDead || target.isDead || attacker.team === target.team) {
             return false;
         }
-        if (this.currentTurn !== attacker.team || this.movesThisTurn >= this.maxMovesPerTurn) {
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== attacker || attacker.actionsRemaining < attacker.attackCost) {
             return false;
         }
 
         const dx = Math.abs(target.gridX - attacker.gridX);
         const dy = Math.abs(target.gridY - attacker.gridY);
         if (dx > 1 || dy > 1) {
-            return false;
-        }
-
-        const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
-        if (movesLeft < attacker.attackCost) {
             return false;
         }
 
@@ -1126,9 +1175,9 @@ class GridScene {
             this.markCharacterDead(target);
         }
 
-        this.movesThisTurn += attacker.attackCost;
-        if (this.movesThisTurn >= this.maxMovesPerTurn) {
-            this.switchTurn();
+        attacker.actionsRemaining -= attacker.attackCost;
+        if (attacker.actionsRemaining <= 0) {
+            this.endCurrentTurn();
         }
 
         return true;
@@ -1190,34 +1239,24 @@ class GridScene {
         return nearest;
     }
 
-    getCurrentAIActor() {
-        const livingAI = this.getLivingCharacters(this.aiParty);
-        if (livingAI.length === 0) {
-            return null;
-        }
-        return livingAI[this.aiActionIndex % livingAI.length];
-    }
-
-    advanceAIActor() {
-        const livingAI = this.getLivingCharacters(this.aiParty);
-        if (livingAI.length === 0) {
-            return;
-        }
-        this.aiActionIndex = (this.aiActionIndex + 1) % livingAI.length;
-    }
-
     moveAICharacter(character) {
-        if (this.isGameOver || this.currentTurn !== 'ai' || this.movesThisTurn >= this.maxMovesPerTurn || !character || character.isDead) {
+        if (
+            this.isGameOver ||
+            !character ||
+            character.isDead ||
+            this.getActiveTurnCharacter() !== character ||
+            character.actionsRemaining <= 0
+        ) {
             return;
         }
 
         const target = this.getNearestLivingOpponent(character);
         if (!target) {
+            this.endCurrentTurn();
             return;
         }
 
         if (this.characterAttack(character, target)) {
-            this.advanceAIActor();
             return;
         }
 
@@ -1247,11 +1286,8 @@ class GridScene {
             }
 
             if (blocked(newX, newY)) {
-                this.movesThisTurn++;
-                this.advanceAIActor();
-                if (this.movesThisTurn >= this.maxMovesPerTurn) {
-                    this.switchTurn();
-                }
+                character.actionsRemaining = 0;
+                this.endCurrentTurn();
                 return;
             }
         }
@@ -1273,10 +1309,9 @@ class GridScene {
         }
 
         this.updateCharacterPosition(character);
-        this.movesThisTurn++;
-        this.advanceAIActor();
-        if (this.movesThisTurn >= this.maxMovesPerTurn) {
-            this.switchTurn();
+        character.actionsRemaining -= 1;
+        if (character.actionsRemaining <= 0) {
+            this.endCurrentTurn();
         }
     }
 
@@ -1287,13 +1322,14 @@ class GridScene {
 
         character.isDead = true;
         character.fadeFrames = 0;
+        character.actionsRemaining = 0;
 
         if (character.hitPoints < 0) {
             character.hitPoints = 0;
         }
 
-        if (character.team === 'player' && this.getActivePlayerCharacter() === character) {
-            this.getActivePlayerCharacter();
+        if (this.getActiveTurnCharacter() === character) {
+            this.endCurrentTurn();
         }
     }
 
@@ -1372,7 +1408,7 @@ class GridScene {
         }
     }
 
-    updateCharacterCard(character, movesLeft, aiActor) {
+    updateCharacterCard(character, activeCharacter) {
         const hud = this.characterHud.get(character.id);
         if (!hud) {
             return;
@@ -1381,8 +1417,7 @@ class GridScene {
         const deadColor = '#666666';
         const aliveInfoColor = '#ffffff';
         const hpRatio = Math.max(0, character.hitPoints / character.maxHitPoints);
-        const isSelected = character.team === 'player' && this.getActivePlayerCharacter() === character;
-        const isTeamActive = this.currentTurn === character.team;
+        const isActiveTurn = activeCharacter === character;
 
         hud.hpText.textContent = `${character.hitPoints} / ${character.maxHitPoints}`;
         hud.hpFill.style.width = `${hpRatio * 100}%`;
@@ -1394,39 +1429,28 @@ class GridScene {
         hud.hpText.style.color = character.isDead ? deadColor : aliveInfoColor;
 
         if (character.isDead) {
-            hud.moves.textContent = 'Defeated';
-            hud.moves.style.color = deadColor;
-        } else if (character.team === 'player' && isSelected && this.currentTurn === 'player') {
-            hud.moves.textContent = `${movesLeft} of ${this.maxMovesPerTurn} actions remaining`;
-            hud.moves.style.color = '#e1d6c1';
-        } else if (character.team === 'player' && isSelected) {
-            hud.moves.textContent = 'Selected';
-            hud.moves.style.color = '#bcb29c';
-        } else if (character.team === 'player' && this.currentTurn === 'player') {
-            hud.moves.textContent = 'Ready';
-            hud.moves.style.color = '#bcb29c';
-        } else if (character.team === 'ai' && this.currentTurn === 'ai' && aiActor === character) {
-            hud.moves.textContent = `${movesLeft} of ${this.maxMovesPerTurn} actions remaining`;
-            hud.moves.style.color = '#e1d6c1';
+            hud.actionText.textContent = 'Defeated';
+            hud.actionText.style.color = deadColor;
+        } else if (isActiveTurn) {
+            hud.actionText.textContent = `${character.actionsRemaining} of ${character.maxActionsPerTurn} actions remaining`;
+            hud.actionText.style.color = '#e1d6c1';
         } else {
-            hud.moves.textContent = '';
-            hud.moves.style.color = '#bcb29c';
+            hud.actionText.textContent = `${character.maxActionsPerTurn} action turn on deck`;
+            hud.actionText.style.color = '#bcb29c';
         }
 
-        this.setCombatCardActiveState(hud.card, character.accentColor, isTeamActive, isSelected && isTeamActive, character.isDead);
+        this.setCombatCardActiveState(hud.card, hud.portraitFrame, character.accentColor, isActiveTurn, character.isDead);
     }
 
     update() {
         const nowMs = performance.now();
-        const movesLeft = this.maxMovesPerTurn - this.movesThisTurn;
-        const aiActor = this.getCurrentAIActor();
+        const activeCharacter = this.getActiveTurnCharacter();
 
         this.characters.forEach((character) => {
-            this.updateCharacterCard(character, movesLeft, aiActor);
+            this.updateCharacterCard(character, activeCharacter);
             this.fadeAndRemoveCharacter(character);
             this.updateHitAnimation(character, nowMs);
         });
-
         if (!this.isGameOver && this.areAllPartyMembersDead(this.playerParty)) {
             this.startGameOverSequence();
         }
@@ -1440,10 +1464,17 @@ class GridScene {
             return;
         }
 
-        this.goblinMoveTimer++;
-        if (this.currentTurn === 'ai' && this.goblinMoveTimer >= 30) {
-            this.moveAICharacter(this.getCurrentAIActor());
-            this.goblinMoveTimer = 0;
+        if (this.turnTransitionFrames > 0) {
+            this.turnTransitionFrames -= 1;
+            return;
+        }
+
+        if (activeCharacter && activeCharacter.team === 'ai') {
+            this.goblinMoveTimer += 1;
+            if (this.goblinMoveTimer >= 24) {
+                this.moveAICharacter(activeCharacter);
+                this.goblinMoveTimer = 0;
+            }
         }
     }
 
@@ -1455,7 +1486,6 @@ class GridScene {
     }
 }
 
-// Initialize the scene when the page loads
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         new GridScene('gameContainer');
