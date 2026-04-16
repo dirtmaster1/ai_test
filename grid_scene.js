@@ -49,7 +49,14 @@ class GridScene {
             portraitLabel: 'WZ',
             hitPoints: 6,
             maxHitPoints: 6,
-            attackDamage: 4
+            magicPoints: 10,
+            maxMagicPoints: 10,
+            attackDamage: 4,
+            armorClass: 0,
+            abilities: [
+                { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
+                { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4 }
+            ]
         });
 
         this.dwarf = this.createCharacter({
@@ -61,7 +68,29 @@ class GridScene {
             pointerColor: 0xffb347,
             spriteRows: this.getDwarfSpriteRows(),
             portraitLabel: 'DW',
-            attackDamage: 6
+            attackDamage: 6,
+            armorClass: 3
+        });
+
+        this.cleric = this.createCharacter({
+            id: 'cleric',
+            name: 'Cleric',
+            role: 'Player',
+            team: 'player',
+            accentColor: '#c8a84e',
+            pointerColor: 0xffe080,
+            spriteRows: this.getClericSpriteRows(),
+            portraitLabel: 'CL',
+            hitPoints: 8,
+            maxHitPoints: 8,
+            magicPoints: 8,
+            maxMagicPoints: 8,
+            attackDamage: 4,
+            armorClass: 2,
+            abilities: [
+                { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
+                { id: 'heal', name: 'Holy Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 }
+            ]
         });
 
         this.goblin = this.createCharacter({
@@ -74,7 +103,8 @@ class GridScene {
             spriteRows: this.getGoblinSpriteRows(),
             portraitLabel: 'GB',
             hitPoints: 8,
-            maxHitPoints: 8
+            maxHitPoints: 8,
+            armorClass: 1
         });
 
         this.orc = this.createCharacter({
@@ -88,11 +118,12 @@ class GridScene {
             portraitLabel: 'OR',
             hitPoints: 12,
             maxHitPoints: 12,
-            attackDamage: 6
+            attackDamage: 6,
+            armorClass: 2
         });
 
-        this.characters = [this.wizard, this.dwarf, this.goblin, this.orc];
-        this.playerParty = [this.wizard, this.dwarf];
+        this.characters = [this.wizard, this.dwarf, this.cleric, this.goblin, this.orc];
+        this.playerParty = [this.wizard, this.dwarf, this.cleric];
         this.aiParty = [this.goblin, this.orc];
         this.characterHud = new Map();
 
@@ -107,6 +138,8 @@ class GridScene {
         this.victoryStartTime = 0;
         this.victoryFadeDurationMs = 3000;
         this.restartTriggered = false;
+
+        this.activeProjectiles = [];
 
         // Dungeon tile types
         this.TILE_VOID = 0;
@@ -148,14 +181,19 @@ class GridScene {
             directionPointer: null,
             hitPoints: config.hitPoints ?? 10,
             maxHitPoints: config.maxHitPoints ?? 10,
+            magicPoints: config.magicPoints ?? 0,
+            maxMagicPoints: config.maxMagicPoints ?? 0,
             attackDamage: config.attackDamage ?? 5,
+            armorClass: config.armorClass ?? 0,
             attackCost: config.attackCost ?? 3,
             maxActionsPerTurn: config.maxActionsPerTurn ?? 5,
             actionsRemaining: 0,
             hitAnimEndTime: 0,
             isDead: false,
             fadeFrames: 0,
-            removedFromScene: false
+            removedFromScene: false,
+            abilities: config.abilities ?? [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }],
+            selectedAbilityId: config.abilities ? config.abilities[0].id : 'melee'
         };
     }
 
@@ -181,6 +219,12 @@ class GridScene {
             y: Math.min(this.gridHeight - 1, this.wizard.gridY + 1)
         });
         occupiedCells.add(this.getCellKey(this.dwarf.gridX, this.dwarf.gridY));
+
+        this.placeCharacterNear(this.cleric, this.wizard.gridX, this.wizard.gridY, 1, 3, occupiedCells, {
+            x: Math.min(this.gridWidth - 1, this.wizard.gridX + 1),
+            y: this.wizard.gridY
+        });
+        occupiedCells.add(this.getCellKey(this.cleric.gridX, this.cleric.gridY));
 
         this.placeCharacterNear(this.goblin, this.wizard.gridX, this.wizard.gridY, 3, 6, occupiedCells, this.findFallbackRoomCenter(rooms, -1));
         occupiedCells.add(this.getCellKey(this.goblin.gridX, this.goblin.gridY));
@@ -609,33 +653,61 @@ class GridScene {
         ];
     }
 
+    getClericSpriteRows() {
+        const _ = null;
+        const WI = '#f0ece4';
+        const WS = '#c4c0b8';
+        const SK = '#e0a878';
+        const EY = '#1c1008';
+        const LI = '#c07060';
+        const RB = '#eaeae2';
+        const RS = '#b0aca4';
+        const GD = '#d4a820';
+        const BT = '#2c1c14';
+        const MH = '#7a5030';
+        const MB = '#909098';
+        return [
+            [_, _, _, _, _, WI, WI, WI, WI, WI, _, _, _, _, _, _],
+            [_, _, _, _, WS, WI, WI, WI, WI, WS, _, _, _, _, _, _],
+            [_, _, _, WS, WI, SK, SK, SK, SK, WI, WS, _, _, _, _, _],
+            [_, _, _, WS, SK, SK, SK, SK, SK, SK, WS, _, _, _, _, _],
+            [_, _, _, WS, SK, EY, SK, EY, SK, SK, WS, _, _, _, _, _],
+            [_, _, _, _, SK, SK, LI, SK, SK, SK, _, _, _, _, _, _],
+            [_, _, _, _, GD, GD, GD, GD, GD, GD, _, _, _, _, _, _],
+            [MH, _, RB, RB, RB, RB, RB, RB, RB, RB, _, _, _, _, _, _],
+            [MB, MH, RS, RB, GD, RB, RB, RB, RS, RB, _, _, _, _, _, _],
+            [_, MH, RB, GD, GD, GD, RB, RB, RB, RB, _, _, _, _, _, _],
+            [_, _, RB, RB, GD, RB, RB, RB, RB, RB, _, _, _, _, _, _],
+            [_, _, RB, RB, RB, RB, RB, RB, RB, RB, _, _, _, _, _, _],
+            [_, _, RS, RB, RB, RB, RB, RB, RB, RS, _, _, _, _, _, _],
+            [_, _, RS, RB, RB, _, _, RB, RB, RS, _, _, _, _, _, _],
+            [_, _, _, BT, BT, _, _, BT, BT, _, _, _, _, _, _, _],
+            [_, _, BT, BT, _, _, _, _, BT, BT, _, _, _, _, _, _]
+        ];
+    }
+
     createPortraitCanvas(rows, accentColor, label) {
         const canvas = document.createElement('canvas');
-        canvas.width = 72;
-        canvas.height = 72;
+        canvas.width = 18;
+        canvas.height = 18;
         const ctx = canvas.getContext('2d');
 
-        ctx.fillStyle = '#0d0d0d';
-        ctx.fillRect(0, 0, 72, 72);
+        ctx.fillStyle = '#090909';
+        ctx.fillRect(0, 0, 18, 18);
 
-        const bgGradient = ctx.createLinearGradient(0, 0, 72, 72);
-        bgGradient.addColorStop(0, this.hexToRgba(accentColor, 0.36));
-        bgGradient.addColorStop(1, 'rgba(12, 10, 8, 0.96)');
+        const bgGradient = ctx.createLinearGradient(0, 0, 18, 18);
+        bgGradient.addColorStop(0, this.hexToRgba(accentColor, 0.4));
+        bgGradient.addColorStop(1, 'rgba(12, 10, 8, 0.94)');
         ctx.fillStyle = bgGradient;
-        ctx.fillRect(4, 4, 64, 64);
+        ctx.fillRect(1, 1, 16, 16);
 
         ctx.strokeStyle = accentColor;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(5, 5, 62, 62);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(1.5, 1.5, 15, 15);
 
-        ctx.fillStyle = 'rgba(255,255,255,0.04)';
-        for (let y = 0; y < 64; y += 8) {
-            ctx.fillRect(4, 4 + y, 64, 1);
-        }
-
-        const pixelSize = 3;
-        const offsetX = 12;
-        const offsetY = 10;
+        const pixelSize = 1;
+        const offsetX = 1;
+        const offsetY = 1;
         rows.forEach((row, y) => {
             row.forEach((color, x) => {
                 if (color !== null) {
@@ -645,14 +717,43 @@ class GridScene {
             });
         });
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-        ctx.fillRect(6, 54, 60, 12);
-        ctx.fillStyle = accentColor;
-        ctx.font = 'bold 9px Georgia';
-        ctx.textAlign = 'right';
-        ctx.fillText(label, 62, 63);
-
         return canvas;
+    }
+
+    getAbilityIconSvg(ability) {
+        if (ability.id === 'magic-missile') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M5 12c2.4-4.8 6.2-7.2 10.8-7.2l-1.8 2.7 4-.4-.9-3.9-1.5 2.2C9.8 5.6 5.6 8.6 3.4 14.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="17.2" cy="15.6" r="2.3" fill="currentColor" opacity="0.95"/>
+                    <circle cx="19.8" cy="11.3" r="1.1" fill="currentColor" opacity="0.55"/>
+                </svg>`;
+        }
+
+        if (ability.id === 'heal') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <rect x="10" y="3" width="4" height="18" rx="1.5" fill="currentColor"/>
+                    <rect x="3" y="10" width="18" height="4" rx="1.5" fill="currentColor"/>
+                </svg>`;
+        }
+
+        if (ability.id === 'mace-strike') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <circle cx="15.5" cy="8.5" r="4" fill="currentColor" opacity="0.88"/>
+                    <path d="M12.1 11.9L5 19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+                </svg>`;
+        }
+
+        return `
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <path d="M16.8 3.6l3.6 3.6-2.3 2.3-3.6-3.6z" fill="currentColor" opacity="0.92"/>
+                <path d="M8.1 15.9L15.2 8.8l-2-2-7.1 7.1-.9 4z" fill="currentColor"/>
+                <path d="M5.8 17.2l1-1 1 1-1 1z" fill="#120f0b"/>
+                <path d="M4.2 19.8l2.6-2.6 1.6 1.6-2.6 2.6z" fill="currentColor" opacity="0.7"/>
+                <path d="M14.2 7.8l2-2" fill="none" stroke="#120f0b" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>`;
     }
 
     setupCharacters() {
@@ -886,8 +987,8 @@ class GridScene {
 
     createCombatCard(character) {
         const card = document.createElement('div');
-        card.style.marginBottom = '12px';
-        card.style.padding = '12px';
+        card.style.marginBottom = '10px';
+        card.style.padding = '8px';
         card.style.border = `1px solid ${character.accentColor}`;
         card.style.borderRadius = '6px';
         card.style.background = 'linear-gradient(180deg, rgba(22, 22, 20, 0.94), rgba(12, 12, 12, 0.94))';
@@ -897,53 +998,72 @@ class GridScene {
         const topRow = document.createElement('div');
         topRow.style.display = 'flex';
         topRow.style.alignItems = 'center';
-        topRow.style.gap = '12px';
-        topRow.style.marginBottom = '10px';
+        topRow.style.gap = '8px';
+        topRow.style.marginBottom = '8px';
 
         const portraitFrame = document.createElement('div');
-        portraitFrame.style.width = '72px';
-        portraitFrame.style.height = '72px';
-        portraitFrame.style.flex = '0 0 72px';
-        portraitFrame.style.borderRadius = '4px';
+        portraitFrame.style.width = '18px';
+        portraitFrame.style.height = '18px';
+        portraitFrame.style.flex = '0 0 18px';
+        portraitFrame.style.borderRadius = '3px';
         portraitFrame.style.overflow = 'hidden';
         portraitFrame.style.border = `1px solid ${this.hexToRgba(character.accentColor, 0.30)}`;
         portraitFrame.style.boxShadow = `0 0 0 1px ${this.hexToRgba(character.accentColor, 0.22)}`;
         portraitFrame.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease';
         portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor, character.portraitLabel));
 
+        const acBadge = document.createElement('div');
+        acBadge.style.marginTop = '3px';
+        acBadge.style.fontSize = '8px';
+        acBadge.style.lineHeight = '1';
+        acBadge.style.textAlign = 'center';
+        acBadge.style.color = '#c8c0a8';
+        acBadge.style.letterSpacing = '0.05em';
+        acBadge.title = 'Armor Class — reduces physical damage';
+        acBadge.textContent = `AC ${character.armorClass}`;
+
+        const portraitCol = document.createElement('div');
+        portraitCol.style.display = 'flex';
+        portraitCol.style.flexDirection = 'column';
+        portraitCol.style.alignItems = 'center';
+        portraitCol.style.flex = '0 0 auto';
+        portraitCol.appendChild(portraitFrame);
+        portraitCol.appendChild(acBadge);
+
         const textColumn = document.createElement('div');
         textColumn.style.minWidth = '0';
         textColumn.style.flex = '1';
 
         const nameText = document.createElement('div');
-        nameText.style.fontSize = '16px';
+        nameText.style.fontSize = '13px';
         nameText.style.fontWeight = 'bold';
+        nameText.style.lineHeight = '1.15';
         nameText.style.color = character.accentColor;
         nameText.textContent = character.name;
 
         const roleText = document.createElement('div');
-        roleText.style.fontSize = '10px';
+        roleText.style.fontSize = '9px';
         roleText.style.letterSpacing = '0.14em';
         roleText.style.textTransform = 'uppercase';
         roleText.style.color = '#b6aa8f';
-        roleText.style.marginTop = '4px';
+        roleText.style.marginTop = '2px';
         roleText.textContent = character.role;
 
         textColumn.appendChild(nameText);
         textColumn.appendChild(roleText);
-        topRow.appendChild(portraitFrame);
+        topRow.appendChild(portraitCol);
         topRow.appendChild(textColumn);
         card.appendChild(topRow);
 
         const hpLabelRow = document.createElement('div');
         hpLabelRow.style.display = 'flex';
         hpLabelRow.style.justifyContent = 'space-between';
-        hpLabelRow.style.fontSize = '11px';
+        hpLabelRow.style.fontSize = '10px';
         hpLabelRow.style.color = '#bcb29c';
-        hpLabelRow.style.marginBottom = '6px';
+        hpLabelRow.style.marginBottom = '4px';
 
         const hpLabel = document.createElement('div');
-        hpLabel.textContent = 'Vitality';
+        hpLabel.textContent = 'Hit Points';
 
         const hpText = document.createElement('div');
         hpText.style.color = '#f0e8d2';
@@ -953,8 +1073,8 @@ class GridScene {
         card.appendChild(hpLabelRow);
 
         const hpTrack = document.createElement('div');
-        hpTrack.style.height = '10px';
-        hpTrack.style.marginBottom = '10px';
+        hpTrack.style.height = '7px';
+        hpTrack.style.marginBottom = '8px';
         hpTrack.style.border = '1px solid rgba(255,255,255,0.12)';
         hpTrack.style.borderRadius = '999px';
         hpTrack.style.background = 'rgba(0, 0, 0, 0.42)';
@@ -963,17 +1083,117 @@ class GridScene {
         const hpFill = document.createElement('div');
         hpFill.style.height = '100%';
         hpFill.style.width = '100%';
-        hpFill.style.background = `linear-gradient(90deg, ${character.accentColor}, ${this.hexToRgba(character.accentColor, 0.55)})`;
+        hpFill.style.background = 'linear-gradient(90deg, #b32626, rgba(179, 38, 38, 0.55))';
         hpTrack.appendChild(hpFill);
         card.appendChild(hpTrack);
 
+        const mpLabelRow = document.createElement('div');
+        mpLabelRow.style.display = 'flex';
+        mpLabelRow.style.justifyContent = 'space-between';
+        mpLabelRow.style.fontSize = '10px';
+        mpLabelRow.style.color = '#bcb29c';
+        mpLabelRow.style.marginBottom = '4px';
+
+        const mpLabel = document.createElement('div');
+        mpLabel.textContent = 'Magic Points';
+
+        const mpText = document.createElement('div');
+        mpText.style.color = '#c8d8ff';
+
+        mpLabelRow.appendChild(mpLabel);
+        mpLabelRow.appendChild(mpText);
+        card.appendChild(mpLabelRow);
+
+        const mpTrack = document.createElement('div');
+        mpTrack.style.height = '7px';
+        mpTrack.style.marginBottom = '8px';
+        mpTrack.style.border = '1px solid rgba(255,255,255,0.12)';
+        mpTrack.style.borderRadius = '999px';
+        mpTrack.style.background = 'rgba(0, 0, 0, 0.42)';
+        mpTrack.style.overflow = 'hidden';
+
+        const mpFill = document.createElement('div');
+        mpFill.style.height = '100%';
+        mpFill.style.width = '100%';
+        mpFill.style.background = 'linear-gradient(90deg, #1f3f88, rgba(31, 63, 136, 0.55))';
+        mpTrack.appendChild(mpFill);
+        card.appendChild(mpTrack);
+
         const actionText = document.createElement('div');
-        actionText.style.marginBottom = '8px';
-        actionText.style.fontSize = '12px';
+        actionText.style.marginBottom = '6px';
+        actionText.style.fontSize = '11px';
         actionText.style.color = '#bcb29c';
         card.appendChild(actionText);
 
-        return { card, portraitFrame, nameText, roleText, hpText, hpFill, actionText };
+        const abilityButtonMap = new Map();
+        if (character.team === 'player') {
+            const abilityBarLabel = document.createElement('div');
+            abilityBarLabel.style.fontSize = '9px';
+            abilityBarLabel.style.letterSpacing = '0.12em';
+            abilityBarLabel.style.textTransform = 'uppercase';
+            abilityBarLabel.style.color = '#8d8169';
+            abilityBarLabel.style.marginBottom = '4px';
+            abilityBarLabel.textContent = 'Abilities';
+            card.appendChild(abilityBarLabel);
+
+            const abilityBar = document.createElement('div');
+            abilityBar.style.display = 'flex';
+            abilityBar.style.gap = '4px';
+            abilityBar.style.flexWrap = 'wrap';
+            abilityBar.style.pointerEvents = 'auto';
+            card.appendChild(abilityBar);
+
+            character.abilities.forEach((ability) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.style.position = 'relative';
+                btn.style.display = 'inline-flex';
+                btn.style.alignItems = 'center';
+                btn.style.justifyContent = 'center';
+                btn.style.width = '28px';
+                btn.style.height = '28px';
+                btn.style.flex = '0 0 28px';
+                btn.style.padding = '0';
+                btn.style.fontSize = '11px';
+                btn.style.lineHeight = '1';
+                btn.style.border = '1px solid rgba(255,255,255,0.18)';
+                btn.style.borderRadius = '4px';
+                btn.style.cursor = 'pointer';
+                btn.style.background = 'rgba(0,0,0,0.45)';
+                btn.style.color = '#bcb29c';
+                btn.style.fontFamily = 'inherit';
+                btn.style.textAlign = 'center';
+                btn.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
+                btn.style.pointerEvents = 'auto';
+                btn.title = ability.mpCost > 0 ? `${ability.name} (${ability.mpCost} MP)` : ability.name;
+                btn.setAttribute('aria-label', btn.title);
+                btn.innerHTML = this.getAbilityIconSvg(ability);
+
+                if (ability.mpCost > 0) {
+                    const costBadge = document.createElement('span');
+                    costBadge.style.position = 'absolute';
+                    costBadge.style.right = '2px';
+                    costBadge.style.bottom = '1px';
+                    costBadge.style.fontSize = '8px';
+                    costBadge.style.lineHeight = '1';
+                    costBadge.style.color = '#d7e4ff';
+                    costBadge.style.textShadow = '0 0 4px rgba(0, 0, 0, 0.8)';
+                    costBadge.textContent = String(ability.mpCost);
+                    btn.appendChild(costBadge);
+                }
+
+                btn.addEventListener('click', () => {
+                    if (this.getActiveTurnCharacter() !== character || character.isDead) {
+                        return;
+                    }
+                    character.selectedAbilityId = ability.id;
+                });
+                abilityButtonMap.set(ability.id, btn);
+                abilityBar.appendChild(btn);
+            });
+        }
+
+        return { card, portraitFrame, nameText, roleText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap };
     }
 
     hexToRgba(hex, alpha) {
@@ -1004,7 +1224,7 @@ class GridScene {
             card.style.transform = 'translateX(4px)';
             portraitFrame.style.borderColor = accentColor;
             portraitFrame.style.boxShadow = `0 0 0 2px ${this.hexToRgba(accentColor, 0.55)}, 0 0 18px ${this.hexToRgba(accentColor, 0.50)}, inset 0 0 18px ${this.hexToRgba(accentColor, 0.14)}`;
-            portraitFrame.style.transform = 'scale(1.04)';
+            portraitFrame.style.transform = 'scale(1.02)';
             return;
         }
 
@@ -1067,8 +1287,14 @@ class GridScene {
                 return;
             }
 
-            const aiTargets = this.getLivingCharacters(this.aiParty).filter((character) => character.mesh);
-            if (aiTargets.length === 0) {
+            const selectedAbility = activeCharacter.abilities.find((a) => a.id === activeCharacter.selectedAbilityId);
+            const isHeal = selectedAbility && selectedAbility.type === 'heal';
+
+            const targetPool = isHeal
+                ? this.getLivingCharacters(this.playerParty).filter((c) => c.mesh)
+                : this.getLivingCharacters(this.aiParty).filter((c) => c.mesh);
+
+            if (targetPool.length === 0) {
                 return;
             }
 
@@ -1077,14 +1303,20 @@ class GridScene {
             this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
 
-            const intersects = this.raycaster.intersectObjects(aiTargets.map((character) => character.mesh));
+            const intersects = this.raycaster.intersectObjects(targetPool.map((c) => c.mesh));
             if (intersects.length === 0) {
                 return;
             }
 
-            const targetCharacter = aiTargets.find((character) => character.mesh === intersects[0].object);
+            const targetCharacter = targetPool.find((c) => c.mesh === intersects[0].object);
             if (targetCharacter) {
-                this.characterAttack(activeCharacter, targetCharacter);
+                if (isHeal) {
+                    this.castHeal(activeCharacter, targetCharacter);
+                } else if (selectedAbility && selectedAbility.id === 'magic-missile') {
+                    this.castMagicMissile(activeCharacter, targetCharacter);
+                } else {
+                    this.characterAttack(activeCharacter, targetCharacter);
+                }
             }
         });
     }
@@ -1167,7 +1399,8 @@ class GridScene {
         }
 
         this.faceCharacterToward(attacker, target);
-        target.hitPoints -= attacker.attackDamage;
+        const physicalDamage = Math.max(0, attacker.attackDamage - target.armorClass);
+        target.hitPoints -= physicalDamage;
         this.playHitAnimation(target);
 
         if (target.hitPoints <= 0) {
@@ -1181,6 +1414,270 @@ class GridScene {
         }
 
         return true;
+    }
+
+    castMagicMissile(caster, target) {
+        if (!caster || !target || caster.isDead || target.isDead || caster.team === target.team) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+            return false;
+        }
+
+        const ability = caster.abilities.find((a) => a.id === 'magic-missile');
+        if (!ability) {
+            return false;
+        }
+
+        if (caster.magicPoints < ability.mpCost) {
+            return false;
+        }
+
+        const dx = Math.abs(target.gridX - caster.gridX);
+        const dy = Math.abs(target.gridY - caster.gridY);
+        if (dx > ability.range || dy > ability.range) {
+            return false;
+        }
+
+        this.faceCharacterToward(caster, target);
+        const damage = ability.damage ?? caster.attackDamage;
+        target.hitPoints -= damage;
+        caster.magicPoints -= ability.mpCost;
+
+        const lethal = target.hitPoints <= 0;
+        if (lethal) {
+            target.hitPoints = 0;
+        }
+
+        const casterPos = this.getCharacterWorldPos(caster);
+        const targetPos = this.getCharacterWorldPos(target);
+        this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
+            this.playHitAnimation(target);
+            if (lethal) {
+                this.markCharacterDead(target);
+            }
+        });
+
+        caster.actionsRemaining -= caster.attackCost;
+        if (caster.actionsRemaining <= 0) {
+            this.endCurrentTurn();
+        }
+
+        return true;
+    }
+
+    getCharacterWorldPos(character) {
+        const worldW = this.gridWidth * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
+        return {
+            x: (character.gridX * this.cellSize + this.cellSize / 2) - worldW / 2,
+            y: (worldH / 2) - (character.gridY * this.cellSize + this.cellSize / 2)
+        };
+    }
+
+    castHeal(caster, target) {
+        if (!caster || !target || caster.isDead || target.isDead || caster.team !== target.team) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+            return false;
+        }
+
+        const ability = caster.abilities.find((a) => a.id === 'heal');
+        if (!ability) {
+            return false;
+        }
+
+        if (caster.magicPoints < ability.mpCost) {
+            return false;
+        }
+
+        const dx = Math.abs(target.gridX - caster.gridX);
+        const dy = Math.abs(target.gridY - caster.gridY);
+        if (dx > ability.range || dy > ability.range) {
+            return false;
+        }
+
+        if (caster !== target) {
+            this.faceCharacterToward(caster, target);
+        }
+
+        const healAmount = ability.healAmount ?? 5;
+        target.hitPoints = Math.min(target.maxHitPoints, target.hitPoints + healAmount);
+        caster.magicPoints -= ability.mpCost;
+
+        const casterPos = this.getCharacterWorldPos(caster);
+        const targetPos = this.getCharacterWorldPos(target);
+        this.spawnHealEffect(casterPos, targetPos);
+
+        caster.actionsRemaining -= caster.attackCost;
+        if (caster.actionsRemaining <= 0) {
+            this.endCurrentTurn();
+        }
+
+        return true;
+    }
+
+    createHealOrbTexture() {
+        const size = 40;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+        glow.addColorStop(0.00, 'rgba(255, 255, 220, 1.0)');
+        glow.addColorStop(0.15, 'rgba(200, 255, 160, 1.0)');
+        glow.addColorStop(0.35, 'rgba(100, 220, 80, 0.75)');
+        glow.addColorStop(0.60, 'rgba(60, 180, 60, 0.35)');
+        glow.addColorStop(1.00, 'rgba(20, 120, 40, 0.0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, size, size);
+
+        const bright = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 0.12);
+        bright.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        bright.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+        ctx.fillStyle = bright;
+        ctx.fillRect(0, 0, size, size);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    spawnHealEffect(casterPos, targetPos) {
+        const texture = this.createHealOrbTexture();
+        const orbSize = 20;
+        const durationMs = 420;
+
+        const geo = new THREE.PlaneGeometry(orbSize, orbSize);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(casterPos.x, casterPos.y, 10);
+        this.scene.add(mesh);
+
+        this.activeProjectiles.push({
+            mesh,
+            startX: casterPos.x,
+            startY: casterPos.y,
+            endX: targetPos.x,
+            endY: targetPos.y,
+            startTime: performance.now(),
+            durationMs,
+            onImpact: null,
+            impactTriggered: false
+        });
+    }
+
+    createMagicMissileTexture() {
+        const size = 48;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+        glow.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+        glow.addColorStop(0.12, 'rgba(180, 220, 255, 1.0)');
+        glow.addColorStop(0.30, 'rgba(80, 160, 255, 0.85)');
+        glow.addColorStop(0.55, 'rgba(40, 80, 255, 0.45)');
+        glow.addColorStop(1.00, 'rgba(20, 40, 200, 0.0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, size, size);
+
+        const bright = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 0.14);
+        bright.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        bright.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+        ctx.fillStyle = bright;
+        ctx.fillRect(0, 0, size, size);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    spawnMagicMissileProjectiles(casterPos, targetPos, onImpact) {
+        const texture = this.createMagicMissileTexture();
+        const missileSize = 22;
+        const durationMs = 300;
+        const staggerMs = 90;
+
+        const vx = targetPos.x - casterPos.x;
+        const vy = targetPos.y - casterPos.y;
+        const len = Math.sqrt(vx * vx + vy * vy) || 1;
+        const perpX = (-vy / len) * 9;
+        const perpY = (vx / len) * 9;
+
+        for (let i = 0; i < 2; i++) {
+            const sign = i === 0 ? 1 : -1;
+            const offsetX = perpX * sign;
+            const offsetY = perpY * sign;
+
+            const geo = new THREE.PlaneGeometry(missileSize, missileSize);
+            const mat = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(casterPos.x + offsetX, casterPos.y + offsetY, 10);
+            this.scene.add(mesh);
+
+            const isLast = i === 1;
+            this.activeProjectiles.push({
+                mesh,
+                startX: casterPos.x + offsetX,
+                startY: casterPos.y + offsetY,
+                endX: targetPos.x + offsetX * 0.2,
+                endY: targetPos.y + offsetY * 0.2,
+                startTime: performance.now() + i * staggerMs,
+                durationMs,
+                onImpact: isLast ? onImpact : null,
+                impactTriggered: false
+            });
+        }
+    }
+
+    updateProjectiles(nowMs) {
+        this.activeProjectiles = this.activeProjectiles.filter((proj) => {
+            const elapsed = nowMs - proj.startTime;
+            if (elapsed < 0) {
+                proj.mesh.visible = false;
+                return true;
+            }
+            proj.mesh.visible = true;
+            const t = Math.min(1, elapsed / proj.durationMs);
+
+            proj.mesh.position.x = proj.startX + (proj.endX - proj.startX) * t;
+            proj.mesh.position.y = proj.startY + (proj.endY - proj.startY) * t;
+
+            const scale = t < 0.75 ? 1.0 + t * 0.3 : 1.3 - ((t - 0.75) / 0.25) * 1.0;
+            proj.mesh.scale.set(Math.max(0.01, scale), Math.max(0.01, scale), 1);
+            proj.mesh.material.opacity = t < 0.80 ? 1.0 : 1.0 - ((t - 0.80) / 0.20);
+
+            if (t >= 1) {
+                if (proj.onImpact && !proj.impactTriggered) {
+                    proj.impactTriggered = true;
+                    proj.onImpact();
+                }
+                this.scene.remove(proj.mesh);
+                proj.mesh.geometry.dispose();
+                proj.mesh.material.map.dispose();
+                proj.mesh.material.dispose();
+                return false;
+            }
+            return true;
+        });
     }
 
     playHitAnimation(character) {
@@ -1423,6 +1920,12 @@ class GridScene {
         hud.hpFill.style.width = `${hpRatio * 100}%`;
         hud.hpFill.style.opacity = character.isDead ? '0.35' : '1';
 
+        const mpRatio = character.maxMagicPoints > 0 ? Math.max(0, character.magicPoints / character.maxMagicPoints) : 0;
+        hud.mpText.textContent = `${character.magicPoints} / ${character.maxMagicPoints}`;
+        hud.mpFill.style.width = `${mpRatio * 100}%`;
+        hud.mpFill.style.opacity = character.isDead ? '0.35' : '1';
+        hud.mpText.style.color = character.isDead ? deadColor : '#c8d8ff';
+
         hud.card.style.opacity = character.isDead ? '0.65' : '1';
         hud.nameText.style.color = character.isDead ? deadColor : character.accentColor;
         hud.roleText.style.color = character.isDead ? deadColor : '#b6aa8f';
@@ -1440,11 +1943,40 @@ class GridScene {
         }
 
         this.setCombatCardActiveState(hud.card, hud.portraitFrame, character.accentColor, isActiveTurn, character.isDead);
+
+        hud.abilityButtonMap.forEach((btn, abilityId) => {
+            const ability = character.abilities.find((a) => a.id === abilityId);
+            const isSelected = character.selectedAbilityId === abilityId;
+            const isMyTurn = isActiveTurn && !character.isDead;
+            const canAfford = ability.mpCost === 0 || character.magicPoints >= ability.mpCost;
+
+            if (isSelected && isMyTurn && canAfford) {
+                btn.style.background = this.hexToRgba(character.accentColor, 0.35);
+                btn.style.borderColor = character.accentColor;
+                btn.style.color = '#f0e8d2';
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            } else if (!isMyTurn || !canAfford) {
+                btn.style.background = 'rgba(0,0,0,0.30)';
+                btn.style.borderColor = 'rgba(255,255,255,0.08)';
+                btn.style.color = '#5a5248';
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'default';
+            } else {
+                btn.style.background = 'rgba(0,0,0,0.45)';
+                btn.style.borderColor = 'rgba(255,255,255,0.18)';
+                btn.style.color = '#bcb29c';
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            }
+        });
     }
 
     update() {
         const nowMs = performance.now();
         const activeCharacter = this.getActiveTurnCharacter();
+
+        this.updateProjectiles(nowMs);
 
         this.characters.forEach((character) => {
             this.updateCharacterCard(character, activeCharacter);
