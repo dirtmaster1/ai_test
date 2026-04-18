@@ -38,15 +38,20 @@ class GridScene {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
 
+        this.abilityRangeHighlightGroup = new THREE.Group();
+        this.abilityRangeHighlightState = '';
+        this.scene.add(this.abilityRangeHighlightGroup);
+
         this.wizard = this.createCharacter({
             id: 'wizard',
-            name: 'Blue Wizard',
+            name: 'Merland',
             role: 'Player',
             team: 'player',
             accentColor: '#4f86ff',
             pointerColor: 0x00eeff,
             spriteRows: this.getWizardSpriteRows(),
             portraitLabel: 'WZ',
+            race: 'human',
             hitPoints: 6,
             maxHitPoints: 6,
             magicPoints: 10,
@@ -61,26 +66,32 @@ class GridScene {
 
         this.dwarf = this.createCharacter({
             id: 'dwarf-warrior',
-            name: 'Dwarven Warrior',
+            name: 'Therin',
             role: 'Player',
             team: 'player',
             accentColor: '#c78a3b',
             pointerColor: 0xffb347,
             spriteRows: this.getDwarfSpriteRows(),
             portraitLabel: 'DW',
+            race: 'dwarf',
             attackDamage: 6,
-            armorClass: 3
+            armorClass: 3,
+            abilities: [
+                { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
+                { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, acBonus: 1 }
+            ]
         });
 
         this.cleric = this.createCharacter({
             id: 'cleric',
-            name: 'Cleric',
+            name: 'Elaria',
             role: 'Player',
             team: 'player',
             accentColor: '#c8a84e',
             pointerColor: 0xffe080,
             spriteRows: this.getClericSpriteRows(),
             portraitLabel: 'CL',
+            race: 'human',
             hitPoints: 8,
             maxHitPoints: 8,
             magicPoints: 8,
@@ -93,6 +104,28 @@ class GridScene {
             ]
         });
 
+        this.ranger = this.createCharacter({
+            id: 'ranger-aragon',
+            name: 'Aragon',
+            role: 'Player',
+            team: 'player',
+            accentColor: '#5bbf7a',
+            pointerColor: 0x84ff9f,
+            spriteRows: this.getRangerSpriteRows(),
+            portraitLabel: 'AR',
+            race: 'elf',
+            hitPoints: 8,
+            maxHitPoints: 8,
+            magicPoints: 4,
+            maxMagicPoints: 4,
+            attackDamage: 4,
+            armorClass: 2,
+            abilities: [
+                { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
+                { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6 }
+            ]
+        });
+
         this.goblin = this.createCharacter({
             id: 'goblin-warrior',
             name: 'Goblin Warrior',
@@ -102,9 +135,31 @@ class GridScene {
             pointerColor: 0xff6600,
             spriteRows: this.getGoblinSpriteRows(),
             portraitLabel: 'GB',
+            race: 'goblin',
             hitPoints: 8,
             maxHitPoints: 8,
             armorClass: 1
+        });
+
+        this.goblinArcher = this.createCharacter({
+            id: 'goblin-archer',
+            name: 'Goblin Archer',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#72c24e',
+            pointerColor: 0xa4ff6a,
+            spriteRows: this.getGoblinArcherSpriteRows(),
+            portraitLabel: 'GA',
+            race: 'goblin',
+            hitPoints: 6,
+            maxHitPoints: 6,
+            magicPoints: 0,
+            maxMagicPoints: 0,
+            attackDamage: 4,
+            armorClass: 1,
+            abilities: [
+                { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4 }
+            ]
         });
 
         this.orc = this.createCharacter({
@@ -116,15 +171,16 @@ class GridScene {
             pointerColor: 0xff8855,
             spriteRows: this.getOrcSpriteRows(),
             portraitLabel: 'OR',
+            race: 'orc',
             hitPoints: 12,
             maxHitPoints: 12,
             attackDamage: 6,
             armorClass: 2
         });
 
-        this.characters = [this.wizard, this.dwarf, this.cleric, this.goblin, this.orc];
-        this.playerParty = [this.wizard, this.dwarf, this.cleric];
-        this.aiParty = [this.goblin, this.orc];
+        this.characters = [this.wizard, this.dwarf, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.orc];
+        this.playerParty = [this.wizard, this.dwarf, this.cleric, this.ranger];
+        this.aiParty = [this.goblin, this.goblinArcher, this.orc];
         this.characterHud = new Map();
 
         // Turn system
@@ -173,6 +229,7 @@ class GridScene {
             pointerColor: config.pointerColor,
             spriteRows: config.spriteRows,
             portraitLabel: config.portraitLabel,
+            race: config.race ?? 'unknown',
             gridX: 0,
             gridY: 0,
             mesh: null,
@@ -207,29 +264,82 @@ class GridScene {
         }
 
         const startRoom = rooms[0];
-        this.wizard.gridX = Math.floor(startRoom.x + startRoom.w / 2);
-        this.wizard.gridY = Math.floor(startRoom.y + startRoom.h / 2);
+        const playerFormation = this.findPlayerStartFormation(startRoom);
+        this.wizard.gridX = playerFormation.wizard.x;
+        this.wizard.gridY = playerFormation.wizard.y;
+        this.dwarf.gridX = playerFormation.dwarf.x;
+        this.dwarf.gridY = playerFormation.dwarf.y;
+        this.cleric.gridX = playerFormation.cleric.x;
+        this.cleric.gridY = playerFormation.cleric.y;
+        this.ranger.gridX = playerFormation.ranger.x;
+        this.ranger.gridY = playerFormation.ranger.y;
 
         const occupiedCells = new Set([
-            this.getCellKey(this.wizard.gridX, this.wizard.gridY)
+            this.getCellKey(this.wizard.gridX, this.wizard.gridY),
+            this.getCellKey(this.dwarf.gridX, this.dwarf.gridY),
+            this.getCellKey(this.cleric.gridX, this.cleric.gridY),
+            this.getCellKey(this.ranger.gridX, this.ranger.gridY)
         ]);
-
-        this.placeCharacterNear(this.dwarf, this.wizard.gridX, this.wizard.gridY, 1, 3, occupiedCells, {
-            x: this.wizard.gridX,
-            y: Math.min(this.gridHeight - 1, this.wizard.gridY + 1)
-        });
-        occupiedCells.add(this.getCellKey(this.dwarf.gridX, this.dwarf.gridY));
-
-        this.placeCharacterNear(this.cleric, this.wizard.gridX, this.wizard.gridY, 1, 3, occupiedCells, {
-            x: Math.min(this.gridWidth - 1, this.wizard.gridX + 1),
-            y: this.wizard.gridY
-        });
-        occupiedCells.add(this.getCellKey(this.cleric.gridX, this.cleric.gridY));
 
         this.placeCharacterNear(this.goblin, this.wizard.gridX, this.wizard.gridY, 3, 6, occupiedCells, this.findFallbackRoomCenter(rooms, -1));
         occupiedCells.add(this.getCellKey(this.goblin.gridX, this.goblin.gridY));
 
         this.placeCharacterNear(this.orc, this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells, this.findFallbackRoomCenter(rooms, -2));
+        occupiedCells.add(this.getCellKey(this.orc.gridX, this.orc.gridY));
+
+        this.placeCharacterNear(this.goblinArcher, this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells, this.findFallbackRoomCenter(rooms, -3));
+    }
+
+    findPlayerStartFormation(startRoom) {
+        const centerX = Math.floor(startRoom.x + startRoom.w / 2);
+        const centerY = Math.floor(startRoom.y + startRoom.h / 2);
+        const formations = [
+            {
+                wizard: { x: centerX, y: centerY },
+                dwarf: { x: centerX - 1, y: centerY },
+                cleric: { x: centerX + 1, y: centerY },
+                ranger: { x: centerX, y: centerY + 1 }
+            },
+            {
+                wizard: { x: centerX, y: centerY },
+                dwarf: { x: centerX, y: centerY - 1 },
+                cleric: { x: centerX, y: centerY + 1 },
+                ranger: { x: centerX + 1, y: centerY }
+            },
+            {
+                wizard: { x: centerX, y: centerY },
+                dwarf: { x: centerX - 1, y: centerY },
+                cleric: { x: centerX, y: centerY + 1 },
+                ranger: { x: centerX + 1, y: centerY }
+            },
+            {
+                wizard: { x: centerX, y: centerY },
+                dwarf: { x: centerX + 1, y: centerY },
+                cleric: { x: centerX, y: centerY + 1 },
+                ranger: { x: centerX - 1, y: centerY }
+            }
+        ];
+
+        const validFormation = formations.find((formation) =>
+            [formation.wizard, formation.dwarf, formation.cleric, formation.ranger].every((position) =>
+                position.x >= 0 &&
+                position.x < this.gridWidth &&
+                position.y >= 0 &&
+                position.y < this.gridHeight &&
+                this.dungeonMap[position.y][position.x] === this.TILE_FLOOR
+            )
+        );
+
+        if (validFormation) {
+            return validFormation;
+        }
+
+        return {
+            wizard: { x: centerX, y: centerY },
+            dwarf: { x: Math.max(0, centerX - 1), y: centerY },
+            cleric: { x: Math.min(this.gridWidth - 1, centerX + 1), y: centerY },
+            ranger: { x: centerX, y: Math.min(this.gridHeight - 1, centerY + 1) }
+        };
     }
 
     placeCharacterNear(character, originX, originY, minDistance, maxDistance, occupiedCells, fallbackPosition) {
@@ -653,6 +763,37 @@ class GridScene {
         ];
     }
 
+    getGoblinArcherSpriteRows() {
+        const _ = null;
+        const GR = '#58b93a';
+        const DG = '#2f6b1e';
+        const EY = '#120a02';
+        const SK = '#cf9b6f';
+        const TU = '#4d6f3a';
+        const CL = '#3b4f2d';
+        const BW = '#8b5d34';
+        const BD = '#5f3c22';
+        const ST = '#1f1710';
+        return [
+            [_, _, _, _, _, _, DG, DG, DG, _, _, _, _, _, _, _],
+            [_, _, _, _, DG, GR, GR, GR, GR, DG, _, _, _, _, _, _],
+            [_, _, _, DG, GR, GR, GR, GR, GR, GR, DG, _, _, _, _, _],
+            [_, _, _, GR, SK, GR, GR, GR, GR, SK, GR, _, _, _, _, _],
+            [_, _, _, GR, GR, EY, GR, GR, EY, GR, GR, _, _, _, _, _],
+            [_, _, _, _, SK, SK, SK, SK, SK, SK, _, _, _, _, _, _],
+            [_, _, _, TU, TU, TU, TU, TU, TU, TU, TU, _, _, _, _, _],
+            [_, _, CL, CL, TU, TU, TU, TU, TU, TU, CL, CL, _, _, _, _],
+            [_, _, CL, TU, TU, TU, TU, TU, TU, TU, TU, CL, _, _, _, _],
+            [_, _, _, CL, TU, TU, TU, TU, TU, TU, CL, _, _, _, _, _],
+            [_, _, _, CL, CL, TU, TU, TU, TU, CL, CL, _, _, _, _, _],
+            [_, _, _, _, ST, CL, CL, CL, CL, ST, _, _, _, _, _, _],
+            [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
+            [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
+            [_, _, _, BW, BD, _, _, _, _, BD, BW, _, _, _, _, _],
+            [_, _, BW, BD, _, _, _, _, _, _, BD, BW, _, _, _, _]
+        ];
+    }
+
     getClericSpriteRows() {
         const _ = null;
         const WI = '#f0ece4';
@@ -683,6 +824,38 @@ class GridScene {
             [_, _, RS, RB, RB, _, _, RB, RB, RS, _, _, _, _, _, _],
             [_, _, _, BT, BT, _, _, BT, BT, _, _, _, _, _, _, _],
             [_, _, BT, BT, _, _, _, _, BT, BT, _, _, _, _, _, _]
+        ];
+    }
+
+    getRangerSpriteRows() {
+        const _ = null;
+        const HD = '#2f4f2f';
+        const HL = '#4f7a45';
+        const SK = '#e0ba8a';
+        const EY = '#1a1008';
+        const TU = '#6f8f5a';
+        const CL = '#3d5c3a';
+        const SH = '#2a3c29';
+        const BW = '#8a5f3a';
+        const BD = '#5b3a22';
+        const ST = '#403020';
+        return [
+            [_, _, _, _, _, _, HD, HD, HD, _, _, _, _, _, _, _],
+            [_, _, _, _, _, HD, HL, HL, HL, HD, _, _, _, _, _, _],
+            [_, _, _, _, HD, HL, HL, HL, HL, HL, HD, _, _, _, _, _],
+            [_, _, _, HD, HL, SK, SK, SK, SK, HL, HD, BW, _, _, _, _],
+            [_, _, _, HD, SK, EY, SK, EY, SK, SK, HD, BD, _, _, _, _],
+            [_, _, _, _, SK, SK, SK, SK, SK, SK, _, BW, _, _, _, _],
+            [_, _, _, TU, TU, TU, TU, TU, TU, TU, TU, BD, _, _, _, _],
+            [_, _, SH, CL, TU, TU, TU, TU, TU, TU, CL, SH, BW, _, _, _],
+            [_, _, SH, CL, TU, TU, TU, TU, TU, TU, CL, SH, BD, _, _, _],
+            [_, _, _, SH, CL, TU, TU, TU, TU, CL, SH, BW, _, _, _, _],
+            [_, _, _, SH, CL, CL, TU, TU, CL, SH, _, _, _, _, _, _],
+            [_, _, _, _, ST, CL, CL, CL, CL, ST, _, _, _, _, _, _],
+            [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
+            [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
+            [_, _, _, BW, BD, _, _, _, _, BD, BW, _, _, _, _, _],
+            [_, _, BW, BD, _, _, _, _, _, _, BD, BW, _, _, _, _]
         ];
     }
 
@@ -721,6 +894,24 @@ class GridScene {
     }
 
     getAbilityIconSvg(ability) {
+        if (ability.id === 'bow-shot') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M7 4c6 2.5 6 13.5 0 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M7 12h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M16.8 9.8L21 12l-4.2 2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+
+        if (ability.id === 'dagger-strike') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M14.8 3.8l5.4 5.4-1.8 1.8-5.4-5.4z" fill="currentColor" opacity="0.9"/>
+                    <path d="M5 19l7.5-7.5-2-2L3 17z" fill="currentColor"/>
+                    <path d="M3.2 20.8l1.8-1.8 1 1-1.8 1.8z" fill="currentColor" opacity="0.65"/>
+                </svg>`;
+        }
+
         if (ability.id === 'magic-missile') {
             return `
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -743,6 +934,16 @@ class GridScene {
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
                     <circle cx="15.5" cy="8.5" r="4" fill="currentColor" opacity="0.88"/>
                     <path d="M12.1 11.9L5 19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+                </svg>`;
+        }
+
+        if (ability.id === 'battle-shout') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M3 9l4 3-4 3V9z" fill="currentColor"/>
+                    <path d="M7 11.5h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M7 8.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+                    <path d="M7 14.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
                 </svg>`;
         }
 
@@ -783,11 +984,17 @@ class GridScene {
             return;
         }
 
+        const { x, y } = this.getWorldPositionForCell(character.gridX, character.gridY);
+        character.mesh.position.set(x, y, 0);
+    }
+
+    getWorldPositionForCell(gridX, gridY) {
         const worldW = this.gridWidth * this.cellSize;
         const worldH = this.gridHeight * this.cellSize;
-        const x = (character.gridX * this.cellSize + this.cellSize / 2) - worldW / 2;
-        const y = (worldH / 2) - (character.gridY * this.cellSize + this.cellSize / 2);
-        character.mesh.position.set(x, y, 0);
+        return {
+            x: (gridX * this.cellSize + this.cellSize / 2) - worldW / 2,
+            y: (worldH / 2) - (gridY * this.cellSize + this.cellSize / 2)
+        };
     }
 
     getLivingCharacters(group) {
@@ -1012,27 +1219,24 @@ class GridScene {
         portraitFrame.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease';
         portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor, character.portraitLabel));
 
-        const acBadge = document.createElement('div');
-        acBadge.style.marginTop = '3px';
-        acBadge.style.fontSize = '8px';
-        acBadge.style.lineHeight = '1';
-        acBadge.style.textAlign = 'center';
-        acBadge.style.color = '#c8c0a8';
-        acBadge.style.letterSpacing = '0.05em';
-        acBadge.title = 'Armor Class — reduces physical damage';
-        acBadge.textContent = `AC ${character.armorClass}`;
-
         const portraitCol = document.createElement('div');
         portraitCol.style.display = 'flex';
         portraitCol.style.flexDirection = 'column';
         portraitCol.style.alignItems = 'center';
         portraitCol.style.flex = '0 0 auto';
         portraitCol.appendChild(portraitFrame);
-        portraitCol.appendChild(acBadge);
 
         const textColumn = document.createElement('div');
         textColumn.style.minWidth = '0';
         textColumn.style.flex = '1';
+        textColumn.style.display = 'flex';
+        textColumn.style.flexDirection = 'column';
+
+        const nameRow = document.createElement('div');
+        nameRow.style.display = 'flex';
+        nameRow.style.alignItems = 'baseline';
+        nameRow.style.justifyContent = 'space-between';
+        nameRow.style.gap = '6px';
 
         const nameText = document.createElement('div');
         nameText.style.fontSize = '13px';
@@ -1041,16 +1245,18 @@ class GridScene {
         nameText.style.color = character.accentColor;
         nameText.textContent = character.name;
 
-        const roleText = document.createElement('div');
-        roleText.style.fontSize = '9px';
-        roleText.style.letterSpacing = '0.14em';
-        roleText.style.textTransform = 'uppercase';
-        roleText.style.color = '#b6aa8f';
-        roleText.style.marginTop = '2px';
-        roleText.textContent = character.role;
+        const acBadge = document.createElement('div');
+        acBadge.style.fontSize = '8px';
+        acBadge.style.lineHeight = '1';
+        acBadge.style.color = '#c8c0a8';
+        acBadge.style.letterSpacing = '0.05em';
+        acBadge.style.flexShrink = '0';
+        acBadge.title = 'Armor Class — reduces physical damage';
+        acBadge.textContent = `AC ${character.armorClass}`;
 
-        textColumn.appendChild(nameText);
-        textColumn.appendChild(roleText);
+        nameRow.appendChild(nameText);
+        nameRow.appendChild(acBadge);
+        textColumn.appendChild(nameRow);
         topRow.appendChild(portraitCol);
         topRow.appendChild(textColumn);
         card.appendChild(topRow);
@@ -1119,29 +1325,36 @@ class GridScene {
         mpTrack.appendChild(mpFill);
         card.appendChild(mpTrack);
 
+        const turnControls = document.createElement('div');
+        turnControls.style.display = 'none';
+        turnControls.style.marginTop = '4px';
+        card.appendChild(turnControls);
+
         const actionText = document.createElement('div');
         actionText.style.marginBottom = '6px';
         actionText.style.fontSize = '11px';
         actionText.style.color = '#bcb29c';
-        card.appendChild(actionText);
+        turnControls.appendChild(actionText);
 
         const abilityButtonMap = new Map();
+        let endTurnButton = null;
         if (character.team === 'player') {
-            const abilityBarLabel = document.createElement('div');
-            abilityBarLabel.style.fontSize = '9px';
-            abilityBarLabel.style.letterSpacing = '0.12em';
-            abilityBarLabel.style.textTransform = 'uppercase';
-            abilityBarLabel.style.color = '#8d8169';
-            abilityBarLabel.style.marginBottom = '4px';
-            abilityBarLabel.textContent = 'Abilities';
-            card.appendChild(abilityBarLabel);
-
             const abilityBar = document.createElement('div');
             abilityBar.style.display = 'flex';
+            abilityBar.style.alignItems = 'center';
             abilityBar.style.gap = '4px';
             abilityBar.style.flexWrap = 'wrap';
+            abilityBar.style.justifyContent = 'space-between';
             abilityBar.style.pointerEvents = 'auto';
-            card.appendChild(abilityBar);
+
+            const abilityButtons = document.createElement('div');
+            abilityButtons.style.display = 'flex';
+            abilityButtons.style.alignItems = 'center';
+            abilityButtons.style.gap = '4px';
+            abilityButtons.style.flexWrap = 'wrap';
+            abilityButtons.style.flex = '1 1 auto';
+            abilityBar.appendChild(abilityButtons);
+            turnControls.appendChild(abilityBar);
 
             character.abilities.forEach((ability) => {
                 const btn = document.createElement('button');
@@ -1186,14 +1399,47 @@ class GridScene {
                     if (this.getActiveTurnCharacter() !== character || character.isDead) {
                         return;
                     }
+                    const wasSelected = character.selectedAbilityId === ability.id;
                     character.selectedAbilityId = ability.id;
+
+                    if (ability.type === 'buff' && wasSelected) {
+                        if (ability.id === 'battle-shout') {
+                            this.castBattleShout(character);
+                        }
+                    }
                 });
                 abilityButtonMap.set(ability.id, btn);
-                abilityBar.appendChild(btn);
+                abilityButtons.appendChild(btn);
             });
+
+            endTurnButton = document.createElement('button');
+            endTurnButton.type = 'button';
+            endTurnButton.textContent = 'End Turn';
+            endTurnButton.style.marginLeft = '8px';
+            endTurnButton.style.padding = '5px 8px';
+            endTurnButton.style.flex = '0 0 auto';
+            endTurnButton.style.border = '1px solid rgba(255,255,255,0.18)';
+            endTurnButton.style.borderRadius = '4px';
+            endTurnButton.style.background = 'rgba(0,0,0,0.45)';
+            endTurnButton.style.color = '#bcb29c';
+            endTurnButton.style.fontSize = '10px';
+            endTurnButton.style.lineHeight = '1';
+            endTurnButton.style.fontFamily = 'inherit';
+            endTurnButton.style.cursor = 'pointer';
+            endTurnButton.style.pointerEvents = 'auto';
+            endTurnButton.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
+            endTurnButton.setAttribute('aria-label', `End ${character.name}'s turn`);
+            endTurnButton.addEventListener('click', () => {
+                if (this.getActiveTurnCharacter() !== character || character.isDead) {
+                    return;
+                }
+
+                this.endCurrentTurn();
+            });
+            abilityBar.appendChild(endTurnButton);
         }
 
-        return { card, portraitFrame, nameText, roleText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap };
+        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap, acBadge, endTurnButton, turnControls };
     }
 
     hexToRgba(hex, alpha) {
@@ -1288,6 +1534,10 @@ class GridScene {
             }
 
             const selectedAbility = activeCharacter.abilities.find((a) => a.id === activeCharacter.selectedAbilityId);
+            if (selectedAbility && selectedAbility.type === 'buff') {
+                return;
+            }
+
             const isHeal = selectedAbility && selectedAbility.type === 'heal';
 
             const targetPool = isHeal
@@ -1315,7 +1565,7 @@ class GridScene {
                 } else if (selectedAbility && selectedAbility.id === 'magic-missile') {
                     this.castMagicMissile(activeCharacter, targetCharacter);
                 } else {
-                    this.characterAttack(activeCharacter, targetCharacter);
+                    this.characterAttack(activeCharacter, targetCharacter, selectedAbility);
                 }
             }
         });
@@ -1382,7 +1632,7 @@ class GridScene {
         }
     }
 
-    characterAttack(attacker, target) {
+    characterAttack(attacker, target, attackAbility = null) {
         if (!attacker || !target || attacker.isDead || target.isDead || attacker.team === target.team) {
             return false;
         }
@@ -1392,14 +1642,21 @@ class GridScene {
             return false;
         }
 
+        const resolvedAttackAbility = attackAbility && attackAbility.type === 'attack'
+            ? attackAbility
+            : attacker.abilities.find((ability) => ability.id === attacker.selectedAbilityId && ability.type === 'attack') || null;
+
+        const attackRange = resolvedAttackAbility?.range ?? 1;
+        const baseDamage = resolvedAttackAbility?.damage ?? attacker.attackDamage;
+
         const dx = Math.abs(target.gridX - attacker.gridX);
         const dy = Math.abs(target.gridY - attacker.gridY);
-        if (dx > 1 || dy > 1) {
+        if (dx > attackRange || dy > attackRange) {
             return false;
         }
 
         this.faceCharacterToward(attacker, target);
-        const physicalDamage = Math.max(0, attacker.attackDamage - target.armorClass);
+        const physicalDamage = Math.max(0, baseDamage - target.armorClass);
         target.hitPoints -= physicalDamage;
         this.playHitAnimation(target);
 
@@ -1469,12 +1726,188 @@ class GridScene {
     }
 
     getCharacterWorldPos(character) {
-        const worldW = this.gridWidth * this.cellSize;
-        const worldH = this.gridHeight * this.cellSize;
-        return {
-            x: (character.gridX * this.cellSize + this.cellSize / 2) - worldW / 2,
-            y: (worldH / 2) - (character.gridY * this.cellSize + this.cellSize / 2)
+        return this.getWorldPositionForCell(character.gridX, character.gridY);
+    }
+
+    clearAbilityRangeHighlights() {
+        while (this.abilityRangeHighlightGroup.children.length > 0) {
+            const mesh = this.abilityRangeHighlightGroup.children.pop();
+            this.abilityRangeHighlightGroup.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        }
+    }
+
+    getAbilityRangeCells(character, ability) {
+        if (!character || !ability) {
+            return [];
+        }
+
+        const range = ability.range ?? 0;
+        const includeOrigin = ability.type === 'heal' || ability.type === 'buff';
+        const cells = [];
+
+        for (let gridY = character.gridY - range; gridY <= character.gridY + range; gridY++) {
+            for (let gridX = character.gridX - range; gridX <= character.gridX + range; gridX++) {
+                if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+                    continue;
+                }
+
+                if (this.dungeonMap[gridY][gridX] !== this.TILE_FLOOR) {
+                    continue;
+                }
+
+                const dx = Math.abs(gridX - character.gridX);
+                const dy = Math.abs(gridY - character.gridY);
+                if (dx > range || dy > range) {
+                    continue;
+                }
+
+                if (!includeOrigin && dx === 0 && dy === 0) {
+                    continue;
+                }
+
+                cells.push({ gridX, gridY });
+            }
+        }
+
+        return cells;
+    }
+
+    updateAbilityRangeHighlights(activeCharacter) {
+        if (!activeCharacter || activeCharacter.isDead || activeCharacter.team !== 'player' || this.isGameOver) {
+            if (this.abilityRangeHighlightState !== '') {
+                this.clearAbilityRangeHighlights();
+                this.abilityRangeHighlightState = '';
+            }
+            return;
+        }
+
+        const selectedAbility = activeCharacter.abilities.find((ability) => ability.id === activeCharacter.selectedAbilityId) || null;
+        const canAfford = !selectedAbility || selectedAbility.mpCost === 0 || activeCharacter.magicPoints >= selectedAbility.mpCost;
+        const canAct = activeCharacter.actionsRemaining >= activeCharacter.attackCost;
+        const nextState = [
+            activeCharacter.id,
+            activeCharacter.gridX,
+            activeCharacter.gridY,
+            activeCharacter.selectedAbilityId,
+            activeCharacter.magicPoints,
+            activeCharacter.actionsRemaining,
+            canAfford,
+            canAct
+        ].join('|');
+
+        if (this.abilityRangeHighlightState === nextState) {
+            return;
+        }
+
+        this.clearAbilityRangeHighlights();
+        this.abilityRangeHighlightState = nextState;
+
+        if (!selectedAbility || !canAfford || !canAct) {
+            return;
+        }
+
+        const cells = this.getAbilityRangeCells(activeCharacter, selectedAbility);
+        const highlightColor = new THREE.Color(activeCharacter.accentColor);
+
+        cells.forEach(({ gridX, gridY }) => {
+            const geometry = new THREE.PlaneGeometry(this.cellSize - 8, this.cellSize - 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: highlightColor,
+                transparent: true,
+                opacity: 0.16,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            const { x, y } = this.getWorldPositionForCell(gridX, gridY);
+            mesh.position.set(x, y, -1);
+            this.abilityRangeHighlightGroup.add(mesh);
+        });
+    }
+
+    castBattleShout(caster) {
+        if (!caster || caster.isDead) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+            return false;
+        }
+
+        const ability = caster.abilities.find((a) => a.id === 'battle-shout');
+        if (!ability) {
+            return false;
+        }
+
+        const acBonus = ability.acBonus ?? 1;
+        const range = ability.range ?? 3;
+
+        const allies = this.getLivingCharacters(this.playerParty);
+        allies.forEach((ally) => {
+            const dx = Math.abs(ally.gridX - caster.gridX);
+            const dy = Math.abs(ally.gridY - caster.gridY);
+            if (dx <= range && dy <= range) {
+                ally.armorClass += acBonus;
+                const pos = this.getCharacterWorldPos(ally);
+                this.spawnBattleShoutEffect(pos);
+            }
+        });
+
+        caster.actionsRemaining -= caster.attackCost;
+        if (caster.actionsRemaining <= 0) {
+            this.endCurrentTurn();
+        }
+
+        return true;
+    }
+
+    spawnBattleShoutEffect(pos) {
+        const size = 48;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+        glow.addColorStop(0.00, 'rgba(255, 230, 80, 1.0)');
+        glow.addColorStop(0.25, 'rgba(255, 180, 20, 0.85)');
+        glow.addColorStop(0.55, 'rgba(200, 110, 10, 0.40)');
+        glow.addColorStop(1.00, 'rgba(140, 60, 0, 0.0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, size, size);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const geo = new THREE.PlaneGeometry(size, size);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        const startY = pos.y;
+        mesh.position.set(pos.x, startY, 10);
+        this.scene.add(mesh);
+
+        const durationMs = 600;
+        const startTime = performance.now();
+        const animate = () => {
+            const t = Math.min((performance.now() - startTime) / durationMs, 1);
+            mat.opacity = 1 - t;
+            mesh.position.y = startY + t * 40;
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                this.scene.remove(mesh);
+                geo.dispose();
+                mat.dispose();
+                texture.dispose();
+            }
         };
+        requestAnimationFrame(animate);
     }
 
     castHeal(caster, target) {
@@ -1917,6 +2350,7 @@ class GridScene {
         const isActiveTurn = activeCharacter === character;
 
         hud.hpText.textContent = `${character.hitPoints} / ${character.maxHitPoints}`;
+        if (hud.acBadge) hud.acBadge.textContent = `AC ${character.armorClass}`;
         hud.hpFill.style.width = `${hpRatio * 100}%`;
         hud.hpFill.style.opacity = character.isDead ? '0.35' : '1';
 
@@ -1928,7 +2362,7 @@ class GridScene {
 
         hud.card.style.opacity = character.isDead ? '0.65' : '1';
         hud.nameText.style.color = character.isDead ? deadColor : character.accentColor;
-        hud.roleText.style.color = character.isDead ? deadColor : '#b6aa8f';
+
         hud.hpText.style.color = character.isDead ? deadColor : aliveInfoColor;
 
         if (character.isDead) {
@@ -1940,6 +2374,10 @@ class GridScene {
         } else {
             hud.actionText.textContent = `${character.maxActionsPerTurn} action turn on deck`;
             hud.actionText.style.color = '#bcb29c';
+        }
+
+        if (hud.turnControls) {
+            hud.turnControls.style.display = isActiveTurn && !character.isDead ? 'block' : 'none';
         }
 
         this.setCombatCardActiveState(hud.card, hud.portraitFrame, character.accentColor, isActiveTurn, character.isDead);
@@ -1970,6 +2408,25 @@ class GridScene {
                 btn.style.cursor = 'pointer';
             }
         });
+
+        if (hud.endTurnButton) {
+            const canEndTurn = isActiveTurn && !character.isDead && character.team === 'player';
+            hud.endTurnButton.disabled = !canEndTurn;
+
+            if (canEndTurn) {
+                hud.endTurnButton.style.background = this.hexToRgba(character.accentColor, 0.24);
+                hud.endTurnButton.style.borderColor = this.hexToRgba(character.accentColor, 0.78);
+                hud.endTurnButton.style.color = '#f0e8d2';
+                hud.endTurnButton.style.opacity = '1';
+                hud.endTurnButton.style.cursor = 'pointer';
+            } else {
+                hud.endTurnButton.style.background = 'rgba(0,0,0,0.30)';
+                hud.endTurnButton.style.borderColor = 'rgba(255,255,255,0.08)';
+                hud.endTurnButton.style.color = '#5a5248';
+                hud.endTurnButton.style.opacity = '0.5';
+                hud.endTurnButton.style.cursor = 'default';
+            }
+        }
     }
 
     update() {
@@ -1977,6 +2434,7 @@ class GridScene {
         const activeCharacter = this.getActiveTurnCharacter();
 
         this.updateProjectiles(nowMs);
+        this.updateAbilityRangeHighlights(activeCharacter);
 
         this.characters.forEach((character) => {
             this.updateCharacterCard(character, activeCharacter);
