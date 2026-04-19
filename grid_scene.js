@@ -162,25 +162,47 @@ class GridScene {
             ]
         });
 
-        this.orc = this.createCharacter({
-            id: 'orc-brute',
-            name: 'Orc Brute',
+        this.goblinShaman = this.createCharacter({
+            id: 'goblin-shaman',
+            name: 'Goblin Shaman',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#9a6fd6',
+            pointerColor: 0xd9a5ff,
+            spriteRows: this.getGoblinShamanSpriteRows(),
+            portraitLabel: 'GS',
+            race: 'goblin',
+            hitPoints: 5,
+            maxHitPoints: 5,
+            magicPoints: 10,
+            maxMagicPoints: 10,
+            attackDamage: 3,
+            armorClass: 0,
+            abilities: [
+                { id: 'heal', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
+                { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1 }
+            ]
+        });
+
+        this.goblinBrute = this.createCharacter({
+            id: 'goblin-brute',
+            name: 'Goblin Brute',
             role: 'AI',
             team: 'ai',
             accentColor: '#9b3f2a',
             pointerColor: 0xff8855,
-            spriteRows: this.getOrcSpriteRows(),
-            portraitLabel: 'OR',
-            race: 'orc',
+            spriteRows: this.getGoblinBruteSpriteRows(),
+            portraitLabel: 'GB',
+            race: 'goblin',
             hitPoints: 12,
             maxHitPoints: 12,
             attackDamage: 6,
             armorClass: 2
         });
 
-        this.characters = [this.wizard, this.dwarf, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.orc];
+        this.characters = [this.wizard, this.dwarf, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
         this.playerParty = [this.wizard, this.dwarf, this.cleric, this.ranger];
-        this.aiParty = [this.goblin, this.goblinArcher, this.orc];
+        this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
         this.characterHud = new Map();
 
         // Turn system
@@ -281,13 +303,19 @@ class GridScene {
             this.getCellKey(this.ranger.gridX, this.ranger.gridY)
         ]);
 
-        this.placeCharacterNear(this.goblin, this.wizard.gridX, this.wizard.gridY, 3, 6, occupiedCells, this.findFallbackRoomCenter(rooms, -1));
+        const enemyAnchorFallback = this.findFallbackRoomCenter(rooms, -1);
+        const enemyAnchor = this.findNearbyFloorTile(this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells) || enemyAnchorFallback;
+
+        this.placeCharacterNear(this.goblin, enemyAnchor.x, enemyAnchor.y, 0, 2, occupiedCells, enemyAnchorFallback);
         occupiedCells.add(this.getCellKey(this.goblin.gridX, this.goblin.gridY));
 
-        this.placeCharacterNear(this.orc, this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells, this.findFallbackRoomCenter(rooms, -2));
-        occupiedCells.add(this.getCellKey(this.orc.gridX, this.orc.gridY));
+        this.placeCharacterNear(this.goblinBrute, this.goblin.gridX, this.goblin.gridY, 1, 2, occupiedCells, this.findFallbackRoomCenter(rooms, -2));
+        occupiedCells.add(this.getCellKey(this.goblinBrute.gridX, this.goblinBrute.gridY));
 
-        this.placeCharacterNear(this.goblinArcher, this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells, this.findFallbackRoomCenter(rooms, -3));
+        this.placeCharacterNear(this.goblinArcher, this.goblin.gridX, this.goblin.gridY, 1, 2, occupiedCells, this.findFallbackRoomCenter(rooms, -3));
+        occupiedCells.add(this.getCellKey(this.goblinArcher.gridX, this.goblinArcher.gridY));
+
+        this.placeCharacterNear(this.goblinShaman, this.goblin.gridX, this.goblin.gridY, 1, 2, occupiedCells, this.findFallbackRoomCenter(rooms, -4));
     }
 
     findPlayerStartFormation(startRoom) {
@@ -729,7 +757,7 @@ class GridScene {
         ];
     }
 
-    getOrcSpriteRows() {
+    getGoblinBruteSpriteRows() {
         const _ = null;
         const OG = '#7d8c2f';
         const DG = '#495518';
@@ -791,6 +819,37 @@ class GridScene {
             [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
             [_, _, _, BW, BD, _, _, _, _, BD, BW, _, _, _, _, _],
             [_, _, BW, BD, _, _, _, _, _, _, BD, BW, _, _, _, _]
+        ];
+    }
+
+    getGoblinShamanSpriteRows() {
+        const _ = null;
+        const GR = '#5aa13b';
+        const DG = '#2b5d1c';
+        const EY = '#120a02';
+        const SK = '#d2a079';
+        const RO = '#6b4aa7';
+        const RH = '#a07bdb';
+        const ST = '#241814';
+        const BO = '#8a623c';
+        const WO = '#e7d7a8';
+        return [
+            [_, _, _, _, _, _, DG, DG, DG, _, _, _, _, _, _, _],
+            [_, _, _, _, DG, GR, GR, GR, GR, DG, _, _, _, _, _, _],
+            [_, _, _, DG, GR, GR, GR, GR, GR, GR, DG, _, _, _, _, _],
+            [_, _, _, GR, SK, GR, GR, GR, GR, SK, GR, _, _, _, _, _],
+            [_, _, _, GR, GR, EY, GR, GR, EY, GR, GR, _, _, _, _, _],
+            [_, _, _, _, SK, SK, SK, SK, SK, SK, _, _, _, _, _, _],
+            [_, _, _, RO, RO, RO, RH, RH, RO, RO, RO, _, _, _, _, _],
+            [_, _, RO, RH, RH, RO, RO, RO, RO, RH, RH, RO, _, _, _, _],
+            [_, _, RO, RH, RH, RH, RO, RH, RH, RH, RH, RO, _, _, _, _],
+            [_, _, _, RO, RH, RH, RH, RH, RH, RH, RO, _, _, _, _, _],
+            [_, _, _, RO, RH, RH, WO, WO, RH, RH, RO, _, _, _, _, _],
+            [_, _, _, _, ST, RO, RH, RH, RO, ST, _, _, _, _, _, _],
+            [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
+            [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
+            [_, _, _, BO, BO, _, _, _, _, BO, BO, _, _, _, _, _],
+            [_, _, BO, BO, _, _, _, _, _, _, BO, BO, _, _, _, _]
         ];
     }
 
@@ -947,6 +1006,14 @@ class GridScene {
                 </svg>`;
         }
 
+        if (ability.id === 'inflict-pain') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M12 3l1.8 4.7L19 9.2l-4 3.3 1.3 5.3L12 15.2 7.7 17.8 9 12.5 5 9.2l5.2-1.5z" fill="currentColor" opacity="0.9"/>
+                    <path d="M12 6.5v11" stroke="#140b1e" stroke-width="1.6" stroke-linecap="round" opacity="0.65"/>
+                </svg>`;
+        }
+
         return `
             <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
                 <path d="M16.8 3.6l3.6 3.6-2.3 2.3-3.6-3.6z" fill="currentColor" opacity="0.92"/>
@@ -999,6 +1066,10 @@ class GridScene {
 
     getLivingCharacters(group) {
         return group.filter((character) => !character.isDead);
+    }
+
+    getLivingGoblinAllies() {
+        return this.aiParty.filter((character) => !character.isDead && character.race === 'goblin');
     }
 
     getAliveTurnOrder() {
@@ -1192,6 +1263,52 @@ class GridScene {
         return { section, content };
     }
 
+    getAbilityDetailText(character, ability) {
+        if (!ability) {
+            return 'Effect';
+        }
+
+        if (ability.type === 'heal') {
+            const healAmount = ability.healAmount ?? 0;
+            return `Healing: ${healAmount} HP`;
+        }
+
+        if (ability.type === 'buff') {
+            if (ability.id === 'battle-shout') {
+                const acBonus = ability.acBonus ?? 1;
+                return `Effect: +${acBonus} AC`;
+            }
+            if (ability.id === 'inflict-pain') {
+                const damageBonus = ability.damageBonus ?? 1;
+                return `Effect: +${damageBonus} DMG`;
+            }
+            return 'Effect';
+        }
+
+        if (ability.type === 'attack') {
+            const damageAmount = ability.damage ?? character.attackDamage;
+            const attackKind = ability.id === 'magic-missile'
+                ? 'Magic'
+                : ability.id === 'bow-shot'
+                    ? 'Ranged'
+                    : 'Melee';
+            return `${attackKind}: ${damageAmount} DMG`;
+        }
+
+        return 'Effect';
+    }
+
+    getAbilityTooltipText(character, ability) {
+        const lines = [ability.name, this.getAbilityDetailText(character, ability)];
+        if (typeof ability.range === 'number') {
+            lines.push(`Range: ${ability.range}`);
+        }
+        if ((ability.mpCost ?? 0) > 0) {
+            lines.push(`Cost: ${ability.mpCost} MP`);
+        }
+        return lines.join('\n');
+    }
+
     createCombatCard(character) {
         const card = document.createElement('div');
         card.style.marginBottom = '10px';
@@ -1378,8 +1495,9 @@ class GridScene {
                 btn.style.textAlign = 'center';
                 btn.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
                 btn.style.pointerEvents = 'auto';
-                btn.title = ability.mpCost > 0 ? `${ability.name} (${ability.mpCost} MP)` : ability.name;
-                btn.setAttribute('aria-label', btn.title);
+                const tooltipText = this.getAbilityTooltipText(character, ability);
+                btn.title = tooltipText;
+                btn.setAttribute('aria-label', tooltipText.replace(/\n/g, ', '));
                 btn.innerHTML = this.getAbilityIconSvg(ability);
 
                 if (ability.mpCost > 0) {
@@ -1656,13 +1774,15 @@ class GridScene {
         }
 
         this.faceCharacterToward(attacker, target);
-        const physicalDamage = Math.max(0, baseDamage - target.armorClass);
-        target.hitPoints -= physicalDamage;
-        this.playHitAnimation(target);
-
-        if (target.hitPoints <= 0) {
-            target.hitPoints = 0;
-            this.markCharacterDead(target);
+        if (resolvedAttackAbility?.id === 'bow-shot') {
+            const attackerPos = this.getCharacterWorldPos(attacker);
+            const targetPos = this.getCharacterWorldPos(target);
+            this.spawnArrowProjectile(attackerPos, targetPos, () => {
+                this.spawnArrowImpactEffect(targetPos);
+                this.applyPhysicalAttackDamage(target, baseDamage);
+            });
+        } else {
+            this.applyPhysicalAttackDamage(target, baseDamage);
         }
 
         attacker.actionsRemaining -= attacker.attackCost;
@@ -1671,6 +1791,21 @@ class GridScene {
         }
 
         return true;
+    }
+
+    applyPhysicalAttackDamage(target, baseDamage) {
+        if (!target || target.isDead) {
+            return;
+        }
+
+        const physicalDamage = Math.max(0, baseDamage - target.armorClass);
+        target.hitPoints -= physicalDamage;
+        this.playHitAnimation(target);
+
+        if (target.hitPoints <= 0) {
+            target.hitPoints = 0;
+            this.markCharacterDead(target);
+        }
     }
 
     castMagicMissile(caster, target) {
@@ -1863,6 +1998,48 @@ class GridScene {
         return true;
     }
 
+    castInflictPain(caster) {
+        if (!caster || caster.isDead) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+            return false;
+        }
+
+        const ability = caster.abilities.find((a) => a.id === 'inflict-pain');
+        if (!ability) {
+            return false;
+        }
+
+        const mpCost = ability.mpCost ?? 0;
+        if (caster.magicPoints < mpCost) {
+            return false;
+        }
+
+        const damageBonus = ability.damageBonus ?? 1;
+        const range = ability.range ?? 2;
+
+        this.getLivingGoblinAllies().forEach((ally) => {
+            const dx = Math.abs(ally.gridX - caster.gridX);
+            const dy = Math.abs(ally.gridY - caster.gridY);
+            if (dx <= range && dy <= range) {
+                ally.attackDamage += damageBonus;
+                const pos = this.getCharacterWorldPos(ally);
+                this.spawnInflictPainEffect(pos);
+            }
+        });
+
+        caster.magicPoints -= mpCost;
+        caster.actionsRemaining -= caster.attackCost;
+        if (caster.actionsRemaining <= 0) {
+            this.endCurrentTurn();
+        }
+
+        return true;
+    }
+
     spawnBattleShoutEffect(pos) {
         const size = 48;
         const canvas = document.createElement('canvas');
@@ -1898,6 +2075,55 @@ class GridScene {
             const t = Math.min((performance.now() - startTime) / durationMs, 1);
             mat.opacity = 1 - t;
             mesh.position.y = startY + t * 40;
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                this.scene.remove(mesh);
+                geo.dispose();
+                mat.dispose();
+                texture.dispose();
+            }
+        };
+        requestAnimationFrame(animate);
+    }
+
+    spawnInflictPainEffect(pos) {
+        const size = 52;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+        glow.addColorStop(0.00, 'rgba(255, 235, 255, 1.0)');
+        glow.addColorStop(0.18, 'rgba(214, 150, 255, 0.95)');
+        glow.addColorStop(0.45, 'rgba(160, 70, 220, 0.55)');
+        glow.addColorStop(1.00, 'rgba(60, 15, 90, 0.0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, size, size);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const geo = new THREE.PlaneGeometry(size, size);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        const startY = pos.y;
+        mesh.position.set(pos.x, startY, 10);
+        this.scene.add(mesh);
+
+        const durationMs = 520;
+        const startTime = performance.now();
+        const animate = () => {
+            const t = Math.min((performance.now() - startTime) / durationMs, 1);
+            const scale = 0.9 + t * 0.5;
+            mesh.scale.set(scale, scale, 1);
+            mat.opacity = 1 - t;
+            mesh.position.y = startY + t * 16;
             if (t < 1) {
                 requestAnimationFrame(animate);
             } else {
@@ -2038,6 +2264,144 @@ class GridScene {
         return new THREE.CanvasTexture(canvas);
     }
 
+    createArrowTexture() {
+        const width = 64;
+        const height = 16;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        const centerY = height / 2;
+
+        ctx.strokeStyle = '#caa26a';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(8, centerY);
+        ctx.lineTo(width - 14, centerY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f0efe6';
+        ctx.beginPath();
+        ctx.moveTo(width - 6, centerY);
+        ctx.lineTo(width - 14, centerY - 4);
+        ctx.lineTo(width - 14, centerY + 4);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = '#f7f7f2';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(5, centerY);
+        ctx.lineTo(1, centerY - 4);
+        ctx.moveTo(5, centerY);
+        ctx.lineTo(1, centerY + 4);
+        ctx.stroke();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+    }
+
+    spawnArrowProjectile(casterPos, targetPos, onImpact) {
+        const texture = this.createArrowTexture();
+        const arrowW = 30;
+        const arrowH = 8;
+        const durationMs = 220;
+
+        const geo = new THREE.PlaneGeometry(arrowW, arrowH);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        const vx = targetPos.x - casterPos.x;
+        const vy = targetPos.y - casterPos.y;
+        const len = Math.sqrt(vx * vx + vy * vy) || 1;
+        const dirX = vx / len;
+        const dirY = vy / len;
+        const launchOffset = 18;
+
+        const startX = casterPos.x + dirX * launchOffset;
+        const startY = casterPos.y + dirY * launchOffset;
+        const endX = targetPos.x;
+        const endY = targetPos.y;
+
+        mesh.position.set(startX, startY, 9);
+        mesh.rotation.z = Math.atan2(vy, vx);
+        this.scene.add(mesh);
+
+        this.activeProjectiles.push({
+            mesh,
+            startX,
+            startY,
+            endX,
+            endY,
+            startZ: 9,
+            endZ: 9,
+            arcHeight: 7,
+            startTime: performance.now(),
+            durationMs,
+            onImpact,
+            impactTriggered: false,
+            fixedScale: 1,
+            fadeStart: 0.88,
+            rotationZ: Math.atan2(vy, vx)
+        });
+    }
+
+    spawnArrowImpactEffect(pos) {
+        const size = 34;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+        glow.addColorStop(0.00, 'rgba(255, 255, 235, 1.0)');
+        glow.addColorStop(0.22, 'rgba(255, 220, 150, 0.95)');
+        glow.addColorStop(0.55, 'rgba(255, 160, 80, 0.45)');
+        glow.addColorStop(1.00, 'rgba(80, 40, 10, 0.0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, size, size);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const geo = new THREE.PlaneGeometry(size, size);
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(pos.x, pos.y, 10);
+        this.scene.add(mesh);
+
+        const durationMs = 140;
+        const startTime = performance.now();
+        const animate = () => {
+            const t = Math.min((performance.now() - startTime) / durationMs, 1);
+            const scale = 0.55 + t * 0.9;
+            mesh.scale.set(scale, scale, 1);
+            mat.opacity = 1 - t;
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                this.scene.remove(mesh);
+                geo.dispose();
+                mat.dispose();
+                texture.dispose();
+            }
+        };
+        requestAnimationFrame(animate);
+    }
+
     spawnMagicMissileProjectiles(casterPos, targetPos, onImpact) {
         const texture = this.createMagicMissileTexture();
         const missileSize = 22;
@@ -2094,9 +2458,28 @@ class GridScene {
             proj.mesh.position.x = proj.startX + (proj.endX - proj.startX) * t;
             proj.mesh.position.y = proj.startY + (proj.endY - proj.startY) * t;
 
-            const scale = t < 0.75 ? 1.0 + t * 0.3 : 1.3 - ((t - 0.75) / 0.25) * 1.0;
-            proj.mesh.scale.set(Math.max(0.01, scale), Math.max(0.01, scale), 1);
-            proj.mesh.material.opacity = t < 0.80 ? 1.0 : 1.0 - ((t - 0.80) / 0.20);
+            if (typeof proj.startZ === 'number' || typeof proj.endZ === 'number') {
+                const startZ = typeof proj.startZ === 'number' ? proj.startZ : proj.mesh.position.z;
+                const endZ = typeof proj.endZ === 'number' ? proj.endZ : startZ;
+                const arc = proj.arcHeight ? Math.sin(t * Math.PI) * proj.arcHeight : 0;
+                proj.mesh.position.z = startZ + (endZ - startZ) * t + arc;
+            }
+
+            if (typeof proj.rotationZ === 'number') {
+                proj.mesh.rotation.z = proj.rotationZ;
+            }
+
+            if (typeof proj.fixedScale === 'number') {
+                proj.mesh.scale.set(proj.fixedScale, proj.fixedScale, 1);
+            } else {
+                const scale = t < 0.75 ? 1.0 + t * 0.3 : 1.3 - ((t - 0.75) / 0.25) * 1.0;
+                proj.mesh.scale.set(Math.max(0.01, scale), Math.max(0.01, scale), 1);
+            }
+
+            const fadeStart = typeof proj.fadeStart === 'number' ? proj.fadeStart : 0.80;
+            if (proj.mesh.material && typeof proj.mesh.material.opacity === 'number') {
+                proj.mesh.material.opacity = t < fadeStart ? 1.0 : 1.0 - ((t - fadeStart) / Math.max(0.01, 1 - fadeStart));
+            }
 
             if (t >= 1) {
                 if (proj.onImpact && !proj.impactTriggered) {
@@ -2104,9 +2487,15 @@ class GridScene {
                     proj.onImpact();
                 }
                 this.scene.remove(proj.mesh);
-                proj.mesh.geometry.dispose();
-                proj.mesh.material.map.dispose();
-                proj.mesh.material.dispose();
+                if (proj.mesh.geometry && proj.mesh.geometry.dispose) {
+                    proj.mesh.geometry.dispose();
+                }
+                if (proj.mesh.material && proj.mesh.material.map && proj.mesh.material.map.dispose) {
+                    proj.mesh.material.map.dispose();
+                }
+                if (proj.mesh.material && proj.mesh.material.dispose) {
+                    proj.mesh.material.dispose();
+                }
                 return false;
             }
             return true;
@@ -2169,6 +2558,237 @@ class GridScene {
         return nearest;
     }
 
+    getAttackDistanceBetweenPositions(fromX, fromY, toX, toY) {
+        return Math.max(Math.abs(toX - fromX), Math.abs(toY - fromY));
+    }
+
+    getAdjacentMoves(character, originX = character.gridX, originY = character.gridY) {
+        const candidates = [
+            { x: originX + 1, y: originY, facing: 'right' },
+            { x: originX - 1, y: originY, facing: 'left' },
+            { x: originX, y: originY + 1, facing: 'down' },
+            { x: originX, y: originY - 1, facing: 'up' }
+        ];
+
+        return candidates.filter(({ x, y }) => !this.isObstacle(x, y) && !this.isOccupied(x, y, character));
+    }
+
+    getReachablePositions(character, maxSteps) {
+        const startKey = this.getCellKey(character.gridX, character.gridY);
+        const queue = [{ x: character.gridX, y: character.gridY, steps: 0, path: [] }];
+        const bestSteps = new Map([[startKey, 0]]);
+        const reachable = [{ x: character.gridX, y: character.gridY, steps: 0, path: [] }];
+
+        while (queue.length > 0) {
+            const current = queue.shift();
+            if (current.steps >= maxSteps) {
+                continue;
+            }
+
+            const nextMoves = this.getAdjacentMoves(character, current.x, current.y);
+            nextMoves.forEach((move) => {
+                const nextSteps = current.steps + 1;
+                const key = this.getCellKey(move.x, move.y);
+                if (bestSteps.has(key) && bestSteps.get(key) <= nextSteps) {
+                    return;
+                }
+
+                bestSteps.set(key, nextSteps);
+                const nextNode = {
+                    x: move.x,
+                    y: move.y,
+                    steps: nextSteps,
+                    path: [...current.path, move]
+                };
+                reachable.push(nextNode);
+                queue.push(nextNode);
+            });
+        }
+
+        return reachable;
+    }
+
+    countGoblinCoverageAt(gridX, gridY, range) {
+        return this.getLivingGoblinAllies().filter((ally) =>
+            Math.abs(ally.gridX - gridX) <= range &&
+            Math.abs(ally.gridY - gridY) <= range
+        ).length;
+    }
+
+    getNearbyHurtGoblin(caster, range) {
+        const candidates = this.getLivingGoblinAllies().filter((ally) =>
+            ally.hitPoints < ally.maxHitPoints &&
+            Math.abs(ally.gridX - caster.gridX) <= range &&
+            Math.abs(ally.gridY - caster.gridY) <= range
+        );
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        candidates.sort((left, right) => {
+            const leftMissing = left.maxHitPoints - left.hitPoints;
+            const rightMissing = right.maxHitPoints - right.hitPoints;
+            if (leftMissing !== rightMissing) {
+                return rightMissing - leftMissing;
+            }
+
+            const leftDistance = this.getAttackDistanceBetweenPositions(caster.gridX, caster.gridY, left.gridX, left.gridY);
+            const rightDistance = this.getAttackDistanceBetweenPositions(caster.gridX, caster.gridY, right.gridX, right.gridY);
+            return leftDistance - rightDistance;
+        });
+
+        return candidates[0];
+    }
+
+    moveCharacterToCell(character, destination) {
+        if (!character || !destination) {
+            return false;
+        }
+
+        character.gridX = destination.x;
+        character.gridY = destination.y;
+        this.updateCharacterFacing(character, destination.facing);
+        this.updateCharacterPosition(character);
+        character.actionsRemaining -= 1;
+
+        if (character.actionsRemaining <= 0) {
+            this.endCurrentTurn();
+        }
+
+        return true;
+    }
+
+    moveGoblinArcher(character, target) {
+        const bowAbility = character.abilities.find((ability) => ability.id === 'bow-shot');
+        if (!bowAbility) {
+            return false;
+        }
+
+        character.selectedAbilityId = bowAbility.id;
+
+        const bowRange = bowAbility.range ?? 1;
+        const currentDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, target.gridX, target.gridY);
+
+        const adjacentMoves = this.getAdjacentMoves(character).map((move) => ({
+            ...move,
+            distanceToTarget: this.getAttackDistanceBetweenPositions(move.x, move.y, target.gridX, target.gridY)
+        }));
+
+        if (currentDistance === bowRange) {
+            if (character.actionsRemaining >= character.attackCost) {
+                return this.characterAttack(character, target, bowAbility);
+            }
+
+            const fallbackRetreatMoves = adjacentMoves
+                .filter((move) => move.distanceToTarget > currentDistance)
+                .sort((left, right) => right.distanceToTarget - left.distanceToTarget);
+
+            if (fallbackRetreatMoves.length > 0) {
+                return this.moveCharacterToCell(character, fallbackRetreatMoves[0]);
+            }
+
+            character.actionsRemaining = 0;
+            this.endCurrentTurn();
+            return true;
+        }
+
+        if (currentDistance < bowRange) {
+            const retreatMoves = adjacentMoves
+                .filter((move) => move.distanceToTarget > currentDistance && move.distanceToTarget <= bowRange)
+                .sort((left, right) => right.distanceToTarget - left.distanceToTarget);
+
+            if (retreatMoves.length > 0) {
+                return this.moveCharacterToCell(character, retreatMoves[0]);
+            }
+
+            if (character.actionsRemaining >= character.attackCost) {
+                return this.characterAttack(character, target, bowAbility);
+            }
+
+            character.actionsRemaining = 0;
+            this.endCurrentTurn();
+            return true;
+        }
+
+        const approachMoves = adjacentMoves
+            .filter((move) => move.distanceToTarget < currentDistance)
+            .sort((left, right) => {
+                const leftDelta = Math.abs(left.distanceToTarget - bowRange);
+                const rightDelta = Math.abs(right.distanceToTarget - bowRange);
+                if (leftDelta !== rightDelta) {
+                    return leftDelta - rightDelta;
+                }
+                return left.distanceToTarget - right.distanceToTarget;
+            });
+
+        if (approachMoves.length > 0) {
+            return this.moveCharacterToCell(character, approachMoves[0]);
+        }
+
+        character.actionsRemaining = 0;
+        this.endCurrentTurn();
+        return true;
+    }
+
+    moveGoblinShaman(character) {
+        const healAbility = character.abilities.find((ability) => ability.id === 'heal');
+        const buffAbility = character.abilities.find((ability) => ability.id === 'inflict-pain');
+        if (!healAbility || !buffAbility) {
+            character.actionsRemaining = 0;
+            this.endCurrentTurn();
+            return true;
+        }
+
+        if (character.actionsRemaining < character.attackCost) {
+            character.actionsRemaining = 0;
+            this.endCurrentTurn();
+            return true;
+        }
+
+        if (character.magicPoints >= healAbility.mpCost) {
+            const healTarget = this.getNearbyHurtGoblin(character, healAbility.range ?? 3);
+            if (healTarget) {
+                character.selectedAbilityId = healAbility.id;
+                return this.castHeal(character, healTarget);
+            }
+        }
+
+        if (character.magicPoints < (buffAbility.mpCost ?? 0)) {
+            character.actionsRemaining = 0;
+            this.endCurrentTurn();
+            return true;
+        }
+
+        character.selectedAbilityId = buffAbility.id;
+
+        const maxMoveSteps = Math.max(0, character.actionsRemaining - character.attackCost);
+        const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
+        const buffRange = buffAbility.range ?? 2;
+
+        let bestPosition = reachablePositions[0];
+        let bestCoverage = this.countGoblinCoverageAt(bestPosition.x, bestPosition.y, buffRange);
+
+        reachablePositions.forEach((candidate) => {
+            const coverage = this.countGoblinCoverageAt(candidate.x, candidate.y, buffRange);
+            if (coverage > bestCoverage) {
+                bestCoverage = coverage;
+                bestPosition = candidate;
+                return;
+            }
+
+            if (coverage === bestCoverage && candidate.steps < bestPosition.steps) {
+                bestPosition = candidate;
+            }
+        });
+
+        if (bestPosition.path.length > 0) {
+            return this.moveCharacterToCell(character, bestPosition.path[0]);
+        }
+
+        return this.castInflictPain(character);
+    }
+
     moveAICharacter(character) {
         if (
             this.isGameOver ||
@@ -2183,6 +2803,16 @@ class GridScene {
         const target = this.getNearestLivingOpponent(character);
         if (!target) {
             this.endCurrentTurn();
+            return;
+        }
+
+        if (character === this.goblinShaman) {
+            this.moveGoblinShaman(character);
+            return;
+        }
+
+        if (character === this.goblinArcher) {
+            this.moveGoblinArcher(character, target);
             return;
         }
 
@@ -2224,25 +2854,19 @@ class GridScene {
 
         const moveDx = newX - character.gridX;
         const moveDy = newY - character.gridY;
-
-        character.gridX = newX;
-        character.gridY = newY;
+        let facing = character.facing;
 
         if (moveDx > 0) {
-            this.updateCharacterFacing(character, 'right');
+            facing = 'right';
         } else if (moveDx < 0) {
-            this.updateCharacterFacing(character, 'left');
+            facing = 'left';
         } else if (moveDy > 0) {
-            this.updateCharacterFacing(character, 'down');
+            facing = 'down';
         } else if (moveDy < 0) {
-            this.updateCharacterFacing(character, 'up');
+            facing = 'up';
         }
 
-        this.updateCharacterPosition(character);
-        character.actionsRemaining -= 1;
-        if (character.actionsRemaining <= 0) {
-            this.endCurrentTurn();
-        }
+        this.moveCharacterToCell(character, { x: newX, y: newY, facing });
     }
 
     markCharacterDead(character) {
