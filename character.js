@@ -2,6 +2,42 @@
 window.CharacterData = {
 
     createCharacter(config) {
+        const strength = config.strength ?? 10;
+        const strAbove10 = Math.max(0, strength - 10);
+        const strHpBonus = strAbove10;
+        const strDamageBonus = Math.floor(strAbove10 / 2);
+
+        const dexterity = config.dexterity ?? 10;
+        const dexDiff = dexterity - 10;
+        const dexInitiativeBonus = dexDiff;
+        const dexRangedDamageBonus = Math.floor(Math.max(0, dexDiff) / 2);
+
+        const intelligence = config.intelligence ?? 10;
+        const intAbove10 = Math.max(0, intelligence - 10);
+        const intMpRegen = Math.floor(intAbove10 / 2);
+        const intMagicDamageBonus = Math.floor(intAbove10 / 2);
+
+        const wisdom = config.wisdom ?? 10;
+        const wisAbove10 = Math.max(0, wisdom - 10);
+        const healingSpellBonus = Math.floor(wisAbove10 / 2);
+
+        const baseHp = config.hitPoints ?? 10;
+        const baseMaxHp = config.maxHitPoints ?? config.hitPoints ?? 10;
+
+        const baseAbilities = config.abilities ?? [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }];
+        const abilities = baseAbilities.map((ability) => {
+            if (ability.type === 'attack' && ability.range > 1 && ability.damage !== undefined && dexRangedDamageBonus > 0) {
+                return { ...ability, damage: ability.damage + dexRangedDamageBonus };
+            }
+            if (ability.type === 'spell' && ability.damage !== undefined && intMagicDamageBonus > 0) {
+                return { ...ability, damage: ability.damage + intMagicDamageBonus };
+            }
+            if (ability.type === 'heal' && ability.healAmount !== undefined && healingSpellBonus > 0) {
+                return { ...ability, healAmount: ability.healAmount + healingSpellBonus };
+            }
+            return ability;
+        });
+
         return {
             id: config.id,
             name: config.name,
@@ -12,17 +48,24 @@ window.CharacterData = {
             spriteRows: config.spriteRows,
             portraitLabel: config.portraitLabel,
             race: config.race ?? 'unknown',
+            strength,
+            dexterity,
+            intelligence,
+            wisdom,
+            initiative: (config.initiative ?? 10) + dexInitiativeBonus,
+            mpRegen: intMpRegen,
+            healingSpellBonus,
             gridX: 0,
             gridY: 0,
             mesh: null,
             baseColorHex: 0xffffff,
             facing: 'right',
             directionPointer: null,
-            hitPoints: config.hitPoints ?? 10,
-            maxHitPoints: config.maxHitPoints ?? 10,
+            hitPoints: baseHp + strHpBonus,
+            maxHitPoints: baseMaxHp + strHpBonus,
             magicPoints: config.magicPoints ?? 0,
             maxMagicPoints: config.maxMagicPoints ?? 0,
-            attackDamage: config.attackDamage ?? 5,
+            attackDamage: (config.attackDamage ?? 5) + strDamageBonus,
             armorClass: config.armorClass ?? 0,
             attackCost: config.attackCost ?? 3,
             maxActionsPerTurn: config.maxActionsPerTurn ?? 5,
@@ -31,8 +74,8 @@ window.CharacterData = {
             isDead: false,
             fadeFrames: 0,
             removedFromScene: false,
-            abilities: config.abilities ?? [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }],
-            selectedAbilityId: config.abilities ? config.abilities[0].id : 'melee'
+            abilities,
+            selectedAbilityId: abilities[0].id
         };
     },
 
@@ -47,6 +90,10 @@ window.CharacterData = {
             spriteRows: this.getWizardSpriteRows(),
             portraitLabel: 'WZ',
             race: 'human',
+            strength: 8,
+            dexterity: 9,
+            intelligence: 16,
+            wisdom: 10,
             hitPoints: 6,
             maxHitPoints: 6,
             magicPoints: 10,
@@ -69,6 +116,10 @@ window.CharacterData = {
             spriteRows: this.getDwarfSpriteRows(),
             portraitLabel: 'DW',
             race: 'dwarf',
+            strength: 15,
+            dexterity: 11,
+            intelligence: 6,
+            wisdom: 6,
             attackDamage: 6,
             armorClass: 3,
             abilities: [
@@ -87,6 +138,10 @@ window.CharacterData = {
             spriteRows: this.getClericSpriteRows(),
             portraitLabel: 'CL',
             race: 'human',
+            strength: 10,
+            dexterity: 10,
+            intelligence: 12,
+            wisdom: 16,
             hitPoints: 8,
             maxHitPoints: 8,
             magicPoints: 8,
@@ -109,6 +164,10 @@ window.CharacterData = {
             spriteRows: this.getRangerSpriteRows(),
             portraitLabel: 'AR',
             race: 'elf',
+            strength: 11,
+            dexterity: 16,
+            intelligence: 10,
+            wisdom: 10,
             hitPoints: 8,
             maxHitPoints: 8,
             magicPoints: 4,
@@ -131,6 +190,10 @@ window.CharacterData = {
             spriteRows: this.getGoblinSpriteRows(),
             portraitLabel: 'GB',
             race: 'goblin',
+            strength: 12,
+            dexterity: 10,
+            intelligence: 4,
+            wisdom: 4,
             hitPoints: 8,
             maxHitPoints: 8,
             armorClass: 1
@@ -146,6 +209,10 @@ window.CharacterData = {
             spriteRows: this.getGoblinArcherSpriteRows(),
             portraitLabel: 'GA',
             race: 'goblin',
+            strength: 8,
+            dexterity: 12,
+            intelligence: 6,
+            wisdom: 6,
             hitPoints: 6,
             maxHitPoints: 6,
             magicPoints: 0,
@@ -167,6 +234,10 @@ window.CharacterData = {
             spriteRows: this.getGoblinShamanSpriteRows(),
             portraitLabel: 'GS',
             race: 'goblin',
+            strength: 6,
+            dexterity: 6,
+            intelligence: 12,
+            wisdom: 12,
             hitPoints: 5,
             maxHitPoints: 5,
             magicPoints: 10,
@@ -189,6 +260,10 @@ window.CharacterData = {
             spriteRows: this.getGoblinBruteSpriteRows(),
             portraitLabel: 'GB',
             race: 'goblin',
+            strength: 14,
+            dexterity: 6,
+            intelligence: 2,
+            wisdom: 2,
             hitPoints: 12,
             maxHitPoints: 12,
             attackDamage: 6,

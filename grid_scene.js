@@ -285,6 +285,16 @@ class GridScene {
             return;
         }
 
+        if (activeCharacter.maxMagicPoints > 0) {
+            const mpRegen = activeCharacter.mpRegen ?? 0;
+            if (mpRegen > 0) {
+                activeCharacter.magicPoints = Math.min(
+                    activeCharacter.maxMagicPoints,
+                    activeCharacter.magicPoints + mpRegen
+                );
+            }
+        }
+
         activeCharacter.actionsRemaining = activeCharacter.maxActionsPerTurn;
         this.turnTransitionFrames = this.turnTransitionDelay;
         this.enemyMoveTimer = 0;
