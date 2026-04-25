@@ -47,7 +47,7 @@ class GridScene {
         this.characterHud = new Map();
 
         // Turn system
-        this.turnOrder = [...this.characters];
+        this.turnOrder = this.createInitiativeTurnOrder(this.characters);
         this.activeTurnIndex = 0;
         this.turnTransitionDelay = 18;
         this.turnTransitionFrames = 0;
@@ -252,6 +252,36 @@ class GridScene {
 
     getLivingGoblinAllies() {
         return this.aiParty.filter((character) => !character.isDead && character.race === 'goblin');
+    }
+
+    createInitiativeTurnOrder(characters) {
+        const seededCharacters = characters.map((character, index) => ({
+            character,
+            index,
+            randomTieBreaker: Math.random()
+        }));
+
+        seededCharacters.sort((left, right) => {
+            const leftInitiative = left.character.initiative ?? 0;
+            const rightInitiative = right.character.initiative ?? 0;
+            if (leftInitiative !== rightInitiative) {
+                return rightInitiative - leftInitiative;
+            }
+
+            const leftIsPlayer = left.character.team === 'player';
+            const rightIsPlayer = right.character.team === 'player';
+            if (leftIsPlayer !== rightIsPlayer) {
+                return leftIsPlayer ? -1 : 1;
+            }
+
+            if (left.randomTieBreaker !== right.randomTieBreaker) {
+                return left.randomTieBreaker - right.randomTieBreaker;
+            }
+
+            return left.index - right.index;
+        });
+
+        return seededCharacters.map((entry) => entry.character);
     }
 
     getAliveTurnOrder() {
@@ -492,7 +522,7 @@ class GridScene {
             : attacker.abilities.find((ability) => ability.id === attacker.selectedAbilityId && ability.type === 'attack') || null;
 
         const attackRange = resolvedAttackAbility?.range ?? 1;
-        const baseDamage = resolvedAttackAbility?.damage ?? attacker.attackDamage;
+        const baseDamage = resolvedAttackAbility?.damage ?? attacker.meleeAttackDamage;
 
         const dx = Math.abs(target.gridX - attacker.gridX);
         const dy = Math.abs(target.gridY - attacker.gridY);
@@ -561,7 +591,7 @@ class GridScene {
         }
 
         this.faceCharacterToward(caster, target);
-        const damage = ability.damage ?? caster.attackDamage;
+        const damage = ability.damage ?? caster.meleeAttackDamage;
         target.hitPoints -= damage;
         caster.magicPoints -= ability.mpCost;
 
@@ -651,7 +681,7 @@ class GridScene {
             const dx = Math.abs(ally.gridX - caster.gridX);
             const dy = Math.abs(ally.gridY - caster.gridY);
             if (dx <= range && dy <= range) {
-                ally.attackDamage += damageBonus;
+                ally.meleeAttackDamage += damageBonus;
                 const pos = this.getCharacterWorldPos(ally);
                 this.spawnInflictPainEffect(pos);
             }

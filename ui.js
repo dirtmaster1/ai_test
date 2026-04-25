@@ -96,7 +96,7 @@ window.GridUI = {
         }
 
         if (ability.type === 'attack') {
-            const damageAmount = ability.damage ?? character.attackDamage;
+            const damageAmount = ability.damage ?? character.meleeAttackDamage;
             const attackKind = ability.id === 'magic-missile'
                 ? 'Magic'
                 : ability.id === 'bow-shot'
@@ -123,6 +123,8 @@ window.GridUI = {
         const hudRoot = document.getElementById('battleHud') || this.container;
         hudRoot.style.pointerEvents = 'none';
         hudRoot.innerHTML = '';
+        this.activeInventoryCharacter = null;
+        this.activeInventoryTab = 'info';
 
         const playerSection = this.createPartySection('Player Party', 'Acts individually in turn order');
         const enemySection = this.createPartySection('Enemy Party', 'Victory when every enemy falls');
@@ -161,6 +163,321 @@ window.GridUI = {
 
         this.container.style.position = 'relative';
         this.container.appendChild(this.victoryText);
+        this.setupCharacterInventoryModal();
+    },
+
+    setupCharacterInventoryModal() {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'absolute';
+        overlay.style.inset = '0';
+        overlay.style.display = 'none';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.background = 'rgba(4, 5, 8, 0.72)';
+        overlay.style.backdropFilter = 'blur(4px)';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.zIndex = '30';
+
+        const panel = document.createElement('div');
+        panel.style.width = 'min(480px, calc(100% - 32px))';
+        panel.style.maxHeight = 'min(520px, calc(100% - 32px))';
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.borderRadius = '12px';
+        panel.style.border = '1px solid rgba(232, 224, 202, 0.22)';
+        panel.style.background = 'linear-gradient(180deg, rgba(25, 24, 28, 0.98), rgba(12, 12, 14, 0.98))';
+        panel.style.boxShadow = '0 20px 50px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04)';
+        panel.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
+        header.style.padding = '16px 18px 12px';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+
+        const titleWrap = document.createElement('div');
+        titleWrap.style.minWidth = '0';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '18px';
+        title.style.fontWeight = '700';
+        title.style.color = '#f0e8d2';
+        title.style.lineHeight = '1.2';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '4px';
+        subtitle.style.fontSize = '11px';
+        subtitle.style.letterSpacing = '0.08em';
+        subtitle.style.textTransform = 'uppercase';
+        subtitle.style.color = '#a89c82';
+
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(subtitle);
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.textContent = 'Close';
+        closeButton.style.padding = '7px 10px';
+        closeButton.style.borderRadius = '6px';
+        closeButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        closeButton.style.background = 'rgba(255,255,255,0.06)';
+        closeButton.style.color = '#f0e8d2';
+        closeButton.style.fontSize = '11px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.addEventListener('click', () => this.closeCharacterInventory());
+
+        header.appendChild(titleWrap);
+        header.appendChild(closeButton);
+        panel.appendChild(header);
+
+        const tabBar = document.createElement('div');
+        tabBar.style.display = 'flex';
+        tabBar.style.gap = '8px';
+        tabBar.style.padding = '12px 18px 0';
+
+        const infoTabButton = document.createElement('button');
+        infoTabButton.type = 'button';
+        infoTabButton.textContent = 'Info';
+        infoTabButton.style.padding = '8px 12px';
+        infoTabButton.style.borderRadius = '8px 8px 0 0';
+        infoTabButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        infoTabButton.style.cursor = 'pointer';
+        infoTabButton.addEventListener('click', () => this.setCharacterInventoryTab('info'));
+
+        const equipmentTabButton = document.createElement('button');
+        equipmentTabButton.type = 'button';
+        equipmentTabButton.textContent = 'Equipment';
+        equipmentTabButton.style.padding = '8px 12px';
+        equipmentTabButton.style.borderRadius = '8px 8px 0 0';
+        equipmentTabButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        equipmentTabButton.style.cursor = 'pointer';
+        equipmentTabButton.addEventListener('click', () => this.setCharacterInventoryTab('equipment'));
+
+        tabBar.appendChild(infoTabButton);
+        tabBar.appendChild(equipmentTabButton);
+        panel.appendChild(tabBar);
+
+        const content = document.createElement('div');
+        content.style.padding = '18px';
+        content.style.overflowY = 'auto';
+        content.style.minHeight = '260px';
+        content.style.pointerEvents = 'auto';
+        panel.appendChild(content);
+
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                this.closeCharacterInventory();
+            }
+        });
+
+        panel.addEventListener('click', (event) => event.stopPropagation());
+        overlay.appendChild(panel);
+        this.container.appendChild(overlay);
+
+        this.characterInventoryModal = {
+            overlay,
+            panel,
+            title,
+            subtitle,
+            infoTabButton,
+            equipmentTabButton,
+            content,
+            closeButton
+        };
+    },
+
+    openCharacterInventory(character) {
+        if (!character || character.team !== 'player' || !this.characterInventoryModal) {
+            return;
+        }
+
+        this.activeInventoryCharacter = character;
+        this.characterInventoryModal.overlay.style.display = 'flex';
+        this.renderCharacterInventory();
+    },
+
+    closeCharacterInventory() {
+        if (!this.characterInventoryModal) {
+            return;
+        }
+
+        this.characterInventoryModal.overlay.style.display = 'none';
+        this.activeInventoryCharacter = null;
+    },
+
+    setCharacterInventoryTab(tab) {
+        if (tab !== 'info' && tab !== 'equipment') {
+            return;
+        }
+
+        this.activeInventoryTab = tab;
+        this.renderCharacterInventory();
+    },
+
+    renderCharacterInventory() {
+        const modal = this.characterInventoryModal;
+        const character = this.activeInventoryCharacter;
+        if (!modal || !character) {
+            return;
+        }
+
+        modal.title.textContent = character.name;
+        modal.title.style.color = character.accentColor;
+        modal.subtitle.textContent = `${character.role} • ${character.race} • ${character.team}`;
+
+        const isInfoTab = this.activeInventoryTab === 'info';
+        this.setCharacterInventoryTabState(modal.infoTabButton, isInfoTab, character.accentColor);
+        this.setCharacterInventoryTabState(modal.equipmentTabButton, !isInfoTab, character.accentColor);
+
+        if (isInfoTab) {
+            this.renderCharacterInfoTab(character);
+            return;
+        }
+
+        this.renderCharacterEquipmentTab(character);
+    },
+
+    setCharacterInventoryTabState(button, isActive, accentColor) {
+        button.style.background = isActive ? this.hexToRgba(accentColor, 0.22) : 'rgba(255,255,255,0.04)';
+        button.style.borderColor = isActive ? this.hexToRgba(accentColor, 0.82) : 'rgba(255,255,255,0.14)';
+        button.style.color = isActive ? '#f0e8d2' : '#a89c82';
+    },
+
+    renderCharacterInfoTab(character) {
+        const modal = this.characterInventoryModal;
+        if (!modal) {
+            return;
+        }
+
+        const formatSigned = (value) => (value >= 0 ? `+${value}` : String(value));
+        const strengthBonusHp = Math.max(0, (character.strength ?? 10) - 10);
+        const strengthBonusDamage = Math.floor(strengthBonusHp / 2);
+        const dexterityDiff = (character.dexterity ?? 10) - 10;
+        const dexterityRangedDamageBonus = Math.floor(Math.max(0, dexterityDiff) / 2);
+        const intelligenceBonus = Math.floor(Math.max(0, (character.intelligence ?? 10) - 10) / 2);
+        const wisdomHealingBonus = Math.floor(Math.max(0, (character.wisdom ?? 10) - 10) / 2);
+
+        const infoStats = [
+            { label: 'Hit Points', value: `${character.hitPoints} / ${character.maxHitPoints}` },
+            { label: 'Magic Points', value: `${character.magicPoints} / ${character.maxMagicPoints}` },
+            { label: 'Initiative', value: String(character.initiative ?? 0) },
+            { label: 'Damage', value: String(character.meleeAttackDamage) },
+            { label: 'Armor Class', value: String(character.armorClass) },
+            { label: 'Strength', value: String(character.strength), bonus: `HP +${strengthBonusHp}, Damage +${strengthBonusDamage}` },
+            { label: 'Dexterity', value: String(character.dexterity), bonus: `Initiative ${formatSigned(dexterityDiff)}, Ranged Damage +${dexterityRangedDamageBonus}` },
+            { label: 'Intelligence', value: String(character.intelligence), bonus: `MP Regen +${intelligenceBonus}, Spell Damage +${intelligenceBonus}` },
+            { label: 'Wisdom', value: String(character.wisdom), bonus: `Healing +${wisdomHealingBonus}` },
+            { label: 'Actions Per Turn', value: String(character.maxActionsPerTurn) },
+            { label: 'Attack Cost', value: String(character.attackCost) },
+            { label: 'MP Regen', value: String(character.mpRegen ?? 0) }
+        ];
+
+        modal.content.innerHTML = '';
+
+        const infoGrid = document.createElement('div');
+        infoGrid.style.display = 'grid';
+        infoGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(180px, 1fr))';
+        infoGrid.style.gap = '10px';
+
+        infoStats.forEach((stat) => {
+            const statCard = document.createElement('div');
+            statCard.style.padding = '12px';
+            statCard.style.border = '1px solid rgba(255,255,255,0.08)';
+            statCard.style.borderRadius = '8px';
+            statCard.style.background = 'rgba(255,255,255,0.03)';
+
+            const label = document.createElement('div');
+            label.style.fontSize = '10px';
+            label.style.letterSpacing = '0.08em';
+            label.style.textTransform = 'uppercase';
+            label.style.color = '#8f856f';
+            label.textContent = stat.label;
+
+            const value = document.createElement('div');
+            value.style.marginTop = '6px';
+            value.style.fontSize = '18px';
+            value.style.fontWeight = '700';
+            value.style.color = '#f0e8d2';
+            value.textContent = stat.value;
+
+            statCard.appendChild(label);
+            statCard.appendChild(value);
+            if (stat.bonus) {
+                const bonus = document.createElement('div');
+                bonus.style.marginTop = '4px';
+                bonus.style.fontSize = '11px';
+                bonus.style.fontWeight = '500';
+                bonus.style.color = '#a89c82';
+                bonus.textContent = stat.bonus;
+                statCard.appendChild(bonus);
+            }
+            infoGrid.appendChild(statCard);
+        });
+
+        modal.content.appendChild(infoGrid);
+    },
+
+    renderCharacterEquipmentTab(character) {
+        const modal = this.characterInventoryModal;
+        if (!modal) {
+            return;
+        }
+
+        const slotLabels = [
+            ['head', 'Head'],
+            ['body', 'Body'],
+            ['hands', 'Hands'],
+            ['legs', 'Legs'],
+            ['feet', 'Feet'],
+            ['neck', 'Neck']
+        ];
+
+        modal.content.innerHTML = '';
+
+        const intro = document.createElement('div');
+        intro.style.marginBottom = '14px';
+        intro.style.fontSize = '12px';
+        intro.style.color = '#a89c82';
+        intro.textContent = `${character.name}'s equipment slots are ready for items.`;
+        modal.content.appendChild(intro);
+
+        const slotGrid = document.createElement('div');
+        slotGrid.style.display = 'grid';
+        slotGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(130px, 1fr))';
+        slotGrid.style.gap = '10px';
+
+        slotLabels.forEach(([slotKey, slotLabel]) => {
+            const slotCard = document.createElement('div');
+            slotCard.style.minHeight = '92px';
+            slotCard.style.padding = '12px';
+            slotCard.style.border = '1px dashed rgba(255,255,255,0.16)';
+            slotCard.style.borderRadius = '10px';
+            slotCard.style.background = 'rgba(255,255,255,0.025)';
+            slotCard.style.display = 'flex';
+            slotCard.style.flexDirection = 'column';
+            slotCard.style.justifyContent = 'space-between';
+
+            const label = document.createElement('div');
+            label.style.fontSize = '11px';
+            label.style.letterSpacing = '0.08em';
+            label.style.textTransform = 'uppercase';
+            label.style.color = '#8f856f';
+            label.textContent = slotLabel;
+
+            const value = document.createElement('div');
+            value.style.fontSize = '13px';
+            value.style.fontWeight = '700';
+            value.style.color = '#5e5648';
+            value.textContent = character.equipment?.[slotKey] ?? 'Empty';
+
+            slotCard.appendChild(label);
+            slotCard.appendChild(value);
+            slotGrid.appendChild(slotCard);
+        });
+
+        modal.content.appendChild(slotGrid);
     },
 
     createPartySection(title, subtitle) {
@@ -219,7 +536,24 @@ window.GridUI = {
         portraitFrame.style.border = `1px solid ${this.hexToRgba(character.accentColor, 0.30)}`;
         portraitFrame.style.boxShadow = `0 0 0 1px ${this.hexToRgba(character.accentColor, 0.22)}`;
         portraitFrame.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease';
+        portraitFrame.style.pointerEvents = character.team === 'player' ? 'auto' : 'none';
+        portraitFrame.style.cursor = character.team === 'player' ? 'pointer' : 'default';
         portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor, character.portraitLabel));
+        if (character.team === 'player') {
+            portraitFrame.title = `Open ${character.name} inventory`;
+            portraitFrame.setAttribute('role', 'button');
+            portraitFrame.setAttribute('tabindex', '0');
+            portraitFrame.setAttribute('aria-label', `Open ${character.name} inventory`);
+            portraitFrame.addEventListener('click', () => {
+                this.openCharacterInventory(character);
+            });
+            portraitFrame.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    this.openCharacterInventory(character);
+                }
+            });
+        }
 
         const portraitCol = document.createElement('div');
         portraitCol.style.display = 'flex';
@@ -565,6 +899,10 @@ window.GridUI = {
                 hud.endTurnButton.style.opacity = '0.5';
                 hud.endTurnButton.style.cursor = 'default';
             }
+        }
+
+        if (this.activeInventoryCharacter === character) {
+            this.renderCharacterInventory();
         }
     },
 

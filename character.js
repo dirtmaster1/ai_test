@@ -65,7 +65,7 @@ window.CharacterData = {
             maxHitPoints: baseMaxHp + strHpBonus,
             magicPoints: config.magicPoints ?? 0,
             maxMagicPoints: config.maxMagicPoints ?? 0,
-            attackDamage: (config.attackDamage ?? 5) + strDamageBonus,
+            meleeAttackDamage: (config.meleeAttackDamage ?? 5) + strDamageBonus,
             armorClass: config.armorClass ?? 0,
             attackCost: config.attackCost ?? 3,
             maxActionsPerTurn: config.maxActionsPerTurn ?? 5,
@@ -74,6 +74,15 @@ window.CharacterData = {
             isDead: false,
             fadeFrames: 0,
             removedFromScene: false,
+            equipment: {
+                head: null,
+                body: null,
+                hands: null,
+                legs: null,
+                feet: null,
+                neck: null,
+                ...(config.equipment ?? {})
+            },
             abilities,
             selectedAbilityId: abilities[0].id
         };
@@ -98,10 +107,14 @@ window.CharacterData = {
             maxHitPoints: 6,
             magicPoints: 10,
             maxMagicPoints: 10,
-            attackDamage: 4,
+            meleeAttackDamage: 4,
             armorClass: 0,
+            equipment: {
+                body: 'Robe',
+                hands: '2H Staff (4 DMG)'
+            },
             abilities: [
-                { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
+                { id: 'melee', name: 'Staff Strike', type: 'attack', range: 1, mpCost: 0 },
                 { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4 }
             ]
         });
@@ -120,8 +133,13 @@ window.CharacterData = {
             dexterity: 11,
             intelligence: 6,
             wisdom: 6,
-            attackDamage: 6,
+            meleeAttackDamage: 6,
             armorClass: 3,
+            equipment: {
+                body: 'Chain Mail (+2 AC)',
+                head: 'Steel Helm (+1 AC)',
+                hands: '1H Axe (6 DMG)'
+            },
             abilities: [
                 { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
                 { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, acBonus: 1 }
@@ -146,8 +164,12 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 8,
             maxMagicPoints: 8,
-            attackDamage: 4,
+            meleeAttackDamage: 4,
             armorClass: 2,
+            equipment: {
+                body: 'Chain Mail (+2 AC)',
+                hands: '1H Mace (4 DMG)'
+            },
             abilities: [
                 { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
                 { id: 'heal', name: 'Holy Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 }
@@ -172,8 +194,12 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 4,
             maxMagicPoints: 4,
-            attackDamage: 4,
-            armorClass: 2,
+            meleeAttackDamage: 4,
+            armorClass: 1,
+            equipment: {
+                body: 'Leather Armor (+1 AC)',
+                hands: '2H Shortbow (6 DMG)'
+            },
             abilities: [
                 { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
                 { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6 }
@@ -217,7 +243,7 @@ window.CharacterData = {
             maxHitPoints: 6,
             magicPoints: 0,
             maxMagicPoints: 0,
-            attackDamage: 4,
+            meleeAttackDamage: 4,
             armorClass: 1,
             abilities: [
                 { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4 }
@@ -242,7 +268,7 @@ window.CharacterData = {
             maxHitPoints: 5,
             magicPoints: 10,
             maxMagicPoints: 10,
-            attackDamage: 3,
+            meleeAttackDamage: 3,
             armorClass: 0,
             abilities: [
                 { id: 'heal', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
@@ -266,7 +292,7 @@ window.CharacterData = {
             wisdom: 2,
             hitPoints: 12,
             maxHitPoints: 12,
-            attackDamage: 6,
+            meleeAttackDamage: 6,
             armorClass: 2
         });
 
