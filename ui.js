@@ -119,6 +119,216 @@ window.GridUI = {
         return lines.join('\n');
     },
 
+    getCombatLogTimestamp() {
+        const now = new Date();
+        return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    },
+
+    getCharacterAttackSourceLabel(character, ability = null) {
+        const handsItem = character?.equipment?.hands;
+        if (handsItem) {
+            return handsItem.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        }
+
+        if (ability?.name) {
+            return ability.name;
+        }
+
+        return 'attack';
+    },
+
+    setupCombatLogWindow() {
+        if (this.combatLogWindow?.root) {
+            return;
+        }
+
+        const root = document.createElement('div');
+        root.id = 'combatLogWindow';
+        root.style.position = 'fixed';
+        root.style.right = '20px';
+        root.style.bottom = '20px';
+        root.style.width = 'min(420px, calc(100vw - 32px))';
+        root.style.height = '220px';
+        root.style.minWidth = '280px';
+        root.style.minHeight = '160px';
+        root.style.maxWidth = 'calc(100vw - 16px)';
+        root.style.maxHeight = 'calc(100vh - 16px)';
+        root.style.display = 'flex';
+        root.style.flexDirection = 'column';
+        root.style.border = '1px solid rgba(232, 224, 202, 0.22)';
+        root.style.borderRadius = '12px';
+        root.style.background = 'linear-gradient(180deg, rgba(23, 24, 28, 0.96), rgba(10, 10, 12, 0.96))';
+        root.style.boxShadow = '0 18px 44px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04)';
+        root.style.backdropFilter = 'blur(8px)';
+        root.style.overflow = 'hidden';
+        root.style.resize = 'both';
+        root.style.zIndex = '40';
+        root.style.pointerEvents = 'auto';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
+        header.style.padding = '10px 12px';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+        header.style.background = 'linear-gradient(180deg, rgba(54, 58, 70, 0.7), rgba(24, 26, 32, 0.72))';
+        header.style.cursor = 'move';
+        header.style.userSelect = 'none';
+
+        const titleWrap = document.createElement('div');
+        titleWrap.style.minWidth = '0';
+
+        const title = document.createElement('div');
+        title.textContent = 'Combat Log';
+        title.style.fontSize = '14px';
+        title.style.fontWeight = '700';
+        title.style.letterSpacing = '0.04em';
+        title.style.color = '#f0e8d2';
+
+        const subtitle = document.createElement('div');
+        subtitle.textContent = 'Attacks, spells, heals, and buffs';
+        subtitle.style.marginTop = '2px';
+        subtitle.style.fontSize = '10px';
+        subtitle.style.letterSpacing = '0.08em';
+        subtitle.style.textTransform = 'uppercase';
+        subtitle.style.color = '#a89c82';
+
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(subtitle);
+
+        const clearButton = document.createElement('button');
+        clearButton.type = 'button';
+        clearButton.textContent = 'Clear';
+        clearButton.style.padding = '4px 8px';
+        clearButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        clearButton.style.borderRadius = '999px';
+        clearButton.style.background = 'rgba(255,255,255,0.06)';
+        clearButton.style.color = '#d6cbb8';
+        clearButton.style.fontSize = '10px';
+        clearButton.style.cursor = 'pointer';
+        clearButton.style.pointerEvents = 'auto';
+
+        header.appendChild(titleWrap);
+        header.appendChild(clearButton);
+
+        const body = document.createElement('div');
+        body.style.flex = '1 1 auto';
+        body.style.padding = '10px 12px';
+        body.style.overflowY = 'auto';
+        body.style.overflowX = 'hidden';
+        body.style.display = 'flex';
+        body.style.flexDirection = 'column';
+        body.style.gap = '8px';
+        body.style.scrollBehavior = 'smooth';
+
+        const emptyState = document.createElement('div');
+        emptyState.textContent = 'Combat actions will appear here.';
+        emptyState.style.padding = '10px 12px';
+        emptyState.style.border = '1px dashed rgba(255, 255, 255, 0.12)';
+        emptyState.style.borderRadius = '10px';
+        emptyState.style.color = '#8f8470';
+        emptyState.style.fontSize = '12px';
+        emptyState.style.lineHeight = '1.5';
+        body.appendChild(emptyState);
+
+        root.appendChild(header);
+        root.appendChild(body);
+        document.body.appendChild(root);
+
+        const startDrag = (event) => {
+            if (event.target === clearButton) {
+                return;
+            }
+
+            const rect = root.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+            root.style.left = `${rect.left}px`;
+            root.style.top = `${rect.top}px`;
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+
+            const onMove = (moveEvent) => {
+                const maxLeft = Math.max(8, window.innerWidth - root.offsetWidth - 8);
+                const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
+                const nextLeft = Math.min(Math.max(8, moveEvent.clientX - offsetX), maxLeft);
+                const nextTop = Math.min(Math.max(8, moveEvent.clientY - offsetY), maxTop);
+                root.style.left = `${nextLeft}px`;
+                root.style.top = `${nextTop}px`;
+            };
+
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+            };
+
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+        };
+
+        header.addEventListener('pointerdown', startDrag);
+        clearButton.addEventListener('click', () => {
+            body.innerHTML = '';
+            body.appendChild(emptyState);
+            this.combatLogEntries = [];
+        });
+
+        this.combatLogEntries = [];
+        this.combatLogWindow = { root, body, emptyState };
+    },
+
+    appendCombatLogEntry(message, accentColor = '#d6cbb8') {
+        if (!message) {
+            return;
+        }
+
+        if (!this.combatLogWindow?.body) {
+            this.setupCombatLogWindow();
+        }
+
+        const { body, emptyState } = this.combatLogWindow;
+        if (emptyState.parentNode === body) {
+            body.removeChild(emptyState);
+        }
+
+        const row = document.createElement('div');
+        row.style.padding = '8px 10px';
+        row.style.border = '1px solid rgba(255,255,255,0.08)';
+        row.style.borderLeft = `3px solid ${accentColor}`;
+        row.style.borderRadius = '10px';
+        row.style.background = 'rgba(255,255,255,0.04)';
+        row.style.boxShadow = 'inset 0 0 0 1px rgba(255,255,255,0.02)';
+
+        const timestamp = document.createElement('div');
+        timestamp.textContent = this.getCombatLogTimestamp();
+        timestamp.style.fontSize = '10px';
+        timestamp.style.letterSpacing = '0.08em';
+        timestamp.style.textTransform = 'uppercase';
+        timestamp.style.color = '#8f8470';
+        timestamp.style.marginBottom = '4px';
+
+        const text = document.createElement('div');
+        text.textContent = message;
+        text.style.fontSize = '12px';
+        text.style.lineHeight = '1.5';
+        text.style.color = '#efe5d0';
+
+        row.appendChild(timestamp);
+        row.appendChild(text);
+        body.appendChild(row);
+
+        this.combatLogEntries.push(message);
+        if (this.combatLogEntries.length > 80) {
+            this.combatLogEntries.shift();
+            if (body.firstChild) {
+                body.removeChild(body.firstChild);
+            }
+        }
+
+        body.scrollTop = body.scrollHeight;
+    },
+
     setupUI() {
         const hudRoot = document.getElementById('battleHud') || this.container;
         hudRoot.style.pointerEvents = 'none';
@@ -164,6 +374,7 @@ window.GridUI = {
         this.container.style.position = 'relative';
         this.container.appendChild(this.victoryText);
         this.setupCharacterInventoryModal();
+        this.setupCombatLogWindow();
     },
 
     setupCharacterInventoryModal() {

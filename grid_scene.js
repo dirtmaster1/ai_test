@@ -523,12 +523,16 @@ class GridScene {
 
         const attackRange = resolvedAttackAbility?.range ?? 1;
         const baseDamage = resolvedAttackAbility?.damage ?? attacker.meleeAttackDamage;
+        const damageKind = attackRange > 1 ? 'ranged' : 'melee';
+        const sourceLabel = this.getCharacterAttackSourceLabel(attacker, resolvedAttackAbility);
 
         const dx = Math.abs(target.gridX - attacker.gridX);
         const dy = Math.abs(target.gridY - attacker.gridY);
         if (dx > attackRange || dy > attackRange) {
             return false;
         }
+
+        const damageDealt = Math.max(0, baseDamage - target.armorClass);
 
         this.faceCharacterToward(attacker, target);
         if (resolvedAttackAbility?.id === 'bow-shot') {
@@ -541,6 +545,11 @@ class GridScene {
         } else {
             this.applyPhysicalAttackDamage(target, baseDamage);
         }
+
+        this.appendCombatLogEntry(
+            `${attacker.name} attacks ${target.name} for ${damageDealt} ${damageKind} dmg with ${sourceLabel}.`,
+            attacker.accentColor
+        );
 
         attacker.actionsRemaining -= attacker.attackCost;
         if (attacker.actionsRemaining <= 0) {
@@ -595,6 +604,11 @@ class GridScene {
         target.hitPoints -= damage;
         caster.magicPoints -= ability.mpCost;
 
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} on ${target.name} for ${damage} dmg.`,
+            caster.accentColor
+        );
+
         const lethal = target.hitPoints <= 0;
         if (lethal) {
             target.hitPoints = 0;
@@ -636,15 +650,22 @@ class GridScene {
         const range = ability.range ?? 3;
 
         const allies = this.getLivingCharacters(this.playerParty);
+        let affectedCount = 0;
         allies.forEach((ally) => {
             const dx = Math.abs(ally.gridX - caster.gridX);
             const dy = Math.abs(ally.gridY - caster.gridY);
             if (dx <= range && dy <= range) {
                 ally.armorClass += acBonus;
+                affectedCount += 1;
                 const pos = this.getCharacterWorldPos(ally);
                 this.spawnBattleShoutEffect(pos);
             }
         });
+
+        this.appendCombatLogEntry(
+            `${caster.name} uses ${ability.name} and grants +${acBonus} AC to ${affectedCount} ${affectedCount === 1 ? 'ally' : 'allies'}.`,
+            caster.accentColor
+        );
 
         caster.actionsRemaining -= caster.attackCost;
         if (caster.actionsRemaining <= 0) {
@@ -676,16 +697,23 @@ class GridScene {
 
         const damageBonus = ability.damageBonus ?? 1;
         const range = ability.range ?? 2;
+        let affectedCount = 0;
 
         this.getLivingGoblinAllies().forEach((ally) => {
             const dx = Math.abs(ally.gridX - caster.gridX);
             const dy = Math.abs(ally.gridY - caster.gridY);
             if (dx <= range && dy <= range) {
                 ally.meleeAttackDamage += damageBonus;
+                affectedCount += 1;
                 const pos = this.getCharacterWorldPos(ally);
                 this.spawnInflictPainEffect(pos);
             }
         });
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} and grants +${damageBonus} dmg to ${affectedCount} ${affectedCount === 1 ? 'ally' : 'allies'}.`,
+            caster.accentColor
+        );
 
         caster.magicPoints -= mpCost;
         caster.actionsRemaining -= caster.attackCost;
@@ -726,8 +754,14 @@ class GridScene {
         }
 
         const healAmount = ability.healAmount ?? 5;
+        const restored = Math.min(healAmount, target.maxHitPoints - target.hitPoints);
         target.hitPoints = Math.min(target.maxHitPoints, target.hitPoints + healAmount);
         caster.magicPoints -= ability.mpCost;
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} on ${target.name} for ${restored} healing.`,
+            caster.accentColor
+        );
 
         const casterPos = this.getCharacterWorldPos(caster);
         const targetPos = this.getCharacterWorldPos(target);

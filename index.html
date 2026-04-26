@@ -3,14 +3,298 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dark Dungeon</title>
+    <title>Dark Dungeon Tactics</title>
     <style>
-        * { margin: 0; padding: 0; }
-        body { width: 100vw; height: 100vh; overflow: hidden; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --page-bg: #090909;
+            --panel-bg: linear-gradient(180deg, rgba(33, 31, 28, 0.98), rgba(18, 17, 15, 0.98));
+            --panel-border: #7f7152;
+            --panel-edge: rgba(220, 191, 134, 0.18);
+            --text-main: #ebe1cb;
+            --text-dim: #a79b84;
+        }
+
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at top, rgba(78, 72, 61, 0.28), transparent 30%),
+                linear-gradient(180deg, #141311 0%, var(--page-bg) 55%, #040404 100%);
+            color: var(--text-main);
+            font-family: Georgia, 'Times New Roman', serif;
+            overflow-x: hidden;
+        }
+
+        .app-shell {
+            width: 100%;
+            max-width: 1360px;
+            min-height: 100vh;
+            margin: 0;
+            padding: 16px 24px 24px 16px;
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+            justify-content: flex-start;
+        }
+
+        .battle-hud {
+            width: 220px;
+            flex: 0 0 220px;
+            padding: 14px;
+            border: 1px solid var(--panel-border);
+            box-shadow: inset 0 0 0 1px var(--panel-edge), 0 18px 40px rgba(0, 0, 0, 0.35);
+            background: var(--panel-bg);
+            border-radius: 8px;
+            backdrop-filter: blur(6px);
+        }
+
+        .scene-column {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 18px;
+        }
+
+        #gameContainer {
+            position: relative;
+            border: 1px solid #6f6247;
+            background: #141414;
+            display: inline-block;
+            box-shadow: 0 22px 44px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(220, 191, 134, 0.08);
+        }
+
+        .controls {
+            width: 100%;
+            max-width: 964px;
+            padding: 14px 16px;
+            color: var(--text-dim);
+            font-size: 13px;
+            line-height: 1.6;
+            border: 1px solid rgba(127, 113, 82, 0.75);
+            border-radius: 8px;
+            background: linear-gradient(180deg, rgba(24, 23, 20, 0.96), rgba(14, 13, 12, 0.96));
+        }
+
+        .controls p {
+            margin: 5px 0;
+        }
+
+        .landing-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background:
+                radial-gradient(circle at 50% 20%, rgba(162, 128, 68, 0.18), transparent 28%),
+                rgba(5, 6, 8, 0.74);
+            backdrop-filter: blur(8px);
+            z-index: 50;
+            transition: opacity 220ms ease;
+            overflow-y: auto;
+        }
+
+        .landing-overlay.is-hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .landing-panel {
+            width: min(620px, 100%);
+            max-height: calc(100vh - 48px);
+            padding: 28px;
+            border-radius: 18px;
+            border: 1px solid rgba(232, 224, 202, 0.2);
+            background: linear-gradient(180deg, rgba(29, 26, 21, 0.96), rgba(12, 11, 10, 0.98));
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+            overflow-y: auto;
+        }
+
+        .landing-eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #b9ab8c;
+        }
+
+        .landing-title {
+            margin-top: 10px;
+            font-size: clamp(36px, 6vw, 64px);
+            line-height: 0.95;
+            color: #f0e8d2;
+            text-shadow: 0 0 24px rgba(179, 138, 67, 0.18);
+        }
+
+        .landing-copy {
+            margin-top: 16px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #c7baa0;
+            max-width: 52ch;
+        }
+
+        .landing-highlights {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .landing-highlight {
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .landing-highlight strong {
+            display: block;
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #eadfc6;
+        }
+
+        .landing-highlight span {
+            display: block;
+            margin-top: 6px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #a99d87;
+        }
+
+        .landing-actions {
+            margin-top: 22px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .landing-button {
+            appearance: none;
+            border: 1px solid rgba(228, 203, 150, 0.45);
+            border-radius: 999px;
+            padding: 12px 18px;
+            background: linear-gradient(180deg, rgba(170, 128, 57, 0.34), rgba(109, 76, 25, 0.34));
+            color: #f6ecd6;
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .landing-note {
+            font-size: 13px;
+            color: #9c907b;
+        }
+
+        @media (max-width: 980px) {
+            .app-shell {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 16px;
+            }
+
+            .battle-hud {
+                width: 100%;
+                flex-basis: auto;
+            }
+
+            .scene-column {
+                width: 100%;
+            }
+
+            .landing-highlights {
+                grid-template-columns: 1fr;
+            }
+
+            .landing-overlay {
+                align-items: flex-start;
+                padding: 16px;
+            }
+
+            .landing-panel {
+                max-height: calc(100vh - 32px);
+                padding: 22px;
+            }
+        }
     </style>
 </head>
 <body>
+    <div class="app-shell">
+        <aside class="battle-hud" id="battleHud"></aside>
+        <div class="scene-column">
+            <div id="gameContainer"></div>
+            <div class="controls">
+                <p><strong>Controls:</strong></p>
+                <p>W - Move Up | A - Move Left | S - Move Down | D - Move Right</p>
+                <p>Click a valid target to use the selected attack, spell, or ability | Space - End current turn</p>
+                <p style="margin-top: 15px; font-size: 12px;">Every living character acts individually. Use the left HUD to track your party, then follow the floating combat log for each attack, spell, and buff.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="landing-overlay" id="landingOverlay">
+        <div class="landing-panel">
+            <div class="landing-eyebrow">Browser Tactical Demo</div>
+            <h1 class="landing-title">Dark Dungeon Tactics</h1>
+            <p class="landing-copy">Lead a four-character party through a turn-based dungeon skirmish. The tactical board is already loaded behind this screen, so new players can read the basics and start immediately.</p>
+            <div class="landing-highlights">
+                <div class="landing-highlight">
+                    <strong>Party Control</strong>
+                    <span>Each hero gets individual turns, actions, abilities, and equipment-driven attacks.</span>
+                </div>
+                <div class="landing-highlight">
+                    <strong>Readable Combat</strong>
+                    <span>The floating combat log tracks attacks, spells, healing, and buffs as the fight unfolds.</span>
+                </div>
+                <div class="landing-highlight">
+                    <strong>Quick Session</strong>
+                    <span>One battle, one objective: defeat every enemy unit before your party is wiped out.</span>
+                </div>
+            </div>
+            <div class="landing-actions">
+                <button class="landing-button" id="startGameButton" type="button">Enter the Dungeon</button>
+                <div class="landing-note">Best experienced on desktop with keyboard and mouse.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const overlay = document.getElementById('landingOverlay');
+            const startButton = document.getElementById('startGameButton');
+
+            const dismissOverlay = () => {
+                overlay.classList.add('is-hidden');
+                window.setTimeout(() => {
+                    overlay.hidden = true;
+                }, 220);
+            };
+
+            startButton.addEventListener('click', dismissOverlay);
+            window.addEventListener('keydown', (event) => {
+                if ((event.key === 'Enter' || event.key === ' ') && !overlay.hidden) {
+                    event.preventDefault();
+                    dismissOverlay();
+                }
+            });
+        });
+    </script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="game.js"></script>
+    <script src="character.js"></script>
+    <script src="graphics.js"></script>
+    <script src="ui.js"></script>
+    <script src="ai.js"></script>
+    <script src="map_generator.js"></script>
+    <script src="grid_scene.js"></script>
 </body>
 </html>
