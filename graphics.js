@@ -272,13 +272,35 @@ window.GridGraphics = {
         this.updateCharacterFacing(attacker, dy >= 0 ? 'down' : 'up');
     },
 
-    clearAbilityRangeHighlights() {
-        while (this.abilityRangeHighlightGroup.children.length > 0) {
-            const mesh = this.abilityRangeHighlightGroup.children.pop();
-            this.abilityRangeHighlightGroup.remove(mesh);
+    clearHighlightGroup(group) {
+        while (group.children.length > 0) {
+            const mesh = group.children.pop();
+            group.remove(mesh);
             mesh.geometry.dispose();
             mesh.material.dispose();
         }
+    },
+
+    clearAbilityRangeHighlights() {
+        this.clearHighlightGroup(this.abilityRangeHighlightGroup);
+    },
+
+    clearReachableMovementHighlights() {
+        this.clearHighlightGroup(this.reachableHighlightGroup);
+    },
+
+    clearTargetHighlights() {
+        this.clearHighlightGroup(this.targetHighlightGroup);
+    },
+
+    getReachableMovementCells(character) {
+        if (!character || character.isDead || character.actionsRemaining <= 0) {
+            return [];
+        }
+
+        return this.getReachablePositions(character, character.actionsRemaining)
+            .filter((position) => position.steps > 0)
+            .map((position) => ({ gridX: position.x, gridY: position.y }));
     },
 
     getAbilityRangeCells(character, ability) {
@@ -367,6 +389,95 @@ window.GridGraphics = {
             mesh.position.set(x, y, -1);
             this.abilityRangeHighlightGroup.add(mesh);
         });
+    },
+
+    updateReachableMovementHighlights(activeCharacter) {
+        if (!activeCharacter || activeCharacter.isDead || activeCharacter.team !== 'player' || this.isGameOver) {
+            if (this.reachableHighlightState !== '') {
+                this.clearReachableMovementHighlights();
+                this.reachableHighlightState = '';
+            }
+            return;
+        }
+
+        const nextState = [
+            activeCharacter.id,
+            activeCharacter.gridX,
+            activeCharacter.gridY,
+            activeCharacter.actionsRemaining,
+            this.turnTransitionFrames,
+            this.getActiveTurnCharacter() === activeCharacter
+        ].join('|');
+
+        if (this.reachableHighlightState === nextState) {
+            return;
+        }
+
+        this.clearReachableMovementHighlights();
+        this.reachableHighlightState = nextState;
+
+        if (activeCharacter.actionsRemaining <= 0 || this.getActiveTurnCharacter() !== activeCharacter) {
+            return;
+        }
+
+        const cells = this.getReachableMovementCells(activeCharacter);
+        cells.forEach(({ gridX, gridY }) => {
+            const geometry = new THREE.PlaneGeometry(this.cellSize - 14, this.cellSize - 14);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x67c8ff,
+                transparent: true,
+                opacity: 0.12,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            const { x, y } = this.getWorldPositionForCell(gridX, gridY);
+            mesh.position.set(x, y, -1.4);
+            this.reachableHighlightGroup.add(mesh);
+        });
+    },
+
+    updateTargetHighlights(activeCharacter) {
+        const selectedAbility = activeCharacter ? this.getAbilityForCharacter(activeCharacter) : null;
+        const hoveredCharacter = this.hoveredCharacter;
+        const targetInfo = activeCharacter && hoveredCharacter && selectedAbility
+            ? this.getExpectedActionEffect(activeCharacter, hoveredCharacter, selectedAbility)
+            : null;
+
+        const nextState = targetInfo
+            ? [
+                activeCharacter.id,
+                hoveredCharacter.id,
+                hoveredCharacter.gridX,
+                hoveredCharacter.gridY,
+                selectedAbility.id,
+                targetInfo.isValid,
+                targetInfo.withinRange,
+                targetInfo.correctTeam
+            ].join('|')
+            : '';
+
+        if (this.targetHighlightState === nextState) {
+            return;
+        }
+
+        this.clearTargetHighlights();
+        this.targetHighlightState = nextState;
+
+        if (!targetInfo || selectedAbility.type === 'buff') {
+            return;
+        }
+
+        const geometry = new THREE.PlaneGeometry(this.cellSize - 10, this.cellSize - 10);
+        const material = new THREE.MeshBasicMaterial({
+            color: targetInfo.isValid ? 0x7dff9a : 0xff6a6a,
+            transparent: true,
+            opacity: targetInfo.isValid ? 0.24 : 0.18,
+            depthWrite: false
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        const { x, y } = this.getWorldPositionForCell(hoveredCharacter.gridX, hoveredCharacter.gridY);
+        mesh.position.set(x, y, -0.8);
+        this.targetHighlightGroup.add(mesh);
     },
 
     spawnBattleShoutEffect(pos) {

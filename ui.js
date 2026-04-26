@@ -373,8 +373,122 @@ window.GridUI = {
 
         this.container.style.position = 'relative';
         this.container.appendChild(this.victoryText);
+        this.setupTargetPreviewPanel();
         this.setupCharacterInventoryModal();
         this.setupCombatLogWindow();
+    },
+
+    setupTargetPreviewPanel() {
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.left = '50%';
+        panel.style.top = '16px';
+        panel.style.transform = 'translateX(-50%)';
+        panel.style.display = 'none';
+        panel.style.minWidth = '220px';
+        panel.style.maxWidth = 'min(320px, calc(100% - 24px))';
+        panel.style.padding = '10px 12px';
+        panel.style.border = '1px solid rgba(232, 224, 202, 0.20)';
+        panel.style.borderRadius = '10px';
+        panel.style.background = 'linear-gradient(180deg, rgba(24, 25, 31, 0.96), rgba(10, 10, 14, 0.94))';
+        panel.style.boxShadow = '0 14px 32px rgba(0, 0, 0, 0.38)';
+        panel.style.backdropFilter = 'blur(8px)';
+        panel.style.pointerEvents = 'none';
+        panel.style.zIndex = '26';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '12px';
+        title.style.fontWeight = '700';
+        title.style.letterSpacing = '0.04em';
+        title.style.color = '#f0e8d2';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '3px';
+        subtitle.style.fontSize = '10px';
+        subtitle.style.letterSpacing = '0.08em';
+        subtitle.style.textTransform = 'uppercase';
+        subtitle.style.color = '#9da5b7';
+
+        const effect = document.createElement('div');
+        effect.style.marginTop = '8px';
+        effect.style.fontSize = '13px';
+        effect.style.fontWeight = '700';
+        effect.style.color = '#f0e8d2';
+
+        const detail = document.createElement('div');
+        detail.style.marginTop = '4px';
+        detail.style.fontSize = '11px';
+        detail.style.lineHeight = '1.45';
+        detail.style.color = '#bcb29c';
+
+        panel.appendChild(title);
+        panel.appendChild(subtitle);
+        panel.appendChild(effect);
+        panel.appendChild(detail);
+        this.container.appendChild(panel);
+
+        this.targetPreviewPanel = { panel, title, subtitle, effect, detail };
+    },
+
+    updateTargetPreview(activeCharacter) {
+        const preview = this.targetPreviewPanel;
+        if (!preview) {
+            return;
+        }
+
+        const selectedAbility = activeCharacter ? this.getAbilityForCharacter(activeCharacter) : null;
+        const hoveredCharacter = this.hoveredCharacter;
+        const targetInfo = activeCharacter && hoveredCharacter && selectedAbility
+            ? this.getExpectedActionEffect(activeCharacter, hoveredCharacter, selectedAbility)
+            : null;
+
+        if (
+            !activeCharacter ||
+            activeCharacter.isDead ||
+            activeCharacter.team !== 'player' ||
+            !hoveredCharacter ||
+            !selectedAbility ||
+            selectedAbility.type === 'buff' ||
+            !targetInfo
+        ) {
+            preview.panel.style.display = 'none';
+            return;
+        }
+
+        preview.panel.style.display = 'block';
+        preview.title.textContent = `${hoveredCharacter.name} • ${selectedAbility.name}`;
+        preview.title.style.color = hoveredCharacter.accentColor;
+        preview.subtitle.textContent = targetInfo.isValid
+            ? `In Range • ${targetInfo.distance} tile${targetInfo.distance === 1 ? '' : 's'}`
+            : !targetInfo.correctTeam
+                ? 'Invalid Target'
+                : !targetInfo.hasLineOfSight
+                    ? 'Blocked By Wall'
+                : !targetInfo.withinRange
+                    ? `Out of Range • ${targetInfo.distance} tile${targetInfo.distance === 1 ? '' : 's'}`
+                    : !targetInfo.canAfford
+                        ? 'Not Enough MP'
+                        : 'No Actions Remaining';
+        preview.subtitle.style.color = targetInfo.isValid ? '#8ee7a8' : '#ff9f9f';
+
+        const targetHpText = `${hoveredCharacter.hitPoints} / ${hoveredCharacter.maxHitPoints} HP`;
+        if (targetInfo.effectType === 'heal') {
+            preview.effect.textContent = `Restore ${targetInfo.amount} HP`;
+            preview.effect.style.color = '#9af0c0';
+            preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP.`;
+            return;
+        }
+
+        if (targetInfo.effectType === 'damage') {
+            preview.effect.textContent = `Deal ${targetInfo.amount} damage`;
+            preview.effect.style.color = targetInfo.amount >= hoveredCharacter.hitPoints ? '#ffd470' : '#f0e8d2';
+            preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass} • ${targetInfo.damageKind}.`;
+            return;
+        }
+
+        preview.effect.textContent = targetInfo.description;
+        preview.effect.style.color = '#f0e8d2';
+        preview.detail.textContent = targetHpText;
     },
 
     setupCharacterInventoryModal() {

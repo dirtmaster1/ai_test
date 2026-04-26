@@ -38,9 +38,16 @@ class GridScene {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
 
+        this.reachableHighlightGroup = new THREE.Group();
+        this.reachableHighlightState = '';
         this.abilityRangeHighlightGroup = new THREE.Group();
         this.abilityRangeHighlightState = '';
+        this.targetHighlightGroup = new THREE.Group();
+        this.targetHighlightState = '';
+        this.hoveredCharacter = null;
+        this.scene.add(this.reachableHighlightGroup);
         this.scene.add(this.abilityRangeHighlightGroup);
+        this.scene.add(this.targetHighlightGroup);
 
         // Initialize characters from character.js
         this.initializeCharacters();
@@ -315,6 +322,8 @@ class GridScene {
             return;
         }
 
+        this.hoveredCharacter = null;
+
         if (activeCharacter.maxMagicPoints > 0) {
             const mpRegen = activeCharacter.mpRegen ?? 0;
             if (mpRegen > 0) {
@@ -396,10 +405,39 @@ class GridScene {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
 
+        const updatePointerTarget = (event) => {
+            if (this.isGameOver) {
+                this.hoveredCharacter = null;
+                return;
+            }
+
+            const livingCharacters = this.characters.filter((character) => !character.isDead && character.mesh);
+            if (livingCharacters.length === 0) {
+                this.hoveredCharacter = null;
+                return;
+            }
+
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+
+            const intersects = this.raycaster.intersectObjects(livingCharacters.map((character) => character.mesh));
+            const hoveredMesh = intersects[0]?.object ?? null;
+            this.hoveredCharacter = livingCharacters.find((character) => character.mesh === hoveredMesh) || null;
+        };
+
+        this.renderer.domElement.addEventListener('mousemove', updatePointerTarget);
+        this.renderer.domElement.addEventListener('mouseleave', () => {
+            this.hoveredCharacter = null;
+        });
+
         this.renderer.domElement.addEventListener('click', (event) => {
             if (this.isGameOver || !this.isPlayerTurn()) {
                 return;
             }
+
+            updatePointerTarget(event);
 
             const activeCharacter = this.getActiveTurnCharacter();
             if (!activeCharacter || activeCharacter.isDead) {
@@ -532,6 +570,10 @@ class GridScene {
             return false;
         }
 
+        if (this.requiresLineOfSight(resolvedAttackAbility) && !this.hasLineOfSightBetweenCells(attacker.gridX, attacker.gridY, target.gridX, target.gridY)) {
+            return false;
+        }
+
         const damageDealt = Math.max(0, baseDamage - target.armorClass);
 
         this.faceCharacterToward(attacker, target);
@@ -596,6 +638,10 @@ class GridScene {
         const dx = Math.abs(target.gridX - caster.gridX);
         const dy = Math.abs(target.gridY - caster.gridY);
         if (dx > ability.range || dy > ability.range) {
+            return false;
+        }
+
+        if (this.requiresLineOfSight(ability) && !this.hasLineOfSightBetweenCells(caster.gridX, caster.gridY, target.gridX, target.gridY)) {
             return false;
         }
 
@@ -749,6 +795,10 @@ class GridScene {
             return false;
         }
 
+        if (this.requiresLineOfSight(ability) && !this.hasLineOfSightBetweenCells(caster.gridX, caster.gridY, target.gridX, target.gridY)) {
+            return false;
+        }
+
         if (caster !== target) {
             this.faceCharacterToward(caster, target);
         }
@@ -786,6 +836,11 @@ class GridScene {
         character.fadeFrames = 0;
         character.actionsRemaining = 0;
 
+        this.appendCombatLogEntry(
+            `${character.name} dies.`,
+            character.accentColor
+        );
+
         if (character.hitPoints < 0) {
             character.hitPoints = 0;
         }
@@ -806,7 +861,10 @@ class GridScene {
         const activeCharacter = this.getActiveTurnCharacter();
 
         this.updateProjectiles(nowMs);
+        this.updateReachableMovementHighlights(activeCharacter);
         this.updateAbilityRangeHighlights(activeCharacter);
+        this.updateTargetHighlights(activeCharacter);
+        this.updateTargetPreview(activeCharacter);
 
         this.characters.forEach((character) => {
             this.updateCharacterCard(character, activeCharacter);
