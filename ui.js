@@ -119,6 +119,35 @@ window.GridUI = {
         return lines.join('\n');
     },
 
+    getAbilityDescriptionText(ability) {
+        if (!ability) {
+            return 'No description.';
+        }
+
+        if (ability.type === 'heal') {
+            return 'Restore hit points to an ally within range.';
+        }
+
+        if (ability.type === 'buff') {
+            if (ability.id === 'battle-shout') {
+                return 'Bolster nearby allies with extra armor.';
+            }
+            if (ability.id === 'inflict-pain') {
+                return 'Empower nearby allies with extra damage.';
+            }
+            return 'Apply a supportive combat effect.';
+        }
+
+        if (ability.type === 'attack') {
+            if ((ability.range ?? 1) > 1) {
+                return 'Deal damage from a safer distance.';
+            }
+            return 'Deal close-range physical damage.';
+        }
+
+        return 'Use this technique in combat.';
+    },
+
     getCombatLogTimestamp() {
         const now = new Date();
         return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -135,6 +164,28 @@ window.GridUI = {
         }
 
         return 'attack';
+    },
+
+    closeCombatLogWindow() {
+        if (!this.combatLogWindow?.root) {
+            return;
+        }
+
+        this.combatLogWindow.root.style.display = 'none';
+        if (this.combatLogWindow.reopenButton) {
+            this.combatLogWindow.reopenButton.style.display = 'inline-flex';
+        }
+    },
+
+    openCombatLogWindow() {
+        if (!this.combatLogWindow?.root) {
+            this.setupCombatLogWindow();
+        }
+
+        this.combatLogWindow.root.style.display = 'flex';
+        if (this.combatLogWindow.reopenButton) {
+            this.combatLogWindow.reopenButton.style.display = 'none';
+        }
     },
 
     setupCombatLogWindow() {
@@ -209,8 +260,26 @@ window.GridUI = {
         clearButton.style.cursor = 'pointer';
         clearButton.style.pointerEvents = 'auto';
 
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.textContent = 'Close';
+        closeButton.style.padding = '4px 8px';
+        closeButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        closeButton.style.borderRadius = '999px';
+        closeButton.style.background = 'rgba(255,255,255,0.06)';
+        closeButton.style.color = '#d6cbb8';
+        closeButton.style.fontSize = '10px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.style.pointerEvents = 'auto';
+
+        const actionButtons = document.createElement('div');
+        actionButtons.style.display = 'flex';
+        actionButtons.style.gap = '6px';
+        actionButtons.appendChild(clearButton);
+        actionButtons.appendChild(closeButton);
+
         header.appendChild(titleWrap);
-        header.appendChild(clearButton);
+        header.appendChild(actionButtons);
 
         const body = document.createElement('div');
         body.style.flex = '1 1 auto';
@@ -235,6 +304,26 @@ window.GridUI = {
         root.appendChild(header);
         root.appendChild(body);
         document.body.appendChild(root);
+
+        const reopenButton = document.createElement('button');
+        reopenButton.type = 'button';
+        reopenButton.textContent = 'Combat Log';
+        reopenButton.style.position = 'fixed';
+        reopenButton.style.right = '20px';
+        reopenButton.style.bottom = '20px';
+        reopenButton.style.padding = '8px 12px';
+        reopenButton.style.borderRadius = '999px';
+        reopenButton.style.border = '1px solid rgba(232, 224, 202, 0.22)';
+        reopenButton.style.background = 'linear-gradient(180deg, rgba(32, 35, 42, 0.96), rgba(12, 12, 14, 0.96))';
+        reopenButton.style.color = '#efe5d0';
+        reopenButton.style.fontSize = '11px';
+        reopenButton.style.letterSpacing = '0.05em';
+        reopenButton.style.cursor = 'pointer';
+        reopenButton.style.boxShadow = '0 10px 24px rgba(0, 0, 0, 0.35)';
+        reopenButton.style.zIndex = '41';
+        reopenButton.style.display = 'none';
+        reopenButton.style.pointerEvents = 'auto';
+        document.body.appendChild(reopenButton);
 
         const startDrag = (event) => {
             if (event.target === clearButton) {
@@ -273,9 +362,11 @@ window.GridUI = {
             body.appendChild(emptyState);
             this.combatLogEntries = [];
         });
+        closeButton.addEventListener('click', () => this.closeCombatLogWindow());
+        reopenButton.addEventListener('click', () => this.openCombatLogWindow());
 
         this.combatLogEntries = [];
-        this.combatLogWindow = { root, body, emptyState };
+        this.combatLogWindow = { root, body, emptyState, reopenButton };
     },
 
     appendCombatLogEntry(message, accentColor = '#d6cbb8') {
@@ -504,6 +595,10 @@ window.GridUI = {
         overlay.style.zIndex = '30';
 
         const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.left = '50%';
+        panel.style.top = '50%';
+        panel.style.transform = 'translate(-50%, -50%)';
         panel.style.width = 'min(480px, calc(100% - 32px))';
         panel.style.maxHeight = 'min(520px, calc(100% - 32px))';
         panel.style.display = 'flex';
@@ -521,6 +616,8 @@ window.GridUI = {
         header.style.gap = '12px';
         header.style.padding = '16px 18px 12px';
         header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+        header.style.cursor = 'move';
+        header.style.userSelect = 'none';
 
         const titleWrap = document.createElement('div');
         titleWrap.style.minWidth = '0';
@@ -580,8 +677,28 @@ window.GridUI = {
         equipmentTabButton.style.cursor = 'pointer';
         equipmentTabButton.addEventListener('click', () => this.setCharacterInventoryTab('equipment'));
 
+        const abilitiesTabButton = document.createElement('button');
+        abilitiesTabButton.type = 'button';
+        abilitiesTabButton.textContent = 'Abilities';
+        abilitiesTabButton.style.padding = '8px 12px';
+        abilitiesTabButton.style.borderRadius = '8px 8px 0 0';
+        abilitiesTabButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        abilitiesTabButton.style.cursor = 'pointer';
+        abilitiesTabButton.addEventListener('click', () => this.setCharacterInventoryTab('abilities'));
+
+        const spellsTabButton = document.createElement('button');
+        spellsTabButton.type = 'button';
+        spellsTabButton.textContent = 'Spells';
+        spellsTabButton.style.padding = '8px 12px';
+        spellsTabButton.style.borderRadius = '8px 8px 0 0';
+        spellsTabButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        spellsTabButton.style.cursor = 'pointer';
+        spellsTabButton.addEventListener('click', () => this.setCharacterInventoryTab('spells'));
+
         tabBar.appendChild(infoTabButton);
         tabBar.appendChild(equipmentTabButton);
+        tabBar.appendChild(abilitiesTabButton);
+        tabBar.appendChild(spellsTabButton);
         panel.appendChild(tabBar);
 
         const content = document.createElement('div');
@@ -591,11 +708,53 @@ window.GridUI = {
         content.style.pointerEvents = 'auto';
         panel.appendChild(content);
 
+        let suppressOverlayClose = false;
+
         overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) {
+            if (event.target === overlay && !suppressOverlayClose) {
                 this.closeCharacterInventory();
             }
+
+            suppressOverlayClose = false;
         });
+
+        const startDrag = (event) => {
+            if (event.target === closeButton) {
+                return;
+            }
+
+            event.preventDefault();
+            const rect = panel.getBoundingClientRect();
+            const overlayRect = overlay.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+            panel.style.left = `${rect.left - overlayRect.left}px`;
+            panel.style.top = `${rect.top - overlayRect.top}px`;
+            panel.style.transform = 'none';
+
+            let hasMoved = false;
+
+            const onMove = (moveEvent) => {
+                hasMoved = true;
+                const maxLeft = Math.max(8, overlay.clientWidth - panel.offsetWidth - 8);
+                const maxTop = Math.max(8, overlay.clientHeight - panel.offsetHeight - 8);
+                const nextLeft = Math.min(Math.max(8, moveEvent.clientX - overlayRect.left - offsetX), maxLeft);
+                const nextTop = Math.min(Math.max(8, moveEvent.clientY - overlayRect.top - offsetY), maxTop);
+                panel.style.left = `${nextLeft}px`;
+                panel.style.top = `${nextTop}px`;
+            };
+
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                suppressOverlayClose = hasMoved;
+            };
+
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+        };
+
+        header.addEventListener('pointerdown', startDrag);
 
         panel.addEventListener('click', (event) => event.stopPropagation());
         overlay.appendChild(panel);
@@ -608,6 +767,8 @@ window.GridUI = {
             subtitle,
             infoTabButton,
             equipmentTabButton,
+            abilitiesTabButton,
+            spellsTabButton,
             content,
             closeButton
         };
@@ -633,7 +794,7 @@ window.GridUI = {
     },
 
     setCharacterInventoryTab(tab) {
-        if (tab !== 'info' && tab !== 'equipment') {
+        if (tab !== 'info' && tab !== 'equipment' && tab !== 'abilities' && tab !== 'spells') {
             return;
         }
 
@@ -648,20 +809,35 @@ window.GridUI = {
             return;
         }
 
-        modal.title.textContent = character.name;
+        modal.title.textContent = `${character.name} Lv ${character.level ?? 1}`;
         modal.title.style.color = character.accentColor;
         modal.subtitle.textContent = `${character.role} • ${character.race} • ${character.team}`;
 
         const isInfoTab = this.activeInventoryTab === 'info';
+        const isEquipmentTab = this.activeInventoryTab === 'equipment';
+        const isAbilitiesTab = this.activeInventoryTab === 'abilities';
+        const isSpellsTab = this.activeInventoryTab === 'spells';
         this.setCharacterInventoryTabState(modal.infoTabButton, isInfoTab, character.accentColor);
-        this.setCharacterInventoryTabState(modal.equipmentTabButton, !isInfoTab, character.accentColor);
+        this.setCharacterInventoryTabState(modal.equipmentTabButton, isEquipmentTab, character.accentColor);
+        this.setCharacterInventoryTabState(modal.abilitiesTabButton, isAbilitiesTab, character.accentColor);
+        this.setCharacterInventoryTabState(modal.spellsTabButton, isSpellsTab, character.accentColor);
 
         if (isInfoTab) {
             this.renderCharacterInfoTab(character);
             return;
         }
 
-        this.renderCharacterEquipmentTab(character);
+        if (isEquipmentTab) {
+            this.renderCharacterEquipmentTab(character);
+            return;
+        }
+
+        if (isAbilitiesTab) {
+            this.renderCharacterAbilitiesTab(character);
+            return;
+        }
+
+        this.renderCharacterSpellsTab(character);
     },
 
     setCharacterInventoryTabState(button, isActive, accentColor) {
@@ -685,6 +861,8 @@ window.GridUI = {
         const wisdomHealingBonus = Math.floor(Math.max(0, (character.wisdom ?? 10) - 10) / 2);
 
         const infoStats = [
+            { label: 'Level', value: String(character.level ?? 1) },
+            { label: 'Experience Points', value: String(character.experiencePoints ?? 0) },
             { label: 'Hit Points', value: `${character.hitPoints} / ${character.maxHitPoints}` },
             { label: 'Magic Points', value: `${character.magicPoints} / ${character.maxMagicPoints}` },
             { label: 'Initiative', value: String(character.initiative ?? 0) },
@@ -805,6 +983,164 @@ window.GridUI = {
         modal.content.appendChild(slotGrid);
     },
 
+    renderCharacterAbilitiesTab(character) {
+        const modal = this.characterInventoryModal;
+        if (!modal) {
+            return;
+        }
+
+        const nonSpellAbilities = (character.abilities ?? []).filter((ability) => ability.type !== 'spell' && ability.type !== 'heal');
+
+        modal.content.innerHTML = '';
+
+        const intro = document.createElement('div');
+        intro.style.marginBottom = '14px';
+        intro.style.fontSize = '12px';
+        intro.style.color = '#a89c82';
+        intro.textContent = 'Combat abilities currently known (spells excluded).';
+        modal.content.appendChild(intro);
+
+        if (nonSpellAbilities.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '14px';
+            emptyState.style.border = '1px dashed rgba(255,255,255,0.18)';
+            emptyState.style.borderRadius = '10px';
+            emptyState.style.color = '#8f856f';
+            emptyState.style.fontSize = '12px';
+            emptyState.textContent = 'No non-spell abilities available.';
+            modal.content.appendChild(emptyState);
+            return;
+        }
+
+        const abilityList = document.createElement('div');
+        abilityList.style.display = 'grid';
+        abilityList.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+        abilityList.style.gap = '10px';
+
+        nonSpellAbilities.forEach((ability) => {
+            const card = document.createElement('div');
+            card.style.padding = '12px';
+            card.style.border = '1px solid rgba(255,255,255,0.08)';
+            card.style.borderRadius = '10px';
+            card.style.background = 'rgba(255,255,255,0.03)';
+
+            const name = document.createElement('div');
+            name.style.fontSize = '14px';
+            name.style.fontWeight = '700';
+            name.style.color = '#f0e8d2';
+            name.textContent = ability.name;
+
+            const details = document.createElement('div');
+            details.style.marginTop = '4px';
+            details.style.fontSize = '11px';
+            details.style.color = '#b5aa94';
+            details.textContent = this.getAbilityDetailText(character, ability);
+
+            const stats = document.createElement('div');
+            stats.style.marginTop = '8px';
+            stats.style.fontSize = '11px';
+            stats.style.color = '#8f856f';
+            const rangeText = `Range ${ability.range ?? 1}`;
+            const costText = `Cost ${ability.mpCost ?? 0} MP`;
+            const typeText = `Type ${ability.type}`;
+            stats.textContent = `${typeText} • ${rangeText} • ${costText}`;
+
+            const desc = document.createElement('div');
+            desc.style.marginTop = '8px';
+            desc.style.fontSize = '12px';
+            desc.style.lineHeight = '1.45';
+            desc.style.color = '#d6ccb7';
+            desc.textContent = this.getAbilityDescriptionText(ability);
+
+            card.appendChild(name);
+            card.appendChild(details);
+            card.appendChild(stats);
+            card.appendChild(desc);
+            abilityList.appendChild(card);
+        });
+
+        modal.content.appendChild(abilityList);
+    },
+
+    renderCharacterSpellsTab(character) {
+        const modal = this.characterInventoryModal;
+        if (!modal) {
+            return;
+        }
+
+        const spells = (character.abilities ?? []).filter((ability) => ability.type === 'spell' || ability.type === 'heal');
+
+        modal.content.innerHTML = '';
+
+        const intro = document.createElement('div');
+        intro.style.marginBottom = '14px';
+        intro.style.fontSize = '12px';
+        intro.style.color = '#a89c82';
+        intro.textContent = 'Known spells and magical techniques.';
+        modal.content.appendChild(intro);
+
+        if (spells.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '14px';
+            emptyState.style.border = '1px dashed rgba(255,255,255,0.18)';
+            emptyState.style.borderRadius = '10px';
+            emptyState.style.color = '#8f856f';
+            emptyState.style.fontSize = '12px';
+            emptyState.textContent = 'No spells available.';
+            modal.content.appendChild(emptyState);
+            return;
+        }
+
+        const spellList = document.createElement('div');
+        spellList.style.display = 'grid';
+        spellList.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+        spellList.style.gap = '10px';
+
+        spells.forEach((spell) => {
+            const card = document.createElement('div');
+            card.style.padding = '12px';
+            card.style.border = '1px solid rgba(255,255,255,0.08)';
+            card.style.borderRadius = '10px';
+            card.style.background = 'rgba(255,255,255,0.03)';
+
+            const name = document.createElement('div');
+            name.style.fontSize = '14px';
+            name.style.fontWeight = '700';
+            name.style.color = '#f0e8d2';
+            name.textContent = spell.name;
+
+            const details = document.createElement('div');
+            details.style.marginTop = '4px';
+            details.style.fontSize = '11px';
+            details.style.color = '#b5aa94';
+            details.textContent = this.getAbilityDetailText(character, spell);
+
+            const stats = document.createElement('div');
+            stats.style.marginTop = '8px';
+            stats.style.fontSize = '11px';
+            stats.style.color = '#8f856f';
+            const rangeText = `Range ${spell.range ?? 1}`;
+            const costText = `Cost ${spell.mpCost ?? 0} MP`;
+            const typeText = `Type ${spell.type}`;
+            stats.textContent = `${typeText} • ${rangeText} • ${costText}`;
+
+            const desc = document.createElement('div');
+            desc.style.marginTop = '8px';
+            desc.style.fontSize = '12px';
+            desc.style.lineHeight = '1.45';
+            desc.style.color = '#d6ccb7';
+            desc.textContent = this.getAbilityDescriptionText(spell);
+
+            card.appendChild(name);
+            card.appendChild(details);
+            card.appendChild(stats);
+            card.appendChild(desc);
+            spellList.appendChild(card);
+        });
+
+        modal.content.appendChild(spellList);
+    },
+
     createPartySection(title, subtitle) {
         const section = document.createElement('section');
         section.style.marginBottom = '16px';
@@ -904,7 +1240,7 @@ window.GridUI = {
         nameText.style.fontWeight = 'bold';
         nameText.style.lineHeight = '1.15';
         nameText.style.color = character.accentColor;
-        nameText.textContent = character.name;
+        nameText.textContent = `${character.name} Lv ${character.level ?? 1}`;
 
         const acBadge = document.createElement('div');
         acBadge.style.fontSize = '8px';
@@ -1159,6 +1495,7 @@ window.GridUI = {
         hud.mpText.style.color = character.isDead ? deadColor : '#c8d8ff';
 
         hud.card.style.opacity = character.isDead ? '0.65' : '1';
+        hud.nameText.textContent = `${character.name} Lv ${character.level ?? 1}`;
         hud.nameText.style.color = character.isDead ? deadColor : character.accentColor;
 
         hud.hpText.style.color = character.isDead ? deadColor : aliveInfoColor;

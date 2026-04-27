@@ -41,6 +41,8 @@ window.CharacterData = {
         return {
             id: config.id,
             name: config.name,
+            level: config.level ?? 1,
+            experiencePoints: config.experiencePoints ?? 0,
             role: config.role,
             team: config.team,
             accentColor: config.accentColor,
@@ -164,11 +166,11 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 8,
             maxMagicPoints: 8,
-            meleeAttackDamage: 4,
+            meleeAttackDamage: 6,
             armorClass: 2,
             equipment: {
                 body: 'Chain Mail (+2 AC)',
-                hands: '1H Mace (4 DMG)'
+                hands: '1H Mace (6 DMG)'
             },
             abilities: [
                 { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
@@ -222,6 +224,7 @@ window.CharacterData = {
             wisdom: 4,
             hitPoints: 8,
             maxHitPoints: 8,
+            experiencePoints: 220,
             armorClass: 1
         });
 
@@ -241,6 +244,7 @@ window.CharacterData = {
             wisdom: 6,
             hitPoints: 6,
             maxHitPoints: 6,
+            experiencePoints: 240,
             magicPoints: 0,
             maxMagicPoints: 0,
             meleeAttackDamage: 4,
@@ -266,6 +270,7 @@ window.CharacterData = {
             wisdom: 12,
             hitPoints: 5,
             maxHitPoints: 5,
+            experiencePoints: 260,
             magicPoints: 10,
             maxMagicPoints: 10,
             meleeAttackDamage: 3,
@@ -292,6 +297,7 @@ window.CharacterData = {
             wisdom: 2,
             hitPoints: 12,
             maxHitPoints: 12,
+            experiencePoints: 320,
             meleeAttackDamage: 6,
             armorClass: 2
         });

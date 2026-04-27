@@ -582,10 +582,10 @@ class GridScene {
             const targetPos = this.getCharacterWorldPos(target);
             this.spawnArrowProjectile(attackerPos, targetPos, () => {
                 this.spawnArrowImpactEffect(targetPos);
-                this.applyPhysicalAttackDamage(target, baseDamage);
+                this.applyPhysicalAttackDamage(target, baseDamage, attacker);
             });
         } else {
-            this.applyPhysicalAttackDamage(target, baseDamage);
+            this.applyPhysicalAttackDamage(target, baseDamage, attacker);
         }
 
         this.appendCombatLogEntry(
@@ -601,7 +601,7 @@ class GridScene {
         return true;
     }
 
-    applyPhysicalAttackDamage(target, baseDamage) {
+    applyPhysicalAttackDamage(target, baseDamage, attacker = null) {
         if (!target || target.isDead) {
             return;
         }
@@ -612,7 +612,7 @@ class GridScene {
 
         if (target.hitPoints <= 0) {
             target.hitPoints = 0;
-            this.markCharacterDead(target);
+            this.markCharacterDead(target, attacker);
         }
     }
 
@@ -665,7 +665,7 @@ class GridScene {
         this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
             this.playHitAnimation(target);
             if (lethal) {
-                this.markCharacterDead(target);
+                this.markCharacterDead(target, caster);
             }
         });
 
@@ -827,7 +827,61 @@ class GridScene {
 
     // --- Death / Game State ---
 
-    markCharacterDead(character) {
+    getTotalExperienceRequiredForLevel(level) {
+        if (level <= 1) {
+            return 0;
+        }
+
+        return 500 * Math.pow(2, level - 2);
+    }
+
+    addExperienceToPlayer(character, amount) {
+        if (!character || character.team !== 'player' || amount <= 0) {
+            return;
+        }
+
+        character.experiencePoints = (character.experiencePoints ?? 0) + amount;
+
+        let nextLevel = (character.level ?? 1) + 1;
+        while (character.experiencePoints >= this.getTotalExperienceRequiredForLevel(nextLevel)) {
+            character.level = nextLevel;
+            nextLevel += 1;
+        }
+    }
+
+    awardEnemyDefeatExperience(defeatedEnemy, defeatedBy) {
+        if (!defeatedEnemy || defeatedEnemy.team !== 'ai' || defeatedBy?.team !== 'player') {
+            return;
+        }
+
+        const totalExperience = Math.max(0, Math.floor(defeatedEnemy.experiencePoints ?? 0));
+        if (totalExperience <= 0) {
+            return;
+        }
+
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        if (alivePlayers.length === 0) {
+            return;
+        }
+
+        const baseShare = Math.floor(totalExperience / alivePlayers.length);
+        let remainder = totalExperience % alivePlayers.length;
+
+        alivePlayers.forEach((playerCharacter) => {
+            const share = baseShare + (remainder > 0 ? 1 : 0);
+            if (remainder > 0) {
+                remainder -= 1;
+            }
+            this.addExperienceToPlayer(playerCharacter, share);
+        });
+
+        this.appendCombatLogEntry(
+            `Party gains ${totalExperience} experience points for killing a ${defeatedEnemy.name}.`,
+            '#d9c47d'
+        );
+    }
+
+    markCharacterDead(character, defeatedBy = null) {
         if (character.isDead) {
             return;
         }
@@ -840,6 +894,8 @@ class GridScene {
             `${character.name} dies.`,
             character.accentColor
         );
+
+        this.awardEnemyDefeatExperience(character, defeatedBy);
 
         if (character.hitPoints < 0) {
             character.hitPoints = 0;
