@@ -93,6 +93,81 @@ window.GridGraphics = {
         this.scene.add(mesh);
     },
 
+    createLootBagTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, 16, 16);
+
+        ctx.fillStyle = '#b88948';
+        ctx.beginPath();
+        ctx.moveTo(3, 7);
+        ctx.quadraticCurveTo(2, 13, 8, 14);
+        ctx.quadraticCurveTo(14, 13, 13, 7);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#6d4a22';
+        ctx.fillRect(5, 7, 6, 2);
+
+        ctx.strokeStyle = '#f2d7a8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(8, 2);
+        ctx.lineTo(8, 7);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#d1b07b';
+        ctx.beginPath();
+        ctx.moveTo(5, 5);
+        ctx.quadraticCurveTo(8, 1, 11, 5);
+        ctx.stroke();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+    },
+
+    updateLootBagMarkers() {
+        const drops = [...this.lootDropsByCell.values()];
+        const nextState = drops
+            .map((drop) => `${drop.gridX},${drop.gridY},${drop.gold},${drop.gems.length}`)
+            .sort()
+            .join('|');
+
+        if (this.lootBagState === nextState) {
+            return;
+        }
+
+        this.lootBagState = nextState;
+        this.clearHighlightGroup(this.lootBagGroup);
+
+        if (drops.length === 0) {
+            return;
+        }
+
+        if (!this.lootBagTexture) {
+            this.lootBagTexture = this.createLootBagTexture();
+        }
+
+        drops.forEach((drop) => {
+            const geo = new THREE.PlaneGeometry(this.cellSize - 24, this.cellSize - 24);
+            const mat = new THREE.MeshBasicMaterial({
+                map: this.lootBagTexture,
+                transparent: true,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            const { x, y } = this.getWorldPositionForCell(drop.gridX, drop.gridY);
+            mesh.position.set(x, y, -0.35);
+            mesh.userData.lootCellKey = this.getCellKey(drop.gridX, drop.gridY);
+            this.lootBagGroup.add(mesh);
+        });
+    },
+
     drawDungeonTile(ctx, tileType, px, py, T, cx, cy) {
         if (tileType === this.TILE_VOID) {
             ctx.fillStyle = '#000000';
@@ -216,8 +291,42 @@ window.GridGraphics = {
         return this.getWorldPositionForCell(character.gridX, character.gridY);
     },
 
+    focusCameraOnCharacter(character, durationMs = 1800) {
+        if (!character || character.isDead) {
+            return;
+        }
+
+        this.cameraFocusCharacterId = character.id;
+        this.cameraFocusExpiresAt = performance.now() + Math.max(250, durationMs);
+        this.updateCamera();
+    },
+
+    getTemporaryCameraFocusCharacter() {
+        if (!this.cameraFocusCharacterId || !this.cameraFocusExpiresAt) {
+            return null;
+        }
+
+        if (performance.now() > this.cameraFocusExpiresAt) {
+            this.cameraFocusCharacterId = null;
+            this.cameraFocusExpiresAt = 0;
+            return null;
+        }
+
+        const focusedCharacter = this.characters.find((character) =>
+            character.id === this.cameraFocusCharacterId &&
+            !character.isDead
+        ) || null;
+
+        if (!focusedCharacter) {
+            this.cameraFocusCharacterId = null;
+            this.cameraFocusExpiresAt = 0;
+        }
+
+        return focusedCharacter;
+    },
+
     updateCamera() {
-        const focusCharacter = this.getActiveTurnCharacter() || this.getAliveTurnOrder()[0] || this.characters[0];
+        const focusCharacter = this.getTemporaryCameraFocusCharacter() || this.getActiveTurnCharacter() || this.getAliveTurnOrder()[0] || this.characters[0];
         if (!focusCharacter) {
             return;
         }

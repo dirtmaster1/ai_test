@@ -426,6 +426,10 @@ window.GridUI = {
         hudRoot.innerHTML = '';
         this.activeInventoryCharacter = null;
         this.activeInventoryTab = 'info';
+        this.turnQueueState = '';
+
+        const turnQueueSection = this.createTurnOrderQueuePanel();
+        hudRoot.appendChild(turnQueueSection.section);
 
         const playerSection = this.createPartySection('Player Party', 'Acts individually in turn order');
         const enemySection = this.createPartySection('Enemy Party', 'Victory when every enemy falls');
@@ -466,7 +470,161 @@ window.GridUI = {
         this.container.appendChild(this.victoryText);
         this.setupTargetPreviewPanel();
         this.setupCharacterInventoryModal();
+        this.setupLootMenuWindow();
         this.setupCombatLogWindow();
+        this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+    },
+
+    createTurnOrderQueuePanel() {
+        const section = document.createElement('section');
+        section.style.marginBottom = '16px';
+        section.style.padding = '10px';
+        section.style.border = '1px solid rgba(232, 224, 202, 0.18)';
+        section.style.borderRadius = '8px';
+        section.style.background = 'linear-gradient(180deg, rgba(21, 20, 18, 0.95), rgba(10, 10, 10, 0.95))';
+        section.style.pointerEvents = 'auto';
+
+        const heading = document.createElement('div');
+        heading.style.marginBottom = '8px';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '12px';
+        title.style.fontWeight = '700';
+        title.style.letterSpacing = '0.08em';
+        title.style.textTransform = 'uppercase';
+        title.style.color = '#e3d6bb';
+        title.textContent = 'Turn Queue';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '2px';
+        subtitle.style.fontSize = '10px';
+        subtitle.style.color = '#8d8169';
+        subtitle.textContent = 'Current + upcoming turns';
+
+        heading.appendChild(title);
+        heading.appendChild(subtitle);
+        section.appendChild(heading);
+
+        const list = document.createElement('div');
+        list.style.display = 'grid';
+        list.style.gap = '6px';
+        section.appendChild(list);
+
+        this.turnOrderQueuePanel = { section, list };
+        return this.turnOrderQueuePanel;
+    },
+
+    updateTurnOrderQueue(activeCharacter) {
+        if (!this.turnOrderQueuePanel?.list) {
+            return;
+        }
+
+        const aliveTurnOrder = this.getAliveTurnOrder();
+        const maxVisibleTurns = 6;
+
+        const sequenceIds = [];
+        if (aliveTurnOrder.length > 0) {
+            const activeIndex = Math.max(0, aliveTurnOrder.indexOf(activeCharacter));
+            for (let offset = 0; offset < Math.min(maxVisibleTurns, aliveTurnOrder.length); offset += 1) {
+                const queueCharacter = aliveTurnOrder[(activeIndex + offset) % aliveTurnOrder.length];
+                sequenceIds.push(queueCharacter.id);
+            }
+        }
+
+        const nextState = `${activeCharacter?.id ?? 'none'}|${sequenceIds.join('|')}`;
+        if (this.turnQueueState === nextState) {
+            return;
+        }
+
+        this.turnQueueState = nextState;
+        const list = this.turnOrderQueuePanel.list;
+        list.innerHTML = '';
+
+        if (sequenceIds.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '8px';
+            emptyState.style.border = '1px dashed rgba(255,255,255,0.14)';
+            emptyState.style.borderRadius = '6px';
+            emptyState.style.fontSize = '11px';
+            emptyState.style.color = '#8f856f';
+            emptyState.textContent = 'No active turns.';
+            list.appendChild(emptyState);
+            return;
+        }
+
+        sequenceIds.forEach((characterId, queueIndex) => {
+            const queueCharacter = this.characters.find((character) => character.id === characterId);
+            if (!queueCharacter) {
+                return;
+            }
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '8px';
+            row.style.padding = '7px 8px';
+            row.style.borderRadius = '6px';
+            row.style.cursor = 'pointer';
+            row.style.pointerEvents = 'auto';
+            row.style.border = `1px solid ${this.hexToRgba(queueCharacter.accentColor, queueIndex === 0 ? 0.85 : 0.45)}`;
+            row.style.background = queueIndex === 0
+                ? `linear-gradient(180deg, ${this.hexToRgba(queueCharacter.accentColor, 0.26)}, rgba(17, 16, 15, 0.95))`
+                : 'rgba(255,255,255,0.03)';
+            row.setAttribute('role', 'button');
+            row.setAttribute('tabindex', '0');
+            row.setAttribute('aria-label', `Focus camera on ${queueCharacter.name}`);
+
+            const left = document.createElement('div');
+            left.style.minWidth = '0';
+
+            const name = document.createElement('div');
+            name.style.fontSize = '11px';
+            name.style.fontWeight = '700';
+            name.style.color = queueCharacter.accentColor;
+            name.style.whiteSpace = 'nowrap';
+            name.style.overflow = 'hidden';
+            name.style.textOverflow = 'ellipsis';
+            name.textContent = queueCharacter.name;
+
+            const meta = document.createElement('div');
+            meta.style.marginTop = '2px';
+            meta.style.fontSize = '10px';
+            meta.style.color = '#a89c82';
+            meta.textContent = `${queueCharacter.team === 'player' ? 'Player' : 'Enemy'} • Init ${queueCharacter.initiative ?? 0}`;
+
+            left.appendChild(name);
+            left.appendChild(meta);
+
+            const badge = document.createElement('div');
+            badge.style.flexShrink = '0';
+            badge.style.padding = '2px 6px';
+            badge.style.borderRadius = '999px';
+            badge.style.fontSize = '9px';
+            badge.style.letterSpacing = '0.06em';
+            badge.style.textTransform = 'uppercase';
+            badge.style.border = '1px solid rgba(255,255,255,0.18)';
+            badge.style.color = queueIndex === 0 ? '#f0e8d2' : '#bcb29c';
+            badge.style.background = queueIndex === 0 ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)';
+            badge.textContent = queueIndex === 0 ? 'Now' : `+${queueIndex}`;
+
+            row.appendChild(left);
+            row.appendChild(badge);
+
+            const focusQueuedCharacter = () => {
+                this.focusCameraOnCharacter(queueCharacter, 1800);
+            };
+
+            row.addEventListener('click', focusQueuedCharacter);
+            row.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    focusQueuedCharacter();
+                }
+            });
+
+            list.appendChild(row);
+        });
     },
 
     setupTargetPreviewPanel() {
@@ -582,6 +740,228 @@ window.GridUI = {
         preview.detail.textContent = targetHpText;
     },
 
+    setupLootMenuWindow() {
+        if (this.lootMenuWindow?.overlay) {
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.style.position = 'absolute';
+        overlay.style.inset = '0';
+        overlay.style.display = 'none';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.background = 'rgba(4, 5, 8, 0.72)';
+        overlay.style.backdropFilter = 'blur(4px)';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.zIndex = '34';
+
+        const panel = document.createElement('div');
+        panel.style.width = 'min(460px, calc(100% - 32px))';
+        panel.style.maxHeight = 'min(520px, calc(100% - 32px))';
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.borderRadius = '12px';
+        panel.style.border = '1px solid rgba(232, 224, 202, 0.22)';
+        panel.style.background = 'linear-gradient(180deg, rgba(25, 24, 28, 0.98), rgba(12, 12, 14, 0.98))';
+        panel.style.boxShadow = '0 20px 50px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04)';
+        panel.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
+        header.style.padding = '14px 16px 10px';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+
+        const titleWrap = document.createElement('div');
+        const title = document.createElement('div');
+        title.style.fontSize = '18px';
+        title.style.fontWeight = '700';
+        title.style.color = '#f0e8d2';
+        title.textContent = 'Loot Bag';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '4px';
+        subtitle.style.fontSize = '11px';
+        subtitle.style.letterSpacing = '0.08em';
+        subtitle.style.textTransform = 'uppercase';
+        subtitle.style.color = '#a89c82';
+
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(subtitle);
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.textContent = 'Close';
+        closeButton.style.padding = '7px 10px';
+        closeButton.style.borderRadius = '6px';
+        closeButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        closeButton.style.background = 'rgba(255,255,255,0.06)';
+        closeButton.style.color = '#f0e8d2';
+        closeButton.style.fontSize = '11px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.addEventListener('click', () => this.closeLootMenu());
+
+        header.appendChild(titleWrap);
+        header.appendChild(closeButton);
+        panel.appendChild(header);
+
+        const content = document.createElement('div');
+        content.style.padding = '14px 16px 16px';
+        content.style.overflowY = 'auto';
+        content.style.minHeight = '180px';
+        panel.appendChild(content);
+
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                this.closeLootMenu();
+            }
+        });
+
+        panel.addEventListener('click', (event) => event.stopPropagation());
+        overlay.appendChild(panel);
+        this.container.appendChild(overlay);
+
+        this.lootMenuWindow = {
+            overlay,
+            panel,
+            title,
+            subtitle,
+            content,
+            closeButton
+        };
+    },
+
+    openLootMenu(cellKey) {
+        if (!this.lootMenuWindow) {
+            this.setupLootMenuWindow();
+        }
+
+        this.activeLootCellKey = cellKey;
+        this.lootMenuWindow.overlay.style.display = 'flex';
+        this.renderLootMenuForCell(cellKey);
+    },
+
+    closeLootMenu() {
+        if (!this.lootMenuWindow) {
+            return;
+        }
+
+        this.lootMenuWindow.overlay.style.display = 'none';
+        this.activeLootCellKey = null;
+    },
+
+    renderLootMenuForCell(cellKey) {
+        const modal = this.lootMenuWindow;
+        if (!modal || !cellKey) {
+            return;
+        }
+
+        const drop = this.lootDropsByCell.get(cellKey);
+        if (!drop) {
+            this.closeLootMenu();
+            return;
+        }
+
+        const items = this.getLootMenuItemsForCell(cellKey);
+        modal.title.textContent = 'Loot Bag';
+        modal.subtitle.textContent = `Cell (${drop.gridX}, ${drop.gridY})`;
+        modal.content.innerHTML = '';
+
+        if (items.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.padding = '12px';
+            empty.style.border = '1px dashed rgba(255,255,255,0.18)';
+            empty.style.borderRadius = '10px';
+            empty.style.fontSize = '12px';
+            empty.style.color = '#8f856f';
+            empty.textContent = 'This bag is empty.';
+            modal.content.appendChild(empty);
+            return;
+        }
+
+        const info = document.createElement('div');
+        info.style.marginBottom = '10px';
+        info.style.fontSize = '12px';
+        info.style.color = '#a89c82';
+        info.textContent = 'Choose which items to take and which to leave on the ground.';
+        modal.content.appendChild(info);
+
+        const list = document.createElement('div');
+        list.style.display = 'grid';
+        list.style.gap = '8px';
+        modal.content.appendChild(list);
+
+        items.forEach((item) => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.padding = '10px 12px';
+            row.style.border = '1px solid rgba(255,255,255,0.08)';
+            row.style.borderRadius = '10px';
+            row.style.background = 'rgba(255,255,255,0.03)';
+
+            const text = document.createElement('div');
+            text.style.display = 'flex';
+            text.style.flexDirection = 'column';
+            text.style.minWidth = '0';
+
+            const label = document.createElement('div');
+            label.style.fontSize = '13px';
+            label.style.fontWeight = '700';
+            label.style.color = item.accentColor;
+            label.textContent = item.label;
+
+            const quantity = document.createElement('div');
+            quantity.style.marginTop = '3px';
+            quantity.style.fontSize = '11px';
+            quantity.style.color = '#cfc4ae';
+            quantity.textContent = `Quantity: ${item.quantity}`;
+
+            text.appendChild(label);
+            text.appendChild(quantity);
+            row.appendChild(text);
+
+            const controls = document.createElement('div');
+            controls.style.display = 'flex';
+            controls.style.gap = '6px';
+            controls.style.flexShrink = '0';
+
+            const takeButton = document.createElement('button');
+            takeButton.type = 'button';
+            takeButton.textContent = 'Take';
+            takeButton.style.padding = '6px 9px';
+            takeButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            takeButton.style.borderRadius = '6px';
+            takeButton.style.background = 'rgba(78, 126, 54, 0.35)';
+            takeButton.style.color = '#dff2d4';
+            takeButton.style.fontSize = '11px';
+            takeButton.style.cursor = 'pointer';
+            takeButton.addEventListener('click', () => this.takeLootItem(cellKey, item.itemKey));
+
+            const leaveButton = document.createElement('button');
+            leaveButton.type = 'button';
+            leaveButton.textContent = 'Leave';
+            leaveButton.style.padding = '6px 9px';
+            leaveButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            leaveButton.style.borderRadius = '6px';
+            leaveButton.style.background = 'rgba(140, 104, 64, 0.28)';
+            leaveButton.style.color = '#d9c7a8';
+            leaveButton.style.fontSize = '11px';
+            leaveButton.style.cursor = 'pointer';
+            leaveButton.addEventListener('click', () => this.leaveLootItemOnGround(cellKey, item.itemKey));
+
+            controls.appendChild(takeButton);
+            controls.appendChild(leaveButton);
+            row.appendChild(controls);
+            list.appendChild(row);
+        });
+    },
+
     setupCharacterInventoryModal() {
         const overlay = document.createElement('div');
         overlay.style.position = 'absolute';
@@ -695,10 +1075,20 @@ window.GridUI = {
         spellsTabButton.style.cursor = 'pointer';
         spellsTabButton.addEventListener('click', () => this.setCharacterInventoryTab('spells'));
 
+        const sharedLootTabButton = document.createElement('button');
+        sharedLootTabButton.type = 'button';
+        sharedLootTabButton.textContent = 'Shared Loot';
+        sharedLootTabButton.style.padding = '8px 12px';
+        sharedLootTabButton.style.borderRadius = '8px 8px 0 0';
+        sharedLootTabButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        sharedLootTabButton.style.cursor = 'pointer';
+        sharedLootTabButton.addEventListener('click', () => this.setCharacterInventoryTab('shared'));
+
         tabBar.appendChild(infoTabButton);
         tabBar.appendChild(equipmentTabButton);
         tabBar.appendChild(abilitiesTabButton);
         tabBar.appendChild(spellsTabButton);
+        tabBar.appendChild(sharedLootTabButton);
         panel.appendChild(tabBar);
 
         const content = document.createElement('div');
@@ -769,6 +1159,7 @@ window.GridUI = {
             equipmentTabButton,
             abilitiesTabButton,
             spellsTabButton,
+            sharedLootTabButton,
             content,
             closeButton
         };
@@ -794,7 +1185,7 @@ window.GridUI = {
     },
 
     setCharacterInventoryTab(tab) {
-        if (tab !== 'info' && tab !== 'equipment' && tab !== 'abilities' && tab !== 'spells') {
+        if (tab !== 'info' && tab !== 'equipment' && tab !== 'abilities' && tab !== 'spells' && tab !== 'shared') {
             return;
         }
 
@@ -817,10 +1208,12 @@ window.GridUI = {
         const isEquipmentTab = this.activeInventoryTab === 'equipment';
         const isAbilitiesTab = this.activeInventoryTab === 'abilities';
         const isSpellsTab = this.activeInventoryTab === 'spells';
+        const isSharedLootTab = this.activeInventoryTab === 'shared';
         this.setCharacterInventoryTabState(modal.infoTabButton, isInfoTab, character.accentColor);
         this.setCharacterInventoryTabState(modal.equipmentTabButton, isEquipmentTab, character.accentColor);
         this.setCharacterInventoryTabState(modal.abilitiesTabButton, isAbilitiesTab, character.accentColor);
         this.setCharacterInventoryTabState(modal.spellsTabButton, isSpellsTab, character.accentColor);
+        this.setCharacterInventoryTabState(modal.sharedLootTabButton, isSharedLootTab, character.accentColor);
 
         if (isInfoTab) {
             this.renderCharacterInfoTab(character);
@@ -837,7 +1230,127 @@ window.GridUI = {
             return;
         }
 
+        if (isSharedLootTab) {
+            this.renderSharedLootTab(character);
+            return;
+        }
+
         this.renderCharacterSpellsTab(character);
+    },
+
+    renderSharedLootTab(character) {
+        const modal = this.characterInventoryModal;
+        if (!modal) {
+            return;
+        }
+
+        const inventory = this.sharedLootInventory ?? {
+            gold: 0,
+            gems: { garnet: 0, peridot: 0, citrine: 0 },
+            drops: []
+        };
+        const totalGems = Object.values(inventory.gems ?? {}).reduce((sum, count) => sum + count, 0);
+
+        modal.content.innerHTML = '';
+
+        const intro = document.createElement('div');
+        intro.style.marginBottom = '14px';
+        intro.style.fontSize = '12px';
+        intro.style.color = '#a89c82';
+        intro.textContent = `Shared warband stash accessed by all heroes. ${character.name} can review the latest drops here.`;
+        modal.content.appendChild(intro);
+
+        const summaryGrid = document.createElement('div');
+        summaryGrid.style.display = 'grid';
+        summaryGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(140px, 1fr))';
+        summaryGrid.style.gap = '10px';
+        modal.content.appendChild(summaryGrid);
+
+        const summaryCards = [
+            { label: 'Gold', value: String(inventory.gold ?? 0), color: '#ffd86a' },
+            { label: 'Total Gems', value: String(totalGems), color: '#9ad8ff' },
+            { label: 'Looted Enemies', value: String(inventory.drops?.length ?? 0), color: '#c6f3b3' }
+        ];
+
+        summaryCards.forEach((entry) => {
+            const card = document.createElement('div');
+            card.style.padding = '12px';
+            card.style.border = '1px solid rgba(255,255,255,0.08)';
+            card.style.borderRadius = '10px';
+            card.style.background = 'rgba(255,255,255,0.03)';
+
+            const label = document.createElement('div');
+            label.style.fontSize = '10px';
+            label.style.letterSpacing = '0.08em';
+            label.style.textTransform = 'uppercase';
+            label.style.color = '#8f856f';
+            label.textContent = entry.label;
+
+            const value = document.createElement('div');
+            value.style.marginTop = '6px';
+            value.style.fontSize = '24px';
+            value.style.fontWeight = '700';
+            value.style.color = entry.color;
+            value.textContent = entry.value;
+
+            card.appendChild(label);
+            card.appendChild(value);
+            summaryGrid.appendChild(card);
+        });
+
+        const gemRow = document.createElement('div');
+        gemRow.style.marginTop = '12px';
+        gemRow.style.padding = '10px 12px';
+        gemRow.style.border = '1px solid rgba(255,255,255,0.08)';
+        gemRow.style.borderRadius = '10px';
+        gemRow.style.background = 'rgba(255,255,255,0.02)';
+        gemRow.style.fontSize = '12px';
+        gemRow.style.color = '#d6ccb7';
+        gemRow.textContent = `Gems: Garnet x${inventory.gems?.garnet ?? 0} • Peridot x${inventory.gems?.peridot ?? 0} • Citrine x${inventory.gems?.citrine ?? 0}`;
+        modal.content.appendChild(gemRow);
+
+        const historyTitle = document.createElement('div');
+        historyTitle.style.marginTop = '14px';
+        historyTitle.style.marginBottom = '8px';
+        historyTitle.style.fontSize = '11px';
+        historyTitle.style.letterSpacing = '0.08em';
+        historyTitle.style.textTransform = 'uppercase';
+        historyTitle.style.color = '#8f856f';
+        historyTitle.textContent = 'Recent Drops';
+        modal.content.appendChild(historyTitle);
+
+        if (!inventory.drops || inventory.drops.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '12px';
+            emptyState.style.border = '1px dashed rgba(255,255,255,0.18)';
+            emptyState.style.borderRadius = '10px';
+            emptyState.style.fontSize = '12px';
+            emptyState.style.color = '#8f856f';
+            emptyState.textContent = 'No loot found yet.';
+            modal.content.appendChild(emptyState);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.style.display = 'grid';
+        list.style.gap = '8px';
+        modal.content.appendChild(list);
+
+        inventory.drops.slice(0, 12).forEach((drop) => {
+            const row = document.createElement('div');
+            row.style.padding = '10px 12px';
+            row.style.border = '1px solid rgba(255,255,255,0.08)';
+            row.style.borderRadius = '10px';
+            row.style.background = 'rgba(255,255,255,0.03)';
+            row.style.fontSize = '12px';
+            row.style.color = '#f0e8d2';
+
+            const gemText = (drop.gems && drop.gems.length > 0)
+                ? drop.gems.join(', ')
+                : 'none';
+            row.textContent = `${drop.enemyName} at (${drop.gridX}, ${drop.gridY}) dropped ${drop.gold} gold and ${gemText}.`;
+            list.appendChild(row);
+        });
     },
 
     setCharacterInventoryTabState(button, isActive, accentColor) {

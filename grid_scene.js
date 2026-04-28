@@ -45,9 +45,22 @@ class GridScene {
         this.targetHighlightGroup = new THREE.Group();
         this.targetHighlightState = '';
         this.hoveredCharacter = null;
+        this.lootBagGroup = new THREE.Group();
+        this.lootBagState = '';
+        this.lootDropsByCell = new Map();
+        this.sharedLootInventory = {
+            gold: 0,
+            gems: {
+                garnet: 0,
+                peridot: 0,
+                citrine: 0
+            },
+            drops: []
+        };
         this.scene.add(this.reachableHighlightGroup);
         this.scene.add(this.abilityRangeHighlightGroup);
         this.scene.add(this.targetHighlightGroup);
+        this.scene.add(this.lootBagGroup);
 
         // Initialize characters from character.js
         this.initializeCharacters();
@@ -444,6 +457,21 @@ class GridScene {
                 return;
             }
 
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+
+            const lootBagIntersects = this.raycaster.intersectObjects(this.lootBagGroup.children);
+            if (lootBagIntersects.length > 0) {
+                const clickedLootMesh = lootBagIntersects[0].object;
+                const lootCellKey = clickedLootMesh?.userData?.lootCellKey;
+                if (lootCellKey && this.lootDropsByCell.has(lootCellKey)) {
+                    this.openLootMenuForCell(lootCellKey);
+                    return;
+                }
+            }
+
             const selectedAbility = activeCharacter.abilities.find((a) => a.id === activeCharacter.selectedAbilityId);
             if (selectedAbility && selectedAbility.type === 'buff') {
                 return;
@@ -458,11 +486,6 @@ class GridScene {
             if (targetPool.length === 0) {
                 return;
             }
-
-            const rect = this.renderer.domElement.getBoundingClientRect();
-            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-            this.raycaster.setFromCamera(this.mouse, this.camera);
 
             const intersects = this.raycaster.intersectObjects(targetPool.map((c) => c.mesh));
             if (intersects.length === 0) {
@@ -881,6 +904,207 @@ class GridScene {
         );
     }
 
+    rollEnemyLoot(defeatedEnemy) {
+        if (!defeatedEnemy || defeatedEnemy.race !== 'goblin') {
+            return null;
+        }
+
+        let goldAmount = 0;
+        if (Math.random() < 0.25) {
+            goldAmount = 1 + Math.floor(Math.random() * 5);
+        }
+
+        const gems = [];
+        if (Math.random() < 0.10) {
+            const lesserGems = ['garnet', 'peridot', 'citrine'];
+            const randomGem = lesserGems[Math.floor(Math.random() * lesserGems.length)];
+            gems.push(randomGem);
+        }
+
+        if (goldAmount <= 0 && gems.length === 0) {
+            return null;
+        }
+
+        return {
+            gold: goldAmount,
+            gems
+        };
+    }
+
+    registerEnemyLootDrop(defeatedEnemy, loot) {
+        if (!defeatedEnemy || !loot) {
+            return;
+        }
+
+        const cellKey = this.getCellKey(defeatedEnemy.gridX, defeatedEnemy.gridY);
+        const existingDrop = this.lootDropsByCell.get(cellKey);
+
+        if (existingDrop) {
+            existingDrop.gold += loot.gold ?? 0;
+            existingDrop.gems.push(...(loot.gems ?? []));
+            existingDrop.sources.push(defeatedEnemy.name);
+        } else {
+            this.lootDropsByCell.set(cellKey, {
+                gridX: defeatedEnemy.gridX,
+                gridY: defeatedEnemy.gridY,
+                gold: loot.gold ?? 0,
+                gems: [...(loot.gems ?? [])],
+                sources: [defeatedEnemy.name]
+            });
+        }
+    }
+
+    getLootMenuItemsForCell(cellKey) {
+        const drop = this.lootDropsByCell.get(cellKey);
+        if (!drop) {
+            return [];
+        }
+
+        const items = [];
+        if ((drop.gold ?? 0) > 0) {
+            items.push({
+                itemKey: 'gold',
+                label: 'Gold',
+                quantity: drop.gold,
+                accentColor: '#ffd86a'
+            });
+        }
+
+        const gemCounts = {
+            garnet: 0,
+            peridot: 0,
+            citrine: 0
+        };
+        (drop.gems ?? []).forEach((gemName) => {
+            if (gemCounts[gemName] === undefined) {
+                gemCounts[gemName] = 0;
+            }
+            gemCounts[gemName] += 1;
+        });
+
+        const gemMeta = [
+            { key: 'garnet', label: 'Lesser Gem (Garnet)', accentColor: '#f28b8b' },
+            { key: 'peridot', label: 'Lesser Gem (Peridot)', accentColor: '#b7f28b' },
+            { key: 'citrine', label: 'Lesser Gem (Citrine)', accentColor: '#f2d08b' }
+        ];
+
+        gemMeta.forEach((meta) => {
+            const quantity = gemCounts[meta.key] ?? 0;
+            if (quantity > 0) {
+                items.push({
+                    itemKey: `gem:${meta.key}`,
+                    label: meta.label,
+                    quantity,
+                    accentColor: meta.accentColor
+                });
+            }
+        });
+
+        return items;
+    }
+
+    addItemToSharedInventory(itemKey, quantity) {
+        if (!itemKey || quantity <= 0) {
+            return;
+        }
+
+        if (itemKey === 'gold') {
+            this.sharedLootInventory.gold += quantity;
+            return;
+        }
+
+        if (itemKey.startsWith('gem:')) {
+            const gemName = itemKey.slice(4);
+            if (this.sharedLootInventory.gems[gemName] === undefined) {
+                this.sharedLootInventory.gems[gemName] = 0;
+            }
+            this.sharedLootInventory.gems[gemName] += quantity;
+        }
+    }
+
+    takeLootItem(cellKey, itemKey) {
+        const drop = this.lootDropsByCell.get(cellKey);
+        if (!drop || !itemKey) {
+            return false;
+        }
+
+        let takenQuantity = 0;
+        if (itemKey === 'gold') {
+            takenQuantity = drop.gold ?? 0;
+            drop.gold = 0;
+        } else if (itemKey.startsWith('gem:')) {
+            const gemName = itemKey.slice(4);
+            const remaining = [];
+            (drop.gems ?? []).forEach((gem) => {
+                if (gem === gemName) {
+                    takenQuantity += 1;
+                } else {
+                    remaining.push(gem);
+                }
+            });
+            drop.gems = remaining;
+        }
+
+        if (takenQuantity <= 0) {
+            return false;
+        }
+
+        this.addItemToSharedInventory(itemKey, takenQuantity);
+
+        const actorName = this.getActiveTurnCharacter()?.name ?? 'Party';
+        const pickedLabel = itemKey === 'gold'
+            ? `${takenQuantity} gold`
+            : `${takenQuantity} ${itemKey.slice(4)}`;
+        this.appendCombatLogEntry(`${actorName} picks up ${pickedLabel}.`, '#d9c47d');
+
+        this.sharedLootInventory.drops.unshift({
+            enemyName: actorName,
+            gridX: drop.gridX,
+            gridY: drop.gridY,
+            gold: itemKey === 'gold' ? takenQuantity : 0,
+            gems: itemKey.startsWith('gem:') ? new Array(takenQuantity).fill(itemKey.slice(4)) : []
+        });
+        if (this.sharedLootInventory.drops.length > 30) {
+            this.sharedLootInventory.drops.length = 30;
+        }
+
+        const hasGold = (drop.gold ?? 0) > 0;
+        const hasGems = (drop.gems ?? []).length > 0;
+        if (!hasGold && !hasGems) {
+            this.lootDropsByCell.delete(cellKey);
+            this.closeLootMenu();
+        }
+
+        if (this.activeInventoryCharacter && this.activeInventoryTab === 'shared') {
+            this.renderCharacterInventory();
+        }
+
+        if (this.activeLootCellKey === cellKey) {
+            this.renderLootMenuForCell(cellKey);
+        }
+
+        return true;
+    }
+
+    leaveLootItemOnGround(cellKey, itemKey) {
+        const item = this.getLootMenuItemsForCell(cellKey).find((entry) => entry.itemKey === itemKey);
+        if (!item) {
+            return;
+        }
+
+        const actorName = this.getActiveTurnCharacter()?.name ?? 'Party';
+        this.appendCombatLogEntry(`${actorName} leaves ${item.quantity} ${item.label.toLowerCase()} on the ground.`, '#8f856f');
+        this.closeLootMenu();
+    }
+
+    openLootMenuForCell(cellKey) {
+        if (!cellKey || !this.lootDropsByCell.has(cellKey)) {
+            return;
+        }
+
+        this.openLootMenu(cellKey);
+    }
+
     markCharacterDead(character, defeatedBy = null) {
         if (character.isDead) {
             return;
@@ -894,6 +1118,15 @@ class GridScene {
             `${character.name} dies.`,
             character.accentColor
         );
+
+        const droppedLoot = this.rollEnemyLoot(character);
+        if (droppedLoot) {
+            this.registerEnemyLootDrop(character, droppedLoot);
+            this.appendCombatLogEntry(
+                `${character.name} dropped some treasure.`,
+                '#d9c47d'
+            );
+        }
 
         this.awardEnemyDefeatExperience(character, defeatedBy);
 
@@ -921,12 +1154,14 @@ class GridScene {
         this.updateAbilityRangeHighlights(activeCharacter);
         this.updateTargetHighlights(activeCharacter);
         this.updateTargetPreview(activeCharacter);
+        this.updateLootBagMarkers();
 
         this.characters.forEach((character) => {
             this.updateCharacterCard(character, activeCharacter);
             this.fadeAndRemoveCharacter(character);
             this.updateHitAnimation(character, nowMs);
         });
+        this.updateTurnOrderQueue(activeCharacter);
 
         if (!this.isGameOver && this.areAllPartyMembersDead(this.playerParty)) {
             this.startGameOverSequence();
