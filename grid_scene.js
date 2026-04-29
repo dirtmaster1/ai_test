@@ -77,6 +77,13 @@ class GridScene {
         this.victoryStartTime = 0;
         this.victoryFadeDurationMs = 3000;
         this.restartTriggered = false;
+        this.cameraPanOffsetX = 0;
+        this.cameraPanOffsetY = 0;
+        this.isDraggingCamera = false;
+        this.suppressClickAfterDrag = false;
+        this.minCameraZoom = 0.6;
+        this.maxCameraZoom = 2.4;
+        this.cameraZoomStep = 0.15;
 
         this.activeProjectiles = [];
 
@@ -382,6 +389,10 @@ class GridScene {
         document.addEventListener('keydown', (e) => {
             const key = e.key.toUpperCase();
 
+            if (this.handleCameraZoomKey(e, key)) {
+                return;
+            }
+
             if (this.isGameOver) {
                 return;
             }
@@ -414,12 +425,61 @@ class GridScene {
         });
     }
 
+    handleCameraZoomKey(event, normalizedKey) {
+        if (normalizedKey === '+' || normalizedKey === '=' || normalizedKey === 'ADD') {
+            event.preventDefault();
+            this.adjustCameraZoom(this.cameraZoomStep);
+            return true;
+        }
+
+        if (normalizedKey === '-' || normalizedKey === '_' || normalizedKey === 'SUBTRACT') {
+            event.preventDefault();
+            this.adjustCameraZoom(-this.cameraZoomStep);
+            return true;
+        }
+
+        return false;
+    }
+
+    adjustCameraZoom(zoomDelta) {
+        if (!this.camera) {
+            return;
+        }
+
+        const nextZoom = Math.min(this.maxCameraZoom, Math.max(this.minCameraZoom, this.camera.zoom + zoomDelta));
+        if (Math.abs(nextZoom - this.camera.zoom) < 0.0001) {
+            return;
+        }
+
+        this.camera.zoom = nextZoom;
+        this.camera.updateProjectionMatrix();
+        this.updateCamera();
+    }
+
+    resetCameraPanToActiveCharacter() {
+        this.cameraPanOffsetX = 0;
+        this.cameraPanOffsetY = 0;
+        this.cameraFocusCharacterId = null;
+        this.cameraFocusExpiresAt = 0;
+        this.updateCamera();
+    }
+
     setupAttackListener() {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
+        this.renderer.domElement.style.cursor = 'grab';
+
+        const panDragState = {
+            active: false,
+            hasDragged: false,
+            startClientX: 0,
+            startClientY: 0,
+            startPanX: 0,
+            startPanY: 0
+        };
 
         const updatePointerTarget = (event) => {
-            if (this.isGameOver) {
+            if (this.isGameOver || this.isDraggingCamera) {
                 this.hoveredCharacter = null;
                 return;
             }
@@ -440,12 +500,89 @@ class GridScene {
             this.hoveredCharacter = livingCharacters.find((character) => character.mesh === hoveredMesh) || null;
         };
 
+        const stopPanDrag = (event) => {
+            if (!panDragState.active) {
+                return;
+            }
+
+            panDragState.active = false;
+            this.isDraggingCamera = false;
+            this.renderer.domElement.style.cursor = 'grab';
+
+            if (panDragState.hasDragged) {
+                this.suppressClickAfterDrag = true;
+            }
+
+            panDragState.hasDragged = false;
+            if (event?.pointerId !== undefined) {
+                this.renderer.domElement.releasePointerCapture(event.pointerId);
+            }
+        };
+
+        this.renderer.domElement.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) {
+                return;
+            }
+
+            panDragState.active = true;
+            panDragState.hasDragged = false;
+            panDragState.startClientX = event.clientX;
+            panDragState.startClientY = event.clientY;
+            panDragState.startPanX = this.cameraPanOffsetX;
+            panDragState.startPanY = this.cameraPanOffsetY;
+            this.isDraggingCamera = true;
+            this.renderer.domElement.style.cursor = 'grabbing';
+            this.renderer.domElement.setPointerCapture(event.pointerId);
+        });
+
+        this.renderer.domElement.addEventListener('pointermove', (event) => {
+            if (!panDragState.active) {
+                updatePointerTarget(event);
+                return;
+            }
+
+            const dragX = event.clientX - panDragState.startClientX;
+            const dragY = event.clientY - panDragState.startClientY;
+            if (!panDragState.hasDragged && Math.hypot(dragX, dragY) < 4) {
+                return;
+            }
+
+            panDragState.hasDragged = true;
+            this.hoveredCharacter = null;
+
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            const zoom = this.camera.zoom || 1;
+            const worldPerPixelX = ((this.camera.right - this.camera.left) / zoom) / Math.max(1, rect.width);
+            const worldPerPixelY = ((this.camera.top - this.camera.bottom) / zoom) / Math.max(1, rect.height);
+
+            this.cameraPanOffsetX = panDragState.startPanX - (dragX * worldPerPixelX);
+            this.cameraPanOffsetY = panDragState.startPanY + (dragY * worldPerPixelY);
+            this.updateCamera();
+            event.preventDefault();
+        });
+
+        this.renderer.domElement.addEventListener('pointerup', stopPanDrag);
+        this.renderer.domElement.addEventListener('pointercancel', stopPanDrag);
+        this.renderer.domElement.addEventListener('dblclick', (event) => {
+            event.preventDefault();
+            this.resetCameraPanToActiveCharacter();
+        });
+
         this.renderer.domElement.addEventListener('mousemove', updatePointerTarget);
         this.renderer.domElement.addEventListener('mouseleave', () => {
             this.hoveredCharacter = null;
+            this.isDraggingCamera = false;
+            panDragState.active = false;
+            panDragState.hasDragged = false;
+            this.renderer.domElement.style.cursor = 'grab';
         });
 
         this.renderer.domElement.addEventListener('click', (event) => {
+            if (this.suppressClickAfterDrag) {
+                this.suppressClickAfterDrag = false;
+                return;
+            }
+
             if (this.isGameOver || !this.isPlayerTurn()) {
                 return;
             }

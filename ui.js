@@ -431,20 +431,9 @@ window.GridUI = {
         const turnQueueSection = this.createTurnOrderQueuePanel();
         hudRoot.appendChild(turnQueueSection.section);
 
-        const playerSection = this.createPartySection('Player Party', 'Acts individually in turn order');
-        const enemySection = this.createPartySection('Enemy Party', 'Victory when every enemy falls');
-        hudRoot.appendChild(playerSection.section);
-        hudRoot.appendChild(enemySection.section);
-
-        this.playerParty.forEach((character) => {
+        this.characters.forEach((character) => {
             const card = this.createCombatCard(character);
-            playerSection.content.appendChild(card.card);
-            this.characterHud.set(character.id, card);
-        });
-
-        this.aiParty.forEach((character) => {
-            const card = this.createCombatCard(character);
-            enemySection.content.appendChild(card.card);
+            turnQueueSection.list.appendChild(card.card);
             this.characterHud.set(character.id, card);
         });
 
@@ -477,29 +466,29 @@ window.GridUI = {
 
     createTurnOrderQueuePanel() {
         const section = document.createElement('section');
-        section.style.marginBottom = '16px';
-        section.style.padding = '10px';
+        section.style.marginBottom = '0';
+        section.style.padding = '8px 8px 6px';
         section.style.border = '1px solid rgba(232, 224, 202, 0.18)';
         section.style.borderRadius = '8px';
         section.style.background = 'linear-gradient(180deg, rgba(21, 20, 18, 0.95), rgba(10, 10, 10, 0.95))';
         section.style.pointerEvents = 'auto';
 
         const heading = document.createElement('div');
-        heading.style.marginBottom = '8px';
+        heading.style.marginBottom = '6px';
 
         const title = document.createElement('div');
-        title.style.fontSize = '12px';
+        title.style.fontSize = '11px';
         title.style.fontWeight = '700';
         title.style.letterSpacing = '0.08em';
         title.style.textTransform = 'uppercase';
         title.style.color = '#e3d6bb';
-        title.textContent = 'Turn Queue';
+        title.textContent = 'Combat Roster';
 
         const subtitle = document.createElement('div');
         subtitle.style.marginTop = '2px';
-        subtitle.style.fontSize = '10px';
+        subtitle.style.fontSize = '9px';
         subtitle.style.color = '#8d8169';
-        subtitle.textContent = 'Current + upcoming turns';
+        subtitle.textContent = 'Initiative order with party and enemy status';
 
         heading.appendChild(title);
         heading.appendChild(subtitle);
@@ -508,9 +497,13 @@ window.GridUI = {
         const list = document.createElement('div');
         list.style.display = 'grid';
         list.style.gap = '6px';
+        list.style.overflowX = 'hidden';
+        list.style.overflowY = 'auto';
+        list.style.maxHeight = 'calc(100vh - 120px)';
+        list.style.scrollbarWidth = 'thin';
         section.appendChild(list);
 
-        this.turnOrderQueuePanel = { section, list };
+        this.turnOrderQueuePanel = { section, list, subtitle };
         return this.turnOrderQueuePanel;
     },
 
@@ -520,119 +513,82 @@ window.GridUI = {
         }
 
         const aliveTurnOrder = this.getAliveTurnOrder();
-        const maxVisibleTurns = 6;
-
         const sequenceIds = [];
         if (aliveTurnOrder.length > 0) {
             const activeIndex = Math.max(0, aliveTurnOrder.indexOf(activeCharacter));
-            for (let offset = 0; offset < Math.min(maxVisibleTurns, aliveTurnOrder.length); offset += 1) {
+            for (let offset = 0; offset < aliveTurnOrder.length; offset += 1) {
                 const queueCharacter = aliveTurnOrder[(activeIndex + offset) % aliveTurnOrder.length];
                 sequenceIds.push(queueCharacter.id);
             }
         }
 
-        const nextState = `${activeCharacter?.id ?? 'none'}|${sequenceIds.join('|')}`;
-        if (this.turnQueueState === nextState) {
-            return;
+        const deadIds = this.characters
+            .filter((character) => character.isDead)
+            .map((character) => character.id);
+        const orderedIds = [...sequenceIds, ...deadIds];
+
+        const nextState = `${activeCharacter?.id ?? 'none'}|${orderedIds.join('|')}`;
+        if (this.turnQueueState !== nextState) {
+            this.turnQueueState = nextState;
+            const list = this.turnOrderQueuePanel.list;
+            orderedIds.forEach((characterId) => {
+                const hud = this.characterHud.get(characterId);
+                if (hud?.card) {
+                    list.appendChild(hud.card);
+                }
+            });
         }
 
-        this.turnQueueState = nextState;
-        const list = this.turnOrderQueuePanel.list;
-        list.innerHTML = '';
-
-        if (sequenceIds.length === 0) {
-            const emptyState = document.createElement('div');
-            emptyState.style.padding = '8px';
-            emptyState.style.border = '1px dashed rgba(255,255,255,0.14)';
-            emptyState.style.borderRadius = '6px';
-            emptyState.style.fontSize = '11px';
-            emptyState.style.color = '#8f856f';
-            emptyState.textContent = 'No active turns.';
-            list.appendChild(emptyState);
-            return;
+        if (this.turnOrderQueuePanel.subtitle) {
+            this.turnOrderQueuePanel.subtitle.textContent = aliveTurnOrder.length > 0
+                ? `${aliveTurnOrder.length} active combatant${aliveTurnOrder.length === 1 ? '' : 's'} in initiative order`
+                : 'No active turns';
         }
 
-        sequenceIds.forEach((characterId, queueIndex) => {
-            const queueCharacter = this.characters.find((character) => character.id === characterId);
-            if (!queueCharacter) {
+        this.characters.forEach((character) => {
+            const hud = this.characterHud.get(character.id);
+            if (!hud?.turnBadge) {
                 return;
             }
 
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.alignItems = 'center';
-            row.style.justifyContent = 'space-between';
-            row.style.gap = '8px';
-            row.style.padding = '7px 8px';
-            row.style.borderRadius = '6px';
-            row.style.cursor = 'pointer';
-            row.style.pointerEvents = 'auto';
-            row.style.border = `1px solid ${this.hexToRgba(queueCharacter.accentColor, queueIndex === 0 ? 0.85 : 0.45)}`;
-            row.style.background = queueIndex === 0
-                ? `linear-gradient(180deg, ${this.hexToRgba(queueCharacter.accentColor, 0.26)}, rgba(17, 16, 15, 0.95))`
-                : 'rgba(255,255,255,0.03)';
-            row.setAttribute('role', 'button');
-            row.setAttribute('tabindex', '0');
-            row.setAttribute('aria-label', `Focus camera on ${queueCharacter.name}`);
+            if (character.isDead) {
+                hud.turnBadge.textContent = 'Out';
+                hud.turnBadge.style.borderColor = 'rgba(140, 140, 140, 0.45)';
+                hud.turnBadge.style.background = 'rgba(120, 120, 120, 0.12)';
+                hud.turnBadge.style.color = '#9b9b9b';
+                return;
+            }
 
-            const left = document.createElement('div');
-            left.style.minWidth = '0';
+            const queueIndex = sequenceIds.indexOf(character.id);
+            if (queueIndex === 0) {
+                hud.turnBadge.textContent = 'Now';
+                hud.turnBadge.style.borderColor = this.hexToRgba(character.accentColor, 0.78);
+                hud.turnBadge.style.background = this.hexToRgba(character.accentColor, 0.20);
+                hud.turnBadge.style.color = '#f0e8d2';
+                return;
+            }
 
-            const name = document.createElement('div');
-            name.style.fontSize = '11px';
-            name.style.fontWeight = '700';
-            name.style.color = queueCharacter.accentColor;
-            name.style.whiteSpace = 'nowrap';
-            name.style.overflow = 'hidden';
-            name.style.textOverflow = 'ellipsis';
-            name.textContent = queueCharacter.name;
+            if (queueIndex > 0) {
+                hud.turnBadge.textContent = `+${queueIndex}`;
+                hud.turnBadge.style.borderColor = 'rgba(255,255,255,0.18)';
+                hud.turnBadge.style.background = 'rgba(255,255,255,0.04)';
+                hud.turnBadge.style.color = '#bcb29c';
+                return;
+            }
 
-            const meta = document.createElement('div');
-            meta.style.marginTop = '2px';
-            meta.style.fontSize = '10px';
-            meta.style.color = '#a89c82';
-            meta.textContent = `${queueCharacter.team === 'player' ? 'Player' : 'Enemy'} • Init ${queueCharacter.initiative ?? 0}`;
-
-            left.appendChild(name);
-            left.appendChild(meta);
-
-            const badge = document.createElement('div');
-            badge.style.flexShrink = '0';
-            badge.style.padding = '2px 6px';
-            badge.style.borderRadius = '999px';
-            badge.style.fontSize = '9px';
-            badge.style.letterSpacing = '0.06em';
-            badge.style.textTransform = 'uppercase';
-            badge.style.border = '1px solid rgba(255,255,255,0.18)';
-            badge.style.color = queueIndex === 0 ? '#f0e8d2' : '#bcb29c';
-            badge.style.background = queueIndex === 0 ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)';
-            badge.textContent = queueIndex === 0 ? 'Now' : `+${queueIndex}`;
-
-            row.appendChild(left);
-            row.appendChild(badge);
-
-            const focusQueuedCharacter = () => {
-                this.focusCameraOnCharacter(queueCharacter, 1800);
-            };
-
-            row.addEventListener('click', focusQueuedCharacter);
-            row.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    focusQueuedCharacter();
-                }
-            });
-
-            list.appendChild(row);
+            hud.turnBadge.textContent = 'Waiting';
+            hud.turnBadge.style.borderColor = 'rgba(255,255,255,0.18)';
+            hud.turnBadge.style.background = 'rgba(255,255,255,0.04)';
+            hud.turnBadge.style.color = '#bcb29c';
         });
     },
 
     setupTargetPreviewPanel() {
         const panel = document.createElement('div');
         panel.style.position = 'absolute';
-        panel.style.left = '50%';
-        panel.style.top = '16px';
-        panel.style.transform = 'translateX(-50%)';
+        panel.style.left = '0px';
+        panel.style.top = '0px';
+        panel.style.transform = 'none';
         panel.style.display = 'none';
         panel.style.minWidth = '220px';
         panel.style.maxWidth = 'min(320px, calc(100% - 24px))';
@@ -677,6 +633,48 @@ window.GridUI = {
         this.container.appendChild(panel);
 
         this.targetPreviewPanel = { panel, title, subtitle, effect, detail };
+    },
+
+    positionTargetPreviewPanel(hoveredCharacter) {
+        const preview = this.targetPreviewPanel;
+        if (!preview?.panel || !hoveredCharacter || !this.renderer?.domElement || !this.camera) {
+            return;
+        }
+
+        const { x, y } = this.getWorldPositionForCell(hoveredCharacter.gridX, hoveredCharacter.gridY);
+        const worldPoint = new THREE.Vector3(x, y, 0);
+        worldPoint.project(this.camera);
+
+        const rendererRect = this.renderer.domElement.getBoundingClientRect();
+        const containerRect = this.container.getBoundingClientRect();
+
+        const ndcToPixelX = (worldPoint.x * 0.5 + 0.5) * rendererRect.width;
+        const ndcToPixelY = (-worldPoint.y * 0.5 + 0.5) * rendererRect.height;
+        const anchorX = (rendererRect.left - containerRect.left) + ndcToPixelX;
+        const anchorY = (rendererRect.top - containerRect.top) + ndcToPixelY;
+
+        const cellPixelSize = rendererRect.width / Math.max(1, this.viewWidth);
+        const verticalGap = (cellPixelSize * 0.5) + 10;
+        const panelWidth = preview.panel.offsetWidth;
+        const panelHeight = preview.panel.offsetHeight;
+
+        const minLeft = 8;
+        const maxLeft = Math.max(minLeft, this.container.clientWidth - panelWidth - 8);
+        const minTop = 8;
+        const maxTop = Math.max(minTop, this.container.clientHeight - panelHeight - 8);
+
+        let left = anchorX - (panelWidth / 2);
+        let top = anchorY - panelHeight - verticalGap;
+
+        if (top < minTop) {
+            top = anchorY + verticalGap;
+        }
+
+        left = Math.min(maxLeft, Math.max(minLeft, left));
+        top = Math.min(maxTop, Math.max(minTop, top));
+
+        preview.panel.style.left = `${left}px`;
+        preview.panel.style.top = `${top}px`;
     },
 
     updateTargetPreview(activeCharacter) {
@@ -725,6 +723,7 @@ window.GridUI = {
             preview.effect.textContent = `Restore ${targetInfo.amount} HP`;
             preview.effect.style.color = '#9af0c0';
             preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP.`;
+            this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
 
@@ -732,12 +731,14 @@ window.GridUI = {
             preview.effect.textContent = `Deal ${targetInfo.amount} damage`;
             preview.effect.style.color = targetInfo.amount >= hoveredCharacter.hitPoints ? '#ffd470' : '#f0e8d2';
             preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass} • ${targetInfo.damageKind}.`;
+            this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
 
         preview.effect.textContent = targetInfo.description;
         preview.effect.style.color = '#f0e8d2';
         preview.detail.textContent = targetHpText;
+        this.positionTargetPreviewPanel(hoveredCharacter);
     },
 
     setupLootMenuWindow() {
@@ -1687,24 +1688,30 @@ window.GridUI = {
 
     createCombatCard(character) {
         const card = document.createElement('div');
-        card.style.marginBottom = '10px';
-        card.style.padding = '8px';
+        card.style.marginBottom = '0';
+        card.style.width = '100%';
+        card.style.padding = '6px';
         card.style.border = `1px solid ${character.accentColor}`;
         card.style.borderRadius = '6px';
         card.style.background = 'linear-gradient(180deg, rgba(22, 22, 20, 0.94), rgba(12, 12, 12, 0.94))';
         card.style.boxShadow = `inset 0 0 0 1px ${this.hexToRgba(character.accentColor, 0.15)}`;
         card.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease';
+        card.style.pointerEvents = 'auto';
+        card.style.cursor = 'pointer';
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-label', `Focus camera on ${character.name}`);
 
         const topRow = document.createElement('div');
         topRow.style.display = 'flex';
         topRow.style.alignItems = 'center';
-        topRow.style.gap = '8px';
-        topRow.style.marginBottom = '8px';
+        topRow.style.gap = '6px';
+        topRow.style.marginBottom = '6px';
 
         const portraitFrame = document.createElement('div');
-        portraitFrame.style.width = '18px';
-        portraitFrame.style.height = '18px';
-        portraitFrame.style.flex = '0 0 18px';
+        portraitFrame.style.width = '16px';
+        portraitFrame.style.height = '16px';
+        portraitFrame.style.flex = '0 0 16px';
         portraitFrame.style.borderRadius = '3px';
         portraitFrame.style.overflow = 'hidden';
         portraitFrame.style.border = `1px solid ${this.hexToRgba(character.accentColor, 0.30)}`;
@@ -1749,14 +1756,14 @@ window.GridUI = {
         nameRow.style.gap = '6px';
 
         const nameText = document.createElement('div');
-        nameText.style.fontSize = '13px';
+        nameText.style.fontSize = '12px';
         nameText.style.fontWeight = 'bold';
         nameText.style.lineHeight = '1.15';
         nameText.style.color = character.accentColor;
         nameText.textContent = `${character.name} Lv ${character.level ?? 1}`;
 
         const acBadge = document.createElement('div');
-        acBadge.style.fontSize = '8px';
+        acBadge.style.fontSize = '7px';
         acBadge.style.lineHeight = '1';
         acBadge.style.color = '#c8c0a8';
         acBadge.style.letterSpacing = '0.05em';
@@ -1764,9 +1771,44 @@ window.GridUI = {
         acBadge.title = 'Armor Class — reduces physical damage';
         acBadge.textContent = `AC ${character.armorClass}`;
 
+        const teamBadge = document.createElement('div');
+        teamBadge.style.fontSize = '7px';
+        teamBadge.style.lineHeight = '1';
+        teamBadge.style.letterSpacing = '0.06em';
+        teamBadge.style.textTransform = 'uppercase';
+        teamBadge.style.padding = '2px 5px';
+        teamBadge.style.borderRadius = '999px';
+        teamBadge.style.border = `1px solid ${this.hexToRgba(character.accentColor, 0.6)}`;
+        teamBadge.style.background = this.hexToRgba(character.accentColor, 0.18);
+        teamBadge.style.color = '#efe5d0';
+        teamBadge.style.flexShrink = '0';
+        teamBadge.textContent = character.team === 'player' ? 'Player' : 'Enemy';
+
+        const turnBadge = document.createElement('div');
+        turnBadge.style.fontSize = '7px';
+        turnBadge.style.lineHeight = '1';
+        turnBadge.style.letterSpacing = '0.06em';
+        turnBadge.style.textTransform = 'uppercase';
+        turnBadge.style.padding = '2px 5px';
+        turnBadge.style.borderRadius = '999px';
+        turnBadge.style.border = '1px solid rgba(255,255,255,0.18)';
+        turnBadge.style.background = 'rgba(255,255,255,0.04)';
+        turnBadge.style.color = '#bcb29c';
+        turnBadge.style.flexShrink = '0';
+        turnBadge.textContent = 'Waiting';
+
+        const metaBadgeRow = document.createElement('div');
+        metaBadgeRow.style.display = 'flex';
+        metaBadgeRow.style.alignItems = 'center';
+        metaBadgeRow.style.gap = '4px';
+        metaBadgeRow.style.marginTop = '4px';
+        metaBadgeRow.appendChild(teamBadge);
+        metaBadgeRow.appendChild(turnBadge);
+
         nameRow.appendChild(nameText);
         nameRow.appendChild(acBadge);
         textColumn.appendChild(nameRow);
+        textColumn.appendChild(metaBadgeRow);
         topRow.appendChild(portraitCol);
         topRow.appendChild(textColumn);
         card.appendChild(topRow);
@@ -1774,12 +1816,12 @@ window.GridUI = {
         const hpLabelRow = document.createElement('div');
         hpLabelRow.style.display = 'flex';
         hpLabelRow.style.justifyContent = 'space-between';
-        hpLabelRow.style.fontSize = '10px';
+        hpLabelRow.style.fontSize = '9px';
         hpLabelRow.style.color = '#bcb29c';
-        hpLabelRow.style.marginBottom = '4px';
+        hpLabelRow.style.marginBottom = '3px';
 
         const hpLabel = document.createElement('div');
-        hpLabel.textContent = 'Hit Points';
+        hpLabel.textContent = 'HP';
 
         const hpText = document.createElement('div');
         hpText.style.color = '#f0e8d2';
@@ -1789,8 +1831,8 @@ window.GridUI = {
         card.appendChild(hpLabelRow);
 
         const hpTrack = document.createElement('div');
-        hpTrack.style.height = '7px';
-        hpTrack.style.marginBottom = '8px';
+        hpTrack.style.height = '6px';
+        hpTrack.style.marginBottom = '6px';
         hpTrack.style.border = '1px solid rgba(255,255,255,0.12)';
         hpTrack.style.borderRadius = '999px';
         hpTrack.style.background = 'rgba(0, 0, 0, 0.42)';
@@ -1806,12 +1848,12 @@ window.GridUI = {
         const mpLabelRow = document.createElement('div');
         mpLabelRow.style.display = 'flex';
         mpLabelRow.style.justifyContent = 'space-between';
-        mpLabelRow.style.fontSize = '10px';
+        mpLabelRow.style.fontSize = '9px';
         mpLabelRow.style.color = '#bcb29c';
-        mpLabelRow.style.marginBottom = '4px';
+        mpLabelRow.style.marginBottom = '3px';
 
         const mpLabel = document.createElement('div');
-        mpLabel.textContent = 'Magic Points';
+        mpLabel.textContent = 'MP';
 
         const mpText = document.createElement('div');
         mpText.style.color = '#c8d8ff';
@@ -1821,8 +1863,8 @@ window.GridUI = {
         card.appendChild(mpLabelRow);
 
         const mpTrack = document.createElement('div');
-        mpTrack.style.height = '7px';
-        mpTrack.style.marginBottom = '8px';
+        mpTrack.style.height = '6px';
+        mpTrack.style.marginBottom = '6px';
         mpTrack.style.border = '1px solid rgba(255,255,255,0.12)';
         mpTrack.style.borderRadius = '999px';
         mpTrack.style.background = 'rgba(0, 0, 0, 0.42)';
@@ -1841,8 +1883,8 @@ window.GridUI = {
         card.appendChild(turnControls);
 
         const actionText = document.createElement('div');
-        actionText.style.marginBottom = '6px';
-        actionText.style.fontSize = '11px';
+        actionText.style.marginBottom = '5px';
+        actionText.style.fontSize = '10px';
         actionText.style.color = '#bcb29c';
         turnControls.appendChild(actionText);
 
@@ -1873,11 +1915,11 @@ window.GridUI = {
                 btn.style.display = 'inline-flex';
                 btn.style.alignItems = 'center';
                 btn.style.justifyContent = 'center';
-                btn.style.width = '28px';
-                btn.style.height = '28px';
-                btn.style.flex = '0 0 28px';
+                btn.style.width = '24px';
+                btn.style.height = '24px';
+                btn.style.flex = '0 0 24px';
                 btn.style.padding = '0';
-                btn.style.fontSize = '11px';
+                btn.style.fontSize = '10px';
                 btn.style.lineHeight = '1';
                 btn.style.border = '1px solid rgba(255,255,255,0.18)';
                 btn.style.borderRadius = '4px';
@@ -1926,14 +1968,14 @@ window.GridUI = {
             endTurnButton = document.createElement('button');
             endTurnButton.type = 'button';
             endTurnButton.textContent = 'End Turn';
-            endTurnButton.style.marginLeft = '8px';
-            endTurnButton.style.padding = '5px 8px';
+            endTurnButton.style.marginLeft = '6px';
+            endTurnButton.style.padding = '4px 6px';
             endTurnButton.style.flex = '0 0 auto';
             endTurnButton.style.border = '1px solid rgba(255,255,255,0.18)';
             endTurnButton.style.borderRadius = '4px';
             endTurnButton.style.background = 'rgba(0,0,0,0.45)';
             endTurnButton.style.color = '#bcb29c';
-            endTurnButton.style.fontSize = '10px';
+            endTurnButton.style.fontSize = '9px';
             endTurnButton.style.lineHeight = '1';
             endTurnButton.style.fontFamily = 'inherit';
             endTurnButton.style.cursor = 'pointer';
@@ -1950,7 +1992,29 @@ window.GridUI = {
             abilityBar.appendChild(endTurnButton);
         }
 
-        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap, acBadge, endTurnButton, turnControls };
+        const focusCardCharacter = () => {
+            this.focusCameraOnCharacter(character, 1800);
+        };
+
+        card.addEventListener('click', (event) => {
+            const eventTarget = event.target instanceof Element ? event.target : null;
+            if (eventTarget?.closest('button')) {
+                return;
+            }
+            if (eventTarget && portraitFrame.contains(eventTarget)) {
+                return;
+            }
+            focusCardCharacter();
+        });
+
+        card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                focusCardCharacter();
+            }
+        });
+
+        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap, acBadge, teamBadge, turnBadge, endTurnButton, turnControls };
     },
 
     setCombatCardActiveState(card, portraitFrame, accentColor, isActiveTurn, isDead) {

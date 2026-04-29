@@ -333,8 +333,27 @@ window.GridGraphics = {
 
         const worldW = this.gridWidth * this.cellSize;
         const worldH = this.gridHeight * this.cellSize;
-        this.camera.position.x = (focusCharacter.gridX * this.cellSize + this.cellSize / 2) - worldW / 2;
-        this.camera.position.y = (worldH / 2) - (focusCharacter.gridY * this.cellSize + this.cellSize / 2);
+        const targetX = (focusCharacter.gridX * this.cellSize + this.cellSize / 2) - worldW / 2;
+        const targetY = (worldH / 2) - (focusCharacter.gridY * this.cellSize + this.cellSize / 2);
+        const zoom = this.camera.zoom || 1;
+        const viewHalfW = ((this.camera.right - this.camera.left) / zoom) / 2;
+        const viewHalfH = ((this.camera.top - this.camera.bottom) / zoom) / 2;
+
+        const minCameraX = -worldW / 2 + viewHalfW;
+        const maxCameraX = worldW / 2 - viewHalfW;
+        const minCameraY = -worldH / 2 + viewHalfH;
+        const maxCameraY = worldH / 2 - viewHalfH;
+
+        const desiredX = targetX + (this.cameraPanOffsetX ?? 0);
+        const desiredY = targetY + (this.cameraPanOffsetY ?? 0);
+
+        const clamp = (value, minValue, maxValue) => Math.min(maxValue, Math.max(minValue, value));
+        this.camera.position.x = minCameraX <= maxCameraX
+            ? clamp(desiredX, minCameraX, maxCameraX)
+            : 0;
+        this.camera.position.y = minCameraY <= maxCameraY
+            ? clamp(desiredY, minCameraY, maxCameraY)
+            : 0;
     },
 
     createDirectionPointer(color) {
