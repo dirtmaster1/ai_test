@@ -31,6 +31,8 @@ class GridScene {
             0.1,
             1000
         );
+        this.camera.zoom = 0.75;
+        this.camera.updateProjectionMatrix();
         this.camera.position.z = 500;
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });

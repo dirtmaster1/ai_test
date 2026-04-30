@@ -204,7 +204,7 @@ window.GridUI = {
         root.style.minHeight = '160px';
         root.style.maxWidth = 'calc(100vw - 16px)';
         root.style.maxHeight = 'calc(100vh - 16px)';
-        root.style.display = 'flex';
+        root.style.display = 'none';
         root.style.flexDirection = 'column';
         root.style.border = '1px solid rgba(232, 224, 202, 0.22)';
         root.style.borderRadius = '12px';
@@ -321,7 +321,7 @@ window.GridUI = {
         reopenButton.style.cursor = 'pointer';
         reopenButton.style.boxShadow = '0 10px 24px rgba(0, 0, 0, 0.35)';
         reopenButton.style.zIndex = '41';
-        reopenButton.style.display = 'none';
+        reopenButton.style.display = 'inline-flex';
         reopenButton.style.pointerEvents = 'auto';
         document.body.appendChild(reopenButton);
 
