@@ -86,13 +86,18 @@ class GridScene {
         this.minCameraZoom = 0.6;
         this.maxCameraZoom = 2.4;
         this.cameraZoomStep = 0.15;
+        this.gameMode = 'exploration';
+        this.aggroRangeCells = 6;
+        this.enemyGroups = [];
+        this.activeEnemyGroupId = null;
+        this.explorationLeadCharacter = null;
 
         this.activeProjectiles = [];
 
         const dungeon = this.generateDungeonMap();
         this.dungeonMap = dungeon.map;
         this.placeCharacters(dungeon.rooms);
-        this.beginCurrentTurn();
+        this.enterExplorationMode();
 
         this.keysPressed = {};
         this.setupInputListeners();
@@ -154,19 +159,386 @@ class GridScene {
             this.getCellKey(this.ranger.gridX, this.ranger.gridY)
         ]);
 
-        const enemyAnchorFallback = this.findFallbackRoomCenter(rooms, -1);
-        const enemyAnchor = this.findNearbyFloorTile(this.wizard.gridX, this.wizard.gridY, 4, 8, occupiedCells) || enemyAnchorFallback;
+        this.spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells);
+        this.characters = [...this.playerParty, ...this.aiParty];
 
-        this.placeCharacterNear(this.goblin, enemyAnchor.x, enemyAnchor.y, 0, 2, occupiedCells, enemyAnchorFallback);
-        occupiedCells.add(this.getCellKey(this.goblin.gridX, this.goblin.gridY));
+        // Keep legacy references pointing at any matching enemy so existing UI text/helpers still work.
+        this.goblin = this.aiParty.find((enemy) => enemy.id.includes('goblin-warrior')) || this.aiParty[0] || null;
+        this.goblinArcher = this.aiParty.find((enemy) => enemy.id.includes('goblin-archer')) || this.aiParty[0] || null;
+        this.goblinShaman = this.aiParty.find((enemy) => enemy.id.includes('goblin-shaman')) || this.aiParty[0] || null;
+        this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute')) || this.aiParty[0] || null;
+    }
 
-        this.placeCharacterNear(this.goblinBrute, this.goblin.gridX, this.goblin.gridY, 1, 2, occupiedCells, this.findFallbackRoomCenter(rooms, -2));
-        occupiedCells.add(this.getCellKey(this.goblinBrute.gridX, this.goblinBrute.gridY));
+    spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells) {
+        const baseArchetypes = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
+        const enemyRooms = rooms.slice(1);
+        const shuffledRooms = [...enemyRooms].sort(() => Math.random() - 0.5);
 
-        this.placeCharacterNear(this.goblinArcher, this.goblin.gridX, this.goblin.gridY, 1, 2, occupiedCells, this.findFallbackRoomCenter(rooms, -3));
-        occupiedCells.add(this.getCellKey(this.goblinArcher.gridX, this.goblinArcher.gridY));
+        const maxGroupsByRooms = Math.max(1, Math.min(6, shuffledRooms.length || 1));
+        const minGroups = Math.min(4, maxGroupsByRooms);
+        const groupCount = minGroups + Math.floor(Math.random() * (maxGroupsByRooms - minGroups + 1));
 
-        this.placeCharacterNear(this.goblinShaman, this.goblin.gridX, this.goblin.gridY, 1, 2, occupiedCells, this.findFallbackRoomCenter(rooms, -4));
+        this.enemyGroups = [];
+        this.aiParty = [];
+
+        for (let groupIndex = 0; groupIndex < groupCount; groupIndex++) {
+            const room = shuffledRooms[groupIndex % Math.max(1, shuffledRooms.length)] || rooms[rooms.length - 1];
+            const anchor = {
+                x: Math.floor(room.x + room.w / 2),
+                y: Math.floor(room.y + room.h / 2)
+            };
+            const fallback = this.findNearbyFloorTile(anchor.x, anchor.y, 0, 4, occupiedCells) || anchor;
+            const memberCount = 2 + Math.floor(Math.random() * 3);
+            const members = [];
+
+            for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+                const archetype = baseArchetypes[(groupIndex + memberIndex) % baseArchetypes.length];
+                const enemy = this.createEnemyFromArchetype(archetype, groupIndex, memberIndex);
+
+                this.placeCharacterNear(enemy, fallback.x, fallback.y, 0, 3, occupiedCells, fallback);
+                occupiedCells.add(this.getCellKey(enemy.gridX, enemy.gridY));
+
+                enemy.encounterGroupId = `group-${groupIndex + 1}`;
+                members.push(enemy);
+                this.aiParty.push(enemy);
+            }
+
+            this.enemyGroups.push({
+                id: `group-${groupIndex + 1}`,
+                members,
+                isAggro: false,
+                isCleared: false
+            });
+        }
+    }
+
+    createEnemyFromArchetype(archetype, groupIndex, memberIndex) {
+        const idSuffix = `g${groupIndex + 1}m${memberIndex + 1}`;
+        const clonedAbilities = (archetype.abilities || []).map((ability) => ({ ...ability }));
+
+        return this.createCharacter({
+            id: `${archetype.id}-${idSuffix}`,
+            name: archetype.name,
+            role: archetype.role,
+            team: archetype.team,
+            accentColor: archetype.accentColor,
+            pointerColor: archetype.pointerColor,
+            spriteRows: archetype.spriteRows,
+            race: archetype.race,
+            strength: archetype.strength,
+            dexterity: archetype.dexterity,
+            intelligence: archetype.intelligence,
+            wisdom: archetype.wisdom,
+            initiative: archetype.initiative,
+            hitPoints: archetype.maxHitPoints,
+            maxHitPoints: archetype.maxHitPoints,
+            magicPoints: archetype.maxMagicPoints,
+            maxMagicPoints: archetype.maxMagicPoints,
+            meleeAttackDamage: archetype.meleeAttackDamage,
+            armorClass: archetype.armorClass,
+            attackCost: archetype.attackCost,
+            maxActionsPerTurn: archetype.maxActionsPerTurn,
+            experiencePoints: archetype.experiencePoints,
+            abilities: clonedAbilities
+        });
+    }
+
+    getEnemyGroupById(groupId) {
+        if (!groupId) {
+            return null;
+        }
+        return this.enemyGroups.find((group) => group.id === groupId) || null;
+    }
+
+    getActiveEnemyGroup() {
+        return this.getEnemyGroupById(this.activeEnemyGroupId);
+    }
+
+    getAggroedEnemyGroups() {
+        return this.enemyGroups.filter((group) => group.isAggro && !group.isCleared);
+    }
+
+    getAggroedEnemyMembers() {
+        return this.getAggroedEnemyGroups().flatMap((group) => this.getLivingCharacters(group.members));
+    }
+
+    getCombatEnemiesForPlayers() {
+        if (this.gameMode !== 'combat') {
+            return [];
+        }
+
+        return this.getAggroedEnemyMembers();
+    }
+
+    getCombatAlliedEnemies() {
+        if (this.gameMode !== 'combat') {
+            return [];
+        }
+
+        return this.getAggroedEnemyMembers();
+    }
+
+    setExplorationLeadCharacter(character) {
+        if (!character || this.gameMode !== 'exploration' || character.team !== 'player' || character.isDead) {
+            return false;
+        }
+
+        this.explorationLeadCharacter = character;
+        this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+        this.appendCombatLogEntry(`${character.name} is now leading the party.`, character.accentColor);
+        this.updateCamera();
+        return true;
+    }
+
+    refreshCombatTurnOrder(preserveCurrentCharacter = true) {
+        const currentCharacter = preserveCurrentCharacter ? this.getActiveTurnCharacter() : null;
+        const combatants = [
+            ...this.getLivingCharacters(this.playerParty),
+            ...this.getAggroedEnemyMembers()
+        ];
+
+        this.turnOrder = this.createInitiativeTurnOrder(combatants);
+
+        if (this.turnOrder.length === 0) {
+            this.activeTurnIndex = 0;
+            return;
+        }
+
+        if (currentCharacter && !currentCharacter.isDead) {
+            const preservedIndex = this.turnOrder.indexOf(currentCharacter);
+            this.activeTurnIndex = preservedIndex >= 0 ? preservedIndex : 0;
+            return;
+        }
+
+        this.activeTurnIndex = 0;
+    }
+
+    enterExplorationMode() {
+        this.gameMode = 'exploration';
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        this.explorationLeadCharacter = alivePlayers.find((character) => character === this.dwarf)
+            || alivePlayers.find((character) => character === this.wizard)
+            || alivePlayers[0]
+            || null;
+        this.turnOrder = [...alivePlayers];
+        this.activeTurnIndex = 0;
+        this.turnTransitionFrames = 0;
+        this.enemyMoveTimer = 0;
+        alivePlayers.forEach((character) => {
+            character.actionsRemaining = character.maxActionsPerTurn;
+        });
+    }
+
+    beginCombatWithGroup(group) {
+        if (!group || group.isCleared || group.isAggro) {
+            return;
+        }
+
+        group.isAggro = true;
+
+        if (this.gameMode === 'combat') {
+            this.refreshCombatTurnOrder(true);
+            this.appendCombatLogEntry(
+                `Enemy group ${group.id} joins the battle.`,
+                '#d34c4c'
+            );
+            return;
+        }
+
+        this.gameMode = 'combat';
+        this.activeEnemyGroupId = group.id;
+
+        this.refreshCombatTurnOrder(false);
+        this.turnTransitionFrames = 0;
+        this.enemyMoveTimer = 0;
+
+        this.appendCombatLogEntry(
+            `Enemy group ${group.id} spots the party. Combat begins.`,
+            '#d34c4c'
+        );
+
+        this.beginCurrentTurn();
+    }
+
+    resolveCombatGroupState() {
+        if (this.gameMode !== 'combat') {
+            return;
+        }
+
+        let hadGroupDefeated = false;
+        this.enemyGroups.forEach((group) => {
+            if (!group.isAggro || group.isCleared) {
+                return;
+            }
+
+            const livingMembers = this.getLivingCharacters(group.members);
+            if (livingMembers.length === 0) {
+                group.isCleared = true;
+                hadGroupDefeated = true;
+                this.appendCombatLogEntry(`Enemy group ${group.id} has been defeated.`, '#d9c47d');
+            }
+        });
+
+        if (hadGroupDefeated) {
+            this.refreshCombatTurnOrder(true);
+        }
+
+        if (this.getAggroedEnemyMembers().length === 0) {
+            this.activeEnemyGroupId = null;
+            this.enterExplorationMode();
+        }
+    }
+
+    tryTriggerEnemyAggro() {
+        if (this.isGameOver || (this.gameMode !== 'exploration' && this.gameMode !== 'combat')) {
+            return false;
+        }
+
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        for (const group of this.enemyGroups) {
+            if (group.isCleared || group.isAggro) {
+                continue;
+            }
+
+            const livingMembers = this.getLivingCharacters(group.members);
+            if (livingMembers.length === 0) {
+                group.isCleared = true;
+                continue;
+            }
+
+            const shouldAggro = livingMembers.some((enemy) =>
+                alivePlayers.some((player) => {
+                    const distance = this.getAttackDistanceBetweenPositions(enemy.gridX, enemy.gridY, player.gridX, player.gridY);
+                    return distance <= this.aggroRangeCells &&
+                        this.hasLineOfSightBetweenCells(enemy.gridX, enemy.gridY, player.gridX, player.gridY);
+                })
+            );
+
+            if (shouldAggro) {
+                this.beginCombatWithGroup(group);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    getExplorationPartyOrder() {
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        const lead = alivePlayers.find((character) => character === this.explorationLeadCharacter) || alivePlayers[0] || null;
+        if (!lead) {
+            return [];
+        }
+
+        return [lead, ...alivePlayers.filter((character) => character !== lead)];
+    }
+
+    movePartyInExploration(key) {
+        const partyOrder = this.getExplorationPartyOrder();
+        const lead = partyOrder[0];
+        if (!lead) {
+            return;
+        }
+
+        let newX = lead.gridX;
+        let newY = lead.gridY;
+
+        switch (key) {
+            case 'W':
+                newY -= 1;
+                break;
+            case 'S':
+                newY += 1;
+                break;
+            case 'A':
+                newX -= 1;
+                break;
+            case 'D':
+                newX += 1;
+                break;
+            default:
+                return;
+        }
+
+        const outOfBounds = newX < 0 || newX >= this.gridWidth || newY < 0 || newY >= this.gridHeight;
+        if (outOfBounds || this.isObstacle(newX, newY)) {
+            return;
+        }
+
+        const blockingNonParty = this.characters.some((character) =>
+            !character.isDead &&
+            !character.removedFromScene &&
+            !partyOrder.includes(character) &&
+            character.gridX === newX &&
+            character.gridY === newY
+        );
+        if (blockingNonParty) {
+            return;
+        }
+
+        const previousPositions = new Map(partyOrder.map((character) => [character.id, { x: character.gridX, y: character.gridY }]));
+        const occupiedByParty = new Set();
+
+        const leadDx = newX - lead.gridX;
+        const leadDy = newY - lead.gridY;
+        lead.gridX = newX;
+        lead.gridY = newY;
+        occupiedByParty.add(this.getCellKey(lead.gridX, lead.gridY));
+
+        if (leadDx > 0) {
+            this.updateCharacterFacing(lead, 'right');
+        } else if (leadDx < 0) {
+            this.updateCharacterFacing(lead, 'left');
+        } else if (leadDy > 0) {
+            this.updateCharacterFacing(lead, 'down');
+        } else if (leadDy < 0) {
+            this.updateCharacterFacing(lead, 'up');
+        }
+
+        for (let i = 1; i < partyOrder.length; i++) {
+            const character = partyOrder[i];
+            const predecessor = partyOrder[i - 1];
+            const target = previousPositions.get(predecessor.id);
+            if (!target) {
+                continue;
+            }
+
+            const blocked = this.isObstacle(target.x, target.y) || occupiedByParty.has(this.getCellKey(target.x, target.y));
+            if (blocked) {
+                continue;
+            }
+
+            const blockedByEnemy = this.characters.some((candidate) =>
+                !candidate.isDead &&
+                !candidate.removedFromScene &&
+                !partyOrder.includes(candidate) &&
+                candidate.gridX === target.x &&
+                candidate.gridY === target.y
+            );
+            if (blockedByEnemy) {
+                continue;
+            }
+
+            const dx = target.x - character.gridX;
+            const dy = target.y - character.gridY;
+            character.gridX = target.x;
+            character.gridY = target.y;
+            occupiedByParty.add(this.getCellKey(character.gridX, character.gridY));
+
+            if (dx > 0) {
+                this.updateCharacterFacing(character, 'right');
+            } else if (dx < 0) {
+                this.updateCharacterFacing(character, 'left');
+            } else if (dy > 0) {
+                this.updateCharacterFacing(character, 'down');
+            } else if (dy < 0) {
+                this.updateCharacterFacing(character, 'up');
+            }
+        }
+
+        partyOrder.forEach((character) => this.updateCharacterPosition(character));
+        this.updateCamera();
+        this.tryTriggerEnemyAggro();
     }
 
     findPlayerStartFormation(startRoom) {
@@ -280,7 +652,10 @@ class GridScene {
     }
 
     getLivingGoblinAllies() {
-        return this.aiParty.filter((character) => !character.isDead && character.race === 'goblin');
+        const source = this.gameMode === 'combat'
+            ? this.getCombatAlliedEnemies()
+            : this.aiParty;
+        return source.filter((character) => !character.isDead && character.race === 'goblin');
     }
 
     createInitiativeTurnOrder(characters) {
@@ -314,10 +689,17 @@ class GridScene {
     }
 
     getAliveTurnOrder() {
+        if (this.gameMode !== 'combat') {
+            return this.getLivingCharacters(this.playerParty);
+        }
         return this.turnOrder.filter((character) => !character.isDead);
     }
 
     getActiveTurnCharacter() {
+        if (this.gameMode !== 'combat') {
+            return this.explorationLeadCharacter || this.getLivingCharacters(this.playerParty)[0] || null;
+        }
+
         const aliveTurnOrder = this.getAliveTurnOrder();
         if (aliveTurnOrder.length === 0) {
             return null;
@@ -334,11 +716,18 @@ class GridScene {
     }
 
     isPlayerTurn() {
+        if (this.gameMode !== 'combat') {
+            return true;
+        }
         const activeCharacter = this.getActiveTurnCharacter();
         return Boolean(activeCharacter && activeCharacter.team === 'player');
     }
 
     beginCurrentTurn() {
+        if (this.gameMode !== 'combat') {
+            return;
+        }
+
         const activeCharacter = this.getActiveTurnCharacter();
         if (!activeCharacter) {
             return;
@@ -363,6 +752,10 @@ class GridScene {
     }
 
     endCurrentTurn() {
+        if (this.gameMode !== 'combat') {
+            return;
+        }
+
         const activeCharacter = this.getActiveTurnCharacter();
         if (activeCharacter) {
             activeCharacter.actionsRemaining = 0;
@@ -414,7 +807,14 @@ class GridScene {
             }
 
             if (key === ' ') {
-                this.endCurrentTurn();
+                if (this.gameMode === 'combat') {
+                    this.endCurrentTurn();
+                }
+                return;
+            }
+
+            if (this.gameMode === 'exploration') {
+                this.movePartyInExploration(key);
                 return;
             }
 
@@ -611,6 +1011,10 @@ class GridScene {
                 }
             }
 
+            if (this.gameMode !== 'combat') {
+                return;
+            }
+
             const selectedAbility = activeCharacter.abilities.find((a) => a.id === activeCharacter.selectedAbilityId);
             if (selectedAbility && selectedAbility.type === 'buff') {
                 return;
@@ -620,7 +1024,7 @@ class GridScene {
 
             const targetPool = isHeal
                 ? this.getLivingCharacters(this.playerParty).filter((c) => c.mesh)
-                : this.getLivingCharacters(this.aiParty).filter((c) => c.mesh);
+                : this.getCombatEnemiesForPlayers().filter((c) => c.mesh);
 
             if (targetPool.length === 0) {
                 return;
@@ -645,6 +1049,11 @@ class GridScene {
     }
 
     handleMovement(key) {
+        if (this.gameMode === 'exploration') {
+            this.movePartyInExploration(key);
+            return;
+        }
+
         const activeCharacter = this.getActiveTurnCharacter();
         if (
             this.isGameOver ||
@@ -708,6 +1117,10 @@ class GridScene {
     // --- Combat ---
 
     characterAttack(attacker, target, attackAbility = null) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
         if (!attacker || !target || attacker.isDead || target.isDead || attacker.team === target.team) {
             return false;
         }
@@ -779,6 +1192,10 @@ class GridScene {
     }
 
     castMagicMissile(caster, target) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
         if (!caster || !target || caster.isDead || target.isDead || caster.team === target.team) {
             return false;
         }
@@ -840,6 +1257,10 @@ class GridScene {
     }
 
     castBattleShout(caster) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
         if (!caster || caster.isDead) {
             return false;
         }
@@ -884,6 +1305,10 @@ class GridScene {
     }
 
     castInflictPain(caster) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
         if (!caster || caster.isDead) {
             return false;
         }
@@ -933,6 +1358,10 @@ class GridScene {
     }
 
     castHeal(caster, target) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
         if (!caster || !target || caster.isDead || target.isDead || caster.team !== target.team) {
             return false;
         }
@@ -1306,12 +1735,19 @@ class GridScene {
             this.startGameOverSequence();
         }
 
+        this.resolveCombatGroupState();
+
         if (!this.isGameOver && this.areAllPartyMembersDead(this.aiParty)) {
             this.startVictorySequence();
         }
 
         if (this.isGameOver) {
             this.updateVictorySequence();
+            return;
+        }
+
+        if (this.gameMode === 'exploration') {
+            this.tryTriggerEnemyAggro();
             return;
         }
 

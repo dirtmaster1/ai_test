@@ -22,8 +22,6 @@ ai_test/
 ├── ui.js               # HUD, overlays, inventory modal, and combat log UI
 ├── map_generator.js    # Dungeon map generation
 ├── server.js           # Local static development server
-├── game.js             # Legacy compatibility redirect shim
-├── script.js           # Older experimental Three.js script
 └── README.md           # Project documentation
 ```
 

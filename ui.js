@@ -531,6 +531,12 @@ window.GridUI = {
         if (this.turnQueueState !== nextState) {
             this.turnQueueState = nextState;
             const list = this.turnOrderQueuePanel.list;
+
+            // Rebuild the roster list from scratch so cards not in the current turn roster are removed.
+            while (list.firstChild) {
+                list.removeChild(list.firstChild);
+            }
+
             orderedIds.forEach((characterId) => {
                 const hud = this.characterHud.get(characterId);
                 if (hud?.card) {
@@ -1719,7 +1725,7 @@ window.GridUI = {
         portraitFrame.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease';
         portraitFrame.style.pointerEvents = character.team === 'player' ? 'auto' : 'none';
         portraitFrame.style.cursor = character.team === 'player' ? 'pointer' : 'default';
-        portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor, character.portraitLabel));
+        portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor));
         if (character.team === 'player') {
             portraitFrame.title = `Open ${character.name} inventory`;
             portraitFrame.setAttribute('role', 'button');
@@ -2004,6 +2010,11 @@ window.GridUI = {
             if (eventTarget && portraitFrame.contains(eventTarget)) {
                 return;
             }
+
+            if (this.gameMode === 'exploration' && character.team === 'player' && !character.isDead) {
+                this.setExplorationLeadCharacter(character);
+            }
+
             focusCardCharacter();
         });
 

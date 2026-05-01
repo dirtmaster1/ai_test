@@ -1,8 +1,39 @@
 // AI - enemy movement, pathfinding, and tactical decisions
 window.GridAI = {
 
+    getOpposingGroupForCharacter(character) {
+        if (!character) {
+            return [];
+        }
+
+        if (character.team === 'player') {
+            if (this.gameMode === 'combat') {
+                return this.getCombatEnemiesForPlayers();
+            }
+            return this.aiParty;
+        }
+
+        return this.playerParty;
+    },
+
+    getAllyGroupForCharacter(character) {
+        if (!character) {
+            return [];
+        }
+
+        if (character.team === 'player') {
+            return this.playerParty;
+        }
+
+        if (this.gameMode === 'combat') {
+            return this.getCombatAlliedEnemies();
+        }
+
+        return this.aiParty;
+    },
+
     getNearestLivingOpponent(character) {
-        const enemyGroup = character.team === 'player' ? this.aiParty : this.playerParty;
+        const enemyGroup = this.getOpposingGroupForCharacter(character);
         const livingOpponents = this.getLivingCharacters(enemyGroup);
         if (livingOpponents.length === 0) {
             return null;
@@ -287,7 +318,7 @@ window.GridAI = {
     },
 
     getBestOpponentTarget(character, ability = null) {
-        const enemyGroup = character.team === 'player' ? this.aiParty : this.playerParty;
+        const enemyGroup = this.getOpposingGroupForCharacter(character);
         const livingOpponents = this.getLivingCharacters(enemyGroup);
         if (livingOpponents.length === 0) {
             return null;
@@ -307,7 +338,7 @@ window.GridAI = {
     },
 
     getBestImmediateAttackTarget(character, ability = null) {
-        const enemyGroup = character.team === 'player' ? this.aiParty : this.playerParty;
+        const enemyGroup = this.getOpposingGroupForCharacter(character);
         const livingOpponents = this.getLivingCharacters(enemyGroup);
         let bestTarget = null;
         let bestScore = Number.NEGATIVE_INFINITY;
@@ -329,7 +360,7 @@ window.GridAI = {
     },
 
     getDistanceToNearestOpponentAt(character, gridX, gridY) {
-        const enemyGroup = character.team === 'player' ? this.aiParty : this.playerParty;
+        const enemyGroup = this.getOpposingGroupForCharacter(character);
         const livingOpponents = this.getLivingCharacters(enemyGroup);
         if (livingOpponents.length === 0) {
             return Number.POSITIVE_INFINITY;
@@ -342,7 +373,7 @@ window.GridAI = {
     },
 
     countAdjacentAlliesAt(character, gridX, gridY) {
-        const allyGroup = character.team === 'player' ? this.playerParty : this.aiParty;
+        const allyGroup = this.getAllyGroupForCharacter(character);
         return this.getLivingCharacters(allyGroup).filter((ally) =>
             ally !== character &&
             this.getAttackDistanceBetweenPositions(gridX, gridY, ally.gridX, ally.gridY) <= 1
@@ -407,7 +438,7 @@ window.GridAI = {
         let bestPlan = null;
 
         reachablePositions.forEach((candidatePosition) => {
-            this.getLivingCharacters(this.playerParty).forEach((target) => {
+            this.getLivingCharacters(this.getOpposingGroupForCharacter(character)).forEach((target) => {
                 const effect = this.getExpectedActionEffect(
                     character,
                     target,
@@ -443,7 +474,7 @@ window.GridAI = {
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
         let bestPlan = null;
 
-        this.getLivingCharacters(this.playerParty).forEach((target) => {
+        this.getLivingCharacters(this.getOpposingGroupForCharacter(character)).forEach((target) => {
             reachablePositions.forEach((candidatePosition) => {
                 const effect = this.getExpectedActionEffect(
                     character,
@@ -635,12 +666,15 @@ window.GridAI = {
             return;
         }
 
-        if (character === this.goblinShaman) {
+        const canBuff = character.abilities.some((ability) => ability.id === 'inflict-pain');
+        const canBow = character.abilities.some((ability) => ability.id === 'bow-shot');
+
+        if (canBuff) {
             this.moveGoblinShaman(character);
             return;
         }
 
-        if (character === this.goblinArcher) {
+        if (canBow) {
             this.moveGoblinArcher(character);
             return;
         }

@@ -11,26 +11,75 @@ window.GridGraphics = {
     },
 
     createSpriteTexture(rows) {
+        const sourceHeight = rows.length;
+        const sourceWidth = rows[0]?.length ?? 16;
+        const targetSize = 64;
+        const scale = Math.max(1, Math.floor(targetSize / Math.max(sourceWidth, sourceHeight)));
+        const canvasWidth = sourceWidth * scale;
+        const canvasHeight = sourceHeight * scale;
+
         const canvas = document.createElement('canvas');
-        canvas.width = 16;
-        canvas.height = 16;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, 16, 16);
+
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+        // Draw expanded sprite pixels with subtle per-pixel shading so 64x64 sprites keep a hand-painted look.
         rows.forEach((row, y) => {
             row.forEach((color, x) => {
                 if (color !== null) {
                     ctx.fillStyle = color;
-                    ctx.fillRect(x, y, 1, 1);
+                    const px = x * scale;
+                    const py = y * scale;
+                    ctx.fillRect(px, py, scale, scale);
+
+                    const shadeBand = Math.max(1, Math.floor(scale * 0.22));
+                    const lightBand = Math.max(1, Math.floor(scale * 0.25));
+
+                    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+                    ctx.fillRect(px, py, scale, lightBand);
+                    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+                    ctx.fillRect(px, py + scale - shadeBand, scale, shadeBand);
+
+                    if (((x * 13 + y * 7) & 3) === 0) {
+                        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                        ctx.fillRect(px + Math.floor(scale * 0.5), py + Math.floor(scale * 0.25), 1, 1);
+                    }
                 }
             });
         });
+
+        // Add a thin silhouette outline around non-transparent source pixels.
+        for (let y = 0; y < sourceHeight; y++) {
+            for (let x = 0; x < sourceWidth; x++) {
+                if (rows[y][x] === null) {
+                    continue;
+                }
+                const neighbors = [
+                    [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]
+                ];
+                for (const [nx, ny] of neighbors) {
+                    if (nx < 0 || ny < 0 || nx >= sourceWidth || ny >= sourceHeight || rows[ny][nx] === null) {
+                        const px = x * scale;
+                        const py = y * scale;
+                        ctx.fillStyle = 'rgba(10,10,14,0.65)';
+                        if (nx < x) ctx.fillRect(px, py, 1, scale);
+                        if (nx > x) ctx.fillRect(px + scale - 1, py, 1, scale);
+                        if (ny < y) ctx.fillRect(px, py, scale, 1);
+                        if (ny > y) ctx.fillRect(px, py + scale - 1, scale, 1);
+                    }
+                }
+            }
+        }
+
         const texture = new THREE.CanvasTexture(canvas);
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
         return texture;
     },
 
-    createPortraitCanvas(rows, accentColor, label) {
+    createPortraitCanvas(rows, accentColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 18;
         canvas.height = 18;
@@ -65,7 +114,7 @@ window.GridGraphics = {
     },
 
     setupGrid() {
-        const TILE_RES = 16;
+        const TILE_RES = this.cellSize;
         const canvasW = this.gridWidth * TILE_RES;
         const canvasH = this.gridHeight * TILE_RES;
         const canvas = document.createElement('canvas');
@@ -180,70 +229,102 @@ window.GridGraphics = {
     },
 
     drawWallTile(ctx, px, py, T, cx, cy) {
-        const H = T >> 1;
+        const s = (cx * 1664525 + cy * 214013) >>> 0;
+        const u = Math.max(1, Math.floor(T / 16));
+        const block = Math.max(4, Math.floor(T / 8));
 
-        ctx.fillStyle = '#0e1218';
+        ctx.fillStyle = '#111720';
         ctx.fillRect(px, py, T, T);
 
-        ctx.fillStyle = '#07080f';
-        ctx.fillRect(px, py + H, T, 1);
-        if ((cx + cy) % 2 === 0) {
-            ctx.fillRect(px + H, py, 1, H);
-        } else {
-            ctx.fillRect(px + H, py + H + 1, 1, H - 1);
-        }
+        // Brick-like bands and seams for higher-resolution wall cells.
+        for (let y = 0; y < T; y += block) {
+            const rowHeight = Math.min(block, T - y);
+            const shade = (y / block) % 2 === 0 ? 0.05 : 0.09;
+            ctx.fillStyle = `rgba(130, 155, 205, ${shade})`;
+            ctx.fillRect(px, py + y, T, rowHeight);
 
-        ctx.fillStyle = 'rgba(100, 140, 220, 0.09)';
-        ctx.fillRect(px, py, T, 2);
-        ctx.fillStyle = 'rgba(80, 110, 190, 0.05)';
-        ctx.fillRect(px, py + 2, 2, H - 2);
+            const offset = ((y / block) % 2 === 0) ? 0 : Math.floor(block / 2);
+            for (let x = -offset; x < T; x += block) {
+                const seamX = px + x + offset;
+                ctx.fillStyle = 'rgba(10, 12, 18, 0.55)';
+                ctx.fillRect(seamX, py + y, u, rowHeight);
+            }
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.70)';
-        ctx.fillRect(px, py + T - 2, T, 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.50)';
-        ctx.fillRect(px + T - 2, py, 2, T);
-
-        const s = (cx * 1664525 + cy * 214013) >>> 0;
-        if (s % 9 < 2) {
-            ctx.fillStyle = 'rgba(255,255,255,0.025)';
-            ctx.fillRect(px + 1 + (s % (H - 2)), py + 1 + ((s >> 8) % (H - 2)), H - 2, H - 2);
-        }
-        if (s % 11 === 3) {
             ctx.fillStyle = 'rgba(0,0,0,0.25)';
-            ctx.fillRect(px + 1 + (s % (T - 3)), py + 1 + ((s >> 4) % (T - 3)), 2, 2);
+            ctx.fillRect(px, py + y + rowHeight - u, T, u);
+        }
+
+        ctx.fillStyle = 'rgba(145, 175, 240, 0.11)';
+        ctx.fillRect(px, py, T, u * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.64)';
+        ctx.fillRect(px, py + T - u * 2, T, u * 2);
+        ctx.fillRect(px + T - u * 2, py, u * 2, T);
+
+        // Randomized chips/cracks per tile for variation.
+        const chips = 4 + (s % 4);
+        for (let i = 0; i < chips; i++) {
+            const rx = px + u + ((s >> (i * 3)) % Math.max(1, T - u * 3));
+            const ry = py + u + ((s >> (i * 4 + 7)) % Math.max(1, T - u * 3));
+            const rw = Math.max(1, (i % 3) + u);
+            const rh = Math.max(1, ((i + 1) % 3) + u);
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.04)';
+            ctx.fillRect(rx, ry, rw, rh);
         }
     },
 
     drawFloorTile(ctx, px, py, T, cx, cy) {
         const s = (cx * 1664525 ^ cy * 214013 ^ 0xDEAD) >>> 0;
         const v = s % 5;
+        const u = Math.max(1, Math.floor(T / 16));
+        const stone = Math.max(4, Math.floor(T / 8));
 
         ctx.fillStyle = `rgb(${22 + v * 2},${17 + v},12)`;
         ctx.fillRect(px, py, T, T);
 
+        for (let y = 0; y < T; y += stone) {
+            for (let x = 0; x < T; x += stone) {
+                const idx = ((x + y + s) >> 2) & 3;
+                const alpha = 0.03 + idx * 0.015;
+                ctx.fillStyle = `rgba(255,210,140,${alpha.toFixed(3)})`;
+                ctx.fillRect(px + x, py + y, Math.min(stone, T - x), Math.min(stone, T - y));
+                if (idx % 2 === 0) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+                    ctx.fillRect(px + x, py + y + Math.max(1, stone - u), Math.min(stone, T - x), u);
+                }
+            }
+        }
+
         ctx.fillStyle = 'rgba(0,0,0,0.60)';
-        ctx.fillRect(px, py, T, 1);
-        ctx.fillRect(px, py, 1, T);
+        ctx.fillRect(px, py, T, u);
+        ctx.fillRect(px, py, u, T);
 
         ctx.fillStyle = 'rgba(255,220,140,0.055)';
-        ctx.fillRect(px + 1, py + 1, T - 2, 1);
-        ctx.fillRect(px + 1, py + 2, 1, T - 3);
+        ctx.fillRect(px + u, py + u, T - u * 2, u);
+        ctx.fillRect(px + u, py + u * 2, u, T - u * 3);
 
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.fillRect(px + 1, py + T - 2, T - 2, 1);
-        ctx.fillRect(px + T - 2, py + 1, 1, T - 2);
+        ctx.fillRect(px + u, py + T - u * 2, T - u * 2, u);
+        ctx.fillRect(px + T - u * 2, py + u, u, T - u * 2);
 
         if (s % 8 === 0) {
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
-            const crackX = px + 2 + (s % (T - 5));
-            const crackY = py + 2 + ((s >> 8) % (T - 5));
-            ctx.fillRect(crackX, crackY, 4, 1);
-            ctx.fillRect(crackX + 3, crackY, 1, 3);
+            const crackX = px + u * 2 + (s % Math.max(1, T - u * 6));
+            const crackY = py + u * 2 + ((s >> 8) % Math.max(1, T - u * 6));
+            ctx.fillRect(crackX, crackY, u * 4, u);
+            ctx.fillRect(crackX + u * 3, crackY, u, u * 3);
         }
 
         if (s % 13 === 5) {
             ctx.fillStyle = 'rgba(0,0,0,0.50)';
-            ctx.fillRect(px + 2 + (s % (T - 5)), py + 2 + ((s >> 5) % (T - 5)), 2, 2);
+            ctx.fillRect(px + u * 2 + (s % Math.max(1, T - u * 6)), py + u * 2 + ((s >> 5) % Math.max(1, T - u * 6)), u * 2, u * 2);
+        }
+
+        const gritCount = 6 + (s % 8);
+        for (let i = 0; i < gritCount; i++) {
+            const gx = px + u + ((s >> (i * 2)) % Math.max(1, T - u * 2));
+            const gy = py + u + ((s >> (i * 3 + 4)) % Math.max(1, T - u * 2));
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.20)' : 'rgba(255,215,140,0.08)';
+            ctx.fillRect(gx, gy, 1, 1);
         }
     },
 
