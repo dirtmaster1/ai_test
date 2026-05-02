@@ -91,6 +91,12 @@ class GridScene {
         this.enemyGroups = [];
         this.activeEnemyGroupId = null;
         this.explorationLeadCharacter = null;
+        this.explorationCellsMovedSinceRegen = 0;
+        this.explorationRegenStride = 10;
+        this.partyVisionRangeCells = 6;
+        this.discoveredCells = new Set();
+        this.visibleCells = new Set();
+        this.visionNeedsRedraw = true;
 
         this.activeProjectiles = [];
 
@@ -98,6 +104,7 @@ class GridScene {
         this.dungeonMap = dungeon.map;
         this.placeCharacters(dungeon.rooms);
         this.enterExplorationMode();
+        this.updatePartyVisionState();
 
         this.keysPressed = {};
         this.setupInputListeners();
@@ -132,6 +139,82 @@ class GridScene {
             character.gridX === gridX &&
             character.gridY === gridY
         );
+    }
+
+    getVisionSourceCharacter() {
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        if (alivePlayers.length === 0) {
+            return null;
+        }
+
+        if (this.explorationLeadCharacter && !this.explorationLeadCharacter.isDead) {
+            return this.explorationLeadCharacter;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter && activeCharacter.team === 'player' && !activeCharacter.isDead) {
+            return activeCharacter;
+        }
+
+        return alivePlayers[0] || null;
+    }
+
+    updatePartyVisionState() {
+        const source = this.getVisionSourceCharacter();
+        if (!source) {
+            if (this.visibleCells.size > 0) {
+                this.visibleCells = new Set();
+                this.visionNeedsRedraw = true;
+            }
+            return;
+        }
+
+        const radius = this.partyVisionRangeCells ?? 6;
+        const nextVisibleCells = new Set();
+        let discoveredChanged = false;
+
+        for (let gridY = source.gridY - radius; gridY <= source.gridY + radius; gridY++) {
+            for (let gridX = source.gridX - radius; gridX <= source.gridX + radius; gridX++) {
+                if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+                    continue;
+                }
+
+                const distance = this.getAttackDistanceBetweenPositions(source.gridX, source.gridY, gridX, gridY);
+                if (distance > radius) {
+                    continue;
+                }
+
+                if (!this.hasLineOfSightBetweenCells(source.gridX, source.gridY, gridX, gridY)) {
+                    continue;
+                }
+
+                const cellKey = this.getCellKey(gridX, gridY);
+                nextVisibleCells.add(cellKey);
+
+                if (!this.discoveredCells.has(cellKey)) {
+                    this.discoveredCells.add(cellKey);
+                    discoveredChanged = true;
+                }
+            }
+        }
+
+        let visibilityChanged = nextVisibleCells.size !== this.visibleCells.size;
+        if (!visibilityChanged) {
+            for (const cellKey of nextVisibleCells) {
+                if (!this.visibleCells.has(cellKey)) {
+                    visibilityChanged = true;
+                    break;
+                }
+            }
+        }
+
+        if (visibilityChanged) {
+            this.visibleCells = nextVisibleCells;
+        }
+
+        if (visibilityChanged || discoveredChanged) {
+            this.visionNeedsRedraw = true;
+        }
     }
 
     // --- Character Placement ---
@@ -176,7 +259,9 @@ class GridScene {
 
         const maxGroupsByRooms = Math.max(1, Math.min(6, shuffledRooms.length || 1));
         const minGroups = Math.min(4, maxGroupsByRooms);
-        const groupCount = minGroups + Math.floor(Math.random() * (maxGroupsByRooms - minGroups + 1));
+        const baseGroupCount = minGroups + Math.floor(Math.random() * (maxGroupsByRooms - minGroups + 1));
+        const maxSafeGroups = Math.max(2, (shuffledRooms.length || 1) * 3);
+        const groupCount = Math.min(baseGroupCount * 2, maxSafeGroups);
 
         this.enemyGroups = [];
         this.aiParty = [];
@@ -284,6 +369,7 @@ class GridScene {
         }
 
         this.explorationLeadCharacter = character;
+        this.updatePartyVisionState();
         this.updateTurnOrderQueue(this.getActiveTurnCharacter());
         this.appendCombatLogEntry(`${character.name} is now leading the party.`, character.accentColor);
         this.updateCamera();
@@ -324,9 +410,41 @@ class GridScene {
         this.activeTurnIndex = 0;
         this.turnTransitionFrames = 0;
         this.enemyMoveTimer = 0;
+        this.explorationCellsMovedSinceRegen = 0;
         alivePlayers.forEach((character) => {
             character.actionsRemaining = character.maxActionsPerTurn;
         });
+    }
+
+    applyExplorationMovementRegen(cellsMoved = 1) {
+        if (this.gameMode !== 'exploration' || cellsMoved <= 0) {
+            return;
+        }
+
+        this.explorationCellsMovedSinceRegen += cellsMoved;
+
+        while (this.explorationCellsMovedSinceRegen >= this.explorationRegenStride) {
+            this.explorationCellsMovedSinceRegen -= this.explorationRegenStride;
+
+            const alivePlayers = this.getLivingCharacters(this.playerParty);
+            let hadRecovery = false;
+
+            alivePlayers.forEach((character) => {
+                if (character.hitPoints < character.maxHitPoints) {
+                    character.hitPoints = Math.min(character.maxHitPoints, character.hitPoints + 1);
+                    hadRecovery = true;
+                }
+
+                if ((character.maxMagicPoints ?? 0) > 0 && character.magicPoints < character.maxMagicPoints) {
+                    character.magicPoints = Math.min(character.maxMagicPoints, character.magicPoints + 1);
+                    hadRecovery = true;
+                }
+            });
+
+            if (hadRecovery) {
+                this.appendCombatLogEntry('Exploration recovery: party restores 1 HP and 1 MP.', '#8fd3ff');
+            }
+        }
     }
 
     beginCombatWithGroup(group) {
@@ -394,6 +512,7 @@ class GridScene {
             return false;
         }
 
+        let didAggro = false;
         const alivePlayers = this.getLivingCharacters(this.playerParty);
         for (const group of this.enemyGroups) {
             if (group.isCleared || group.isAggro) {
@@ -416,11 +535,11 @@ class GridScene {
 
             if (shouldAggro) {
                 this.beginCombatWithGroup(group);
-                return true;
+                didAggro = true;
             }
         }
 
-        return false;
+        return didAggro;
     }
 
     getExplorationPartyOrder() {
@@ -538,6 +657,7 @@ class GridScene {
 
         partyOrder.forEach((character) => this.updateCharacterPosition(character));
         this.updateCamera();
+        this.applyExplorationMovementRegen(1);
         this.tryTriggerEnemyAggro();
     }
 
@@ -1426,6 +1546,64 @@ class GridScene {
         return 500 * Math.pow(2, level - 2);
     }
 
+    getLevelUpBonusesForCharacter(character) {
+        if (!character || character.team !== 'player') {
+            return null;
+        }
+
+        switch (character.id) {
+            case 'dwarf-warrior':
+                return { hp: 2, strength: 2 };
+            case 'cleric':
+                return { hp: 1, mp: 1, wisdom: 1 };
+            case 'wizard':
+                return { hp: 1, mp: 2, intelligence: 1 };
+            case 'ranger-aragon':
+                return { hp: 1, initiative: 1, dexterity: 1 };
+            default:
+                return null;
+        }
+    }
+
+    applyLevelUpBonuses(character, newLevel) {
+        const bonuses = this.getLevelUpBonusesForCharacter(character);
+        if (!bonuses) {
+            return;
+        }
+
+        const hpGain = bonuses.hp ?? 0;
+        if (hpGain > 0) {
+            character.maxHitPoints += hpGain;
+            character.hitPoints = Math.min(character.maxHitPoints, character.hitPoints + hpGain);
+        }
+
+        const mpGain = bonuses.mp ?? 0;
+        if (mpGain > 0) {
+            character.maxMagicPoints = (character.maxMagicPoints ?? 0) + mpGain;
+            character.magicPoints = Math.min(character.maxMagicPoints, (character.magicPoints ?? 0) + mpGain);
+        }
+
+        character.strength = (character.strength ?? 0) + (bonuses.strength ?? 0);
+        character.wisdom = (character.wisdom ?? 0) + (bonuses.wisdom ?? 0);
+        character.intelligence = (character.intelligence ?? 0) + (bonuses.intelligence ?? 0);
+        character.dexterity = (character.dexterity ?? 0) + (bonuses.dexterity ?? 0);
+        character.initiative = (character.initiative ?? 0) + (bonuses.initiative ?? 0);
+
+        const bonusParts = [];
+        if (hpGain > 0) bonusParts.push(`+${hpGain} HP`);
+        if (mpGain > 0) bonusParts.push(`+${mpGain} MP`);
+        if ((bonuses.strength ?? 0) > 0) bonusParts.push(`+${bonuses.strength} STR`);
+        if ((bonuses.wisdom ?? 0) > 0) bonusParts.push(`+${bonuses.wisdom} WIS`);
+        if ((bonuses.intelligence ?? 0) > 0) bonusParts.push(`+${bonuses.intelligence} INT`);
+        if ((bonuses.dexterity ?? 0) > 0) bonusParts.push(`+${bonuses.dexterity} DEX`);
+        if ((bonuses.initiative ?? 0) > 0) bonusParts.push(`+${bonuses.initiative} Initiative`);
+
+        this.appendCombatLogEntry(
+            `${character.name} reached level ${newLevel}: ${bonusParts.join(', ')}.`,
+            character.accentColor || '#d9c47d'
+        );
+    }
+
     addExperienceToPlayer(character, amount) {
         if (!character || character.team !== 'player' || amount <= 0) {
             return;
@@ -1436,6 +1614,7 @@ class GridScene {
         let nextLevel = (character.level ?? 1) + 1;
         while (character.experiencePoints >= this.getTotalExperienceRequiredForLevel(nextLevel)) {
             character.level = nextLevel;
+            this.applyLevelUpBonuses(character, nextLevel);
             nextLevel += 1;
         }
     }
@@ -1716,6 +1895,7 @@ class GridScene {
     update() {
         const nowMs = performance.now();
         const activeCharacter = this.getActiveTurnCharacter();
+        this.updatePartyVisionState();
 
         this.updateProjectiles(nowMs);
         this.updateReachableMovementHighlights(activeCharacter);
@@ -1749,6 +1929,10 @@ class GridScene {
         if (this.gameMode === 'exploration') {
             this.tryTriggerEnemyAggro();
             return;
+        }
+
+        if (this.gameMode === 'combat') {
+            this.tryTriggerEnemyAggro();
         }
 
         if (this.turnTransitionFrames > 0) {

@@ -482,13 +482,13 @@ window.GridUI = {
         title.style.letterSpacing = '0.08em';
         title.style.textTransform = 'uppercase';
         title.style.color = '#e3d6bb';
-        title.textContent = 'Combat Roster';
+        title.textContent = 'Party Status';
 
         const subtitle = document.createElement('div');
         subtitle.style.marginTop = '2px';
         subtitle.style.fontSize = '9px';
         subtitle.style.color = '#8d8169';
-        subtitle.textContent = 'Initiative order with party and enemy status';
+        subtitle.textContent = 'Exploration Mode';
 
         heading.appendChild(title);
         heading.appendChild(subtitle);
@@ -503,7 +503,7 @@ window.GridUI = {
         list.style.scrollbarWidth = 'thin';
         section.appendChild(list);
 
-        this.turnOrderQueuePanel = { section, list, subtitle };
+        this.turnOrderQueuePanel = { section, list, title, subtitle };
         return this.turnOrderQueuePanel;
     },
 
@@ -545,10 +545,16 @@ window.GridUI = {
             });
         }
 
+        if (this.turnOrderQueuePanel.title) {
+            this.turnOrderQueuePanel.title.textContent = this.gameMode === 'combat'
+                ? 'Combat Mode'
+                : 'Exploration Mode';
+        }
+
         if (this.turnOrderQueuePanel.subtitle) {
-            this.turnOrderQueuePanel.subtitle.textContent = aliveTurnOrder.length > 0
-                ? `${aliveTurnOrder.length} active combatant${aliveTurnOrder.length === 1 ? '' : 's'} in initiative order`
-                : 'No active turns';
+            this.turnOrderQueuePanel.subtitle.textContent = this.gameMode === 'combat'
+                ? 'Initiative order with party and enemy status'
+                : 'Party movement and marching order';
         }
 
         this.characters.forEach((character) => {

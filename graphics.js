@@ -140,6 +140,64 @@ window.GridGraphics = {
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.z = -2;
         this.scene.add(mesh);
+
+        this.setupFogOfWarOverlay();
+        this.updateFogOfWarOverlay();
+    },
+
+    setupFogOfWarOverlay() {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.gridWidth;
+        canvas.height = this.gridHeight;
+
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+
+        const worldW = this.gridWidth * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
+        const geometry = new THREE.PlaneGeometry(worldW, worldH);
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.z = 1.8;
+        this.scene.add(mesh);
+
+        this.fogOfWar = { canvas, ctx, texture, mesh };
+    },
+
+    updateFogOfWarOverlay() {
+        if (!this.fogOfWar || !this.visionNeedsRedraw) {
+            return;
+        }
+
+        const { ctx, texture, canvas } = this.fogOfWar;
+        const visibleCells = this.visibleCells || new Set();
+        const discoveredCells = this.discoveredCells || new Set();
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (let gridY = 0; gridY < this.gridHeight; gridY++) {
+            for (let gridX = 0; gridX < this.gridWidth; gridX++) {
+                const cellKey = this.getCellKey(gridX, gridY);
+                if (visibleCells.has(cellKey)) {
+                    continue;
+                }
+
+                const alpha = discoveredCells.has(cellKey) ? 0.58 : 0.94;
+                ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+                ctx.fillRect(gridX, gridY, 1, 1);
+            }
+        }
+
+        texture.needsUpdate = true;
+        this.visionNeedsRedraw = false;
     },
 
     createLootBagTexture() {
@@ -435,6 +493,8 @@ window.GridGraphics = {
         this.camera.position.y = minCameraY <= maxCameraY
             ? clamp(desiredY, minCameraY, maxCameraY)
             : 0;
+
+        this.updateFogOfWarOverlay();
     },
 
     createDirectionPointer(color) {
