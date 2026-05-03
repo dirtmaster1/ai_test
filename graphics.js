@@ -10,104 +10,117 @@ window.GridGraphics = {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     },
 
-    createSpriteTexture(rows) {
-        const sourceHeight = rows.length;
-        const sourceWidth = rows[0]?.length ?? 16;
+    getSpriteSheetImage(imagePath) {
+        this.spriteSheetImageCache ||= new Map();
+
+        if (!this.spriteSheetImageCache.has(imagePath)) {
+            const image = new Image();
+            image.src = imagePath;
+            this.spriteSheetImageCache.set(imagePath, image);
+        }
+
+        return this.spriteSheetImageCache.get(imagePath);
+    },
+
+    drawSpriteFrameToCanvas(canvas, spriteFrame, options = {}) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+
+        const render = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            options.beforeDraw?.(ctx, canvas);
+
+            if (!spriteFrame) {
+                return;
+            }
+
+            const padding = options.padding ?? 0;
+            const availableWidth = Math.max(1, canvas.width - padding * 2);
+            const availableHeight = Math.max(1, canvas.height - padding * 2);
+            const scale = Math.min(availableWidth / spriteFrame.width, availableHeight / spriteFrame.height);
+            const drawWidth = Math.max(1, Math.round(spriteFrame.width * scale));
+            const drawHeight = Math.max(1, Math.round(spriteFrame.height * scale));
+            const drawX = Math.round((canvas.width - drawWidth) / 2);
+            const drawY = Math.round(canvas.height - drawHeight - padding);
+
+            const image = this.getSpriteSheetImage(spriteFrame.imagePath);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(
+                image,
+                spriteFrame.x,
+                spriteFrame.y,
+                spriteFrame.width,
+                spriteFrame.height,
+                drawX,
+                drawY,
+                drawWidth,
+                drawHeight
+            );
+        };
+
+        if (!spriteFrame) {
+            render();
+            return;
+        }
+
+        const image = this.getSpriteSheetImage(spriteFrame.imagePath);
+        if (image.complete && image.naturalWidth > 0) {
+            render();
+            return;
+        }
+
+        image.addEventListener('load', render, { once: true });
+    },
+
+    createSpriteTexture(spriteFrame) {
         const targetSize = 64;
-        const scale = Math.max(1, Math.floor(targetSize / Math.max(sourceWidth, sourceHeight)));
-        const canvasWidth = sourceWidth * scale;
-        const canvasHeight = sourceHeight * scale;
 
         const canvas = document.createElement('canvas');
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        const ctx = canvas.getContext('2d');
+        canvas.width = targetSize;
+        canvas.height = targetSize;
 
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-        // Draw expanded sprite pixels with subtle per-pixel shading so 64x64 sprites keep a hand-painted look.
-        rows.forEach((row, y) => {
-            row.forEach((color, x) => {
-                if (color !== null) {
-                    ctx.fillStyle = color;
-                    const px = x * scale;
-                    const py = y * scale;
-                    ctx.fillRect(px, py, scale, scale);
-
-                    const shadeBand = Math.max(1, Math.floor(scale * 0.22));
-                    const lightBand = Math.max(1, Math.floor(scale * 0.25));
-
-                    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-                    ctx.fillRect(px, py, scale, lightBand);
-                    ctx.fillStyle = 'rgba(0,0,0,0.16)';
-                    ctx.fillRect(px, py + scale - shadeBand, scale, shadeBand);
-
-                    if (((x * 13 + y * 7) & 3) === 0) {
-                        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-                        ctx.fillRect(px + Math.floor(scale * 0.5), py + Math.floor(scale * 0.25), 1, 1);
-                    }
-                }
-            });
-        });
-
-        // Add a thin silhouette outline around non-transparent source pixels.
-        for (let y = 0; y < sourceHeight; y++) {
-            for (let x = 0; x < sourceWidth; x++) {
-                if (rows[y][x] === null) {
-                    continue;
-                }
-                const neighbors = [
-                    [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]
-                ];
-                for (const [nx, ny] of neighbors) {
-                    if (nx < 0 || ny < 0 || nx >= sourceWidth || ny >= sourceHeight || rows[ny][nx] === null) {
-                        const px = x * scale;
-                        const py = y * scale;
-                        ctx.fillStyle = 'rgba(10,10,14,0.65)';
-                        if (nx < x) ctx.fillRect(px, py, 1, scale);
-                        if (nx > x) ctx.fillRect(px + scale - 1, py, 1, scale);
-                        if (ny < y) ctx.fillRect(px, py, scale, 1);
-                        if (ny > y) ctx.fillRect(px, py + scale - 1, scale, 1);
-                    }
-                }
-            }
-        }
+        this.drawSpriteFrameToCanvas(canvas, spriteFrame, { padding: 2 });
 
         const texture = new THREE.CanvasTexture(canvas);
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
+
+        if (spriteFrame) {
+            const image = this.getSpriteSheetImage(spriteFrame.imagePath);
+            if (!image.complete || image.naturalWidth === 0) {
+                image.addEventListener('load', () => {
+                    this.drawSpriteFrameToCanvas(canvas, spriteFrame, { padding: 2 });
+                    texture.needsUpdate = true;
+                }, { once: true });
+            }
+        }
+
         return texture;
     },
 
-    createPortraitCanvas(rows, accentColor) {
+    createPortraitCanvas(spriteFrame, accentColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 18;
         canvas.height = 18;
-        const ctx = canvas.getContext('2d');
 
-        ctx.fillStyle = '#090909';
-        ctx.fillRect(0, 0, 18, 18);
+        this.drawSpriteFrameToCanvas(canvas, spriteFrame, {
+            padding: 1,
+            beforeDraw: (ctx) => {
+                ctx.fillStyle = '#090909';
+                ctx.fillRect(0, 0, 18, 18);
 
-        const bgGradient = ctx.createLinearGradient(0, 0, 18, 18);
-        bgGradient.addColorStop(0, this.hexToRgba(accentColor, 0.4));
-        bgGradient.addColorStop(1, 'rgba(12, 10, 8, 0.94)');
-        ctx.fillStyle = bgGradient;
-        ctx.fillRect(1, 1, 16, 16);
+                const bgGradient = ctx.createLinearGradient(0, 0, 18, 18);
+                bgGradient.addColorStop(0, this.hexToRgba(accentColor, 0.4));
+                bgGradient.addColorStop(1, 'rgba(12, 10, 8, 0.94)');
+                ctx.fillStyle = bgGradient;
+                ctx.fillRect(1, 1, 16, 16);
 
-        ctx.strokeStyle = accentColor;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(1.5, 1.5, 15, 15);
-
-        const pixelSize = 1;
-        const offsetX = 1;
-        const offsetY = 1;
-        rows.forEach((row, y) => {
-            row.forEach((color, x) => {
-                if (color !== null) {
-                    ctx.fillStyle = color;
-                    ctx.fillRect(offsetX + x * pixelSize, offsetY + y * pixelSize, pixelSize, pixelSize);
-                }
-            });
+                ctx.strokeStyle = accentColor;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(1.5, 1.5, 15, 15);
+            }
         });
 
         return canvas;
@@ -390,7 +403,7 @@ window.GridGraphics = {
         this.characters.forEach((character) => {
             this.setupCharacterSprite(
                 character,
-                this.createSpriteTexture(character.spriteRows),
+                this.createSpriteTexture(character.spriteFrame),
                 character.pointerColor
             );
         });

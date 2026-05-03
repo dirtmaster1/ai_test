@@ -1732,7 +1732,7 @@ window.GridUI = {
         portraitFrame.style.transition = 'box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease';
         portraitFrame.style.pointerEvents = character.team === 'player' ? 'auto' : 'none';
         portraitFrame.style.cursor = character.team === 'player' ? 'pointer' : 'default';
-        portraitFrame.appendChild(this.createPortraitCanvas(character.spriteRows, character.accentColor));
+        portraitFrame.appendChild(this.createPortraitCanvas(character.spriteFrame, character.accentColor));
         if (character.team === 'player') {
             portraitFrame.title = `Open ${character.name} inventory`;
             portraitFrame.setAttribute('role', 'button');

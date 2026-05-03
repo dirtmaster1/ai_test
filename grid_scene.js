@@ -309,7 +309,7 @@ class GridScene {
             team: archetype.team,
             accentColor: archetype.accentColor,
             pointerColor: archetype.pointerColor,
-            spriteRows: archetype.spriteRows,
+            spriteFrame: archetype.spriteFrame,
             race: archetype.race,
             strength: archetype.strength,
             dexterity: archetype.dexterity,
