@@ -100,10 +100,10 @@ window.CharacterData = {
             dwarf: { imagePath, x: 5, y: 162, width: 144, height: 139 },
             cleric: { imagePath, x: 674, y: 0, width: 119, height: 151 },
             ranger: { imagePath, x: 160, y: 2, width: 121, height: 148 },
-            goblinWarrior: { imagePath, x: 155, y: 308, width: 113, height: 125 },
-            goblinArcher: { imagePath, x: 6, y: 311, width: 133, height: 121 },
+            goblinWarrior: { imagePath, x: 285, y: 307, width: 125, height: 125 },
+            goblinArcher: { imagePath, x: 155, y: 308, width: 113, height: 125 },
             goblinShaman: { imagePath, x: 278, y: 438, width: 132, height: 108 },
-            goblinBrute: { imagePath, x: 673, y: 437, width: 131, height: 111 }
+            goblinBrute: { imagePath, x: 6, y: 311, width: 133, height: 121 }
         };
 
         const frame = frames[frameId];
