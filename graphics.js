@@ -22,6 +22,69 @@ window.GridGraphics = {
         return this.spriteSheetImageCache.get(imagePath);
     },
 
+    getDungeonPropsTilesetPath() {
+        return 'dungeon_props_1.png';
+    },
+
+    getDungeonPropSpriteFrame(frameId) {
+        const imagePath = this.getDungeonPropsTilesetPath();
+        const frames = {
+            candleBench: { imagePath, x: 0, y: 1, width: 176, height: 127 },
+            roundTable: { imagePath, x: 189, y: 1, width: 147, height: 120 },
+            candleTable: { imagePath, x: 352, y: 1, width: 147, height: 121 },
+            bed: { imagePath, x: 519, y: 5, width: 162, height: 124 },
+            cauldron: { imagePath, x: 693, y: 1, width: 139, height: 134 },
+            spikeRack: { imagePath, x: 840, y: 1, width: 163, height: 127 },
+            bookshelf: { imagePath, x: 1016, y: 0, width: 135, height: 128 },
+            barrel: { imagePath, x: 1167, y: 1, width: 116, height: 128 },
+            chair: { imagePath, x: 1310, y: 1, width: 122, height: 129 },
+            chestClosedIron: { imagePath, x: 8, y: 153, width: 161, height: 112 },
+            chestClosedGold: { imagePath, x: 195, y: 153, width: 149, height: 112 },
+            chestOpenGold: { imagePath, x: 356, y: 153, width: 142, height: 112 },
+            chestClosedSteel: { imagePath, x: 515, y: 153, width: 165, height: 112 },
+            crate: { imagePath, x: 692, y: 159, width: 140, height: 99 },
+            sack: { imagePath, x: 853, y: 150, width: 132, height: 115 },
+            brazierGold: { imagePath, x: 1007, y: 153, width: 145, height: 111 },
+            coinPile: { imagePath, x: 1160, y: 158, width: 152, height: 98 },
+            pot: { imagePath, x: 1320, y: 153, width: 135, height: 108 },
+            campfireLarge: { imagePath, x: 7, y: 293, width: 174, height: 125 },
+            campfireTallLeft: { imagePath, x: 190, y: 289, width: 156, height: 132 },
+            campfireTallRight: { imagePath, x: 356, y: 289, width: 150, height: 130 },
+            stalagmites: { imagePath, x: 511, y: 309, width: 328, height: 108 },
+            ritualPit: { imagePath, x: 843, y: 288, width: 149, height: 137 },
+            candleDesk: { imagePath, x: 995, y: 289, width: 319, height: 135 },
+            alchemyDeskBlue: { imagePath, x: 1328, y: 278, width: 113, height: 142 },
+            hangingCage: { imagePath, x: 1328, y: 457, width: 137, height: 121 },
+            twinBarrels: { imagePath, x: 8, y: 441, width: 186, height: 145 },
+            torch: { imagePath, x: 232, y: 442, width: 79, height: 143 },
+            alchemyDeskSmall: { imagePath, x: 344, y: 441, width: 153, height: 144 },
+            alchemyDeskLarge: { imagePath, x: 511, y: 443, width: 169, height: 137 },
+            altar: { imagePath, x: 683, y: 457, width: 179, height: 127 },
+            skullPile: { imagePath, x: 863, y: 456, width: 144, height: 122 },
+            tortureRack: { imagePath, x: 1004, y: 448, width: 324, height: 137 },
+            tortureRackBloodied: { imagePath, x: 7, y: 617, width: 176, height: 119 },
+            workbench: { imagePath, x: 195, y: 608, width: 162, height: 128 },
+            stoneDebris: { imagePath, x: 358, y: 610, width: 154, height: 119 },
+            supplyPile: { imagePath, x: 519, y: 615, width: 154, height: 115 },
+            fountain: { imagePath, x: 680, y: 609, width: 176, height: 120 },
+            forge: { imagePath, x: 863, y: 622, width: 141, height: 106 },
+            prisonGate: { imagePath, x: 1007, y: 615, width: 458, height: 119 },
+            ember: { imagePath, x: 1296, y: 618, width: 9, height: 13 },
+            clusteredBarrels: { imagePath, x: 8, y: 761, width: 173, height: 104 },
+            butcherTable: { imagePath, x: 197, y: 769, width: 151, height: 96 },
+            sarcophagus: { imagePath, x: 366, y: 761, width: 146, height: 104 },
+            treasureStack: { imagePath, x: 524, y: 761, width: 148, height: 104 },
+            cauldronLit: { imagePath, x: 678, y: 753, width: 175, height: 112 },
+            stoneUrn: { imagePath, x: 859, y: 753, width: 149, height: 112 },
+            firepit: { imagePath, x: 1016, y: 760, width: 139, height: 105 },
+            shrine: { imagePath, x: 1161, y: 764, width: 151, height: 101 },
+            brazierStone: { imagePath, x: 1320, y: 745, width: 128, height: 120 }
+        };
+
+        const frame = frames[frameId];
+        return frame ? { ...frame } : null;
+    },
+
     drawSpriteFrameToCanvas(canvas, spriteFrame, options = {}) {
         const ctx = canvas.getContext('2d');
         if (!ctx) {

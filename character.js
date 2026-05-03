@@ -96,14 +96,35 @@ window.CharacterData = {
     getCharacterSpriteFrame(frameId) {
         const imagePath = this.getCharacterTilesetPath();
         const frames = {
-            wizard: { imagePath, x: 289, y: 0, width: 130, height: 149 },
-            dwarf: { imagePath, x: 5, y: 162, width: 144, height: 139 },
-            cleric: { imagePath, x: 674, y: 0, width: 119, height: 151 },
+            paladin: { imagePath, x: 0, y: 2, width: 132, height: 148 },
             ranger: { imagePath, x: 160, y: 2, width: 121, height: 148 },
-            goblinWarrior: { imagePath, x: 285, y: 307, width: 125, height: 125 },
+            wizard: { imagePath, x: 289, y: 0, width: 130, height: 149 },
+            rogue: { imagePath, x: 424, y: 2, width: 114, height: 148 },
+            adventurer: { imagePath, x: 550, y: 2, width: 114, height: 148 },
+            cleric: { imagePath, x: 674, y: 0, width: 119, height: 151 },
+            warrior: { imagePath, x: 5, y: 162, width: 144, height: 139 },
+            brawler: { imagePath, x: 154, y: 162, width: 131, height: 138 },
+            battlemage: { imagePath, x: 290, y: 161, width: 120, height: 140 },
+            shadow: { imagePath, x: 418, y: 162, width: 129, height: 136 },
+            shieldKnight: { imagePath, x: 547, y: 161, width: 130, height: 139 },
+            stoneGolem: { imagePath, x: 681, y: 162, width: 127, height: 138 },
+            goblinBrute: { imagePath, x: 6, y: 311, width: 133, height: 121 },
             goblinArcher: { imagePath, x: 155, y: 308, width: 113, height: 125 },
+            goblinWarrior: { imagePath, x: 285, y: 307, width: 125, height: 125 },
+            skeletonWarrior: { imagePath, x: 419, y: 307, width: 120, height: 125 },
+            orcGuard: { imagePath, x: 546, y: 306, width: 123, height: 127 },
+            ghoul: { imagePath, x: 673, y: 309, width: 135, height: 124 },
+            spider: { imagePath, x: 5, y: 442, width: 149, height: 95 },
+            goblinScout: { imagePath, x: 160, y: 439, width: 112, height: 107 },
             goblinShaman: { imagePath, x: 278, y: 438, width: 132, height: 108 },
-            goblinBrute: { imagePath, x: 6, y: 311, width: 133, height: 121 }
+            skeletonAdept: { imagePath, x: 415, y: 434, width: 130, height: 113 },
+            demonImp: { imagePath, x: 553, y: 437, width: 116, height: 109 },
+            specter: { imagePath, x: 674, y: 437, width: 131, height: 111 },
+            wolf: { imagePath, x: 3, y: 560, width: 143, height: 106 },
+            slime: { imagePath, x: 145, y: 561, width: 136, height: 105 },
+            necromancer: { imagePath, x: 284, y: 557, width: 126, height: 119 },
+            ogre: { imagePath, x: 410, y: 556, width: 145, height: 120 },
+            drake: { imagePath, x: 563, y: 555, width: 245, height: 121 }
         };
 
         const frame = frames[frameId];
@@ -147,7 +168,7 @@ window.CharacterData = {
             team: 'player',
             accentColor: '#c78a3b',
             pointerColor: 0xffb347,
-            spriteFrame: this.getCharacterSpriteFrame('dwarf'),
+            spriteFrame: this.getCharacterSpriteFrame('warrior'),
             race: 'dwarf',
             strength: 15,
             dexterity: 11,
