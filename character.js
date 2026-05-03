@@ -310,22 +310,22 @@ window.CharacterData = {
         const RL = '#3a7ee0';
         const ST = '#5d3a28';
         return [
-            [_, _, _, _, _, _, DH, DH, DH, _, _, _, _, _, _, _],
-            [_, _, _, _, _, DH, DH, LH, DH, DH, _, _, _, _, _, _],
-            [_, _, _, _, DH, DH, LH, DH, DH, DH, DH, _, _, _, _, _],
-            [_, _, _, DH, DH, GS, DH, DH, DH, DH, DH, _, _, _, _, _],
-            [_, _, DH, DH, DH, DH, DH, DH, DH, DH, DH, DH, _, _, _, _],
-            [_, _, DH, DH, LH, DH, DH, DH, DH, LH, DH, DH, _, _, _, _],
+            [_, _, _, _, _, _, _, DH, _, _, _, _, _, _, _, _],
+            [_, _, _, _, _, _, DH, LH, DH, _, _, _, _, _, _, _],
+            [_, _, _, _, _, DH, LH, DH, DH, DH, _, _, _, _, _, _],
+            [_, _, _, _, DH, GS, DH, DH, DH, DH, DH, _, _, _, _, _],
+            [_, _, _, DH, DH, DH, DH, DH, DH, DH, DH, _, _, _, _, _],
+            [_, DH, DH, DH, LH, DH, DH, DH, DH, LH, DH, DH, DH, _, _, _],
             [_, _, _, SK, SK, SK, SK, SK, SK, SK, SK, _, _, _, _, _],
-            [_, _, _, SK, EY, SK, SK, EY, SK, SK, SK, _, _, _, _, _],
-            [_, _, _, SK, SK, SK, SK, SK, SK, SK, SK, _, _, _, _, _],
-            [_, ST, WB, WB, WB, WB, WB, WB, WB, WB, WB, _, _, _, _, _],
-            [_, ST, WB, RB, RB, RB, RB, RB, RB, RB, WB, _, _, _, _, _],
-            [_, ST, WB, RB, RL, RB, RB, RL, RB, RB, WB, _, _, _, _, _],
-            [GS, ST, WB, RB, RB, RB, RB, RB, RB, RB, WB, _, _, _, _, _],
-            [_, _, WB, RB, RB, RB, RB, RB, RB, RB, WB, _, _, _, _, _],
-            [_, _, WB, WB, RB, RB, RB, RB, RB, WB, WB, _, _, _, _, _],
-            [_, _, _, WB, WB, RB, RB, RB, WB, WB, _, _, _, _, _, _]
+            [_, _, _, SK, EY, SK, SK, EY, SK, SK, SK, _, ST, ST, _, _],
+            [_, _, _, SK, SK, SK, SK, SK, SK, SK, SK, _, ST, _, _, _],
+            [_, _, WB, WB, WB, WB, WB, WB, WB, WB, WB, GS, ST, _, _, _],
+            [_, _, WB, RB, RB, RB, RB, RB, RB, RB, WB, GS, ST, _, _, _],
+            [_, _, WB, RB, RL, RB, RB, RL, RB, RB, WB, _, ST, _, _, _],
+            [_, _, WB, RB, RB, RB, RB, RB, RB, RB, WB, _, ST, _, _, _],
+            [_, _, WB, RB, RB, RB, RB, RB, RB, RB, WB, _, ST, _, _, _],
+            [_, _, WB, WB, RB, RB, RB, RB, RB, WB, WB, _, ST, _, _, _],
+            [_, _, _, WB, WB, RB, RB, RB, WB, WB, _, _, ST, _, _, _]
         ];
     },
 
@@ -554,8 +554,8 @@ window.CharacterData = {
             [_, _, _, _, ST, CL, CL, CL, CL, ST, _, BW, _, _, _, _],
             [_, _, _, _, ST, ST, _, _, ST, ST, BW, _, _, _, _, _],
             [_, _, _, _, ST, ST, _, _, ST, ST, _, _, _, _, _, _],
-            [_, _, _, BW, BD, _, _, _, _, BD, BW, _, _, _, _, _],
-            [_, _, BW, BD, _, _, _, _, _, _, BD, BW, _, _, _, _]
+            [_, _, _, _, BW, BD, _, _, BD, BW, _, _, _, _, _, _],
+            [_, _, _, BW, BD, _, _, _, _, BD, BW, _, _, _, _, _]
         ];
     }
 };

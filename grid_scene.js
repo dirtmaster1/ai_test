@@ -91,6 +91,7 @@ class GridScene {
         this.enemyGroups = [];
         this.activeEnemyGroupId = null;
         this.explorationLeadCharacter = null;
+        this.explorationMarchingOrderIds = [];
         this.explorationCellsMovedSinceRegen = 0;
         this.explorationRegenStride = 10;
         this.partyVisionRangeCells = 6;
@@ -368,7 +369,17 @@ class GridScene {
             return false;
         }
 
-        this.explorationLeadCharacter = character;
+        this.syncExplorationMarchingOrder();
+        const leadIndex = this.explorationMarchingOrderIds.indexOf(character.id);
+        if (leadIndex > 0) {
+            this.explorationMarchingOrderIds.splice(leadIndex, 1);
+            this.explorationMarchingOrderIds.unshift(character.id);
+        } else if (leadIndex < 0) {
+            this.explorationMarchingOrderIds.unshift(character.id);
+        }
+
+        this.explorationLeadCharacter = this.getExplorationPartyOrder()[0] || character;
+        this.turnOrder = [...this.getExplorationPartyOrder()];
         this.updatePartyVisionState();
         this.updateTurnOrderQueue(this.getActiveTurnCharacter());
         this.appendCombatLogEntry(`${character.name} is now leading the party.`, character.accentColor);
@@ -402,11 +413,23 @@ class GridScene {
     enterExplorationMode() {
         this.gameMode = 'exploration';
         const alivePlayers = this.getLivingCharacters(this.playerParty);
-        this.explorationLeadCharacter = alivePlayers.find((character) => character === this.dwarf)
-            || alivePlayers.find((character) => character === this.wizard)
-            || alivePlayers[0]
-            || null;
-        this.turnOrder = [...alivePlayers];
+
+        if (!this.explorationMarchingOrderIds || this.explorationMarchingOrderIds.length === 0) {
+            const defaultLead = alivePlayers.find((character) => character === this.dwarf)
+                || alivePlayers.find((character) => character === this.wizard)
+                || alivePlayers[0]
+                || null;
+            this.explorationMarchingOrderIds = alivePlayers
+                .filter((character) => character !== defaultLead)
+                .map((character) => character.id);
+            if (defaultLead) {
+                this.explorationMarchingOrderIds.unshift(defaultLead.id);
+            }
+        }
+
+        const explorationOrder = this.getExplorationPartyOrder();
+        this.explorationLeadCharacter = explorationOrder[0] || null;
+        this.turnOrder = [...explorationOrder];
         this.activeTurnIndex = 0;
         this.turnTransitionFrames = 0;
         this.enemyMoveTimer = 0;
@@ -544,12 +567,62 @@ class GridScene {
 
     getExplorationPartyOrder() {
         const alivePlayers = this.getLivingCharacters(this.playerParty);
-        const lead = alivePlayers.find((character) => character === this.explorationLeadCharacter) || alivePlayers[0] || null;
-        if (!lead) {
+        if (alivePlayers.length === 0) {
+            this.explorationMarchingOrderIds = [];
             return [];
         }
 
-        return [lead, ...alivePlayers.filter((character) => character !== lead)];
+        this.syncExplorationMarchingOrder(alivePlayers);
+        const aliveById = new Map(alivePlayers.map((character) => [character.id, character]));
+        return this.explorationMarchingOrderIds
+            .map((characterId) => aliveById.get(characterId))
+            .filter(Boolean);
+    }
+
+    syncExplorationMarchingOrder(alivePlayers = null) {
+        const livingPlayers = alivePlayers || this.getLivingCharacters(this.playerParty);
+        const livingIds = new Set(livingPlayers.map((character) => character.id));
+        const currentOrder = Array.isArray(this.explorationMarchingOrderIds)
+            ? this.explorationMarchingOrderIds.filter((characterId) => livingIds.has(characterId))
+            : [];
+
+        const currentOrderSet = new Set(currentOrder);
+        const appendOrder = livingPlayers
+            .map((character) => character.id)
+            .filter((characterId) => !currentOrderSet.has(characterId));
+
+        this.explorationMarchingOrderIds = [...currentOrder, ...appendOrder];
+    }
+
+    reorderExplorationMarchingOrder(draggedCharacterId, targetCharacterId) {
+        if (this.gameMode !== 'exploration' || !draggedCharacterId || !targetCharacterId || draggedCharacterId === targetCharacterId) {
+            return false;
+        }
+
+        const partyOrder = this.getExplorationPartyOrder();
+        const livingPlayerIds = new Set(partyOrder.map((character) => character.id));
+        if (!livingPlayerIds.has(draggedCharacterId) || !livingPlayerIds.has(targetCharacterId)) {
+            return false;
+        }
+
+        const fromIndex = this.explorationMarchingOrderIds.indexOf(draggedCharacterId);
+        const toIndex = this.explorationMarchingOrderIds.indexOf(targetCharacterId);
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+            return false;
+        }
+
+        this.explorationMarchingOrderIds.splice(fromIndex, 1);
+        const insertionIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+        this.explorationMarchingOrderIds.splice(insertionIndex, 0, draggedCharacterId);
+
+        const nextOrder = this.getExplorationPartyOrder();
+        this.explorationLeadCharacter = nextOrder[0] || null;
+        this.turnOrder = [...nextOrder];
+        this.updatePartyVisionState();
+        this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+        this.updateCamera();
+        this.appendCombatLogEntry('Marching order updated.', '#8fd3ff');
+        return true;
     }
 
     movePartyInExploration(key) {
@@ -810,7 +883,7 @@ class GridScene {
 
     getAliveTurnOrder() {
         if (this.gameMode !== 'combat') {
-            return this.getLivingCharacters(this.playerParty);
+            return this.getExplorationPartyOrder();
         }
         return this.turnOrder.filter((character) => !character.isDead);
     }
@@ -904,6 +977,17 @@ class GridScene {
         document.addEventListener('keydown', (e) => {
             const key = e.key.toUpperCase();
 
+            const targetElement = e.target;
+            if (
+                targetElement instanceof HTMLElement &&
+                (targetElement.isContentEditable ||
+                    targetElement.tagName === 'INPUT' ||
+                    targetElement.tagName === 'TEXTAREA' ||
+                    targetElement.tagName === 'SELECT')
+            ) {
+                return;
+            }
+
             if (this.handleCameraZoomKey(e, key)) {
                 return;
             }
@@ -921,6 +1005,10 @@ class GridScene {
             }
 
             this.keysPressed[key] = true;
+
+            if (this.handleCharacterInventoryKey(e, key)) {
+                return;
+            }
 
             if (!this.isPlayerTurn()) {
                 return;
@@ -945,6 +1033,43 @@ class GridScene {
             const key = e.key.toUpperCase();
             this.keysPressed[key] = false;
         });
+    }
+
+    handleCharacterInventoryKey(event, normalizedKey) {
+        if (normalizedKey !== 'I') {
+            return false;
+        }
+
+        const openCharacter = this.getInventoryHotkeyCharacter();
+        if (!openCharacter) {
+            return true;
+        }
+
+        event.preventDefault();
+        this.openCharacterInventory(openCharacter);
+        return true;
+    }
+
+    getInventoryHotkeyCharacter() {
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        if (alivePlayers.length === 0) {
+            return null;
+        }
+
+        if (this.activeInventoryCharacter && !this.activeInventoryCharacter.isDead) {
+            return this.activeInventoryCharacter;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter && activeCharacter.team === 'player' && !activeCharacter.isDead) {
+            return activeCharacter;
+        }
+
+        if (this.explorationLeadCharacter && !this.explorationLeadCharacter.isDead) {
+            return this.explorationLeadCharacter;
+        }
+
+        return alivePlayers[0] || null;
     }
 
     handleCameraZoomKey(event, normalizedKey) {

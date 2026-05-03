@@ -1713,6 +1713,7 @@ window.GridUI = {
         card.setAttribute('role', 'button');
         card.setAttribute('tabindex', '0');
         card.setAttribute('aria-label', `Focus camera on ${character.name}`);
+        card.dataset.characterId = character.id;
 
         const topRow = document.createElement('div');
         topRow.style.display = 'flex';
@@ -2007,6 +2008,64 @@ window.GridUI = {
         const focusCardCharacter = () => {
             this.focusCameraOnCharacter(character, 1800);
         };
+
+        const clearMarchingDropHint = () => {
+            card.style.outline = 'none';
+            card.style.outlineOffset = '0';
+        };
+
+        if (character.team === 'player') {
+            card.setAttribute('draggable', 'true');
+            card.title = `${character.name} (drag to reorder marching order in exploration)`;
+
+            card.addEventListener('dragstart', (event) => {
+                if (this.gameMode !== 'exploration' || character.isDead) {
+                    event.preventDefault();
+                    return;
+                }
+
+                this.draggedMarchCharacterId = character.id;
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', character.id);
+                card.style.opacity = '0.6';
+            });
+
+            card.addEventListener('dragend', () => {
+                this.draggedMarchCharacterId = null;
+                card.style.opacity = '1';
+                clearMarchingDropHint();
+            });
+
+            card.addEventListener('dragover', (event) => {
+                if (this.gameMode !== 'exploration' || character.isDead) {
+                    return;
+                }
+
+                const draggedCharacterId = this.draggedMarchCharacterId;
+                if (!draggedCharacterId || draggedCharacterId === character.id) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                card.style.outline = `1px dashed ${this.hexToRgba(character.accentColor, 0.75)}`;
+                card.style.outlineOffset = '1px';
+            });
+
+            card.addEventListener('dragleave', clearMarchingDropHint);
+
+            card.addEventListener('drop', (event) => {
+                event.preventDefault();
+                clearMarchingDropHint();
+
+                if (this.gameMode !== 'exploration' || character.isDead) {
+                    return;
+                }
+
+                const draggedCharacterId = this.draggedMarchCharacterId || event.dataTransfer.getData('text/plain');
+                this.reorderExplorationMarchingOrder(draggedCharacterId, character.id);
+            });
+        }
 
         card.addEventListener('click', (event) => {
             const eventTarget = event.target instanceof Element ? event.target : null;
