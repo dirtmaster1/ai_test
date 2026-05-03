@@ -504,7 +504,53 @@ window.GridAI = {
         return bestPlan;
     },
 
+    findShortestPathToAttackPosition(character, target, ability = null) {
+        if (!character || !target || target.isDead) {
+            return null;
+        }
+
+        const startKey = this.getCellKey(character.gridX, character.gridY);
+        const queue = [{ x: character.gridX, y: character.gridY, path: [] }];
+        const visited = new Set([startKey]);
+
+        while (queue.length > 0) {
+            const current = queue.shift();
+            const effect = this.getExpectedActionEffect(
+                character,
+                target,
+                ability,
+                current.x,
+                current.y
+            );
+
+            if (effect?.correctTeam && effect.withinRange && effect.hasLineOfSight) {
+                return current.path;
+            }
+
+            this.getAdjacentMoves(character, current.x, current.y).forEach((move) => {
+                const cellKey = this.getCellKey(move.x, move.y);
+                if (visited.has(cellKey)) {
+                    return;
+                }
+
+                visited.add(cellKey);
+                queue.push({
+                    x: move.x,
+                    y: move.y,
+                    path: [...current.path, move]
+                });
+            });
+        }
+
+        return null;
+    },
+
     chooseBestAdvanceMove(character, target, ability = null) {
+        const shortestPath = this.findShortestPathToAttackPosition(character, target, ability);
+        if (shortestPath?.length > 0) {
+            return shortestPath[0];
+        }
+
         const adjacentMoves = this.getAdjacentMoves(character);
         if (adjacentMoves.length === 0) {
             return null;

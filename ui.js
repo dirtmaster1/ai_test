@@ -1259,10 +1259,8 @@ window.GridUI = {
 
         const inventory = this.sharedLootInventory ?? {
             gold: 0,
-            gems: { garnet: 0, peridot: 0, citrine: 0 },
             drops: []
         };
-        const totalGems = Object.values(inventory.gems ?? {}).reduce((sum, count) => sum + count, 0);
 
         modal.content.innerHTML = '';
 
@@ -1281,7 +1279,6 @@ window.GridUI = {
 
         const summaryCards = [
             { label: 'Gold', value: String(inventory.gold ?? 0), color: '#ffd86a' },
-            { label: 'Total Gems', value: String(totalGems), color: '#9ad8ff' },
             { label: 'Looted Enemies', value: String(inventory.drops?.length ?? 0), color: '#c6f3b3' }
         ];
 
@@ -1310,17 +1307,6 @@ window.GridUI = {
             card.appendChild(value);
             summaryGrid.appendChild(card);
         });
-
-        const gemRow = document.createElement('div');
-        gemRow.style.marginTop = '12px';
-        gemRow.style.padding = '10px 12px';
-        gemRow.style.border = '1px solid rgba(255,255,255,0.08)';
-        gemRow.style.borderRadius = '10px';
-        gemRow.style.background = 'rgba(255,255,255,0.02)';
-        gemRow.style.fontSize = '12px';
-        gemRow.style.color = '#d6ccb7';
-        gemRow.textContent = `Gems: Garnet x${inventory.gems?.garnet ?? 0} • Peridot x${inventory.gems?.peridot ?? 0} • Citrine x${inventory.gems?.citrine ?? 0}`;
-        modal.content.appendChild(gemRow);
 
         const historyTitle = document.createElement('div');
         historyTitle.style.marginTop = '14px';
@@ -1358,10 +1344,7 @@ window.GridUI = {
             row.style.fontSize = '12px';
             row.style.color = '#f0e8d2';
 
-            const gemText = (drop.gems && drop.gems.length > 0)
-                ? drop.gems.join(', ')
-                : 'none';
-            row.textContent = `${drop.enemyName} at (${drop.gridX}, ${drop.gridY}) dropped ${drop.gold} gold and ${gemText}.`;
+            row.textContent = `${drop.enemyName} at (${drop.gridX}, ${drop.gridY}) dropped ${drop.gold} gold.`;
             list.appendChild(row);
         });
     },

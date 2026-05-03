@@ -254,7 +254,7 @@ window.GridGraphics = {
     updateLootBagMarkers() {
         const drops = [...this.lootDropsByCell.values()];
         const nextState = drops
-            .map((drop) => `${drop.gridX},${drop.gridY},${drop.gold},${drop.gems.length}`)
+            .map((drop) => `${drop.gridX},${drop.gridY},${drop.gold}`)
             .sort()
             .join('|');
 

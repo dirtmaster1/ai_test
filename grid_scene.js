@@ -52,11 +52,6 @@ class GridScene {
         this.lootDropsByCell = new Map();
         this.sharedLootInventory = {
             gold: 0,
-            gems: {
-                garnet: 0,
-                peridot: 0,
-                citrine: 0
-            },
             drops: []
         };
         this.scene.add(this.reachableHighlightGroup);
@@ -1786,20 +1781,12 @@ class GridScene {
             goldAmount = 1 + Math.floor(Math.random() * 5);
         }
 
-        const gems = [];
-        if (Math.random() < 0.10) {
-            const lesserGems = ['garnet', 'peridot', 'citrine'];
-            const randomGem = lesserGems[Math.floor(Math.random() * lesserGems.length)];
-            gems.push(randomGem);
-        }
-
-        if (goldAmount <= 0 && gems.length === 0) {
+        if (goldAmount <= 0) {
             return null;
         }
 
         return {
-            gold: goldAmount,
-            gems
+            gold: goldAmount
         };
     }
 
@@ -1813,14 +1800,12 @@ class GridScene {
 
         if (existingDrop) {
             existingDrop.gold += loot.gold ?? 0;
-            existingDrop.gems.push(...(loot.gems ?? []));
             existingDrop.sources.push(defeatedEnemy.name);
         } else {
             this.lootDropsByCell.set(cellKey, {
                 gridX: defeatedEnemy.gridX,
                 gridY: defeatedEnemy.gridY,
                 gold: loot.gold ?? 0,
-                gems: [...(loot.gems ?? [])],
                 sources: [defeatedEnemy.name]
             });
         }
@@ -1842,36 +1827,6 @@ class GridScene {
             });
         }
 
-        const gemCounts = {
-            garnet: 0,
-            peridot: 0,
-            citrine: 0
-        };
-        (drop.gems ?? []).forEach((gemName) => {
-            if (gemCounts[gemName] === undefined) {
-                gemCounts[gemName] = 0;
-            }
-            gemCounts[gemName] += 1;
-        });
-
-        const gemMeta = [
-            { key: 'garnet', label: 'Lesser Gem (Garnet)', accentColor: '#f28b8b' },
-            { key: 'peridot', label: 'Lesser Gem (Peridot)', accentColor: '#b7f28b' },
-            { key: 'citrine', label: 'Lesser Gem (Citrine)', accentColor: '#f2d08b' }
-        ];
-
-        gemMeta.forEach((meta) => {
-            const quantity = gemCounts[meta.key] ?? 0;
-            if (quantity > 0) {
-                items.push({
-                    itemKey: `gem:${meta.key}`,
-                    label: meta.label,
-                    quantity,
-                    accentColor: meta.accentColor
-                });
-            }
-        });
-
         return items;
     }
 
@@ -1882,15 +1837,6 @@ class GridScene {
 
         if (itemKey === 'gold') {
             this.sharedLootInventory.gold += quantity;
-            return;
-        }
-
-        if (itemKey.startsWith('gem:')) {
-            const gemName = itemKey.slice(4);
-            if (this.sharedLootInventory.gems[gemName] === undefined) {
-                this.sharedLootInventory.gems[gemName] = 0;
-            }
-            this.sharedLootInventory.gems[gemName] += quantity;
         }
     }
 
@@ -1904,17 +1850,6 @@ class GridScene {
         if (itemKey === 'gold') {
             takenQuantity = drop.gold ?? 0;
             drop.gold = 0;
-        } else if (itemKey.startsWith('gem:')) {
-            const gemName = itemKey.slice(4);
-            const remaining = [];
-            (drop.gems ?? []).forEach((gem) => {
-                if (gem === gemName) {
-                    takenQuantity += 1;
-                } else {
-                    remaining.push(gem);
-                }
-            });
-            drop.gems = remaining;
         }
 
         if (takenQuantity <= 0) {
@@ -1924,25 +1859,20 @@ class GridScene {
         this.addItemToSharedInventory(itemKey, takenQuantity);
 
         const actorName = this.getActiveTurnCharacter()?.name ?? 'Party';
-        const pickedLabel = itemKey === 'gold'
-            ? `${takenQuantity} gold`
-            : `${takenQuantity} ${itemKey.slice(4)}`;
-        this.appendCombatLogEntry(`${actorName} picks up ${pickedLabel}.`, '#d9c47d');
+        this.appendCombatLogEntry(`${actorName} picks up ${takenQuantity} gold.`, '#d9c47d');
 
         this.sharedLootInventory.drops.unshift({
             enemyName: actorName,
             gridX: drop.gridX,
             gridY: drop.gridY,
-            gold: itemKey === 'gold' ? takenQuantity : 0,
-            gems: itemKey.startsWith('gem:') ? new Array(takenQuantity).fill(itemKey.slice(4)) : []
+            gold: takenQuantity
         });
         if (this.sharedLootInventory.drops.length > 30) {
             this.sharedLootInventory.drops.length = 30;
         }
 
         const hasGold = (drop.gold ?? 0) > 0;
-        const hasGems = (drop.gems ?? []).length > 0;
-        if (!hasGold && !hasGems) {
+        if (!hasGold) {
             this.lootDropsByCell.delete(cellKey);
             this.closeLootMenu();
         }
