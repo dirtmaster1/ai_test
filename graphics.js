@@ -26,60 +26,65 @@ window.GridGraphics = {
         return 'dungeon_props_1.png';
     },
 
-    getDungeonPropSpriteFrame(frameId) {
+    getDungeonPropSpriteFrames() {
         const imagePath = this.getDungeonPropsTilesetPath();
-        const frames = {
-            candleBench: { imagePath, x: 0, y: 1, width: 176, height: 127 },
-            roundTable: { imagePath, x: 189, y: 1, width: 147, height: 120 },
-            candleTable: { imagePath, x: 352, y: 1, width: 147, height: 121 },
-            bed: { imagePath, x: 519, y: 5, width: 162, height: 124 },
-            cauldron: { imagePath, x: 693, y: 1, width: 139, height: 134 },
-            spikeRack: { imagePath, x: 840, y: 1, width: 163, height: 127 },
-            bookshelf: { imagePath, x: 1016, y: 0, width: 135, height: 128 },
+        return {
+            steelCage: { imagePath, x: 1328, y: 278, width: 113, height: 142 },
+            alchemyDeskLarge: { imagePath, x: 511, y: 443, width: 169, height: 137 },
+            alchemyDeskSmall: { imagePath, x: 344, y: 441, width: 153, height: 144 },
+            altar: { imagePath, x: 683, y: 457, width: 179, height: 127 },
             barrel: { imagePath, x: 1167, y: 1, width: 116, height: 128 },
+            bed: { imagePath, x: 519, y: 5, width: 162, height: 124 },
+            bookshelf: { imagePath, x: 1016, y: 0, width: 135, height: 128 },
+            brazierGold: { imagePath, x: 1007, y: 153, width: 145, height: 111 },
+            brazierStone: { imagePath, x: 1320, y: 745, width: 128, height: 120 },
+            butcherTable: { imagePath, x: 197, y: 769, width: 151, height: 96 },
+            cauldron: { imagePath, x: 693, y: 1, width: 139, height: 134 },
+            skullPile: { imagePath, x: 678, y: 753, width: 175, height: 112 },
+            benchCandle: { imagePath, x: 0, y: 1, width: 176, height: 127 },
+            tableSkull: { imagePath, x: 352, y: 1, width: 147, height: 121 },
             chair: { imagePath, x: 1310, y: 1, width: 122, height: 129 },
             chestClosedIron: { imagePath, x: 8, y: 153, width: 161, height: 112 },
             chestClosedGold: { imagePath, x: 195, y: 153, width: 149, height: 112 },
             chestOpenGold: { imagePath, x: 356, y: 153, width: 142, height: 112 },
             chestClosedSteel: { imagePath, x: 515, y: 153, width: 165, height: 112 },
-            crate: { imagePath, x: 692, y: 159, width: 140, height: 99 },
-            sack: { imagePath, x: 853, y: 150, width: 132, height: 115 },
-            brazierGold: { imagePath, x: 1007, y: 153, width: 145, height: 111 },
+            barrels: { imagePath, x: 8, y: 761, width: 173, height: 104 },
             coinPile: { imagePath, x: 1160, y: 158, width: 152, height: 98 },
+            crate: { imagePath, x: 692, y: 159, width: 140, height: 99 },
+            stoneDebris1: { imagePath, x: 1016, y: 760, width: 139, height: 105 },
+            forge: { imagePath, x: 863, y: 622, width: 141, height: 106 },
+            altarCandle: { imagePath, x: 680, y: 609, width: 176, height: 120 },
+            weaponRack3: { imagePath, x: 1328, y: 457, width: 137, height: 121 },
+            campfire1: { imagePath, x: 1000, y: 576, width: 160, height: 144 },
+            weaponRack2: { imagePath, x: 1310, y: 596, width: 185, height: 144 },
             pot: { imagePath, x: 1320, y: 153, width: 135, height: 108 },
             campfireLarge: { imagePath, x: 7, y: 293, width: 174, height: 125 },
             campfireTallLeft: { imagePath, x: 190, y: 289, width: 156, height: 132 },
             campfireTallRight: { imagePath, x: 356, y: 289, width: 150, height: 130 },
-            stalagmites: { imagePath, x: 511, y: 309, width: 328, height: 108 },
-            ritualPit: { imagePath, x: 843, y: 288, width: 149, height: 137 },
-            candleDesk: { imagePath, x: 995, y: 289, width: 319, height: 135 },
-            alchemyDeskBlue: { imagePath, x: 1328, y: 278, width: 113, height: 142 },
-            hangingCage: { imagePath, x: 1328, y: 457, width: 137, height: 121 },
-            twinBarrels: { imagePath, x: 8, y: 441, width: 186, height: 145 },
-            torch: { imagePath, x: 232, y: 442, width: 79, height: 143 },
-            alchemyDeskSmall: { imagePath, x: 344, y: 441, width: 153, height: 144 },
-            alchemyDeskLarge: { imagePath, x: 511, y: 443, width: 169, height: 137 },
-            altar: { imagePath, x: 683, y: 457, width: 179, height: 127 },
-            skullPile: { imagePath, x: 863, y: 456, width: 144, height: 122 },
-            tortureRack: { imagePath, x: 1004, y: 448, width: 324, height: 137 },
-            tortureRackBloodied: { imagePath, x: 7, y: 617, width: 176, height: 119 },
-            workbench: { imagePath, x: 195, y: 608, width: 162, height: 128 },
-            stoneDebris: { imagePath, x: 358, y: 610, width: 154, height: 119 },
-            supplyPile: { imagePath, x: 519, y: 615, width: 154, height: 115 },
-            fountain: { imagePath, x: 680, y: 609, width: 176, height: 120 },
-            forge: { imagePath, x: 863, y: 622, width: 141, height: 106 },
-            prisonGate: { imagePath, x: 1007, y: 615, width: 458, height: 119 },
-            ember: { imagePath, x: 1296, y: 618, width: 9, height: 13 },
-            clusteredBarrels: { imagePath, x: 8, y: 761, width: 173, height: 104 },
-            butcherTable: { imagePath, x: 197, y: 769, width: 151, height: 96 },
+            candleDeskLeft: { imagePath, x: 1000, y: 289, width: 160, height: 143 },
+            candleDeskRight: { imagePath, x: 1160, y: 290, width: 160, height: 137 },
+            tableCandles: { imagePath, x: 843, y: 288, width: 149, height: 137 },
+            roundTable: { imagePath, x: 189, y: 1, width: 147, height: 120 },
+            sack: { imagePath, x: 853, y: 150, width: 132, height: 115 },
             sarcophagus: { imagePath, x: 366, y: 761, width: 146, height: 104 },
-            treasureStack: { imagePath, x: 524, y: 761, width: 148, height: 104 },
-            cauldronLit: { imagePath, x: 678, y: 753, width: 175, height: 112 },
+            campfire2: { imagePath, x: 1161, y: 764, width: 151, height: 101 },
+            stoneAltar: { imagePath, x: 863, y: 456, width: 144, height: 122 },
+            supplyPile: { imagePath, x: 519, y: 615, width: 154, height: 115 },
+            weaponRack1: { imagePath, x: 840, y: 1, width: 163, height: 127 },
+            spikeTrap1: { imagePath, x: 520, y: 292, width: 160, height: 137 },
+            spikeTrap2: { imagePath, x: 695, y: 302, width: 160, height: 129 },
+            stoneDebris2: { imagePath, x: 358, y: 610, width: 154, height: 119 },
             stoneUrn: { imagePath, x: 859, y: 753, width: 149, height: 112 },
-            firepit: { imagePath, x: 1016, y: 760, width: 139, height: 105 },
-            shrine: { imagePath, x: 1161, y: 764, width: 151, height: 101 },
-            brazierStone: { imagePath, x: 1320, y: 745, width: 128, height: 120 }
+            torch: { imagePath, x: 232, y: 442, width: 79, height: 143 },
+            barrels1: { imagePath, x: 7, y: 617, width: 176, height: 119 },
+            treasureStack: { imagePath, x: 524, y: 761, width: 148, height: 104 },
+            barrels2: { imagePath, x: 8, y: 441, width: 186, height: 145 },
+            workbench: { imagePath, x: 195, y: 608, width: 162, height: 128 }
         };
+    },
+
+    getDungeonPropSpriteFrame(frameId) {
+        const frames = this.getDungeonPropSpriteFrames();
 
         const frame = frames[frameId];
         return frame ? { ...frame } : null;
@@ -217,8 +222,97 @@ window.GridGraphics = {
         mesh.position.z = -2;
         this.scene.add(mesh);
 
+        this.setupDungeonPropPreviewLayer();
+
         this.setupFogOfWarOverlay();
         this.updateFogOfWarOverlay();
+    },
+
+    getNearbyFloorCellsForPropPreview(originX, originY, count) {
+        const targetCount = Math.max(0, count);
+        if (targetCount === 0) {
+            return [];
+        }
+
+        const queue = [{ x: originX, y: originY }];
+        const visited = new Set([this.getCellKey(originX, originY)]);
+        const cells = [];
+
+        while (queue.length > 0 && cells.length < targetCount) {
+            const current = queue.shift();
+            const isFloor = !this.isObstacle(current.x, current.y);
+            const occupied = this.isOccupied(current.x, current.y);
+            if (isFloor && !occupied) {
+                cells.push(current);
+            }
+
+            const neighbors = [
+                { x: current.x + 1, y: current.y },
+                { x: current.x - 1, y: current.y },
+                { x: current.x, y: current.y + 1 },
+                { x: current.x, y: current.y - 1 }
+            ];
+
+            neighbors.forEach((neighbor) => {
+                if (
+                    neighbor.x < 0 || neighbor.x >= this.gridWidth
+                    || neighbor.y < 0 || neighbor.y >= this.gridHeight
+                ) {
+                    return;
+                }
+
+                const cellKey = this.getCellKey(neighbor.x, neighbor.y);
+                if (visited.has(cellKey)) {
+                    return;
+                }
+
+                visited.add(cellKey);
+                queue.push(neighbor);
+            });
+        }
+
+        return cells;
+    },
+
+    setupDungeonPropPreviewLayer() {
+        if (this.dungeonPropPreviewGroup) {
+            this.scene.remove(this.dungeonPropPreviewGroup);
+        }
+
+        const anchor = this.wizard || this.playerParty?.[0] || null;
+        if (!anchor) {
+            return;
+        }
+
+        const propFrames = this.getDungeonPropSpriteFrames();
+        const frameIds = Object.keys(propFrames);
+        const previewCells = this.getNearbyFloorCellsForPropPreview(anchor.gridX, anchor.gridY, frameIds.length);
+
+        const group = new THREE.Group();
+        group.name = 'dungeonPropPreviewGroup';
+        this.dungeonPropPreviewGroup = group;
+        this.scene.add(group);
+
+        previewCells.forEach((cell, index) => {
+            const frameId = frameIds[index];
+            const spriteFrame = propFrames[frameId];
+            if (!spriteFrame) {
+                return;
+            }
+
+            const texture = this.createSpriteTexture(spriteFrame);
+            const geometry = new THREE.PlaneGeometry(this.cellSize - 8, this.cellSize - 8);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            const { x, y } = this.getWorldPositionForCell(cell.x, cell.y);
+            mesh.position.set(x, y, -0.2);
+            mesh.userData.frameId = frameId;
+            group.add(mesh);
+        });
     },
 
     setupFogOfWarOverlay() {

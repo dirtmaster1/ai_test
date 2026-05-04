@@ -47,6 +47,7 @@ class GridScene {
         this.targetHighlightGroup = new THREE.Group();
         this.targetHighlightState = '';
         this.hoveredCharacter = null;
+        this.hoveredDungeonPropFrameId = null;
         this.lootBagGroup = new THREE.Group();
         this.lootBagState = '';
         this.lootDropsByCell = new Map();
@@ -1111,6 +1112,54 @@ class GridScene {
         this.mouse = new THREE.Vector2();
         this.renderer.domElement.style.cursor = 'grab';
 
+        const ensureDungeonPropHoverLabel = () => {
+            if (this.dungeonPropHoverLabel) {
+                return this.dungeonPropHoverLabel;
+            }
+
+            const label = document.createElement('div');
+            label.style.position = 'absolute';
+            label.style.left = '0px';
+            label.style.top = '0px';
+            label.style.transform = 'translate(-9999px, -9999px)';
+            label.style.padding = '4px 7px';
+            label.style.border = '1px solid rgba(226, 202, 149, 0.75)';
+            label.style.borderRadius = '6px';
+            label.style.background = 'rgba(18, 14, 10, 0.92)';
+            label.style.color = '#f0e8d2';
+            label.style.fontSize = '11px';
+            label.style.lineHeight = '1.2';
+            label.style.pointerEvents = 'none';
+            label.style.zIndex = '32';
+            label.style.whiteSpace = 'nowrap';
+            this.container.appendChild(label);
+            this.dungeonPropHoverLabel = label;
+            return label;
+        };
+
+        const hideDungeonPropHoverLabel = () => {
+            this.hoveredDungeonPropFrameId = null;
+            if (this.dungeonPropHoverLabel) {
+                this.dungeonPropHoverLabel.style.transform = 'translate(-9999px, -9999px)';
+            }
+        };
+
+        const updateDungeonPropHoverLabel = (frameId, event) => {
+            if (!frameId || !event) {
+                hideDungeonPropHoverLabel();
+                return;
+            }
+
+            const label = ensureDungeonPropHoverLabel();
+            this.hoveredDungeonPropFrameId = frameId;
+            label.textContent = `Prop: ${frameId}`;
+
+            const rect = this.container.getBoundingClientRect();
+            const x = Math.round(event.clientX - rect.left + 14);
+            const y = Math.round(event.clientY - rect.top + 14);
+            label.style.transform = `translate(${x}px, ${y}px)`;
+        };
+
         const panDragState = {
             active: false,
             hasDragged: false,
@@ -1123,12 +1172,7 @@ class GridScene {
         const updatePointerTarget = (event) => {
             if (this.isGameOver || this.isDraggingCamera) {
                 this.hoveredCharacter = null;
-                return;
-            }
-
-            const livingCharacters = this.characters.filter((character) => !character.isDead && character.mesh);
-            if (livingCharacters.length === 0) {
-                this.hoveredCharacter = null;
+                hideDungeonPropHoverLabel();
                 return;
             }
 
@@ -1136,6 +1180,16 @@ class GridScene {
             this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
+
+            const propIntersects = this.raycaster.intersectObjects(this.dungeonPropPreviewGroup?.children ?? []);
+            const hoveredPropFrameId = propIntersects[0]?.object?.userData?.frameId ?? null;
+            updateDungeonPropHoverLabel(hoveredPropFrameId, event);
+
+            const livingCharacters = this.characters.filter((character) => !character.isDead && character.mesh);
+            if (livingCharacters.length === 0) {
+                this.hoveredCharacter = null;
+                return;
+            }
 
             const intersects = this.raycaster.intersectObjects(livingCharacters.map((character) => character.mesh));
             const hoveredMesh = intersects[0]?.object ?? null;
@@ -1191,6 +1245,7 @@ class GridScene {
 
             panDragState.hasDragged = true;
             this.hoveredCharacter = null;
+            hideDungeonPropHoverLabel();
 
             const rect = this.renderer.domElement.getBoundingClientRect();
             const zoom = this.camera.zoom || 1;
@@ -1213,6 +1268,7 @@ class GridScene {
         this.renderer.domElement.addEventListener('mousemove', updatePointerTarget);
         this.renderer.domElement.addEventListener('mouseleave', () => {
             this.hoveredCharacter = null;
+            hideDungeonPropHoverLabel();
             this.isDraggingCamera = false;
             panDragState.active = false;
             panDragState.hasDragged = false;
