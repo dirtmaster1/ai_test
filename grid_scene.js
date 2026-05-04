@@ -229,8 +229,8 @@ class GridScene {
         const playerFormation = this.findPlayerStartFormation(startRoom);
         this.wizard.gridX = playerFormation.wizard.x;
         this.wizard.gridY = playerFormation.wizard.y;
-        this.dwarf.gridX = playerFormation.dwarf.x;
-        this.dwarf.gridY = playerFormation.dwarf.y;
+        this.warrior.gridX = playerFormation.warrior.x;
+        this.warrior.gridY = playerFormation.warrior.y;
         this.cleric.gridX = playerFormation.cleric.x;
         this.cleric.gridY = playerFormation.cleric.y;
         this.ranger.gridX = playerFormation.ranger.x;
@@ -238,7 +238,7 @@ class GridScene {
 
         const occupiedCells = new Set([
             this.getCellKey(this.wizard.gridX, this.wizard.gridY),
-            this.getCellKey(this.dwarf.gridX, this.dwarf.gridY),
+            this.getCellKey(this.warrior.gridX, this.warrior.gridY),
             this.getCellKey(this.cleric.gridX, this.cleric.gridY),
             this.getCellKey(this.ranger.gridX, this.ranger.gridY)
         ]);
@@ -540,7 +540,7 @@ class GridScene {
         const alivePlayers = this.getLivingCharacters(this.playerParty);
 
         if (!this.explorationMarchingOrderIds || this.explorationMarchingOrderIds.length === 0) {
-            const defaultLead = alivePlayers.find((character) => character === this.dwarf)
+            const defaultLead = alivePlayers.find((character) => character === this.warrior)
                 || alivePlayers.find((character) => character === this.wizard)
                 || alivePlayers[0]
                 || null;
@@ -855,10 +855,9 @@ class GridScene {
 
         partyOrder.forEach((character) => this.updateCharacterPosition(character));
         this.updateCamera();
-        for (const character of partyOrder) {
-            if (this.tryAutoOpenLootFromCharacterCell(character)) {
-                break;
-            }
+        const leadCharacter = partyOrder[0];
+        if (leadCharacter) {
+            this.tryAutoOpenLootFromCharacterCell(leadCharacter);
         }
         this.applyExplorationMovementRegen(1);
         this.tryTriggerEnemyAggro();
@@ -870,32 +869,32 @@ class GridScene {
         const formations = [
             {
                 wizard: { x: centerX, y: centerY },
-                dwarf: { x: centerX - 1, y: centerY },
+                warrior: { x: centerX - 1, y: centerY },
                 cleric: { x: centerX + 1, y: centerY },
                 ranger: { x: centerX, y: centerY + 1 }
             },
             {
                 wizard: { x: centerX, y: centerY },
-                dwarf: { x: centerX, y: centerY - 1 },
+                warrior: { x: centerX, y: centerY - 1 },
                 cleric: { x: centerX, y: centerY + 1 },
                 ranger: { x: centerX + 1, y: centerY }
             },
             {
                 wizard: { x: centerX, y: centerY },
-                dwarf: { x: centerX - 1, y: centerY },
+                warrior: { x: centerX - 1, y: centerY },
                 cleric: { x: centerX, y: centerY + 1 },
                 ranger: { x: centerX + 1, y: centerY }
             },
             {
                 wizard: { x: centerX, y: centerY },
-                dwarf: { x: centerX + 1, y: centerY },
+                warrior: { x: centerX + 1, y: centerY },
                 cleric: { x: centerX, y: centerY + 1 },
                 ranger: { x: centerX - 1, y: centerY }
             }
         ];
 
         const validFormation = formations.find((formation) =>
-            [formation.wizard, formation.dwarf, formation.cleric, formation.ranger].every((position) =>
+            [formation.wizard, formation.warrior, formation.cleric, formation.ranger].every((position) =>
                 position.x >= 0 &&
                 position.x < this.gridWidth &&
                 position.y >= 0 &&
@@ -910,7 +909,7 @@ class GridScene {
 
         return {
             wizard: { x: centerX, y: centerY },
-            dwarf: { x: Math.max(0, centerX - 1), y: centerY },
+            warrior: { x: Math.max(0, centerX - 1), y: centerY },
             cleric: { x: Math.min(this.gridWidth - 1, centerX + 1), y: centerY },
             ranger: { x: centerX, y: Math.min(this.gridHeight - 1, centerY + 1) }
         };
@@ -1391,7 +1390,7 @@ class GridScene {
                 const clickedPropMesh = dungeonPropIntersects[0].object;
                 const propCellKey = clickedPropMesh?.userData?.propCellKey;
                 if (propCellKey && this.dungeonPropsByCell.has(propCellKey)) {
-                    if (this.trySearchDungeonPropAtCell(propCellKey, interactor)) {
+                    if (this.trySearchDungeonPropAtCell(propCellKey, interactor, event.clientX, event.clientY)) {
                         return;
                     }
                 }
@@ -1479,7 +1478,7 @@ class GridScene {
         return { gridX, gridY };
     }
 
-    trySearchDungeonPropAtCell(cellKey, interactor = null) {
+    trySearchDungeonPropAtCell(cellKey, interactor = null, screenX = null, screenY = null) {
         const prop = this.dungeonPropsByCell.get(cellKey);
         if (!prop || !prop.searchable) {
             return false;
@@ -1504,19 +1503,13 @@ class GridScene {
                     '#d9c47d'
                 );
             } else {
-                this.appendCombatLogEntry(
-                    `${prop.frameId} is empty`,
-                    '#8f856f'
-                );
+                this.showToast('Empty', '#8f856f', 2200, screenX, screenY);
                 return true;
             }
         }
 
         if (!this.lootDropsByCell.has(cellKey) && prop.hasBeenSearched) {
-            this.appendCombatLogEntry(
-                `${prop.frameId} is empty`,
-                '#8f856f'
-            );
+            this.showToast('Empty', '#8f856f', 2200, screenX, screenY);
             return true;
         }
 
@@ -1534,7 +1527,13 @@ class GridScene {
 
         const cellKey = this.getCellKey(character.gridX, character.gridY);
         if (this.dungeonPropsByCell.has(cellKey)) {
-            const searched = this.trySearchDungeonPropAtCell(cellKey, character);
+            const worldPos = this.getWorldPositionForCell(character.gridX, character.gridY);
+            const vec = new THREE.Vector3(worldPos.x, worldPos.y, 0);
+            vec.project(this.camera);
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            const screenX = (vec.x * 0.5 + 0.5) * rect.width + rect.left;
+            const screenY = (-vec.y * 0.5 + 0.5) * rect.height + rect.top;
+            const searched = this.trySearchDungeonPropAtCell(cellKey, character, screenX, screenY);
             if (searched) {
                 return true;
             }

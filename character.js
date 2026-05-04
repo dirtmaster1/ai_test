@@ -161,7 +161,7 @@ window.CharacterData = {
             ]
         });
 
-        this.dwarf = this.createCharacter({
+        this.warrior = this.createCharacter({
             id: 'dwarf-warrior',
             name: 'Therin',
             role: 'Player',
@@ -335,8 +335,8 @@ window.CharacterData = {
             armorClass: 2
         });
 
-        this.characters = [this.wizard, this.dwarf, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
-        this.playerParty = [this.wizard, this.dwarf, this.cleric, this.ranger];
+        this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
+        this.playerParty = [this.wizard, this.warrior, this.cleric, this.ranger];
         this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
     }
 };

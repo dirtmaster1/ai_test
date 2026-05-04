@@ -369,6 +369,51 @@ window.GridUI = {
         this.combatLogWindow = { root, body, emptyState, reopenButton };
     },
 
+    showToast(message, color = '#d6cbb8', durationMs = 2200, screenX = null, screenY = null) {
+        const toast = document.createElement('div');
+        toast.textContent = message;
+
+        const useAnchor = screenX !== null && screenY !== null;
+        const positionStyles = useAnchor
+            ? [
+                'position:fixed',
+                `left:${screenX}px`,
+                `top:${screenY - 48}px`,
+                'transform:translateX(-50%) translateY(-100%)'
+              ]
+            : [
+                'position:fixed',
+                'left:50%',
+                'bottom:120px',
+                'transform:translateX(-50%)'
+              ];
+
+        toast.style.cssText = [
+            ...positionStyles,
+            'background:rgba(20,16,10,0.88)',
+            `border-left:3px solid ${color}`,
+            'border-radius:8px',
+            'padding:8px 16px',
+            'font-size:13px',
+            'color:#e8d9b8',
+            'pointer-events:none',
+            'z-index:9999',
+            'white-space:nowrap',
+            'box-shadow:0 4px 18px rgba(0,0,0,0.55)',
+            'transition:opacity 0.35s ease'
+        ].join(';');
+        document.body.appendChild(toast);
+
+        const fadeOut = () => {
+            toast.style.opacity = '0';
+            toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+        };
+        const timer = setTimeout(fadeOut, durationMs);
+
+        // allow early cleanup if needed
+        toast._dismiss = () => { clearTimeout(timer); fadeOut(); };
+    },
+
     appendCombatLogEntry(message, accentColor = '#d6cbb8') {
         if (!message) {
             return;
@@ -1245,109 +1290,46 @@ window.GridUI = {
         }
 
         if (isSharedLootTab) {
-            this.renderSharedLootTab(character);
+            this.renderSharedLootTab();
             return;
         }
 
         this.renderCharacterSpellsTab(character);
     },
 
-    renderSharedLootTab(character) {
+    renderSharedLootTab() {
         const modal = this.characterInventoryModal;
         if (!modal) {
             return;
         }
 
-        const inventory = this.sharedLootInventory ?? {
-            gold: 0,
-            drops: []
-        };
+        const inventory = this.sharedLootInventory ?? { gold: 0 };
 
         modal.content.innerHTML = '';
 
-        const intro = document.createElement('div');
-        intro.style.marginBottom = '14px';
-        intro.style.fontSize = '12px';
-        intro.style.color = '#a89c82';
-        intro.textContent = `Shared warband stash accessed by all heroes. ${character.name} can review the latest drops here.`;
-        modal.content.appendChild(intro);
+        const card = document.createElement('div');
+        card.style.padding = '12px';
+        card.style.border = '1px solid rgba(255,255,255,0.08)';
+        card.style.borderRadius = '10px';
+        card.style.background = 'rgba(255,255,255,0.03)';
 
-        const summaryGrid = document.createElement('div');
-        summaryGrid.style.display = 'grid';
-        summaryGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(140px, 1fr))';
-        summaryGrid.style.gap = '10px';
-        modal.content.appendChild(summaryGrid);
+        const label = document.createElement('div');
+        label.style.fontSize = '10px';
+        label.style.letterSpacing = '0.08em';
+        label.style.textTransform = 'uppercase';
+        label.style.color = '#8f856f';
+        label.textContent = 'Gold';
 
-        const summaryCards = [
-            { label: 'Gold', value: String(inventory.gold ?? 0), color: '#ffd86a' },
-            { label: 'Looted Enemies', value: String(inventory.drops?.length ?? 0), color: '#c6f3b3' }
-        ];
+        const value = document.createElement('div');
+        value.style.marginTop = '6px';
+        value.style.fontSize = '24px';
+        value.style.fontWeight = '700';
+        value.style.color = '#ffd86a';
+        value.textContent = String(inventory.gold ?? 0);
 
-        summaryCards.forEach((entry) => {
-            const card = document.createElement('div');
-            card.style.padding = '12px';
-            card.style.border = '1px solid rgba(255,255,255,0.08)';
-            card.style.borderRadius = '10px';
-            card.style.background = 'rgba(255,255,255,0.03)';
-
-            const label = document.createElement('div');
-            label.style.fontSize = '10px';
-            label.style.letterSpacing = '0.08em';
-            label.style.textTransform = 'uppercase';
-            label.style.color = '#8f856f';
-            label.textContent = entry.label;
-
-            const value = document.createElement('div');
-            value.style.marginTop = '6px';
-            value.style.fontSize = '24px';
-            value.style.fontWeight = '700';
-            value.style.color = entry.color;
-            value.textContent = entry.value;
-
-            card.appendChild(label);
-            card.appendChild(value);
-            summaryGrid.appendChild(card);
-        });
-
-        const historyTitle = document.createElement('div');
-        historyTitle.style.marginTop = '14px';
-        historyTitle.style.marginBottom = '8px';
-        historyTitle.style.fontSize = '11px';
-        historyTitle.style.letterSpacing = '0.08em';
-        historyTitle.style.textTransform = 'uppercase';
-        historyTitle.style.color = '#8f856f';
-        historyTitle.textContent = 'Recent Drops';
-        modal.content.appendChild(historyTitle);
-
-        if (!inventory.drops || inventory.drops.length === 0) {
-            const emptyState = document.createElement('div');
-            emptyState.style.padding = '12px';
-            emptyState.style.border = '1px dashed rgba(255,255,255,0.18)';
-            emptyState.style.borderRadius = '10px';
-            emptyState.style.fontSize = '12px';
-            emptyState.style.color = '#8f856f';
-            emptyState.textContent = 'No loot found yet.';
-            modal.content.appendChild(emptyState);
-            return;
-        }
-
-        const list = document.createElement('div');
-        list.style.display = 'grid';
-        list.style.gap = '8px';
-        modal.content.appendChild(list);
-
-        inventory.drops.slice(0, 12).forEach((drop) => {
-            const row = document.createElement('div');
-            row.style.padding = '10px 12px';
-            row.style.border = '1px solid rgba(255,255,255,0.08)';
-            row.style.borderRadius = '10px';
-            row.style.background = 'rgba(255,255,255,0.03)';
-            row.style.fontSize = '12px';
-            row.style.color = '#f0e8d2';
-
-            row.textContent = `${drop.enemyName} at (${drop.gridX}, ${drop.gridY}) dropped ${drop.gold} gold.`;
-            list.appendChild(row);
-        });
+        card.appendChild(label);
+        card.appendChild(value);
+        modal.content.appendChild(card);
     },
 
     setCharacterInventoryTabState(button, isActive, accentColor) {
