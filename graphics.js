@@ -222,80 +222,18 @@ window.GridGraphics = {
         mesh.position.z = -2;
         this.scene.add(mesh);
 
-        this.setupDungeonPropPreviewLayer();
+        this.setupDungeonPropLayer();
 
         this.setupFogOfWarOverlay();
         this.updateFogOfWarOverlay();
     },
 
-    getNearbyFloorCellsForPropPreview(originX, originY, count) {
-        const targetCount = Math.max(0, count);
-        if (targetCount === 0) {
-            return [];
-        }
+    setupDungeonPropLayer() {
+        this.clearHighlightGroup(this.dungeonPropGroup);
 
-        const queue = [{ x: originX, y: originY }];
-        const visited = new Set([this.getCellKey(originX, originY)]);
-        const cells = [];
-
-        while (queue.length > 0 && cells.length < targetCount) {
-            const current = queue.shift();
-            const isFloor = !this.isObstacle(current.x, current.y);
-            const occupied = this.isOccupied(current.x, current.y);
-            if (isFloor && !occupied) {
-                cells.push(current);
-            }
-
-            const neighbors = [
-                { x: current.x + 1, y: current.y },
-                { x: current.x - 1, y: current.y },
-                { x: current.x, y: current.y + 1 },
-                { x: current.x, y: current.y - 1 }
-            ];
-
-            neighbors.forEach((neighbor) => {
-                if (
-                    neighbor.x < 0 || neighbor.x >= this.gridWidth
-                    || neighbor.y < 0 || neighbor.y >= this.gridHeight
-                ) {
-                    return;
-                }
-
-                const cellKey = this.getCellKey(neighbor.x, neighbor.y);
-                if (visited.has(cellKey)) {
-                    return;
-                }
-
-                visited.add(cellKey);
-                queue.push(neighbor);
-            });
-        }
-
-        return cells;
-    },
-
-    setupDungeonPropPreviewLayer() {
-        if (this.dungeonPropPreviewGroup) {
-            this.scene.remove(this.dungeonPropPreviewGroup);
-        }
-
-        const anchor = this.wizard || this.playerParty?.[0] || null;
-        if (!anchor) {
-            return;
-        }
-
-        const propFrames = this.getDungeonPropSpriteFrames();
-        const frameIds = Object.keys(propFrames);
-        const previewCells = this.getNearbyFloorCellsForPropPreview(anchor.gridX, anchor.gridY, frameIds.length);
-
-        const group = new THREE.Group();
-        group.name = 'dungeonPropPreviewGroup';
-        this.dungeonPropPreviewGroup = group;
-        this.scene.add(group);
-
-        previewCells.forEach((cell, index) => {
-            const frameId = frameIds[index];
-            const spriteFrame = propFrames[frameId];
+        const props = this.dungeonPropsByCell ? [...this.dungeonPropsByCell.values()] : [];
+        props.forEach((prop) => {
+            const spriteFrame = this.getDungeonPropSpriteFrame(prop.frameId);
             if (!spriteFrame) {
                 return;
             }
@@ -307,11 +245,13 @@ window.GridGraphics = {
                 transparent: true,
                 depthWrite: false
             });
+
             const mesh = new THREE.Mesh(geometry, material);
-            const { x, y } = this.getWorldPositionForCell(cell.x, cell.y);
-            mesh.position.set(x, y, -0.2);
-            mesh.userData.frameId = frameId;
-            group.add(mesh);
+            const { x, y } = this.getWorldPositionForCell(prop.gridX, prop.gridY);
+            mesh.position.set(x, y, -0.25);
+            mesh.userData.propCellKey = this.getCellKey(prop.gridX, prop.gridY);
+            mesh.userData.frameId = prop.frameId;
+            this.dungeonPropGroup.add(mesh);
         });
     },
 

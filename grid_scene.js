@@ -47,7 +47,8 @@ class GridScene {
         this.targetHighlightGroup = new THREE.Group();
         this.targetHighlightState = '';
         this.hoveredCharacter = null;
-        this.hoveredDungeonPropFrameId = null;
+        this.dungeonPropGroup = new THREE.Group();
+        this.dungeonPropsByCell = new Map();
         this.lootBagGroup = new THREE.Group();
         this.lootBagState = '';
         this.lootDropsByCell = new Map();
@@ -58,6 +59,7 @@ class GridScene {
         this.scene.add(this.reachableHighlightGroup);
         this.scene.add(this.abilityRangeHighlightGroup);
         this.scene.add(this.targetHighlightGroup);
+        this.scene.add(this.dungeonPropGroup);
         this.scene.add(this.lootBagGroup);
 
         // Initialize characters from character.js
@@ -99,7 +101,9 @@ class GridScene {
 
         const dungeon = this.generateDungeonMap();
         this.dungeonMap = dungeon.map;
-        this.placeCharacters(dungeon.rooms);
+        this.dungeonRooms = dungeon.rooms;
+        this.placeCharacters(this.dungeonRooms);
+        this.populateDungeonProps(this.dungeonRooms);
         this.enterExplorationMode();
         this.updatePartyVisionState();
 
@@ -247,6 +251,131 @@ class GridScene {
         this.goblinArcher = this.aiParty.find((enemy) => enemy.id.includes('goblin-archer')) || this.aiParty[0] || null;
         this.goblinShaman = this.aiParty.find((enemy) => enemy.id.includes('goblin-shaman')) || this.aiParty[0] || null;
         this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute')) || this.aiParty[0] || null;
+    }
+
+    populateDungeonProps(rooms) {
+        this.dungeonPropsByCell.clear();
+
+        if (!rooms || rooms.length === 0) {
+            return;
+        }
+
+        const occupiedCells = new Set(
+            this.characters
+                .filter((character) => !character.isDead)
+                .map((character) => this.getCellKey(character.gridX, character.gridY))
+        );
+
+        const themedRooms = rooms.slice(1);
+        const shuffledRooms = [...themedRooms].sort(() => Math.random() - 0.5);
+
+        const roomThemes = ['barracks', 'armory', 'storage'];
+        shuffledRooms.forEach((room, index) => {
+            if (room.w < 5 || room.h < 5) {
+                return;
+            }
+
+            const theme = roomThemes[index % roomThemes.length];
+            this.populateRoomPropsByTheme(room, theme, occupiedCells);
+        });
+
+        this.populateSpikeTraps(shuffledRooms, occupiedCells);
+    }
+
+    populateRoomPropsByTheme(room, theme, occupiedCells) {
+        const themeFrames = {
+            barracks: ['bed', 'chestClosedIron', 'tableCandles', 'chair', 'chair'],
+            armory: ['weaponRack1', 'weaponRack2', 'weaponRack3', 'chestClosedSteel'],
+            storage: ['crate', 'barrels1', 'barrel', 'barrels2', 'chestClosedGold']
+        };
+
+        const framePool = themeFrames[theme] || [];
+        if (framePool.length === 0) {
+            return;
+        }
+
+        const interiorCells = [];
+        for (let y = room.y + 1; y < room.y + room.h - 1; y++) {
+            for (let x = room.x + 1; x < room.x + room.w - 1; x++) {
+                if (this.dungeonMap[y]?.[x] !== this.TILE_FLOOR) {
+                    continue;
+                }
+
+                const cellKey = this.getCellKey(x, y);
+                if (occupiedCells.has(cellKey) || this.dungeonPropsByCell.has(cellKey)) {
+                    continue;
+                }
+
+                interiorCells.push({ x, y, key: cellKey });
+            }
+        }
+
+        if (interiorCells.length === 0) {
+            return;
+        }
+
+        const roomArea = room.w * room.h;
+        const minProps = Math.max(2, Math.floor(roomArea / 36));
+        const maxProps = Math.min(framePool.length + 1, Math.max(minProps, Math.floor(roomArea / 20)));
+        const targetProps = minProps + Math.floor(Math.random() * Math.max(1, maxProps - minProps + 1));
+
+        for (let i = 0; i < targetProps && interiorCells.length > 0; i++) {
+            const pickIndex = Math.floor(Math.random() * interiorCells.length);
+            const pickedCell = interiorCells.splice(pickIndex, 1)[0];
+            const frameId = framePool[Math.floor(Math.random() * framePool.length)];
+            const isSearchable = !frameId.startsWith('spikeTrap');
+
+            this.dungeonPropsByCell.set(pickedCell.key, {
+                gridX: pickedCell.x,
+                gridY: pickedCell.y,
+                frameId,
+                roomTheme: theme,
+                searchable: isSearchable,
+                hasBeenSearched: false
+            });
+
+            occupiedCells.add(pickedCell.key);
+        }
+    }
+
+    populateSpikeTraps(rooms, occupiedCells) {
+        if (!rooms || rooms.length === 0) {
+            return;
+        }
+
+        const trapAttempts = Math.min(12, Math.max(4, Math.floor(rooms.length * 1.2)));
+        const trapFrames = ['spikeTrap1', 'spikeTrap2'];
+
+        for (let i = 0; i < trapAttempts; i++) {
+            const room = rooms[Math.floor(Math.random() * rooms.length)];
+            const x = room.x + Math.floor(Math.random() * room.w);
+            const y = room.y + Math.floor(Math.random() * room.h);
+
+            if (x <= room.x || x >= room.x + room.w - 1 || y <= room.y || y >= room.y + room.h - 1) {
+                continue;
+            }
+
+            if (this.dungeonMap[y]?.[x] !== this.TILE_FLOOR) {
+                continue;
+            }
+
+            const cellKey = this.getCellKey(x, y);
+            if (occupiedCells.has(cellKey) || this.dungeonPropsByCell.has(cellKey)) {
+                continue;
+            }
+
+            const frameId = trapFrames[Math.floor(Math.random() * trapFrames.length)];
+            this.dungeonPropsByCell.set(cellKey, {
+                gridX: x,
+                gridY: y,
+                frameId,
+                roomTheme: 'trap',
+                searchable: false,
+                hasBeenSearched: false
+            });
+
+            occupiedCells.add(cellKey);
+        }
     }
 
     spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells) {
@@ -726,6 +855,11 @@ class GridScene {
 
         partyOrder.forEach((character) => this.updateCharacterPosition(character));
         this.updateCamera();
+        for (const character of partyOrder) {
+            if (this.tryAutoOpenLootFromCharacterCell(character)) {
+                break;
+            }
+        }
         this.applyExplorationMovementRegen(1);
         this.tryTriggerEnemyAggro();
     }
@@ -1112,54 +1246,6 @@ class GridScene {
         this.mouse = new THREE.Vector2();
         this.renderer.domElement.style.cursor = 'grab';
 
-        const ensureDungeonPropHoverLabel = () => {
-            if (this.dungeonPropHoverLabel) {
-                return this.dungeonPropHoverLabel;
-            }
-
-            const label = document.createElement('div');
-            label.style.position = 'absolute';
-            label.style.left = '0px';
-            label.style.top = '0px';
-            label.style.transform = 'translate(-9999px, -9999px)';
-            label.style.padding = '4px 7px';
-            label.style.border = '1px solid rgba(226, 202, 149, 0.75)';
-            label.style.borderRadius = '6px';
-            label.style.background = 'rgba(18, 14, 10, 0.92)';
-            label.style.color = '#f0e8d2';
-            label.style.fontSize = '11px';
-            label.style.lineHeight = '1.2';
-            label.style.pointerEvents = 'none';
-            label.style.zIndex = '32';
-            label.style.whiteSpace = 'nowrap';
-            this.container.appendChild(label);
-            this.dungeonPropHoverLabel = label;
-            return label;
-        };
-
-        const hideDungeonPropHoverLabel = () => {
-            this.hoveredDungeonPropFrameId = null;
-            if (this.dungeonPropHoverLabel) {
-                this.dungeonPropHoverLabel.style.transform = 'translate(-9999px, -9999px)';
-            }
-        };
-
-        const updateDungeonPropHoverLabel = (frameId, event) => {
-            if (!frameId || !event) {
-                hideDungeonPropHoverLabel();
-                return;
-            }
-
-            const label = ensureDungeonPropHoverLabel();
-            this.hoveredDungeonPropFrameId = frameId;
-            label.textContent = `Prop: ${frameId}`;
-
-            const rect = this.container.getBoundingClientRect();
-            const x = Math.round(event.clientX - rect.left + 14);
-            const y = Math.round(event.clientY - rect.top + 14);
-            label.style.transform = `translate(${x}px, ${y}px)`;
-        };
-
         const panDragState = {
             active: false,
             hasDragged: false,
@@ -1172,7 +1258,6 @@ class GridScene {
         const updatePointerTarget = (event) => {
             if (this.isGameOver || this.isDraggingCamera) {
                 this.hoveredCharacter = null;
-                hideDungeonPropHoverLabel();
                 return;
             }
 
@@ -1180,10 +1265,6 @@ class GridScene {
             this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
-
-            const propIntersects = this.raycaster.intersectObjects(this.dungeonPropPreviewGroup?.children ?? []);
-            const hoveredPropFrameId = propIntersects[0]?.object?.userData?.frameId ?? null;
-            updateDungeonPropHoverLabel(hoveredPropFrameId, event);
 
             const livingCharacters = this.characters.filter((character) => !character.isDead && character.mesh);
             if (livingCharacters.length === 0) {
@@ -1245,7 +1326,6 @@ class GridScene {
 
             panDragState.hasDragged = true;
             this.hoveredCharacter = null;
-            hideDungeonPropHoverLabel();
 
             const rect = this.renderer.domElement.getBoundingClientRect();
             const zoom = this.camera.zoom || 1;
@@ -1268,7 +1348,6 @@ class GridScene {
         this.renderer.domElement.addEventListener('mousemove', updatePointerTarget);
         this.renderer.domElement.addEventListener('mouseleave', () => {
             this.hoveredCharacter = null;
-            hideDungeonPropHoverLabel();
             this.isDraggingCamera = false;
             panDragState.active = false;
             panDragState.hasDragged = false;
@@ -1287,8 +1366,8 @@ class GridScene {
 
             updatePointerTarget(event);
 
-            const activeCharacter = this.getActiveTurnCharacter();
-            if (!activeCharacter || activeCharacter.isDead) {
+            const interactor = this.getLootInteractionCharacter();
+            if (!interactor || interactor.isDead) {
                 return;
             }
 
@@ -1302,12 +1381,28 @@ class GridScene {
                 const clickedLootMesh = lootBagIntersects[0].object;
                 const lootCellKey = clickedLootMesh?.userData?.lootCellKey;
                 if (lootCellKey && this.lootDropsByCell.has(lootCellKey)) {
-                    this.openLootMenuForCell(lootCellKey);
+                    this.openLootMenuForCell(lootCellKey, interactor);
                     return;
                 }
             }
 
+            const dungeonPropIntersects = this.raycaster.intersectObjects(this.dungeonPropGroup.children);
+            if (dungeonPropIntersects.length > 0) {
+                const clickedPropMesh = dungeonPropIntersects[0].object;
+                const propCellKey = clickedPropMesh?.userData?.propCellKey;
+                if (propCellKey && this.dungeonPropsByCell.has(propCellKey)) {
+                    if (this.trySearchDungeonPropAtCell(propCellKey, interactor)) {
+                        return;
+                    }
+                }
+            }
+
             if (this.gameMode !== 'combat') {
+                return;
+            }
+
+            const activeCharacter = this.getActiveTurnCharacter();
+            if (!activeCharacter || activeCharacter.isDead) {
                 return;
             }
 
@@ -1341,6 +1436,185 @@ class GridScene {
                     this.characterAttack(activeCharacter, targetCharacter, selectedAbility);
                 }
             }
+        });
+    }
+
+    getLootInteractionCharacter() {
+        if (this.gameMode === 'combat') {
+            const activeCharacter = this.getActiveTurnCharacter();
+            return activeCharacter && activeCharacter.team === 'player' && !activeCharacter.isDead
+                ? activeCharacter
+                : null;
+        }
+
+        const lead = this.explorationLeadCharacter;
+        if (lead && !lead.isDead) {
+            return lead;
+        }
+
+        return this.getLivingCharacters(this.playerParty)[0] || null;
+    }
+
+    canCharacterInteractWithCell(character, gridX, gridY, maxDistance = 1) {
+        if (!character || character.isDead) {
+            return false;
+        }
+
+        const distance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, gridX, gridY);
+        return distance <= maxDistance;
+    }
+
+    parseCellKey(cellKey) {
+        if (!cellKey || typeof cellKey !== 'string') {
+            return null;
+        }
+
+        const [gridXRaw, gridYRaw] = cellKey.split(',');
+        const gridX = Number(gridXRaw);
+        const gridY = Number(gridYRaw);
+        if (!Number.isFinite(gridX) || !Number.isFinite(gridY)) {
+            return null;
+        }
+
+        return { gridX, gridY };
+    }
+
+    trySearchDungeonPropAtCell(cellKey, interactor = null) {
+        const prop = this.dungeonPropsByCell.get(cellKey);
+        if (!prop || !prop.searchable) {
+            return false;
+        }
+
+        const actingCharacter = interactor || this.getLootInteractionCharacter();
+        if (!this.canCharacterInteractWithCell(actingCharacter, prop.gridX, prop.gridY, 1)) {
+            return false;
+        }
+
+        if (!this.lootDropsByCell.has(cellKey) && !prop.hasBeenSearched) {
+            prop.hasBeenSearched = true;
+            const loot = this.rollDungeonPropLoot(prop);
+            if (loot && (loot.gold ?? 0) > 0) {
+                this.registerLootDropAtCell(prop.gridX, prop.gridY, loot, {
+                    sourceType: 'prop',
+                    sourceLabel: prop.roomTheme || 'Room Fixture',
+                    containerName: `Search: ${prop.frameId}`
+                });
+                this.appendCombatLogEntry(
+                    `${actingCharacter.name} searches ${prop.frameId} and finds something.`,
+                    '#d9c47d'
+                );
+            } else {
+                this.appendCombatLogEntry(
+                    `${prop.frameId} is empty`,
+                    '#8f856f'
+                );
+                return true;
+            }
+        }
+
+        if (!this.lootDropsByCell.has(cellKey) && prop.hasBeenSearched) {
+            this.appendCombatLogEntry(
+                `${prop.frameId} is empty`,
+                '#8f856f'
+            );
+            return true;
+        }
+
+        if (this.lootDropsByCell.has(cellKey)) {
+            return this.openLootMenuForCell(cellKey, actingCharacter);
+        }
+
+        return true;
+    }
+
+    tryAutoOpenLootFromCharacterCell(character) {
+        if (!character || character.team !== 'player' || character.isDead) {
+            return false;
+        }
+
+        const cellKey = this.getCellKey(character.gridX, character.gridY);
+        if (this.dungeonPropsByCell.has(cellKey)) {
+            const searched = this.trySearchDungeonPropAtCell(cellKey, character);
+            if (searched) {
+                return true;
+            }
+        }
+
+        if (this.lootDropsByCell.has(cellKey)) {
+            return this.openLootMenuForCell(cellKey, character);
+        }
+
+        return false;
+    }
+
+    rollDungeonPropLoot(prop) {
+        if (!prop || !prop.searchable) {
+            return null;
+        }
+
+        const chestFrames = new Set(['chestClosedIron', 'chestClosedGold', 'chestClosedSteel']);
+        const rackFrames = new Set(['weaponRack1', 'weaponRack2', 'weaponRack3']);
+        const storageFrames = new Set(['crate', 'barrel', 'barrels1', 'barrels2']);
+
+        let chance = 0.35;
+        let minGold = 1;
+        let maxGold = 4;
+
+        if (chestFrames.has(prop.frameId)) {
+            chance = 0.9;
+            minGold = 4;
+            maxGold = 14;
+        } else if (rackFrames.has(prop.frameId)) {
+            chance = 0.55;
+            minGold = 2;
+            maxGold = 8;
+        } else if (storageFrames.has(prop.frameId)) {
+            chance = 0.65;
+            minGold = 1;
+            maxGold = 7;
+        }
+
+        if (Math.random() > chance) {
+            return null;
+        }
+
+        const gold = minGold + Math.floor(Math.random() * (maxGold - minGold + 1));
+        return { gold };
+    }
+
+    registerLootDropAtCell(gridX, gridY, loot, options = {}) {
+        if (!loot) {
+            return;
+        }
+
+        const cellKey = this.getCellKey(gridX, gridY);
+        const existingDrop = this.lootDropsByCell.get(cellKey);
+        const goldToAdd = Math.max(0, Math.floor(loot.gold ?? 0));
+        if (goldToAdd <= 0 && !existingDrop) {
+            return;
+        }
+
+        if (existingDrop) {
+            existingDrop.gold = (existingDrop.gold ?? 0) + goldToAdd;
+            if (options.sourceLabel) {
+                existingDrop.sources.push(options.sourceLabel);
+            }
+            if (options.sourceType) {
+                existingDrop.sourceType = options.sourceType;
+            }
+            if (options.containerName) {
+                existingDrop.containerName = options.containerName;
+            }
+            return;
+        }
+
+        this.lootDropsByCell.set(cellKey, {
+            gridX,
+            gridY,
+            gold: goldToAdd,
+            sources: options.sourceLabel ? [options.sourceLabel] : [],
+            sourceType: options.sourceType || 'enemy',
+            containerName: options.containerName || 'Loot Bag'
         });
     }
 
@@ -1403,6 +1677,7 @@ class GridScene {
 
         this.updateCharacterPosition(activeCharacter);
         this.updateCamera();
+        this.tryAutoOpenLootFromCharacterCell(activeCharacter);
         activeCharacter.actionsRemaining -= 1;
 
         if (activeCharacter.actionsRemaining <= 0) {
@@ -1851,20 +2126,11 @@ class GridScene {
             return;
         }
 
-        const cellKey = this.getCellKey(defeatedEnemy.gridX, defeatedEnemy.gridY);
-        const existingDrop = this.lootDropsByCell.get(cellKey);
-
-        if (existingDrop) {
-            existingDrop.gold += loot.gold ?? 0;
-            existingDrop.sources.push(defeatedEnemy.name);
-        } else {
-            this.lootDropsByCell.set(cellKey, {
-                gridX: defeatedEnemy.gridX,
-                gridY: defeatedEnemy.gridY,
-                gold: loot.gold ?? 0,
-                sources: [defeatedEnemy.name]
-            });
-        }
+        this.registerLootDropAtCell(defeatedEnemy.gridX, defeatedEnemy.gridY, loot, {
+            sourceType: 'enemy',
+            sourceLabel: defeatedEnemy.name,
+            containerName: 'Loot Bag'
+        });
     }
 
     getLootMenuItemsForCell(cellKey) {
@@ -1914,7 +2180,7 @@ class GridScene {
 
         this.addItemToSharedInventory(itemKey, takenQuantity);
 
-        const actorName = this.getActiveTurnCharacter()?.name ?? 'Party';
+        const actorName = this.getLootInteractionCharacter()?.name ?? 'Party';
         this.appendCombatLogEntry(`${actorName} picks up ${takenQuantity} gold.`, '#d9c47d');
 
         this.sharedLootInventory.drops.unshift({
@@ -1955,12 +2221,19 @@ class GridScene {
         this.closeLootMenu();
     }
 
-    openLootMenuForCell(cellKey) {
+    openLootMenuForCell(cellKey, interactor = null) {
         if (!cellKey || !this.lootDropsByCell.has(cellKey)) {
-            return;
+            return false;
+        }
+
+        const actingCharacter = interactor || this.getLootInteractionCharacter();
+        const cell = this.parseCellKey(cellKey);
+        if (!actingCharacter || !cell || !this.canCharacterInteractWithCell(actingCharacter, cell.gridX, cell.gridY, 1)) {
+            return false;
         }
 
         this.openLootMenu(cellKey);
+        return true;
     }
 
     markCharacterDead(character, defeatedBy = null) {

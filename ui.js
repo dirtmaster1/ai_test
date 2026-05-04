@@ -879,8 +879,9 @@ window.GridUI = {
         }
 
         const items = this.getLootMenuItemsForCell(cellKey);
-        modal.title.textContent = 'Loot Bag';
-        modal.subtitle.textContent = `Cell (${drop.gridX}, ${drop.gridY})`;
+        modal.title.textContent = drop.containerName || 'Loot Bag';
+        const sourceLabel = drop.sourceType === 'prop' ? 'Searchable' : 'Loot';
+        modal.subtitle.textContent = `${sourceLabel} • Cell (${drop.gridX}, ${drop.gridY})`;
         modal.content.innerHTML = '';
 
         if (items.length === 0) {
