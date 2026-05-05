@@ -54,8 +54,10 @@ class GridScene {
         this.lootDropsByCell = new Map();
         this.sharedLootInventory = {
             gold: 0,
-            drops: []
+            drops: [],
+            items: []
         };
+        this.nextLootItemId = 1;
         this.scene.add(this.reachableHighlightGroup);
         this.scene.add(this.abilityRangeHighlightGroup);
         this.scene.add(this.targetHighlightGroup);
@@ -1067,6 +1069,19 @@ class GridScene {
             }
         }
 
+        if (activeCharacter.activeEffects && activeCharacter.activeEffects.length > 0) {
+            activeCharacter.activeEffects = activeCharacter.activeEffects.filter((effect) => {
+                effect.roundsRemaining -= 1;
+                if (effect.roundsRemaining <= 0) {
+                    if (effect.type === 'battle-shout') {
+                        activeCharacter.armorClass -= effect.acBonus;
+                    }
+                    return false;
+                }
+                return true;
+            });
+        }
+
         activeCharacter.actionsRemaining = activeCharacter.maxActionsPerTurn;
         this.turnTransitionFrames = this.turnTransitionDelay;
         this.enemyMoveTimer = 0;
@@ -1492,7 +1507,9 @@ class GridScene {
         if (!this.lootDropsByCell.has(cellKey) && !prop.hasBeenSearched) {
             prop.hasBeenSearched = true;
             const loot = this.rollDungeonPropLoot(prop);
-            if (loot && (loot.gold ?? 0) > 0) {
+            const hasGold = (loot?.gold ?? 0) > 0;
+            const hasEquipment = Array.isArray(loot?.equipmentDrops) && loot.equipmentDrops.length > 0;
+            if (loot && (hasGold || hasEquipment)) {
                 this.registerLootDropAtCell(prop.gridX, prop.gridY, loot, {
                     sourceType: 'prop',
                     sourceLabel: prop.roomTheme || 'Room Fixture',
@@ -1578,7 +1595,245 @@ class GridScene {
         }
 
         const gold = minGold + Math.floor(Math.random() * (maxGold - minGold + 1));
-        return { gold };
+        const equipmentDrops = [];
+        if (Math.random() < 0.10) {
+            const equipment = this.rollEquipmentLootItem();
+            if (equipment) {
+                equipmentDrops.push(equipment);
+            }
+        }
+
+        return { gold, equipmentDrops };
+    }
+
+    getEquipmentLootTable() {
+        return [
+            {
+                id: 'small-shield',
+                name: 'Small Shield',
+                slot: 'hands',
+                handType: '1H',
+                modifiers: { armorClass: 1 },
+                accentColor: '#9fd1ff'
+            },
+            {
+                id: 'long-bow',
+                name: 'Long Bow',
+                slot: 'hands',
+                handType: '2H',
+                appliesToAbilityId: 'bow-shot',
+                modifiers: { attackDamage: 8, attackRange: 6 },
+                accentColor: '#9ee39a'
+            },
+            {
+                id: 'mages-amulet',
+                name: 'Mages Amulet',
+                slot: 'neck',
+                modifiers: { spellDamage: 1 },
+                accentColor: '#b7b7ff'
+            },
+            {
+                id: 'healers-circlet',
+                name: 'Healers Circlet',
+                slot: 'head',
+                modifiers: { healingBonus: 2 },
+                accentColor: '#ffd2a8'
+            }
+        ];
+    }
+
+    createEquipmentItemInstance(template) {
+        if (!template) {
+            return null;
+        }
+
+        return {
+            instanceId: `eq-${this.nextLootItemId++}`,
+            id: template.id,
+            name: template.name,
+            slot: template.slot,
+            handType: template.handType || null,
+            appliesToAbilityId: template.appliesToAbilityId || null,
+            modifiers: { ...(template.modifiers || {}) },
+            accentColor: template.accentColor || '#d6cbb8'
+        };
+    }
+
+    getLegacyEquipmentTemplate(itemName, fallbackSlot = null) {
+        const normalized = String(itemName || '').trim();
+        if (!normalized) {
+            return null;
+        }
+
+        if (/shortbow/i.test(normalized)) {
+            return {
+                id: 'short-bow',
+                name: 'Short Bow',
+                slot: fallbackSlot || 'hands',
+                handType: '2H',
+                appliesToAbilityId: 'bow-shot',
+                modifiers: { attackDamage: 6, attackRange: 5 },
+                accentColor: '#9bcf86'
+            };
+        }
+
+        if (/small shield/i.test(normalized)) {
+            return {
+                id: 'small-shield',
+                name: 'Small Shield',
+                slot: fallbackSlot || 'hands',
+                handType: '1H',
+                modifiers: { armorClass: 1 },
+                accentColor: '#9fd1ff'
+            };
+        }
+
+        return null;
+    }
+
+    ensureEquipmentItemInstance(item, fallbackSlot = null) {
+        if (!item) {
+            return null;
+        }
+
+        if (typeof item !== 'object') {
+            const parsedTemplate = this.getLegacyEquipmentTemplate(item, fallbackSlot);
+            if (parsedTemplate) {
+                return this.createEquipmentItemInstance(parsedTemplate);
+            }
+
+            return this.createEquipmentItemInstance({
+                id: `legacy-${fallbackSlot || 'item'}`,
+                name: String(item),
+                slot: fallbackSlot || 'hands',
+                modifiers: {},
+                accentColor: '#b8ad96'
+            });
+        }
+
+        const ensured = { ...item };
+        if (!ensured.instanceId) {
+            ensured.instanceId = `eq-${this.nextLootItemId++}`;
+        }
+        if (!ensured.modifiers || typeof ensured.modifiers !== 'object') {
+            ensured.modifiers = {};
+        }
+        if (!ensured.slot && fallbackSlot) {
+            ensured.slot = fallbackSlot;
+        }
+        if (!ensured.name) {
+            ensured.name = 'Unknown Item';
+        }
+        return ensured;
+    }
+
+    rollEquipmentLootItem() {
+        const table = this.getEquipmentLootTable();
+        if (!Array.isArray(table) || table.length === 0) {
+            return null;
+        }
+
+        const selected = table[Math.floor(Math.random() * table.length)];
+        return this.createEquipmentItemInstance(selected);
+    }
+
+    getEquipmentItemLabel(item) {
+        if (!item) {
+            return 'Unknown Item';
+        }
+
+        if (item.handType) {
+            return `${item.name} ${item.handType}`;
+        }
+
+        return item.name;
+    }
+
+    getEquipmentItemModifierSummary(item) {
+        if (!item?.modifiers) {
+            return '';
+        }
+
+        const parts = [];
+        if ((item.modifiers.armorClass ?? 0) > 0) {
+            parts.push(`+${item.modifiers.armorClass} AC`);
+        }
+        if ((item.modifiers.attackDamage ?? 0) > 0) {
+            parts.push(`${item.modifiers.attackDamage} DMG`);
+        }
+        if ((item.modifiers.attackRange ?? 0) > 0) {
+            parts.push(`Range ${item.modifiers.attackRange}`);
+        }
+        if ((item.modifiers.spellDamage ?? 0) > 0) {
+            parts.push(`+${item.modifiers.spellDamage} spell dmg`);
+        }
+        if ((item.modifiers.healingBonus ?? 0) > 0) {
+            parts.push(`+${item.modifiers.healingBonus} healing`);
+        }
+
+        return parts.join(', ');
+    }
+
+    getEquipmentItemSlotLabel(slot) {
+        const labels = {
+            head: 'Head',
+            body: 'Body',
+            hands: 'Hands',
+            legs: 'Legs',
+            feet: 'Feet',
+            neck: 'Neck'
+        };
+        return labels[slot] || slot || 'Slot';
+    }
+
+    getCharacterEquippedItem(character, slotKey) {
+        const equipped = character?.equipment?.[slotKey];
+        return equipped && typeof equipped === 'object' ? equipped : null;
+    }
+
+    getCharacterSpellDamageBonus(character) {
+        const neckItem = this.getCharacterEquippedItem(character, 'neck');
+        return neckItem?.modifiers?.spellDamage ?? 0;
+    }
+
+    getCharacterHealingBonus(character) {
+        const headItem = this.getCharacterEquippedItem(character, 'head');
+        return headItem?.modifiers?.healingBonus ?? 0;
+    }
+
+    getAbilityEquipmentOverride(character, ability) {
+        if (!character || !ability) {
+            return null;
+        }
+
+        const handsItem = this.getCharacterEquippedItem(character, 'hands');
+        if (!handsItem || handsItem.appliesToAbilityId !== ability.id) {
+            return null;
+        }
+
+        return {
+            damage: handsItem.modifiers?.attackDamage,
+            range: handsItem.modifiers?.attackRange
+        };
+    }
+
+    getEffectiveAbilityRange(character, ability) {
+        const override = this.getAbilityEquipmentOverride(character, ability);
+        return override?.range ?? (ability?.range ?? 1);
+    }
+
+    getEffectiveAbilityDamage(character, ability) {
+        const override = this.getAbilityEquipmentOverride(character, ability);
+        let damage = override?.damage ?? (ability?.damage ?? character?.meleeAttackDamage ?? 0);
+        if (ability?.type === 'spell' || ability?.id === 'magic-missile') {
+            damage += this.getCharacterSpellDamageBonus(character);
+        }
+        return damage;
+    }
+
+    getEffectiveAbilityHealAmount(character, ability) {
+        const baseHeal = ability?.healAmount ?? 0;
+        return baseHeal + this.getCharacterHealingBonus(character);
     }
 
     registerLootDropAtCell(gridX, gridY, loot, options = {}) {
@@ -1589,12 +1844,21 @@ class GridScene {
         const cellKey = this.getCellKey(gridX, gridY);
         const existingDrop = this.lootDropsByCell.get(cellKey);
         const goldToAdd = Math.max(0, Math.floor(loot.gold ?? 0));
-        if (goldToAdd <= 0 && !existingDrop) {
+        const equipmentToAdd = Array.isArray(loot.equipmentDrops)
+            ? loot.equipmentDrops
+                .map((item) => this.ensureEquipmentItemInstance(item))
+                .filter((item) => item)
+            : [];
+        if (goldToAdd <= 0 && equipmentToAdd.length === 0 && !existingDrop) {
             return;
         }
 
         if (existingDrop) {
             existingDrop.gold = (existingDrop.gold ?? 0) + goldToAdd;
+            if (!Array.isArray(existingDrop.equipmentDrops)) {
+                existingDrop.equipmentDrops = [];
+            }
+            existingDrop.equipmentDrops.push(...equipmentToAdd);
             if (options.sourceLabel) {
                 existingDrop.sources.push(options.sourceLabel);
             }
@@ -1611,6 +1875,7 @@ class GridScene {
             gridX,
             gridY,
             gold: goldToAdd,
+            equipmentDrops: equipmentToAdd,
             sources: options.sourceLabel ? [options.sourceLabel] : [],
             sourceType: options.sourceType || 'enemy',
             containerName: options.containerName || 'Loot Bag'
@@ -1704,8 +1969,8 @@ class GridScene {
             ? attackAbility
             : attacker.abilities.find((ability) => ability.id === attacker.selectedAbilityId && ability.type === 'attack') || null;
 
-        const attackRange = resolvedAttackAbility?.range ?? 1;
-        const baseDamage = resolvedAttackAbility?.damage ?? attacker.meleeAttackDamage;
+        const attackRange = this.getEffectiveAbilityRange(attacker, resolvedAttackAbility);
+        const baseDamage = this.getEffectiveAbilityDamage(attacker, resolvedAttackAbility);
         const damageKind = attackRange > 1 ? 'ranged' : 'melee';
         const sourceLabel = this.getCharacterAttackSourceLabel(attacker, resolvedAttackAbility);
 
@@ -1784,9 +2049,10 @@ class GridScene {
             return false;
         }
 
+        const effectiveRange = this.getEffectiveAbilityRange(caster, ability);
         const dx = Math.abs(target.gridX - caster.gridX);
         const dy = Math.abs(target.gridY - caster.gridY);
-        if (dx > ability.range || dy > ability.range) {
+        if (dx > effectiveRange || dy > effectiveRange) {
             return false;
         }
 
@@ -1795,7 +2061,7 @@ class GridScene {
         }
 
         this.faceCharacterToward(caster, target);
-        const damage = ability.damage ?? caster.meleeAttackDamage;
+        const damage = this.getEffectiveAbilityDamage(caster, ability);
         target.hitPoints -= damage;
         caster.magicPoints -= ability.mpCost;
 
@@ -1854,7 +2120,13 @@ class GridScene {
             const dx = Math.abs(ally.gridX - caster.gridX);
             const dy = Math.abs(ally.gridY - caster.gridY);
             if (dx <= range && dy <= range) {
-                ally.armorClass += acBonus;
+                const existing = ally.activeEffects.find((e) => e.type === 'battle-shout');
+                if (existing) {
+                    existing.roundsRemaining = 2;
+                } else {
+                    ally.armorClass += acBonus;
+                    ally.activeEffects.push({ type: 'battle-shout', acBonus, roundsRemaining: 2 });
+                }
                 affectedCount += 1;
                 const pos = this.getCharacterWorldPos(ally);
                 this.spawnBattleShoutEffect(pos);
@@ -1950,9 +2222,10 @@ class GridScene {
             return false;
         }
 
+        const effectiveRange = this.getEffectiveAbilityRange(caster, ability);
         const dx = Math.abs(target.gridX - caster.gridX);
         const dy = Math.abs(target.gridY - caster.gridY);
-        if (dx > ability.range || dy > ability.range) {
+        if (dx > effectiveRange || dy > effectiveRange) {
             return false;
         }
 
@@ -1964,7 +2237,7 @@ class GridScene {
             this.faceCharacterToward(caster, target);
         }
 
-        const healAmount = ability.healAmount ?? 5;
+        const healAmount = this.getEffectiveAbilityHealAmount(caster, ability);
         const restored = Math.min(healAmount, target.maxHitPoints - target.hitPoints);
         target.hitPoints = Math.min(target.maxHitPoints, target.hitPoints + healAmount);
         caster.magicPoints -= ability.mpCost;
@@ -2047,6 +2320,11 @@ class GridScene {
         if ((bonuses.intelligence ?? 0) > 0) bonusParts.push(`+${bonuses.intelligence} INT`);
         if ((bonuses.dexterity ?? 0) > 0) bonusParts.push(`+${bonuses.dexterity} DEX`);
         if ((bonuses.initiative ?? 0) > 0) bonusParts.push(`+${bonuses.initiative} Initiative`);
+
+        if (!Array.isArray(character.pendingLevelUpNotices)) {
+            character.pendingLevelUpNotices = [];
+        }
+        character.pendingLevelUpNotices.push(`Level ${newLevel}: ${bonusParts.join(', ')}`);
 
         this.appendCombatLogEntry(
             `${character.name} reached level ${newLevel}: ${bonusParts.join(', ')}.`,
@@ -2148,6 +2426,20 @@ class GridScene {
             });
         }
 
+        const equipmentDrops = Array.isArray(drop.equipmentDrops) ? drop.equipmentDrops : [];
+        equipmentDrops.forEach((item) => {
+            const summary = this.getEquipmentItemModifierSummary(item);
+            items.push({
+                itemKey: `equipment:${item.instanceId}`,
+                label: this.getEquipmentItemLabel(item),
+                quantity: 1,
+                accentColor: item.accentColor || '#d6cbb8',
+                detail: summary
+                    ? `${this.getEquipmentItemSlotLabel(item.slot)} • ${summary}`
+                    : this.getEquipmentItemSlotLabel(item.slot)
+            });
+        });
+
         return items;
     }
 
@@ -2161,6 +2453,136 @@ class GridScene {
         }
     }
 
+    addEquipmentItemToSharedInventory(item) {
+        const normalizedItem = this.ensureEquipmentItemInstance(item);
+        if (!normalizedItem) {
+            return;
+        }
+
+        if (!Array.isArray(this.sharedLootInventory.items)) {
+            this.sharedLootInventory.items = [];
+        }
+
+        this.sharedLootInventory.items.unshift(normalizedItem);
+        if (this.sharedLootInventory.items.length > 80) {
+            this.sharedLootInventory.items.length = 80;
+        }
+    }
+
+    getInventoryEquipmentItemById(instanceId) {
+        const items = this.sharedLootInventory?.items;
+        if (!Array.isArray(items)) {
+            return null;
+        }
+
+        return items.find((item) => item.instanceId === instanceId) || null;
+    }
+
+    equipSharedLootItemToCharacter(character, instanceId) {
+        if (!character || character.team !== 'player' || !instanceId) {
+            return false;
+        }
+
+        const items = this.sharedLootInventory?.items;
+        if (!Array.isArray(items)) {
+            this.showToast('No shared loot items available.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const itemIndex = items.findIndex((item) => item.instanceId === instanceId);
+        if (itemIndex < 0) {
+            this.showToast('That item is no longer in shared loot.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const item = this.ensureEquipmentItemInstance(items[itemIndex]);
+        const slotKey = item.slot;
+        if (!slotKey) {
+            this.showToast('This item cannot be equipped.', '#b8ad96', 2200);
+            return false;
+        }
+
+        if ((item.modifiers?.armorClass ?? 0) > 0) {
+            character.armorClass += item.modifiers.armorClass;
+        }
+
+        const currentEquipped = character.equipment?.[slotKey] ?? null;
+        if (currentEquipped && typeof currentEquipped === 'object' && (currentEquipped.modifiers?.armorClass ?? 0) > 0) {
+            character.armorClass -= currentEquipped.modifiers.armorClass;
+        }
+
+        items.splice(itemIndex, 1);
+        character.equipment[slotKey] = item;
+
+        if (currentEquipped) {
+            const swappedItem = this.ensureEquipmentItemInstance(currentEquipped, slotKey);
+            this.addEquipmentItemToSharedInventory(swappedItem);
+        }
+
+        this.appendCombatLogEntry(
+            `${character.name} equips ${this.getEquipmentItemLabel(item)} (${this.getEquipmentItemSlotLabel(slotKey)}).`,
+            character.accentColor
+        );
+        this.showToast(
+            `${character.name} equips ${this.getEquipmentItemLabel(item)}.`,
+            item.accentColor || character.accentColor,
+            2400
+        );
+
+        if (this.activeInventoryCharacter && this.activeInventoryTab === 'shared') {
+            this.renderCharacterInventory();
+        }
+
+        return true;
+    }
+
+    unequipCharacterItemToSharedInventory(character, slotKey) {
+        if (!character || !slotKey) {
+            this.showToast('Unable to unequip this item.', '#b8ad96', 2200);
+            return false;
+        }
+
+        if (character.team !== 'player') {
+            this.showToast('Only party members can unequip items.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const equipped = character.equipment?.[slotKey];
+        if (!equipped) {
+            this.showToast('That slot is already empty.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const unequippedItem = this.ensureEquipmentItemInstance(equipped, slotKey);
+        if (!unequippedItem) {
+            this.showToast('Unable to parse equipped item.', '#b8ad96', 2200);
+            return false;
+        }
+
+        if ((unequippedItem.modifiers?.armorClass ?? 0) > 0) {
+            character.armorClass = Math.max(0, character.armorClass - unequippedItem.modifiers.armorClass);
+        }
+
+        this.addEquipmentItemToSharedInventory(unequippedItem);
+        character.equipment[slotKey] = null;
+
+        this.appendCombatLogEntry(
+            `${character.name} unequips ${this.getEquipmentItemLabel(unequippedItem)} (${this.getEquipmentItemSlotLabel(slotKey)}).`,
+            '#c8bea8'
+        );
+        this.showToast(
+            `${character.name} unequips ${this.getEquipmentItemLabel(unequippedItem)}.`,
+            '#c8bea8',
+            2200
+        );
+
+        if (this.activeInventoryCharacter && (this.activeInventoryTab === 'shared' || this.activeInventoryTab === 'equipment')) {
+            this.renderCharacterInventory();
+        }
+
+        return true;
+    }
+
     takeLootItem(cellKey, itemKey) {
         const drop = this.lootDropsByCell.get(cellKey);
         if (!drop || !itemKey) {
@@ -2168,32 +2590,51 @@ class GridScene {
         }
 
         let takenQuantity = 0;
+        let takenEquipment = null;
         if (itemKey === 'gold') {
             takenQuantity = drop.gold ?? 0;
             drop.gold = 0;
+        } else if (itemKey.startsWith('equipment:')) {
+            const targetId = itemKey.slice('equipment:'.length);
+            const equipmentDrops = Array.isArray(drop.equipmentDrops) ? drop.equipmentDrops : [];
+            const equipmentIndex = equipmentDrops.findIndex((item) => item.instanceId === targetId);
+            if (equipmentIndex >= 0) {
+                takenEquipment = this.ensureEquipmentItemInstance(equipmentDrops[equipmentIndex]);
+                equipmentDrops.splice(equipmentIndex, 1);
+                drop.equipmentDrops = equipmentDrops;
+            }
         }
 
-        if (takenQuantity <= 0) {
+        if (takenQuantity <= 0 && !takenEquipment) {
             return false;
         }
 
-        this.addItemToSharedInventory(itemKey, takenQuantity);
-
         const actorName = this.getLootInteractionCharacter()?.name ?? 'Party';
-        this.appendCombatLogEntry(`${actorName} picks up ${takenQuantity} gold.`, '#d9c47d');
+        if (takenQuantity > 0) {
+            this.addItemToSharedInventory(itemKey, takenQuantity);
+            this.appendCombatLogEntry(`${actorName} picks up ${takenQuantity} gold.`, '#d9c47d');
+            this.sharedLootInventory.drops.unshift({
+                enemyName: actorName,
+                gridX: drop.gridX,
+                gridY: drop.gridY,
+                gold: takenQuantity
+            });
+            if (this.sharedLootInventory.drops.length > 30) {
+                this.sharedLootInventory.drops.length = 30;
+            }
+        }
 
-        this.sharedLootInventory.drops.unshift({
-            enemyName: actorName,
-            gridX: drop.gridX,
-            gridY: drop.gridY,
-            gold: takenQuantity
-        });
-        if (this.sharedLootInventory.drops.length > 30) {
-            this.sharedLootInventory.drops.length = 30;
+        if (takenEquipment) {
+            this.addEquipmentItemToSharedInventory(takenEquipment);
+            this.appendCombatLogEntry(
+                `${actorName} picks up ${this.getEquipmentItemLabel(takenEquipment)}.`,
+                takenEquipment.accentColor || '#d9c47d'
+            );
         }
 
         const hasGold = (drop.gold ?? 0) > 0;
-        if (!hasGold) {
+        const hasEquipment = Array.isArray(drop.equipmentDrops) && drop.equipmentDrops.length > 0;
+        if (!hasGold && !hasEquipment) {
             this.lootDropsByCell.delete(cellKey);
             this.closeLootMenu();
         }
@@ -2216,7 +2657,11 @@ class GridScene {
         }
 
         const actorName = this.getActiveTurnCharacter()?.name ?? 'Party';
-        this.appendCombatLogEntry(`${actorName} leaves ${item.quantity} ${item.label.toLowerCase()} on the ground.`, '#8f856f');
+        if (item.itemKey === 'gold') {
+            this.appendCombatLogEntry(`${actorName} leaves ${item.quantity} ${item.label.toLowerCase()} on the ground.`, '#8f856f');
+        } else {
+            this.appendCombatLogEntry(`${actorName} leaves ${item.label} on the ground.`, '#8f856f');
+        }
         this.closeLootMenu();
     }
 

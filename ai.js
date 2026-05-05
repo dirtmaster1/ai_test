@@ -207,7 +207,7 @@ window.GridAI = {
         const correctTeam = targetMode === 'ally'
             ? character.team === target.team
             : character.team !== target.team;
-        const range = resolvedAbility.range ?? 1;
+        const range = this.getEffectiveAbilityRange(character, resolvedAbility);
         const distance = this.getAttackDistanceBetweenPositions(originX, originY, target.gridX, target.gridY);
         const withinRange = distance <= range;
         const lineOfSightRequired = this.requiresLineOfSight(resolvedAbility);
@@ -217,7 +217,7 @@ window.GridAI = {
 
         if (resolvedAbility.type === 'heal') {
             const amount = Math.max(0, Math.min(
-                resolvedAbility.healAmount ?? 0,
+                this.getEffectiveAbilityHealAmount(character, resolvedAbility),
                 target.maxHitPoints - target.hitPoints
             ));
 
@@ -255,7 +255,7 @@ window.GridAI = {
             };
         }
 
-        const baseDamage = resolvedAbility.damage ?? character.meleeAttackDamage;
+        const baseDamage = this.getEffectiveAbilityDamage(character, resolvedAbility);
         const isSpell = resolvedAbility.type === 'spell' || resolvedAbility.id === 'magic-missile';
         const amount = isSpell ? baseDamage : Math.max(0, baseDamage - target.armorClass);
 

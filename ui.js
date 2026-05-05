@@ -79,7 +79,7 @@ window.GridUI = {
         }
 
         if (ability.type === 'heal') {
-            const healAmount = ability.healAmount ?? 0;
+            const healAmount = this.getEffectiveAbilityHealAmount(character, ability);
             return `Healing: ${healAmount} HP`;
         }
 
@@ -95,8 +95,8 @@ window.GridUI = {
             return 'Effect';
         }
 
-        if (ability.type === 'attack') {
-            const damageAmount = ability.damage ?? character.meleeAttackDamage;
+        if (ability.type === 'attack' || ability.type === 'spell') {
+            const damageAmount = this.getEffectiveAbilityDamage(character, ability);
             const attackKind = ability.id === 'magic-missile'
                 ? 'Magic'
                 : ability.id === 'bow-shot'
@@ -110,8 +110,9 @@ window.GridUI = {
 
     getAbilityTooltipText(character, ability) {
         const lines = [ability.name, this.getAbilityDetailText(character, ability)];
-        if (typeof ability.range === 'number') {
-            lines.push(`Range: ${ability.range}`);
+        const range = this.getEffectiveAbilityRange(character, ability);
+        if (typeof range === 'number') {
+            lines.push(`Range: ${range}`);
         }
         if ((ability.mpCost ?? 0) > 0) {
             lines.push(`Cost: ${ability.mpCost} MP`);
@@ -156,6 +157,9 @@ window.GridUI = {
     getCharacterAttackSourceLabel(character, ability = null) {
         const handsItem = character?.equipment?.hands;
         if (handsItem) {
+            if (typeof handsItem === 'object') {
+                return this.getEquipmentItemLabel(handsItem);
+            }
             return handsItem.replace(/\s*\([^)]*\)\s*$/, '').trim();
         }
 
@@ -164,6 +168,63 @@ window.GridUI = {
         }
 
         return 'attack';
+    },
+
+    getActiveEffectDisplayData(effect) {
+        if (!effect) {
+            return null;
+        }
+
+        if (effect.type === 'battle-shout') {
+            const acBonus = effect.acBonus ?? 0;
+            return {
+                kind: 'buff',
+                text: `Battle Shout +${acBonus} AC (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
+            };
+        }
+
+        if (effect.type === 'inflict-pain') {
+            const damageBonus = effect.damageBonus ?? 0;
+            return {
+                kind: 'debuff',
+                text: `Inflict Pain +${damageBonus} DMG (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
+            };
+        }
+
+        const genericKind = effect.kind === 'debuff' ? 'debuff' : 'buff';
+        const name = effect.name || effect.type || 'Effect';
+        const duration = typeof effect.roundsRemaining === 'number'
+            ? `${Math.max(0, effect.roundsRemaining)}r`
+            : 'perm';
+        return {
+            kind: genericKind,
+            text: `${name} (${duration})`
+        };
+    },
+
+    getCharacterEffectSummaryText(character) {
+        const effects = Array.isArray(character?.activeEffects) ? character.activeEffects : [];
+        if (effects.length === 0) {
+            return 'Buffs: none | Debuffs: none';
+        }
+
+        const buffs = [];
+        const debuffs = [];
+        effects.forEach((effect) => {
+            const display = this.getActiveEffectDisplayData(effect);
+            if (!display) {
+                return;
+            }
+            if (display.kind === 'debuff') {
+                debuffs.push(display.text);
+            } else {
+                buffs.push(display.text);
+            }
+        });
+
+        const buffText = buffs.length > 0 ? buffs.join(', ') : 'none';
+        const debuffText = debuffs.length > 0 ? debuffs.join(', ') : 'none';
+        return `Buffs: ${buffText} | Debuffs: ${debuffText}`;
     },
 
     closeCombatLogWindow() {
@@ -414,6 +475,105 @@ window.GridUI = {
         toast._dismiss = () => { clearTimeout(timer); fadeOut(); };
     },
 
+    handleLevelUpIndicatorClick(character, triggerButton) {
+        if (!character || !Array.isArray(character.pendingLevelUpNotices) || character.pendingLevelUpNotices.length === 0) {
+            return;
+        }
+
+        const notices = [...character.pendingLevelUpNotices];
+        character.pendingLevelUpNotices = [];
+        const activeCharacter = this.getActiveTurnCharacter?.() ?? null;
+        if (this.characterHud?.has(character.id)) {
+            this.updateCharacterCard(character, activeCharacter);
+        }
+        this.showLevelUpSummaryToast(character, notices, triggerButton);
+    },
+
+    showLevelUpSummaryToast(character, notices) {
+        if (!Array.isArray(notices) || notices.length === 0) {
+            return;
+        }
+
+        if (this.levelUpToast?.root) {
+            this.levelUpToast.root.remove();
+            this.levelUpToast = null;
+        }
+
+        const toast = document.createElement('div');
+        toast.style.position = 'fixed';
+        toast.style.left = '50%';
+        toast.style.top = '50%';
+        toast.style.transform = 'translate(-50%, -50%)';
+        toast.style.minWidth = '260px';
+        toast.style.maxWidth = 'min(420px, calc(100vw - 24px))';
+        toast.style.padding = '12px 12px 10px';
+        toast.style.border = '1px solid rgba(255, 217, 120, 0.65)';
+        toast.style.borderRadius = '10px';
+        toast.style.background = 'linear-gradient(180deg, rgba(34, 28, 18, 0.98), rgba(14, 11, 7, 0.98))';
+        toast.style.boxShadow = '0 14px 34px rgba(0, 0, 0, 0.52), 0 0 22px rgba(255, 204, 82, 0.28)';
+        toast.style.color = '#f2dfb4';
+        toast.style.fontSize = '12px';
+        toast.style.lineHeight = '1.4';
+        toast.style.zIndex = '10002';
+        toast.style.pointerEvents = 'auto';
+
+        const titleRow = document.createElement('div');
+        titleRow.style.display = 'flex';
+        titleRow.style.alignItems = 'center';
+        titleRow.style.justifyContent = 'space-between';
+        titleRow.style.gap = '8px';
+
+        const title = document.createElement('div');
+        title.textContent = `${character.name} leveled up`;
+        title.style.fontSize = '13px';
+        title.style.fontWeight = '700';
+        title.style.color = '#ffe2a0';
+        title.style.letterSpacing = '0.02em';
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.textContent = 'Close';
+        closeButton.style.padding = '4px 8px';
+        closeButton.style.borderRadius = '6px';
+        closeButton.style.border = '1px solid rgba(255, 255, 255, 0.22)';
+        closeButton.style.background = 'rgba(255, 255, 255, 0.09)';
+        closeButton.style.color = '#f4e9cb';
+        closeButton.style.fontSize = '11px';
+        closeButton.style.cursor = 'pointer';
+
+        const body = document.createElement('div');
+        body.style.marginTop = '8px';
+        body.style.display = 'grid';
+        body.style.gap = '4px';
+
+        notices.forEach((notice) => {
+            const line = document.createElement('div');
+            line.textContent = notice;
+            line.style.padding = '4px 6px';
+            line.style.border = '1px solid rgba(255, 226, 152, 0.22)';
+            line.style.borderRadius = '6px';
+            line.style.background = 'rgba(255, 222, 148, 0.08)';
+            body.appendChild(line);
+        });
+
+        const close = () => {
+            toast.remove();
+            if (this.levelUpToast?.root === toast) {
+                this.levelUpToast = null;
+            }
+        };
+
+        closeButton.addEventListener('click', close);
+
+        titleRow.appendChild(title);
+        titleRow.appendChild(closeButton);
+        toast.appendChild(titleRow);
+        toast.appendChild(body);
+        document.body.appendChild(toast);
+
+        this.levelUpToast = { root: toast, close };
+    },
+
     appendCombatLogEntry(message, accentColor = '#d6cbb8') {
         if (!message) {
             return;
@@ -472,6 +632,10 @@ window.GridUI = {
         this.activeInventoryCharacter = null;
         this.activeInventoryTab = 'info';
         this.turnQueueState = '';
+        if (this.levelUpToast?.root) {
+            this.levelUpToast.root.remove();
+            this.levelUpToast = null;
+        }
 
         const turnQueueSection = this.createTurnOrderQueuePanel();
         hudRoot.appendChild(turnQueueSection.section);
@@ -776,10 +940,11 @@ window.GridUI = {
         preview.subtitle.style.color = targetInfo.isValid ? '#8ee7a8' : '#ff9f9f';
 
         const targetHpText = `${hoveredCharacter.hitPoints} / ${hoveredCharacter.maxHitPoints} HP`;
+        const effectSummaryText = this.getCharacterEffectSummaryText(hoveredCharacter);
         if (targetInfo.effectType === 'heal') {
             preview.effect.textContent = `Restore ${targetInfo.amount} HP`;
             preview.effect.style.color = '#9af0c0';
-            preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP.`;
+            preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP • ${effectSummaryText}`;
             this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
@@ -787,14 +952,14 @@ window.GridUI = {
         if (targetInfo.effectType === 'damage') {
             preview.effect.textContent = `Deal ${targetInfo.amount} damage`;
             preview.effect.style.color = targetInfo.amount >= hoveredCharacter.hitPoints ? '#ffd470' : '#f0e8d2';
-            preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass} • ${targetInfo.damageKind}.`;
+            preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass} • ${targetInfo.damageKind} • ${effectSummaryText}`;
             this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
 
         preview.effect.textContent = targetInfo.description;
         preview.effect.style.color = '#f0e8d2';
-        preview.detail.textContent = targetHpText;
+        preview.detail.textContent = `${targetHpText} • ${effectSummaryText}`;
         this.positionTargetPreviewPanel(hoveredCharacter);
     },
 
@@ -981,8 +1146,17 @@ window.GridUI = {
             quantity.style.color = '#cfc4ae';
             quantity.textContent = `Quantity: ${item.quantity}`;
 
+            const detail = document.createElement('div');
+            detail.style.marginTop = '3px';
+            detail.style.fontSize = '11px';
+            detail.style.color = '#9f9582';
+            detail.textContent = item.detail || '';
+
             text.appendChild(label);
             text.appendChild(quantity);
+            if (item.detail) {
+                text.appendChild(detail);
+            }
             row.appendChild(text);
 
             const controls = document.createElement('div');
@@ -1297,13 +1471,77 @@ window.GridUI = {
         this.renderCharacterSpellsTab(character);
     },
 
+    handleUnequipFromEquipmentTab(character, slotKey) {
+        if (!character || !slotKey) {
+            this.showToast('Unable to unequip item.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const equipped = character.equipment?.[slotKey];
+        if (!equipped) {
+            this.showToast('That slot is already empty.', '#b8ad96', 2200);
+            return false;
+        }
+
+        if (typeof this.unequipCharacterItemToSharedInventory === 'function') {
+            try {
+                const didUnequip = this.unequipCharacterItemToSharedInventory(character, slotKey);
+                if (didUnequip) {
+                    this.renderCharacterInventory();
+                    return true;
+                }
+            } catch (error) {
+                // Fall through to local fallback unequip path.
+            }
+        }
+
+        const normalized = typeof this.ensureEquipmentItemInstance === 'function'
+            ? this.ensureEquipmentItemInstance(equipped, slotKey)
+            : {
+                instanceId: `legacy-ui-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+                id: `legacy-${slotKey}`,
+                name: typeof equipped === 'object' ? (equipped.name || 'Unknown Item') : String(equipped),
+                slot: slotKey,
+                handType: typeof equipped === 'object' ? (equipped.handType || null) : null,
+                appliesToAbilityId: typeof equipped === 'object' ? (equipped.appliesToAbilityId || null) : null,
+                modifiers: typeof equipped === 'object' ? { ...(equipped.modifiers || {}) } : {},
+                accentColor: typeof equipped === 'object' ? (equipped.accentColor || '#b8ad96') : '#b8ad96'
+            };
+
+        if (!normalized) {
+            this.showToast('Unable to unequip item.', '#b8ad96', 2200);
+            return false;
+        }
+
+        if (!this.sharedLootInventory) {
+            this.sharedLootInventory = { gold: 0, drops: [], items: [] };
+        }
+        if (!Array.isArray(this.sharedLootInventory.items)) {
+            this.sharedLootInventory.items = [];
+        }
+
+        if ((normalized.modifiers?.armorClass ?? 0) > 0) {
+            character.armorClass = Math.max(0, character.armorClass - normalized.modifiers.armorClass);
+        }
+
+        this.sharedLootInventory.items.unshift(normalized);
+        character.equipment[slotKey] = null;
+        this.showToast(
+            `${character.name} unequips ${this.getEquipmentItemLabel(normalized)}.`,
+            '#c8bea8',
+            2200
+        );
+        this.renderCharacterInventory();
+        return true;
+    },
+
     renderSharedLootTab() {
         const modal = this.characterInventoryModal;
         if (!modal) {
             return;
         }
 
-        const inventory = this.sharedLootInventory ?? { gold: 0 };
+        const inventory = this.sharedLootInventory ?? { gold: 0, items: [] };
 
         modal.content.innerHTML = '';
 
@@ -1330,6 +1568,95 @@ window.GridUI = {
         card.appendChild(label);
         card.appendChild(value);
         modal.content.appendChild(card);
+
+        const itemHeader = document.createElement('div');
+        itemHeader.style.marginTop = '14px';
+        itemHeader.style.marginBottom = '8px';
+        itemHeader.style.fontSize = '10px';
+        itemHeader.style.letterSpacing = '0.08em';
+        itemHeader.style.textTransform = 'uppercase';
+        itemHeader.style.color = '#8f856f';
+        itemHeader.textContent = 'Shared Items';
+        modal.content.appendChild(itemHeader);
+
+        const items = Array.isArray(inventory.items) ? inventory.items : [];
+        if (items.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '12px';
+            emptyState.style.border = '1px dashed rgba(255,255,255,0.16)';
+            emptyState.style.borderRadius = '10px';
+            emptyState.style.fontSize = '12px';
+            emptyState.style.color = '#8f856f';
+            emptyState.textContent = 'No equipable items in shared loot.';
+            modal.content.appendChild(emptyState);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.style.display = 'grid';
+        list.style.gap = '8px';
+        modal.content.appendChild(list);
+
+        items.forEach((item) => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.padding = '10px 12px';
+            row.style.border = '1px solid rgba(255,255,255,0.08)';
+            row.style.borderRadius = '10px';
+            row.style.background = 'rgba(255,255,255,0.03)';
+
+            const text = document.createElement('div');
+            text.style.display = 'flex';
+            text.style.flexDirection = 'column';
+            text.style.minWidth = '0';
+
+            const name = document.createElement('div');
+            name.style.fontSize = '13px';
+            name.style.fontWeight = '700';
+            name.style.color = item.accentColor || '#d6cbb8';
+            name.textContent = this.getEquipmentItemLabel(item);
+
+            const slot = document.createElement('div');
+            slot.style.marginTop = '3px';
+            slot.style.fontSize = '11px';
+            slot.style.color = '#cfc4ae';
+            slot.textContent = `Slot: ${this.getEquipmentItemSlotLabel(item.slot)}`;
+
+            const stats = document.createElement('div');
+            stats.style.marginTop = '3px';
+            stats.style.fontSize = '11px';
+            stats.style.color = '#9f9582';
+            stats.textContent = this.getEquipmentItemModifierSummary(item) || 'No stat changes';
+
+            text.appendChild(name);
+            text.appendChild(slot);
+            text.appendChild(stats);
+            row.appendChild(text);
+
+            const equipButton = document.createElement('button');
+            equipButton.type = 'button';
+            equipButton.textContent = 'Equip';
+            equipButton.style.padding = '6px 9px';
+            equipButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            equipButton.style.borderRadius = '6px';
+            equipButton.style.background = 'rgba(73, 116, 162, 0.35)';
+            equipButton.style.color = '#d7e7fb';
+            equipButton.style.fontSize = '11px';
+            equipButton.style.cursor = 'pointer';
+            equipButton.style.flexShrink = '0';
+            equipButton.addEventListener('click', () => {
+                if (!this.activeInventoryCharacter) {
+                    return;
+                }
+                this.equipSharedLootItemToCharacter(this.activeInventoryCharacter, item.instanceId);
+            });
+
+            row.appendChild(equipButton);
+            list.appendChild(row);
+        });
     },
 
     setCharacterInventoryTabState(button, isActive, accentColor) {
@@ -1435,7 +1762,7 @@ window.GridUI = {
         intro.style.marginBottom = '14px';
         intro.style.fontSize = '12px';
         intro.style.color = '#a89c82';
-        intro.textContent = `${character.name}'s equipment slots are ready for items.`;
+        intro.textContent = `${character.name}'s equipment slots and current bonuses.`;
         modal.content.appendChild(intro);
 
         const slotGrid = document.createElement('div');
@@ -1465,10 +1792,57 @@ window.GridUI = {
             value.style.fontSize = '13px';
             value.style.fontWeight = '700';
             value.style.color = '#5e5648';
-            value.textContent = character.equipment?.[slotKey] ?? 'Empty';
+            const equipped = character.equipment?.[slotKey] ?? null;
+            const hasEquippedItem = equipped !== null && equipped !== undefined && String(equipped).trim() !== '';
+            let stats = null;
+            let unequipButton = null;
+            if (hasEquippedItem) {
+                const normalizedEquipped = this.ensureEquipmentItemInstance(equipped, slotKey);
+                if (normalizedEquipped) {
+                    value.textContent = this.getEquipmentItemLabel(normalizedEquipped);
+                    value.style.color = normalizedEquipped.accentColor || '#d6cbb8';
+
+                    stats = document.createElement('div');
+                    stats.style.marginTop = '5px';
+                    stats.style.fontSize = '11px';
+                    stats.style.color = '#9f9582';
+                    stats.textContent = this.getEquipmentItemModifierSummary(normalizedEquipped) || 'No stat changes';
+                } else {
+                    value.textContent = String(equipped);
+                }
+
+                unequipButton = document.createElement('button');
+                unequipButton.type = 'button';
+                unequipButton.textContent = 'Unequip';
+                unequipButton.style.marginTop = '8px';
+                unequipButton.style.alignSelf = 'flex-start';
+                unequipButton.style.padding = '5px 8px';
+                unequipButton.style.border = '1px solid rgba(255,255,255,0.2)';
+                unequipButton.style.borderRadius = '6px';
+                unequipButton.style.background = 'rgba(120, 95, 64, 0.30)';
+                unequipButton.style.color = '#e5d7bf';
+                unequipButton.style.fontSize = '11px';
+                unequipButton.style.cursor = 'pointer';
+                unequipButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const didUnequip = this.handleUnequipFromEquipmentTab(character, slotKey);
+                    if (!didUnequip) {
+                        this.showToast('Unable to unequip item.', '#b8ad96', 2200);
+                    }
+                });
+            } else {
+                value.textContent = 'Empty';
+            }
 
             slotCard.appendChild(label);
             slotCard.appendChild(value);
+            if (stats) {
+                slotCard.appendChild(stats);
+            }
+            if (unequipButton) {
+                slotCard.appendChild(unequipButton);
+            }
             slotGrid.appendChild(slotCard);
         });
 
@@ -1532,7 +1906,7 @@ window.GridUI = {
             stats.style.marginTop = '8px';
             stats.style.fontSize = '11px';
             stats.style.color = '#8f856f';
-            const rangeText = `Range ${ability.range ?? 1}`;
+            const rangeText = `Range ${this.getEffectiveAbilityRange(character, ability)}`;
             const costText = `Cost ${ability.mpCost ?? 0} MP`;
             const typeText = `Type ${ability.type}`;
             stats.textContent = `${typeText} • ${rangeText} • ${costText}`;
@@ -1611,7 +1985,7 @@ window.GridUI = {
             stats.style.marginTop = '8px';
             stats.style.fontSize = '11px';
             stats.style.color = '#8f856f';
-            const rangeText = `Range ${spell.range ?? 1}`;
+            const rangeText = `Range ${this.getEffectiveAbilityRange(character, spell)}`;
             const costText = `Cost ${spell.mpCost ?? 0} MP`;
             const typeText = `Type ${spell.type}`;
             stats.textContent = `${typeText} • ${rangeText} • ${costText}`;
@@ -1730,8 +2104,7 @@ window.GridUI = {
 
         const nameRow = document.createElement('div');
         nameRow.style.display = 'flex';
-        nameRow.style.alignItems = 'baseline';
-        nameRow.style.justifyContent = 'space-between';
+        nameRow.style.alignItems = 'center';
         nameRow.style.gap = '6px';
 
         const nameText = document.createElement('div');
@@ -1747,8 +2120,62 @@ window.GridUI = {
         acBadge.style.color = '#c8c0a8';
         acBadge.style.letterSpacing = '0.05em';
         acBadge.style.flexShrink = '0';
+        acBadge.style.marginLeft = 'auto';
         acBadge.title = 'Armor Class — reduces physical damage';
         acBadge.textContent = `AC ${character.armorClass}`;
+
+        const levelUpButton = document.createElement('button');
+        levelUpButton.type = 'button';
+        levelUpButton.textContent = '+';
+        levelUpButton.title = 'Level up bonuses available';
+        levelUpButton.setAttribute('aria-label', `View ${character.name} level up bonuses`);
+        levelUpButton.style.display = Array.isArray(character.pendingLevelUpNotices) && character.pendingLevelUpNotices.length > 0
+            ? 'inline-flex'
+            : 'none';
+        levelUpButton.style.alignItems = 'center';
+        levelUpButton.style.justifyContent = 'center';
+        levelUpButton.style.width = '14px';
+        levelUpButton.style.height = '14px';
+        levelUpButton.style.padding = '0';
+        levelUpButton.style.borderRadius = '999px';
+        levelUpButton.style.border = '1px solid rgba(255, 223, 134, 0.9)';
+        levelUpButton.style.background = 'radial-gradient(circle at 30% 30%, rgba(255, 245, 191, 0.96), rgba(255, 186, 64, 0.95))';
+        levelUpButton.style.color = '#2d1903';
+        levelUpButton.style.fontSize = '11px';
+        levelUpButton.style.fontWeight = '700';
+        levelUpButton.style.lineHeight = '1';
+        levelUpButton.style.cursor = 'pointer';
+        levelUpButton.style.boxShadow = '0 0 8px rgba(255, 192, 69, 0.75), 0 0 16px rgba(255, 192, 69, 0.4)';
+        levelUpButton.style.flex = '0 0 auto';
+        levelUpButton.style.pointerEvents = 'auto';
+
+        levelUpButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.handleLevelUpIndicatorClick(character, levelUpButton);
+        });
+
+        levelUpButton.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                this.handleLevelUpIndicatorClick(character, levelUpButton);
+            }
+        });
+
+        if (typeof levelUpButton.animate === 'function') {
+            levelUpButton.animate(
+                [
+                    { transform: 'scale(1)', boxShadow: '0 0 8px rgba(255, 192, 69, 0.70), 0 0 16px rgba(255, 192, 69, 0.35)' },
+                    { transform: 'scale(1.13)', boxShadow: '0 0 12px rgba(255, 203, 94, 0.90), 0 0 24px rgba(255, 203, 94, 0.60)' },
+                    { transform: 'scale(1)', boxShadow: '0 0 8px rgba(255, 192, 69, 0.70), 0 0 16px rgba(255, 192, 69, 0.35)' }
+                ],
+                {
+                    duration: 980,
+                    iterations: Infinity,
+                    easing: 'ease-in-out'
+                }
+            );
+        }
 
         const teamBadge = document.createElement('div');
         teamBadge.style.fontSize = '7px';
@@ -1785,6 +2212,7 @@ window.GridUI = {
         metaBadgeRow.appendChild(turnBadge);
 
         nameRow.appendChild(nameText);
+        nameRow.appendChild(levelUpButton);
         nameRow.appendChild(acBadge);
         textColumn.appendChild(nameRow);
         textColumn.appendChild(metaBadgeRow);
@@ -2056,7 +2484,7 @@ window.GridUI = {
             }
         });
 
-        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap, acBadge, teamBadge, turnBadge, endTurnButton, turnControls };
+        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap, acBadge, teamBadge, turnBadge, endTurnButton, turnControls, levelUpButton };
     },
 
     setCombatCardActiveState(card, portraitFrame, accentColor, isActiveTurn, isDead) {
@@ -2116,6 +2544,11 @@ window.GridUI = {
         hud.card.style.opacity = character.isDead ? '0.65' : '1';
         hud.nameText.textContent = `${character.name} Lv ${character.level ?? 1}`;
         hud.nameText.style.color = character.isDead ? deadColor : character.accentColor;
+        if (hud.levelUpButton) {
+            const hasPendingLevelUp = Array.isArray(character.pendingLevelUpNotices) && character.pendingLevelUpNotices.length > 0;
+            hud.levelUpButton.style.display = hasPendingLevelUp ? 'inline-flex' : 'none';
+            hud.levelUpButton.style.opacity = character.isDead ? '0.7' : '1';
+        }
 
         hud.hpText.style.color = character.isDead ? deadColor : aliveInfoColor;
 
@@ -2182,9 +2615,8 @@ window.GridUI = {
             }
         }
 
-        if (this.activeInventoryCharacter === character) {
-            this.renderCharacterInventory();
-        }
+        // Avoid rebuilding the inventory modal every frame; it detaches modal buttons
+        // before click events can complete.
     },
 
     startVictorySequence() {

@@ -85,7 +85,9 @@ window.CharacterData = {
                 ...(config.equipment ?? {})
             },
             abilities,
-            selectedAbilityId: abilities[0].id
+            selectedAbilityId: abilities[0].id,
+            activeEffects: [],
+            pendingLevelUpNotices: []
         };
     },
 
