@@ -155,12 +155,11 @@ window.GridUI = {
     },
 
     getCharacterAttackSourceLabel(character, ability = null) {
-        const handsItem = character?.equipment?.hands;
+        const handsItem = typeof this.getCharacterEquippedItem === 'function'
+            ? this.getCharacterEquippedItem(character, 'hands')
+            : character?.equipment?.hands;
         if (handsItem) {
-            if (typeof handsItem === 'object') {
-                return this.getEquipmentItemLabel(handsItem);
-            }
-            return handsItem.replace(/\s*\([^)]*\)\s*$/, '').trim();
+            return this.getEquipmentItemLabel(handsItem);
         }
 
         if (ability?.name) {
@@ -941,10 +940,16 @@ window.GridUI = {
 
         const targetHpText = `${hoveredCharacter.hitPoints} / ${hoveredCharacter.maxHitPoints} HP`;
         const effectSummaryText = this.getCharacterEffectSummaryText(hoveredCharacter);
+        const equipmentSummaryText = typeof this.getCharacterEquipmentSummaryText === 'function'
+            ? this.getCharacterEquipmentSummaryText(hoveredCharacter)
+            : '';
+        const equipmentDetailText = equipmentSummaryText && equipmentSummaryText !== 'No equipment bonuses'
+            ? ` • ${equipmentSummaryText}`
+            : '';
         if (targetInfo.effectType === 'heal') {
             preview.effect.textContent = `Restore ${targetInfo.amount} HP`;
             preview.effect.style.color = '#9af0c0';
-            preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP • ${effectSummaryText}`;
+            preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP${equipmentDetailText} • ${effectSummaryText}`;
             this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
@@ -952,14 +957,14 @@ window.GridUI = {
         if (targetInfo.effectType === 'damage') {
             preview.effect.textContent = `Deal ${targetInfo.amount} damage`;
             preview.effect.style.color = targetInfo.amount >= hoveredCharacter.hitPoints ? '#ffd470' : '#f0e8d2';
-            preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass} • ${targetInfo.damageKind} • ${effectSummaryText}`;
+            preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass}${equipmentDetailText} • ${targetInfo.damageKind} • ${effectSummaryText}`;
             this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
 
         preview.effect.textContent = targetInfo.description;
         preview.effect.style.color = '#f0e8d2';
-        preview.detail.textContent = `${targetHpText} • ${effectSummaryText}`;
+        preview.detail.textContent = `${targetHpText}${equipmentDetailText} • ${effectSummaryText}`;
         this.positionTargetPreviewPanel(hoveredCharacter);
     },
 
@@ -1678,6 +1683,18 @@ window.GridUI = {
         const dexterityRangedDamageBonus = Math.floor(Math.max(0, dexterityDiff) / 2);
         const intelligenceBonus = Math.floor(Math.max(0, (character.intelligence ?? 10) - 10) / 2);
         const wisdomHealingBonus = Math.floor(Math.max(0, (character.wisdom ?? 10) - 10) / 2);
+        const primaryAttackDamage = typeof this.getCharacterPrimaryAttackDamage === 'function'
+            ? this.getCharacterPrimaryAttackDamage(character)
+            : (character.meleeAttackDamage ?? 0);
+        const equipmentBonuses = typeof this.getCharacterEquipmentBonusSummary === 'function'
+            ? this.getCharacterEquipmentBonusSummary(character)
+            : { armorClass: 0, attackDamage: 0, attackRange: 0, spellDamage: 0, healingBonus: 0 };
+        const spellDamageBonus = typeof this.getCharacterSpellDamageBonus === 'function'
+            ? this.getCharacterSpellDamageBonus(character)
+            : 0;
+        const healingBonus = typeof this.getCharacterHealingBonus === 'function'
+            ? this.getCharacterHealingBonus(character)
+            : 0;
 
         const infoStats = [
             { label: 'Level', value: String(character.level ?? 1) },
@@ -1685,8 +1702,10 @@ window.GridUI = {
             { label: 'Hit Points', value: `${character.hitPoints} / ${character.maxHitPoints}` },
             { label: 'Magic Points', value: `${character.magicPoints} / ${character.maxMagicPoints}` },
             { label: 'Initiative', value: String(character.initiative ?? 0) },
-            { label: 'Damage', value: String(character.meleeAttackDamage) },
-            { label: 'Armor Class', value: String(character.armorClass) },
+            { label: 'Primary Damage', value: String(primaryAttackDamage), bonus: equipmentBonuses.attackDamage > 0 ? `Weapon bonus +${equipmentBonuses.attackDamage}` : null },
+            { label: 'Armor Class', value: String(character.armorClass), bonus: equipmentBonuses.armorClass > 0 ? `Armor bonus +${equipmentBonuses.armorClass}` : null },
+            { label: 'Spell Damage Bonus', value: `+${spellDamageBonus}`, bonus: 'INT + gear + buffs' },
+            { label: 'Healing Bonus', value: `+${healingBonus}`, bonus: 'WIS + gear + buffs' },
             { label: 'Strength', value: String(character.strength), bonus: `HP +${strengthBonusHp}, Damage +${strengthBonusDamage}` },
             { label: 'Dexterity', value: String(character.dexterity), bonus: `Initiative ${formatSigned(dexterityDiff)}, Ranged Damage +${dexterityRangedDamageBonus}` },
             { label: 'Intelligence', value: String(character.intelligence), bonus: `MP Regen +${intelligenceBonus}, Spell Damage +${intelligenceBonus}` },
@@ -2531,7 +2550,12 @@ window.GridUI = {
         const isActiveTurn = activeCharacter === character;
 
         hud.hpText.textContent = `${character.hitPoints} / ${character.maxHitPoints}`;
-        if (hud.acBadge) hud.acBadge.textContent = `AC ${character.armorClass}`;
+        if (hud.acBadge) {
+            hud.acBadge.textContent = `AC ${character.armorClass}`;
+            hud.acBadge.title = typeof this.getCharacterEquipmentSummaryText === 'function'
+                ? `Armor Class and gear bonuses: ${this.getCharacterEquipmentSummaryText(character)}`
+                : 'Armor Class — reduces physical damage';
+        }
         hud.hpFill.style.width = `${hpRatio * 100}%`;
         hud.hpFill.style.opacity = character.isDead ? '0.35' : '1';
 

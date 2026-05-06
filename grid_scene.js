@@ -1665,6 +1665,40 @@ class GridScene {
             return null;
         }
 
+        const armorClassMatch = normalized.match(/([+-]?\d+)\s*AC/i);
+        const attackDamageMatch = normalized.match(/([+-]?\d+)\s*DMG/i);
+        const attackRangeMatch = normalized.match(/Range\s*([+-]?\d+)/i);
+
+        const armorTemplate = (name, slot, armorClass, accentColor) => ({
+            id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            name,
+            slot: fallbackSlot || slot,
+            modifiers: { armorClass },
+            accentColor
+        });
+
+        if (/chain mail/i.test(normalized)) {
+            return armorTemplate('Chain Mail', 'body', armorClassMatch ? Number(armorClassMatch[1]) : 2, '#d5c2a1');
+        }
+
+        if (/leather armor/i.test(normalized)) {
+            return armorTemplate('Leather Armor', 'body', armorClassMatch ? Number(armorClassMatch[1]) : 1, '#b98c62');
+        }
+
+        if (/steel helm/i.test(normalized) || /helm/i.test(normalized)) {
+            return armorTemplate('Steel Helm', 'head', armorClassMatch ? Number(armorClassMatch[1]) : 1, '#c6d0da');
+        }
+
+        if (/robe/i.test(normalized)) {
+            return {
+                id: 'robe',
+                name: 'Robe',
+                slot: fallbackSlot || 'body',
+                modifiers: {},
+                accentColor: '#b6a8cf'
+            };
+        }
+
         if (/shortbow/i.test(normalized)) {
             return {
                 id: 'short-bow',
@@ -1672,8 +1706,62 @@ class GridScene {
                 slot: fallbackSlot || 'hands',
                 handType: '2H',
                 appliesToAbilityId: 'bow-shot',
-                modifiers: { attackDamage: 6, attackRange: 5 },
+                modifiers: {
+                    attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6,
+                    attackRange: attackRangeMatch ? Number(attackRangeMatch[1]) : 5
+                },
                 accentColor: '#9bcf86'
+            };
+        }
+
+        if (/long bow/i.test(normalized)) {
+            return {
+                id: 'long-bow',
+                name: 'Long Bow',
+                slot: fallbackSlot || 'hands',
+                handType: '2H',
+                appliesToAbilityId: 'bow-shot',
+                modifiers: {
+                    attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 8,
+                    attackRange: attackRangeMatch ? Number(attackRangeMatch[1]) : 6
+                },
+                accentColor: '#9ee39a'
+            };
+        }
+
+        if (/staff/i.test(normalized)) {
+            return {
+                id: 'staff',
+                name: normalized,
+                slot: fallbackSlot || 'hands',
+                handType: '2H',
+                appliesToAbilityId: 'melee',
+                modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 4 },
+                accentColor: '#bda7db'
+            };
+        }
+
+        if (/mace/i.test(normalized)) {
+            return {
+                id: 'mace',
+                name: normalized,
+                slot: fallbackSlot || 'hands',
+                handType: '1H',
+                appliesToAbilityId: 'mace-strike',
+                modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6 },
+                accentColor: '#d7c28f'
+            };
+        }
+
+        if (/axe/i.test(normalized)) {
+            return {
+                id: 'axe',
+                name: normalized,
+                slot: fallbackSlot || 'hands',
+                handType: '1H',
+                appliesToAbilityId: 'melee',
+                modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6 },
+                accentColor: '#d9b08c'
             };
         }
 
@@ -1685,6 +1773,26 @@ class GridScene {
                 handType: '1H',
                 modifiers: { armorClass: 1 },
                 accentColor: '#9fd1ff'
+            };
+        }
+
+        if (/circlet/i.test(normalized)) {
+            return {
+                id: 'circlet',
+                name: normalized,
+                slot: fallbackSlot || 'head',
+                modifiers: { healingBonus: 2 },
+                accentColor: '#ffd2a8'
+            };
+        }
+
+        if (/amulet/i.test(normalized)) {
+            return {
+                id: 'amulet',
+                name: normalized,
+                slot: fallbackSlot || 'neck',
+                modifiers: { spellDamage: 1 },
+                accentColor: '#b7b7ff'
             };
         }
 
@@ -1786,19 +1894,148 @@ class GridScene {
         return labels[slot] || slot || 'Slot';
     }
 
+    coerceEquipmentItem(item, fallbackSlot = null) {
+        if (!item) {
+            return null;
+        }
+
+        if (typeof item !== 'object') {
+            return this.getLegacyEquipmentTemplate(item, fallbackSlot) || {
+                name: String(item),
+                slot: fallbackSlot || 'hands',
+                modifiers: {},
+                accentColor: '#b8ad96'
+            };
+        }
+
+        const coerced = { ...item };
+        if (!coerced.modifiers || typeof coerced.modifiers !== 'object') {
+            coerced.modifiers = {};
+        }
+        if (!coerced.slot && fallbackSlot) {
+            coerced.slot = fallbackSlot;
+        }
+        if (!coerced.name) {
+            coerced.name = 'Unknown Item';
+        }
+        return coerced;
+    }
+
     getCharacterEquippedItem(character, slotKey) {
         const equipped = character?.equipment?.[slotKey];
-        return equipped && typeof equipped === 'object' ? equipped : null;
+        return this.coerceEquipmentItem(equipped, slotKey);
+    }
+
+    getCharacterPrimaryAttackAbility(character) {
+        const abilities = Array.isArray(character?.abilities) ? character.abilities : [];
+        return abilities.find((ability) => ability.type === 'attack') || null;
+    }
+
+    getCharacterPrimaryAttackDamage(character) {
+        const primaryAbility = this.getCharacterPrimaryAttackAbility(character);
+        if (primaryAbility) {
+            return this.getEffectiveAbilityDamage(character, primaryAbility);
+        }
+
+        return character?.meleeAttackDamage ?? 0;
+    }
+
+    getCharacterEquipmentBonusSummary(character) {
+        const summary = {
+            armorClass: 0,
+            attackDamage: 0,
+            attackRange: 0,
+            spellDamage: 0,
+            healingBonus: 0
+        };
+
+        ['head', 'body', 'hands', 'legs', 'feet', 'neck'].forEach((slotKey) => {
+            const item = this.getCharacterEquippedItem(character, slotKey);
+            if (!item) {
+                return;
+            }
+
+            summary.armorClass += item.modifiers?.armorClass ?? 0;
+
+            if (slotKey === 'hands') {
+                summary.attackDamage += item.modifiers?.attackDamage ?? 0;
+                summary.attackRange += item.modifiers?.attackRange ?? 0;
+            }
+
+            if (slotKey === 'neck') {
+                summary.spellDamage += item.modifiers?.spellDamage ?? 0;
+            }
+
+            if (slotKey === 'head') {
+                summary.healingBonus += item.modifiers?.healingBonus ?? 0;
+            }
+        });
+
+        return summary;
+    }
+
+    getCharacterStrengthDamageBonus(character) {
+        return Math.floor(Math.max(0, (character?.strength ?? 10) - 10) / 2);
+    }
+
+    getCharacterDexterityDamageBonus(character) {
+        return Math.floor(Math.max(0, (character?.dexterity ?? 10) - 10) / 2);
+    }
+
+    getCharacterIntelligenceDamageBonus(character) {
+        return Math.floor(Math.max(0, (character?.intelligence ?? 10) - 10) / 2);
+    }
+
+    getCharacterWisdomHealingBonus(character) {
+        return Math.floor(Math.max(0, (character?.wisdom ?? 10) - 10) / 2);
+    }
+
+    getCharacterEffectBonus(character, bonusKey) {
+        const effects = Array.isArray(character?.activeEffects) ? character.activeEffects : [];
+        return effects.reduce((total, effect) => {
+            if (!effect || effect.roundsRemaining !== undefined && effect.roundsRemaining <= 0) {
+                return total;
+            }
+
+            const directBonus = effect[bonusKey];
+            const modifierBonus = effect.modifiers?.[bonusKey];
+            return total + (directBonus ?? modifierBonus ?? 0);
+        }, 0);
+    }
+
+    getCharacterEquipmentSummaryText(character) {
+        const summary = this.getCharacterEquipmentBonusSummary(character);
+        const parts = [];
+
+        if (summary.armorClass > 0) {
+            parts.push(`AC +${summary.armorClass}`);
+        }
+        if (summary.attackDamage > 0) {
+            parts.push(`DMG +${summary.attackDamage}`);
+        }
+        if (summary.attackRange > 0) {
+            parts.push(`Range +${summary.attackRange}`);
+        }
+        if (summary.spellDamage > 0) {
+            parts.push(`Spell +${summary.spellDamage}`);
+        }
+        if (summary.healingBonus > 0) {
+            parts.push(`Heal +${summary.healingBonus}`);
+        }
+
+        return parts.length > 0 ? parts.join(' • ') : 'No equipment bonuses';
     }
 
     getCharacterSpellDamageBonus(character) {
-        const neckItem = this.getCharacterEquippedItem(character, 'neck');
-        return neckItem?.modifiers?.spellDamage ?? 0;
+        return this.getCharacterIntelligenceDamageBonus(character)
+            + this.getCharacterEquipmentBonusSummary(character).spellDamage
+            + this.getCharacterEffectBonus(character, 'spellDamage');
     }
 
     getCharacterHealingBonus(character) {
-        const headItem = this.getCharacterEquippedItem(character, 'head');
-        return headItem?.modifiers?.healingBonus ?? 0;
+        return this.getCharacterWisdomHealingBonus(character)
+            + this.getCharacterEquipmentBonusSummary(character).healingBonus
+            + this.getCharacterEffectBonus(character, 'healingBonus');
     }
 
     getAbilityEquipmentOverride(character, ability) {
@@ -1824,16 +2061,35 @@ class GridScene {
 
     getEffectiveAbilityDamage(character, ability) {
         const override = this.getAbilityEquipmentOverride(character, ability);
-        let damage = override?.damage ?? (ability?.damage ?? character?.meleeAttackDamage ?? 0);
+        const strengthBonus = this.getCharacterStrengthDamageBonus(character);
+        const dexterityBonus = this.getCharacterDexterityDamageBonus(character);
+        const intelligenceBonus = this.getCharacterIntelligenceDamageBonus(character);
+
         if (ability?.type === 'spell' || ability?.id === 'magic-missile') {
-            damage += this.getCharacterSpellDamageBonus(character);
+            const storedDamage = ability?.damage ?? 0;
+            const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - intelligenceBonus) : 0;
+            return Math.max(baseDamage, override?.damage ?? 0) + this.getCharacterSpellDamageBonus(character);
         }
-        return damage;
+
+        if (ability?.type === 'attack') {
+            if (ability.range && ability.range > 1) {
+                const storedDamage = ability?.damage ?? 0;
+                const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - dexterityBonus) : 0;
+                return Math.max(baseDamage, override?.damage ?? 0) + dexterityBonus;
+            }
+
+            const baseDamage = ability?.damage ?? 0;
+            return Math.max(baseDamage, override?.damage ?? 0) + strengthBonus;
+        }
+
+        return override?.damage ?? (ability?.damage ?? character?.meleeAttackDamage ?? 0);
     }
 
     getEffectiveAbilityHealAmount(character, ability) {
         const baseHeal = ability?.healAmount ?? 0;
-        return baseHeal + this.getCharacterHealingBonus(character);
+        const wisdomBonus = this.getCharacterWisdomHealingBonus(character);
+        const healBase = baseHeal > 0 ? Math.max(0, baseHeal - wisdomBonus) : 0;
+        return healBase + this.getCharacterHealingBonus(character);
     }
 
     registerLootDropAtCell(gridX, gridY, loot, options = {}) {
@@ -2506,8 +2762,8 @@ class GridScene {
             character.armorClass += item.modifiers.armorClass;
         }
 
-        const currentEquipped = character.equipment?.[slotKey] ?? null;
-        if (currentEquipped && typeof currentEquipped === 'object' && (currentEquipped.modifiers?.armorClass ?? 0) > 0) {
+        const currentEquipped = this.getCharacterEquippedItem(character, slotKey);
+        if (currentEquipped && (currentEquipped.modifiers?.armorClass ?? 0) > 0) {
             character.armorClass -= currentEquipped.modifiers.armorClass;
         }
 
@@ -2529,7 +2785,7 @@ class GridScene {
             2400
         );
 
-        if (this.activeInventoryCharacter && this.activeInventoryTab === 'shared') {
+        if (this.activeInventoryCharacter === character) {
             this.renderCharacterInventory();
         }
 
@@ -2576,7 +2832,7 @@ class GridScene {
             2200
         );
 
-        if (this.activeInventoryCharacter && (this.activeInventoryTab === 'shared' || this.activeInventoryTab === 'equipment')) {
+        if (this.activeInventoryCharacter === character) {
             this.renderCharacterInventory();
         }
 
