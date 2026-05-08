@@ -66,6 +66,7 @@ window.GridAI = {
 
         const offensiveAbilities = character.abilities.filter((ability) =>
             (ability.type === 'attack' || ability.type === 'spell') &&
+            (ability.type !== 'attack' || this.canCharacterUseAttackAbility(character, ability)) &&
             ((ability.mpCost ?? 0) === 0 || character.magicPoints >= (ability.mpCost ?? 0))
         );
 
@@ -74,8 +75,8 @@ window.GridAI = {
         }
 
         return offensiveAbilities.reduce((bestAbility, candidate) => {
-            const bestDamage = bestAbility?.damage ?? character.meleeAttackDamage;
-            const candidateDamage = candidate.damage ?? character.meleeAttackDamage;
+            const bestDamage = this.getEffectiveAbilityDamage(character, bestAbility) ?? 0;
+            const candidateDamage = this.getEffectiveAbilityDamage(character, candidate) ?? 0;
             if (candidateDamage !== bestDamage) {
                 return candidateDamage > bestDamage ? candidate : bestAbility;
             }

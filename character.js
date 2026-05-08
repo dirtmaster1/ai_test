@@ -23,6 +23,10 @@ window.CharacterData = {
 
         const baseHp = config.hitPoints ?? 10;
         const baseMaxHp = config.maxHitPoints ?? config.hitPoints ?? 10;
+        const equipmentConfig = config.equipment ?? {};
+        const legacyHandsItem = equipmentConfig.hands ?? null;
+        const rightHandItem = equipmentConfig.rightHand ?? legacyHandsItem ?? null;
+        const leftHandItem = equipmentConfig.leftHand ?? null;
 
         const baseAbilities = config.abilities ?? [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }];
         const abilities = baseAbilities.map((ability) => {
@@ -78,11 +82,13 @@ window.CharacterData = {
             equipment: {
                 head: null,
                 body: null,
-                hands: null,
+                rightHand: rightHandItem,
+                leftHand: leftHandItem,
                 legs: null,
                 feet: null,
                 neck: null,
-                ...(config.equipment ?? {})
+                hands: null,
+                ...(equipmentConfig ?? {})
             },
             abilities,
             selectedAbilityId: abilities[0].id,

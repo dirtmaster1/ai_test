@@ -155,11 +155,15 @@ window.GridUI = {
     },
 
     getCharacterAttackSourceLabel(character, ability = null) {
-        const handsItem = typeof this.getCharacterEquippedItem === 'function'
-            ? this.getCharacterEquippedItem(character, 'hands')
-            : character?.equipment?.hands;
-        if (handsItem) {
-            return this.getEquipmentItemLabel(handsItem);
+        const attackItem = typeof this.getCharacterAttackEquipmentItem === 'function'
+            ? this.getCharacterAttackEquipmentItem(character, ability)
+            : (character?.equipment?.rightHand || character?.equipment?.leftHand || character?.equipment?.hands || null);
+        if (attackItem) {
+            return this.getEquipmentItemLabel(attackItem);
+        }
+
+        if (ability?.type === 'attack') {
+            return 'Unarmed';
         }
 
         if (ability?.name) {
@@ -1482,7 +1486,7 @@ window.GridUI = {
             return false;
         }
 
-        const equipped = character.equipment?.[slotKey];
+        const equipped = this.getCharacterEquippedItem(character, slotKey);
         if (!equipped) {
             this.showToast('That slot is already empty.', '#b8ad96', 2200);
             return false;
@@ -1508,6 +1512,7 @@ window.GridUI = {
                 name: typeof equipped === 'object' ? (equipped.name || 'Unknown Item') : String(equipped),
                 slot: slotKey,
                 handType: typeof equipped === 'object' ? (equipped.handType || null) : null,
+                type: typeof equipped === 'object' ? (equipped.type || 'armor') : 'armor',
                 appliesToAbilityId: typeof equipped === 'object' ? (equipped.appliesToAbilityId || null) : null,
                 modifiers: typeof equipped === 'object' ? { ...(equipped.modifiers || {}) } : {},
                 accentColor: typeof equipped === 'object' ? (equipped.accentColor || '#b8ad96') : '#b8ad96'
@@ -1634,7 +1639,11 @@ window.GridUI = {
             stats.style.marginTop = '3px';
             stats.style.fontSize = '11px';
             stats.style.color = '#9f9582';
-            stats.textContent = this.getEquipmentItemModifierSummary(item) || 'No stat changes';
+            const itemTypeLabel = typeof this.getEquipmentItemTypeLabel === 'function'
+                ? this.getEquipmentItemTypeLabel(item.type)
+                : (item.type || 'Item');
+            const modifierSummary = this.getEquipmentItemModifierSummary(item) || 'No stat changes';
+            stats.textContent = `${itemTypeLabel} • ${modifierSummary}`;
 
             text.appendChild(name);
             text.appendChild(slot);
@@ -1683,26 +1692,22 @@ window.GridUI = {
         const dexterityRangedDamageBonus = Math.floor(Math.max(0, dexterityDiff) / 2);
         const intelligenceBonus = Math.floor(Math.max(0, (character.intelligence ?? 10) - 10) / 2);
         const wisdomHealingBonus = Math.floor(Math.max(0, (character.wisdom ?? 10) - 10) / 2);
-        const primaryAttackDamage = typeof this.getCharacterPrimaryAttackDamage === 'function'
-            ? this.getCharacterPrimaryAttackDamage(character)
-            : (character.meleeAttackDamage ?? 0);
-        const equipmentBonuses = typeof this.getCharacterEquipmentBonusSummary === 'function'
-            ? this.getCharacterEquipmentBonusSummary(character)
-            : { armorClass: 0, attackDamage: 0, attackRange: 0, spellDamage: 0, healingBonus: 0 };
-        const spellDamageBonus = typeof this.getCharacterSpellDamageBonus === 'function'
-            ? this.getCharacterSpellDamageBonus(character)
-            : 0;
-        const healingBonus = typeof this.getCharacterHealingBonus === 'function'
-            ? this.getCharacterHealingBonus(character)
-            : 0;
+        const currentExperience = Math.max(0, Math.floor(character.experiencePoints ?? 0));
+        const nextLevelRequirement = this.getTotalExperienceRequiredForLevel((character.level ?? 1) + 1);
+        const meleeAttackDamage = this.getCharacterMeleeAttackDamage(character);
+        const rangedAttackDamage = this.getCharacterRangedAttackDamage(character);
+        const equipmentBonuses = this.getCharacterEquipmentBonusSummary(character);
+        const spellDamageBonus = this.getCharacterSpellDamageBonus(character);
+        const healingBonus = this.getCharacterHealingBonus(character);
 
         const infoStats = [
             { label: 'Level', value: String(character.level ?? 1) },
-            { label: 'Experience Points', value: String(character.experiencePoints ?? 0) },
+            { label: 'Experience Points', value: `${currentExperience}/${nextLevelRequirement}`, bonus: 'Current / needed for next level' },
             { label: 'Hit Points', value: `${character.hitPoints} / ${character.maxHitPoints}` },
             { label: 'Magic Points', value: `${character.magicPoints} / ${character.maxMagicPoints}` },
             { label: 'Initiative', value: String(character.initiative ?? 0) },
-            { label: 'Primary Damage', value: String(primaryAttackDamage), bonus: equipmentBonuses.attackDamage > 0 ? `Weapon bonus +${equipmentBonuses.attackDamage}` : null },
+            { label: 'Melee Damage', value: String(meleeAttackDamage), bonus: 'STR + weapon + buffs' },
+            { label: 'Ranged Damage', value: String(rangedAttackDamage), bonus: 'DEX + weapon + buffs' },
             { label: 'Armor Class', value: String(character.armorClass), bonus: equipmentBonuses.armorClass > 0 ? `Armor bonus +${equipmentBonuses.armorClass}` : null },
             { label: 'Spell Damage Bonus', value: `+${spellDamageBonus}`, bonus: 'INT + gear + buffs' },
             { label: 'Healing Bonus', value: `+${healingBonus}`, bonus: 'WIS + gear + buffs' },
@@ -1769,7 +1774,8 @@ window.GridUI = {
         const slotLabels = [
             ['head', 'Head'],
             ['body', 'Body'],
-            ['hands', 'Hands'],
+            ['rightHand', 'Right Hand'],
+            ['leftHand', 'Left Hand'],
             ['legs', 'Legs'],
             ['feet', 'Feet'],
             ['neck', 'Neck']
@@ -1781,8 +1787,15 @@ window.GridUI = {
         intro.style.marginBottom = '14px';
         intro.style.fontSize = '12px';
         intro.style.color = '#a89c82';
-        intro.textContent = `${character.name}'s equipment slots and current bonuses.`;
+        intro.textContent = `${character.name}'s equipment slots and current bonuses. Right hand is filled first for 1H items.`;
         modal.content.appendChild(intro);
+
+        const handState = typeof this.getCharacterHandSlotState === 'function'
+            ? {
+                rightHand: this.getCharacterHandSlotState(character, 'rightHand'),
+                leftHand: this.getCharacterHandSlotState(character, 'leftHand')
+            }
+            : { rightHand: null, leftHand: null };
 
         const slotGrid = document.createElement('div');
         slotGrid.style.display = 'grid';
@@ -1811,10 +1824,18 @@ window.GridUI = {
             value.style.fontSize = '13px';
             value.style.fontWeight = '700';
             value.style.color = '#5e5648';
-            const equipped = character.equipment?.[slotKey] ?? null;
+            let equipped = character.equipment?.[slotKey] ?? null;
+            if (typeof this.getCharacterEquippedItem === 'function') {
+                equipped = this.getCharacterEquippedItem(character, slotKey);
+            }
             const hasEquippedItem = equipped !== null && equipped !== undefined && String(equipped).trim() !== '';
             let stats = null;
             let unequipButton = null;
+
+            const isHandSlot = slotKey === 'rightHand' || slotKey === 'leftHand';
+            const currentHandState = isHandSlot ? handState[slotKey] : null;
+            const blockedByTwoHandedItem = Boolean(currentHandState?.isBlocked);
+
             if (hasEquippedItem) {
                 const normalizedEquipped = this.ensureEquipmentItemInstance(equipped, slotKey);
                 if (normalizedEquipped) {
@@ -1850,6 +1871,20 @@ window.GridUI = {
                         this.showToast('Unable to unequip item.', '#b8ad96', 2200);
                     }
                 });
+            } else if (blockedByTwoHandedItem) {
+                equipped = null;
+                slotCard.style.opacity = '0.55';
+                slotCard.style.filter = 'grayscale(1)';
+                slotCard.style.background = 'rgba(255,255,255,0.02)';
+                slotCard.style.borderStyle = 'dashed';
+                value.textContent = 'In use';
+                value.style.color = '#8f856f';
+
+                stats = document.createElement('div');
+                stats.style.marginTop = '5px';
+                stats.style.fontSize = '11px';
+                stats.style.color = '#8f856f';
+                stats.textContent = `Blocked by ${currentHandState?.blockerLabel || 'equipped 2H item'}`;
             } else {
                 value.textContent = 'Empty';
             }
@@ -1925,7 +1960,11 @@ window.GridUI = {
             stats.style.marginTop = '8px';
             stats.style.fontSize = '11px';
             stats.style.color = '#8f856f';
-            const rangeText = `Range ${this.getEffectiveAbilityRange(character, ability)}`;
+            const itemTypeLabel = typeof this.getEquipmentItemTypeLabel === 'function'
+                ? this.getEquipmentItemTypeLabel(normalizedEquipped.type)
+                : (normalizedEquipped.type || 'Item');
+            const modifierSummary = this.getEquipmentItemModifierSummary(normalizedEquipped) || 'No stat changes';
+            stats.textContent = `${itemTypeLabel} • ${modifierSummary}`;
             const costText = `Cost ${ability.mpCost ?? 0} MP`;
             const typeText = `Type ${ability.type}`;
             stats.textContent = `${typeText} • ${rangeText} • ${costText}`;
@@ -2598,14 +2637,18 @@ window.GridUI = {
             const isSelected = character.selectedAbilityId === abilityId;
             const isMyTurn = isActiveTurn && !character.isDead;
             const canAfford = ability.mpCost === 0 || character.magicPoints >= ability.mpCost;
+            const canUseAttack = ability.type !== 'attack' || this.canCharacterUseAttackAbility(character, ability);
+            const canUseAbility = canAfford && canUseAttack;
 
-            if (isSelected && isMyTurn && canAfford) {
+            btn.disabled = !isMyTurn || !canUseAbility;
+
+            if (isSelected && isMyTurn && canUseAbility) {
                 btn.style.background = this.hexToRgba(character.accentColor, 0.35);
                 btn.style.borderColor = character.accentColor;
                 btn.style.color = '#f0e8d2';
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
-            } else if (!isMyTurn || !canAfford) {
+            } else if (!isMyTurn || !canUseAbility) {
                 btn.style.background = 'rgba(0,0,0,0.30)';
                 btn.style.borderColor = 'rgba(255,255,255,0.08)';
                 btn.style.color = '#5a5248';

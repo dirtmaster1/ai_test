@@ -1595,8 +1595,9 @@ class GridScene {
         }
 
         const gold = minGold + Math.floor(Math.random() * (maxGold - minGold + 1));
+        const equipmentDropChance = chestFrames.has(prop.frameId) ? 0.5 : 0.10;
         const equipmentDrops = [];
-        if (Math.random() < 0.10) {
+        if (Math.random() < equipmentDropChance) {
             const equipment = this.rollEquipmentLootItem();
             if (equipment) {
                 equipmentDrops.push(equipment);
@@ -1613,6 +1614,7 @@ class GridScene {
                 name: 'Small Shield',
                 slot: 'hands',
                 handType: '1H',
+                type: 'armor',
                 modifiers: { armorClass: 1 },
                 accentColor: '#9fd1ff'
             },
@@ -1621,6 +1623,7 @@ class GridScene {
                 name: 'Long Bow',
                 slot: 'hands',
                 handType: '2H',
+                type: 'weapon',
                 appliesToAbilityId: 'bow-shot',
                 modifiers: { attackDamage: 8, attackRange: 6 },
                 accentColor: '#9ee39a'
@@ -1629,6 +1632,7 @@ class GridScene {
                 id: 'mages-amulet',
                 name: 'Mages Amulet',
                 slot: 'neck',
+                type: 'armor',
                 modifiers: { spellDamage: 1 },
                 accentColor: '#b7b7ff'
             },
@@ -1636,6 +1640,7 @@ class GridScene {
                 id: 'healers-circlet',
                 name: 'Healers Circlet',
                 slot: 'head',
+                type: 'armor',
                 modifiers: { healingBonus: 2 },
                 accentColor: '#ffd2a8'
             }
@@ -1653,6 +1658,7 @@ class GridScene {
             name: template.name,
             slot: template.slot,
             handType: template.handType || null,
+            type: template.type || this.getEquipmentItemType(template, template.slot),
             appliesToAbilityId: template.appliesToAbilityId || null,
             modifiers: { ...(template.modifiers || {}) },
             accentColor: template.accentColor || '#d6cbb8'
@@ -1673,6 +1679,7 @@ class GridScene {
             id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
             name,
             slot: fallbackSlot || slot,
+            type: 'armor',
             modifiers: { armorClass },
             accentColor
         });
@@ -1694,6 +1701,7 @@ class GridScene {
                 id: 'robe',
                 name: 'Robe',
                 slot: fallbackSlot || 'body',
+                type: 'armor',
                 modifiers: {},
                 accentColor: '#b6a8cf'
             };
@@ -1705,6 +1713,7 @@ class GridScene {
                 name: 'Short Bow',
                 slot: fallbackSlot || 'hands',
                 handType: '2H',
+                type: 'weapon',
                 appliesToAbilityId: 'bow-shot',
                 modifiers: {
                     attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6,
@@ -1720,6 +1729,7 @@ class GridScene {
                 name: 'Long Bow',
                 slot: fallbackSlot || 'hands',
                 handType: '2H',
+                type: 'weapon',
                 appliesToAbilityId: 'bow-shot',
                 modifiers: {
                     attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 8,
@@ -1735,6 +1745,7 @@ class GridScene {
                 name: normalized,
                 slot: fallbackSlot || 'hands',
                 handType: '2H',
+                type: 'weapon',
                 appliesToAbilityId: 'melee',
                 modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 4 },
                 accentColor: '#bda7db'
@@ -1747,6 +1758,7 @@ class GridScene {
                 name: normalized,
                 slot: fallbackSlot || 'hands',
                 handType: '1H',
+                type: 'weapon',
                 appliesToAbilityId: 'mace-strike',
                 modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6 },
                 accentColor: '#d7c28f'
@@ -1759,6 +1771,7 @@ class GridScene {
                 name: normalized,
                 slot: fallbackSlot || 'hands',
                 handType: '1H',
+                type: 'weapon',
                 appliesToAbilityId: 'melee',
                 modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6 },
                 accentColor: '#d9b08c'
@@ -1771,6 +1784,7 @@ class GridScene {
                 name: 'Small Shield',
                 slot: fallbackSlot || 'hands',
                 handType: '1H',
+                type: 'armor',
                 modifiers: { armorClass: 1 },
                 accentColor: '#9fd1ff'
             };
@@ -1781,6 +1795,7 @@ class GridScene {
                 id: 'circlet',
                 name: normalized,
                 slot: fallbackSlot || 'head',
+                type: 'armor',
                 modifiers: { healingBonus: 2 },
                 accentColor: '#ffd2a8'
             };
@@ -1791,6 +1806,7 @@ class GridScene {
                 id: 'amulet',
                 name: normalized,
                 slot: fallbackSlot || 'neck',
+                type: 'armor',
                 modifiers: { spellDamage: 1 },
                 accentColor: '#b7b7ff'
             };
@@ -1814,6 +1830,7 @@ class GridScene {
                 id: `legacy-${fallbackSlot || 'item'}`,
                 name: String(item),
                 slot: fallbackSlot || 'hands',
+                type: 'armor',
                 modifiers: {},
                 accentColor: '#b8ad96'
             });
@@ -1832,6 +1849,7 @@ class GridScene {
         if (!ensured.name) {
             ensured.name = 'Unknown Item';
         }
+        ensured.type = this.getEquipmentItemType(ensured, fallbackSlot);
         return ensured;
     }
 
@@ -1887,11 +1905,34 @@ class GridScene {
             head: 'Head',
             body: 'Body',
             hands: 'Hands',
+            rightHand: 'Right Hand',
+            leftHand: 'Left Hand',
             legs: 'Legs',
             feet: 'Feet',
             neck: 'Neck'
         };
         return labels[slot] || slot || 'Slot';
+    }
+
+    getEquipmentItemTypeLabel(type) {
+        return type === 'weapon' ? 'Weapon' : 'Armor';
+    }
+
+    getEquipmentItemType(item, slotKey = null) {
+        if (!item) {
+            return 'armor';
+        }
+
+        if (item.type === 'weapon' || item.type === 'armor') {
+            return item.type;
+        }
+
+        const handType = String(item.handType ?? '').toUpperCase();
+        if (handType === '2H' || item.appliesToAbilityId || (item.modifiers?.attackDamage ?? 0) > 0 || (item.modifiers?.attackRange ?? 0) > 0) {
+            return 'weapon';
+        }
+
+        return 'armor';
     }
 
     coerceEquipmentItem(item, fallbackSlot = null) {
@@ -1903,6 +1944,7 @@ class GridScene {
             return this.getLegacyEquipmentTemplate(item, fallbackSlot) || {
                 name: String(item),
                 slot: fallbackSlot || 'hands',
+                type: 'armor',
                 modifiers: {},
                 accentColor: '#b8ad96'
             };
@@ -1918,26 +1960,174 @@ class GridScene {
         if (!coerced.name) {
             coerced.name = 'Unknown Item';
         }
+        coerced.type = this.getEquipmentItemType(coerced, fallbackSlot);
         return coerced;
     }
 
     getCharacterEquippedItem(character, slotKey) {
+        if (slotKey === 'hands') {
+            const equipped = character?.equipment?.rightHand ?? character?.equipment?.leftHand ?? character?.equipment?.hands;
+            return this.coerceEquipmentItem(equipped, 'hands');
+        }
+
+        if (slotKey === 'rightHand') {
+            const equipped = character?.equipment?.rightHand ?? character?.equipment?.hands;
+            return this.coerceEquipmentItem(equipped, 'rightHand');
+        }
+
+        if (slotKey === 'leftHand') {
+            const equipped = character?.equipment?.leftHand ?? null;
+            return this.coerceEquipmentItem(equipped, 'leftHand');
+        }
+
         const equipped = character?.equipment?.[slotKey];
         return this.coerceEquipmentItem(equipped, slotKey);
     }
 
+    getCharacterHandItems(character) {
+        return {
+            rightHand: this.getCharacterEquippedItem(character, 'rightHand'),
+            leftHand: this.getCharacterEquippedItem(character, 'leftHand')
+        };
+    }
+
+    isTwoHandedEquipmentItem(item) {
+        return String(item?.handType ?? '').toUpperCase() === '2H';
+    }
+
+    getCharacterHandSlotState(character, slotKey) {
+        const handItems = this.getCharacterHandItems(character);
+        const item = handItems[slotKey] ?? null;
+        const blockerKey = slotKey === 'rightHand' ? 'leftHand' : 'rightHand';
+        const blocker = handItems[blockerKey] ?? null;
+
+        return {
+            item,
+            blocker,
+            isBlocked: this.isTwoHandedEquipmentItem(blocker),
+            blockerLabel: blocker ? this.getEquipmentItemLabel(blocker) : null
+        };
+    }
+
+    getCharacterAttackEquipmentItem(character, ability = null) {
+        return this.getCharacterWeaponItem(character, ability);
+    }
+
+    getCharacterWeaponItems(character) {
+        return ['rightHand', 'leftHand']
+            .map((slotKey) => this.getCharacterEquippedItem(character, slotKey))
+            .filter((item) => item && this.getEquipmentItemType(item, item.slot) === 'weapon');
+    }
+
+    getCharacterWeaponItem(character, ability = null) {
+        const weaponItems = this.getCharacterWeaponItems(character);
+        if (weaponItems.length === 0) {
+            return null;
+        }
+
+        if (ability?.id) {
+            const matchedWeapon = weaponItems.find((item) => item.appliesToAbilityId === ability.id);
+            if (matchedWeapon) {
+                return matchedWeapon;
+            }
+        }
+
+        return weaponItems[0] || null;
+    }
+
+    canCharacterUseAttackAbility(character, ability = null) {
+        if (!ability || ability.type !== 'attack') {
+            return true;
+        }
+
+        return Boolean(this.getCharacterWeaponItem(character, ability));
+    }
+
+    getEquipmentPlacementForItem(character, item) {
+        if (!character || !item) {
+            return null;
+        }
+
+        if (item.slot !== 'hands') {
+            return {
+                targetSlot: item.slot,
+                slotsToClear: [item.slot]
+            };
+        }
+
+        const rightHandItem = this.getCharacterEquippedItem(character, 'rightHand');
+        const leftHandItem = this.getCharacterEquippedItem(character, 'leftHand');
+
+        if (this.isTwoHandedEquipmentItem(item)) {
+            return {
+                targetSlot: 'rightHand',
+                slotsToClear: ['rightHand', 'leftHand']
+            };
+        }
+
+        if (this.isTwoHandedEquipmentItem(rightHandItem)) {
+            return {
+                targetSlot: 'rightHand',
+                slotsToClear: ['rightHand']
+            };
+        }
+
+        if (!rightHandItem) {
+            return {
+                targetSlot: 'rightHand',
+                slotsToClear: []
+            };
+        }
+
+        if (!leftHandItem) {
+            return {
+                targetSlot: 'leftHand',
+                slotsToClear: []
+            };
+        }
+
+        return {
+            targetSlot: 'rightHand',
+            slotsToClear: ['rightHand']
+        };
+    }
+
     getCharacterPrimaryAttackAbility(character) {
-        const abilities = Array.isArray(character?.abilities) ? character.abilities : [];
-        return abilities.find((ability) => ability.type === 'attack') || null;
+        return this.getCharacterMeleeAttackAbility(character) || this.getCharacterRangedAttackAbility(character);
     }
 
     getCharacterPrimaryAttackDamage(character) {
-        const primaryAbility = this.getCharacterPrimaryAttackAbility(character);
-        if (primaryAbility) {
-            return this.getEffectiveAbilityDamage(character, primaryAbility);
+        return this.getCharacterMeleeAttackDamage(character);
+    }
+
+    getCharacterMeleeAttackAbility(character) {
+        const abilities = Array.isArray(character?.abilities) ? character.abilities : [];
+        const meleeAbility = abilities.find((ability) => ability.type === 'attack' && (ability.range ?? 1) <= 1) || null;
+        return this.canCharacterUseAttackAbility(character, meleeAbility) ? meleeAbility : null;
+    }
+
+    getCharacterRangedAttackAbility(character) {
+        const abilities = Array.isArray(character?.abilities) ? character.abilities : [];
+        const rangedAbility = abilities.find((ability) => ability.type === 'attack' && (ability.range ?? 1) > 1) || null;
+        return this.canCharacterUseAttackAbility(character, rangedAbility) ? rangedAbility : null;
+    }
+
+    getCharacterMeleeAttackDamage(character) {
+        const meleeAbility = this.getCharacterMeleeAttackAbility(character);
+        if (meleeAbility) {
+            return this.getEffectiveAbilityDamage(character, meleeAbility);
         }
 
-        return character?.meleeAttackDamage ?? 0;
+        return 0;
+    }
+
+    getCharacterRangedAttackDamage(character) {
+        const rangedAbility = this.getCharacterRangedAttackAbility(character);
+        if (rangedAbility) {
+            return this.getEffectiveAbilityDamage(character, rangedAbility);
+        }
+
+        return 0;
     }
 
     getCharacterEquipmentBonusSummary(character) {
@@ -1949,7 +2139,7 @@ class GridScene {
             healingBonus: 0
         };
 
-        ['head', 'body', 'hands', 'legs', 'feet', 'neck'].forEach((slotKey) => {
+        ['head', 'body', 'rightHand', 'leftHand', 'legs', 'feet', 'neck'].forEach((slotKey) => {
             const item = this.getCharacterEquippedItem(character, slotKey);
             if (!item) {
                 return;
@@ -1957,7 +2147,7 @@ class GridScene {
 
             summary.armorClass += item.modifiers?.armorClass ?? 0;
 
-            if (slotKey === 'hands') {
+            if (slotKey === 'rightHand' || slotKey === 'leftHand') {
                 summary.attackDamage += item.modifiers?.attackDamage ?? 0;
                 summary.attackRange += item.modifiers?.attackRange ?? 0;
             }
@@ -2043,14 +2233,14 @@ class GridScene {
             return null;
         }
 
-        const handsItem = this.getCharacterEquippedItem(character, 'hands');
-        if (!handsItem || handsItem.appliesToAbilityId !== ability.id) {
+        const weaponItem = this.getCharacterWeaponItem(character, ability);
+        if (!weaponItem || weaponItem.appliesToAbilityId !== ability.id) {
             return null;
         }
 
         return {
-            damage: handsItem.modifiers?.attackDamage,
-            range: handsItem.modifiers?.attackRange
+            damage: weaponItem.modifiers?.attackDamage,
+            range: weaponItem.modifiers?.attackRange
         };
     }
 
@@ -2072,13 +2262,18 @@ class GridScene {
         }
 
         if (ability?.type === 'attack') {
+            if (!this.canCharacterUseAttackAbility(character, ability)) {
+                return 0;
+            }
+
             if (ability.range && ability.range > 1) {
                 const storedDamage = ability?.damage ?? 0;
                 const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - dexterityBonus) : 0;
                 return Math.max(baseDamage, override?.damage ?? 0) + dexterityBonus;
             }
 
-            const baseDamage = ability?.damage ?? 0;
+            const storedDamage = ability?.damage ?? 0;
+            const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - strengthBonus) : 0;
             return Math.max(baseDamage, override?.damage ?? 0) + strengthBonus;
         }
 
@@ -2225,6 +2420,10 @@ class GridScene {
             ? attackAbility
             : attacker.abilities.find((ability) => ability.id === attacker.selectedAbilityId && ability.type === 'attack') || null;
 
+        if (!this.canCharacterUseAttackAbility(attacker, resolvedAttackAbility)) {
+            return false;
+        }
+
         const attackRange = this.getEffectiveAbilityRange(attacker, resolvedAttackAbility);
         const baseDamage = this.getEffectiveAbilityDamage(attacker, resolvedAttackAbility);
         const damageKind = attackRange > 1 ? 'ranged' : 'melee';
@@ -2240,24 +2439,26 @@ class GridScene {
             return false;
         }
 
-        const damageDealt = Math.max(0, baseDamage - target.armorClass);
-
         this.faceCharacterToward(attacker, target);
         if (resolvedAttackAbility?.id === 'bow-shot') {
             const attackerPos = this.getCharacterWorldPos(attacker);
             const targetPos = this.getCharacterWorldPos(target);
             this.spawnArrowProjectile(attackerPos, targetPos, () => {
                 this.spawnArrowImpactEffect(targetPos);
-                this.applyPhysicalAttackDamage(target, baseDamage, attacker);
+                const damageDealt = this.applyPhysicalAttackDamage(target, baseDamage, attacker);
+                this.appendCombatLogEntry(
+                    `${attacker.name} attacks ${target.name} for ${damageDealt} ${damageKind} dmg with ${sourceLabel}.`,
+                    attacker.accentColor
+                );
             });
         } else {
-            this.applyPhysicalAttackDamage(target, baseDamage, attacker);
-        }
+            const damageDealt = this.applyPhysicalAttackDamage(target, baseDamage, attacker);
 
-        this.appendCombatLogEntry(
-            `${attacker.name} attacks ${target.name} for ${damageDealt} ${damageKind} dmg with ${sourceLabel}.`,
-            attacker.accentColor
-        );
+            this.appendCombatLogEntry(
+                `${attacker.name} attacks ${target.name} for ${damageDealt} ${damageKind} dmg with ${sourceLabel}.`,
+                attacker.accentColor
+            );
+        }
 
         attacker.actionsRemaining -= attacker.attackCost;
         if (attacker.actionsRemaining <= 0) {
@@ -2280,6 +2481,8 @@ class GridScene {
             target.hitPoints = 0;
             this.markCharacterDead(target, attacker);
         }
+
+        return physicalDamage;
     }
 
     castMagicMissile(caster, target) {
@@ -2752,27 +2955,25 @@ class GridScene {
         }
 
         const item = this.ensureEquipmentItemInstance(items[itemIndex]);
-        const slotKey = item.slot;
+        const placement = this.getEquipmentPlacementForItem(character, item);
+        const slotKey = placement?.targetSlot;
         if (!slotKey) {
             this.showToast('This item cannot be equipped.', '#b8ad96', 2200);
             return false;
         }
 
-        if ((item.modifiers?.armorClass ?? 0) > 0) {
-            character.armorClass += item.modifiers.armorClass;
-        }
-
-        const currentEquipped = this.getCharacterEquippedItem(character, slotKey);
-        if (currentEquipped && (currentEquipped.modifiers?.armorClass ?? 0) > 0) {
-            character.armorClass -= currentEquipped.modifiers.armorClass;
-        }
+        const slotsToClear = Array.isArray(placement.slotsToClear) ? placement.slotsToClear : [slotKey];
+        slotsToClear.forEach((clearSlotKey) => {
+            if (character.equipment?.[clearSlotKey]) {
+                this.unequipCharacterItemToSharedInventory(character, clearSlotKey);
+            }
+        });
 
         items.splice(itemIndex, 1);
         character.equipment[slotKey] = item;
 
-        if (currentEquipped) {
-            const swappedItem = this.ensureEquipmentItemInstance(currentEquipped, slotKey);
-            this.addEquipmentItemToSharedInventory(swappedItem);
+        if ((item.modifiers?.armorClass ?? 0) > 0) {
+            character.armorClass += item.modifiers.armorClass;
         }
 
         this.appendCombatLogEntry(

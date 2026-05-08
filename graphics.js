@@ -730,6 +730,7 @@ window.GridGraphics = {
         const selectedAbility = activeCharacter.abilities.find((ability) => ability.id === activeCharacter.selectedAbilityId) || null;
         const canAfford = !selectedAbility || selectedAbility.mpCost === 0 || activeCharacter.magicPoints >= selectedAbility.mpCost;
         const canAct = activeCharacter.actionsRemaining >= activeCharacter.attackCost;
+        const canUseAbility = !selectedAbility || selectedAbility.type !== 'attack' || this.canCharacterUseAttackAbility(activeCharacter, selectedAbility);
         const nextState = [
             activeCharacter.id,
             activeCharacter.gridX,
@@ -738,7 +739,8 @@ window.GridGraphics = {
             activeCharacter.magicPoints,
             activeCharacter.actionsRemaining,
             canAfford,
-            canAct
+            canAct,
+            canUseAbility
         ].join('|');
 
         if (this.abilityRangeHighlightState === nextState) {
@@ -748,7 +750,7 @@ window.GridGraphics = {
         this.clearAbilityRangeHighlights();
         this.abilityRangeHighlightState = nextState;
 
-        if (!selectedAbility || !canAfford || !canAct) {
+        if (!selectedAbility || !canAfford || !canAct || !canUseAbility) {
             return;
         }
 
