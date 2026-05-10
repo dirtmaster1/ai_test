@@ -51,6 +51,28 @@ window.GridAI = {
         return nearest;
     },
 
+    getGoblinRole(character) {
+        const characterId = character?.id || '';
+
+        if (characterId.includes('goblin-archer')) {
+            return 'archer';
+        }
+
+        if (characterId.includes('goblin-shaman')) {
+            return 'shaman';
+        }
+
+        if (characterId.includes('goblin-brute')) {
+            return 'brute';
+        }
+
+        if (characterId.includes('goblin-warrior')) {
+            return 'warrior';
+        }
+
+        return null;
+    },
+
     getAbilityForCharacter(character, abilityId = character?.selectedAbilityId) {
         if (!character || !abilityId) {
             return null;
@@ -276,19 +298,21 @@ window.GridAI = {
         };
     },
 
-    getTargetRolePriority(target) {
+    getTargetRolePriority(character, target) {
         const targetId = target?.id ?? '';
+        const attackerRole = this.getGoblinRole(character);
+
         if (targetId.includes('wizard') || targetId.includes('cleric')) {
-            return 7;
+            return attackerRole === 'archer' ? 7 : 6;
         }
         if (targetId.includes('ranger') || targetId.includes('archer')) {
-            return 5;
+            return attackerRole === 'archer' ? 7 : 5;
         }
         if (targetId.includes('shaman')) {
-            return 4;
+            return attackerRole === 'archer' ? 6 : 4;
         }
         if (targetId.includes('dwarf') || targetId.includes('brute')) {
-            return 2;
+            return attackerRole === 'warrior' || attackerRole === 'brute' ? 5 : 2;
         }
         return 3;
     },
@@ -299,21 +323,32 @@ window.GridAI = {
             return Number.NEGATIVE_INFINITY;
         }
 
+        const attackerRole = this.getGoblinRole(character);
+        const isFrontliner = attackerRole === 'warrior' || attackerRole === 'brute';
+        const isArcher = attackerRole === 'archer';
         const missingHp = target.maxHitPoints - target.hitPoints;
-        const killBonus = effect.amount >= target.hitPoints ? 28 : 0;
-        const immediateReachBonus = effect.withinRange ? 18 : 0;
+        const killBonus = effect.amount >= target.hitPoints ? (isFrontliner ? 34 : 28) : 0;
+        const immediateReachBonus = effect.withinRange ? (isFrontliner ? 22 : 18) : 0;
         const pressureBonus = effect.distance <= (effect.ability.range ?? 1) + Math.max(0, character.actionsRemaining - character.attackCost)
-            ? 8
+            ? (isFrontliner ? 16 : 8)
             : 0;
+        const weakTargetBonus = target.hitPoints <= Math.max(4, Math.ceil(target.maxHitPoints * 0.45)) ? (isFrontliner ? 18 : 10) : 0;
+        const rolePriority = this.getTargetRolePriority(character, target);
+        const distanceWeight = isFrontliner ? 4.5 : (isArcher ? 2.4 : 1.5);
+        const roleWeight = isFrontliner ? 1.1 : 3;
+        const hpWeight = isFrontliner ? 2.5 : 1.2;
+        const focusPenalty = isFrontliner && effect.distance > 1 ? effect.distance * 1.2 : 0;
 
         return (
             effect.amount * 8 +
-            missingHp * 1.2 +
-            this.getTargetRolePriority(target) * 3 +
+            missingHp * hpWeight +
+            rolePriority * roleWeight +
             killBonus +
             immediateReachBonus +
-            pressureBonus -
-            effect.distance * 1.5 -
+            pressureBonus +
+            weakTargetBonus -
+            effect.distance * distanceWeight -
+            focusPenalty -
             target.armorClass * 1.2
         );
     },
@@ -329,6 +364,44 @@ window.GridAI = {
         let bestScore = Number.NEGATIVE_INFINITY;
         livingOpponents.forEach((candidate) => {
             const score = this.scoreTargetForCharacter(character, candidate, ability);
+            if (score > bestScore) {
+                bestTarget = candidate;
+                bestScore = score;
+            }
+        });
+
+        return bestTarget;
+    },
+
+    getBestFrontlineTarget(character, ability = null) {
+        const enemyGroup = this.getOpposingGroupForCharacter(character);
+        const livingOpponents = this.getLivingCharacters(enemyGroup);
+        if (livingOpponents.length === 0) {
+            return null;
+        }
+
+        const nearestOpponent = this.getNearestLivingOpponent(character);
+        let bestTarget = livingOpponents[0];
+        let bestScore = Number.NEGATIVE_INFINITY;
+
+        livingOpponents.forEach((candidate) => {
+            const effect = this.getExpectedActionEffect(character, candidate, ability);
+            if (!effect) {
+                return;
+            }
+
+            const missingHp = candidate.maxHitPoints - candidate.hitPoints;
+            const lowHpBonus = candidate.hitPoints <= Math.max(4, Math.ceil(candidate.maxHitPoints * 0.5)) ? 20 : 0;
+            const nearestBonus = nearestOpponent && candidate === nearestOpponent ? 24 : 0;
+            const score = (
+                missingHp * 3.25 +
+                lowHpBonus +
+                nearestBonus +
+                this.getTargetRolePriority(character, candidate) * 1.1 -
+                effect.distance * 4.75 -
+                candidate.armorClass * 1.5
+            );
+
             if (score > bestScore) {
                 bestTarget = candidate;
                 bestScore = score;
@@ -435,7 +508,7 @@ window.GridAI = {
     getBestRangedPlan(character, ability) {
         const maxMoveSteps = Math.max(0, character.actionsRemaining - character.attackCost);
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
-        const preferredRange = Math.max(2, ability.range ?? 1);
+        const preferredRange = Math.max(3, ability.range ?? 1);
         let bestPlan = null;
 
         reachablePositions.forEach((candidatePosition) => {
@@ -455,7 +528,7 @@ window.GridAI = {
                 const baseTargetScore = this.scoreTargetForCharacter(character, target, ability);
                 const distanceDelta = Math.abs(effect.distance - preferredRange);
                 const safety = this.getDistanceToNearestOpponentAt(character, candidatePosition.x, candidatePosition.y);
-                const score = baseTargetScore + safety * 2 - distanceDelta * 2.5 - candidatePosition.steps * 1.2;
+                const score = baseTargetScore + safety * 2.5 - distanceDelta * 3.5 - candidatePosition.steps * 1.2;
 
                 if (!bestPlan || score > bestPlan.score) {
                     bestPlan = {
@@ -606,6 +679,39 @@ window.GridAI = {
             return true;
         }
 
+        const distanceToFallbackTarget = this.getAttackDistanceBetweenPositions(
+            character.gridX,
+            character.gridY,
+            fallbackTarget.gridX,
+            fallbackTarget.gridY
+        );
+
+        const idealMinimumDistance = Math.max(3, (bowAbility.range ?? 4) - 3);
+        if (distanceToFallbackTarget <= idealMinimumDistance) {
+            const retreatMoves = this.getReachablePositions(character, Math.max(0, character.actionsRemaining - character.attackCost));
+            let bestRetreat = null;
+            let bestRetreatScore = Number.NEGATIVE_INFINITY;
+
+            retreatMoves.forEach((candidate) => {
+                if (candidate.steps === 0) {
+                    return;
+                }
+
+                const distanceToTarget = this.getAttackDistanceBetweenPositions(candidate.x, candidate.y, fallbackTarget.gridX, fallbackTarget.gridY);
+                const safety = this.getDistanceToNearestOpponentAt(character, candidate.x, candidate.y);
+                const score = distanceToTarget * 5 + safety * 1.5 - candidate.steps * 1.1;
+
+                if (score > bestRetreatScore) {
+                    bestRetreat = candidate;
+                    bestRetreatScore = score;
+                }
+            });
+
+            if (bestRetreat?.path?.length > 0) {
+                return this.moveCharacterToCell(character, bestRetreat.path[0]);
+            }
+        }
+
         const fallbackMove = this.chooseBestAdvanceMove(character, fallbackTarget, bowAbility);
         if (fallbackMove) {
             return this.moveCharacterToCell(character, fallbackMove);
@@ -652,10 +758,10 @@ window.GridAI = {
         const buffRange = buffAbility.range ?? 2;
 
         let bestPosition = reachablePositions[0];
-        let bestCoverage = this.countGoblinCoverageAt(bestPosition.x, bestPosition.y, buffRange);
+        let bestCoverage = this.countGoblinCoverageAt(bestPosition.x, bestPosition.y, buffRange) + this.getDistanceToNearestOpponentAt(character, bestPosition.x, bestPosition.y) * 2;
 
         reachablePositions.forEach((candidate) => {
-            const coverage = this.countGoblinCoverageAt(candidate.x, candidate.y, buffRange);
+            const coverage = this.countGoblinCoverageAt(candidate.x, candidate.y, buffRange) + this.getDistanceToNearestOpponentAt(character, candidate.x, candidate.y) * 2;
             if (coverage > bestCoverage) {
                 bestCoverage = coverage;
                 bestPosition = candidate;
@@ -702,6 +808,36 @@ window.GridAI = {
         return true;
     },
 
+    moveGoblinFrontliner(character) {
+        const ability = this.getBestOffensiveAbility(character);
+        const immediateTarget = this.getBestImmediateAttackTarget(character, ability)
+            || this.getBestFrontlineTarget(character, ability);
+
+        if (immediateTarget && this.characterAttack(character, immediateTarget, ability)) {
+            return true;
+        }
+
+        const plan = this.getBestMeleePlan(character, ability);
+        if (plan?.position?.path?.length > 0) {
+            return this.moveCharacterToCell(character, plan.position.path[0]);
+        }
+
+        const fallbackTarget = plan?.target || this.getBestFrontlineTarget(character, ability) || this.getNearestLivingOpponent(character);
+        if (!fallbackTarget) {
+            this.endCurrentTurn();
+            return true;
+        }
+
+        const fallbackMove = this.chooseBestAdvanceMove(character, fallbackTarget, ability);
+        if (fallbackMove) {
+            return this.moveCharacterToCell(character, fallbackMove);
+        }
+
+        character.actionsRemaining = 0;
+        this.endCurrentTurn();
+        return true;
+    },
+
     moveAICharacter(character) {
         if (
             this.isGameOver ||
@@ -715,6 +851,12 @@ window.GridAI = {
 
         const canBuff = character.abilities.some((ability) => ability.id === 'inflict-pain');
         const canBow = character.abilities.some((ability) => ability.id === 'bow-shot');
+        const goblinRole = this.getGoblinRole(character);
+
+        if (goblinRole === 'warrior' || goblinRole === 'brute') {
+            this.moveGoblinFrontliner(character);
+            return;
+        }
 
         if (canBuff) {
             this.moveGoblinShaman(character);

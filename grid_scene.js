@@ -79,6 +79,9 @@ class GridScene {
         this.victoryStartTime = 0;
         this.victoryFadeDurationMs = 3000;
         this.restartTriggered = false;
+        this.combatTransitionStartTime = 0;
+        this.combatTransitionDurationMs = 2500;
+        this.combatTransitionActive = false;
         this.cameraPanOffsetX = 0;
         this.cameraPanOffsetY = 0;
         this.isDraggingCamera = false;
@@ -94,6 +97,9 @@ class GridScene {
         this.explorationMarchingOrderIds = [];
         this.explorationCellsMovedSinceRegen = 0;
         this.explorationRegenStride = 10;
+        this.explorationClickMoveQueue = [];
+        this.explorationClickMoveTimer = 0;
+        this.explorationClickMoveStepInterval = 14;
         this.partyVisionRangeCells = 6;
         this.discoveredCells = new Set();
         this.visibleCells = new Set();
@@ -428,6 +434,13 @@ class GridScene {
     createEnemyFromArchetype(archetype, groupIndex, memberIndex) {
         const idSuffix = `g${groupIndex + 1}m${memberIndex + 1}`;
         const clonedAbilities = (archetype.abilities || []).map((ability) => ({ ...ability }));
+        const clonedEquipment = Object.entries(archetype.equipment || {}).reduce((equipment, [slotKey, item]) => {
+            const clonedItem = this.ensureEquipmentItemInstance(item, slotKey);
+            if (clonedItem) {
+                equipment[slotKey] = clonedItem;
+            }
+            return equipment;
+        }, {});
 
         return this.createCharacter({
             id: `${archetype.id}-${idSuffix}`,
@@ -447,12 +460,12 @@ class GridScene {
             maxHitPoints: archetype.maxHitPoints,
             magicPoints: archetype.maxMagicPoints,
             maxMagicPoints: archetype.maxMagicPoints,
-            meleeAttackDamage: archetype.meleeAttackDamage,
             armorClass: archetype.armorClass,
             attackCost: archetype.attackCost,
             maxActionsPerTurn: archetype.maxActionsPerTurn,
             experiencePoints: archetype.experiencePoints,
-            abilities: clonedAbilities
+            abilities: clonedAbilities,
+            equipment: clonedEquipment
         });
     }
 
@@ -597,6 +610,32 @@ class GridScene {
         }
     }
 
+    getNearestEnemyToParty() {
+        const alivePlayers = this.getLivingCharacters(this.playerParty);
+        if (alivePlayers.length === 0) {
+            return null;
+        }
+
+        let nearestEnemy = null;
+        let nearestDistance = Infinity;
+
+        for (const player of alivePlayers) {
+            for (const enemy of this.characters) {
+                if (enemy.team !== 'enemy' || enemy.isDead || enemy.removedFromScene) {
+                    continue;
+                }
+
+                const distance = Math.hypot(enemy.gridX - player.gridX, enemy.gridY - player.gridY);
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestEnemy = enemy;
+                }
+            }
+        }
+
+        return nearestEnemy;
+    }
+
     beginCombatWithGroup(group) {
         if (!group || group.isCleared || group.isAggro) {
             return;
@@ -624,6 +663,13 @@ class GridScene {
             `Enemy group ${group.id} spots the party. Combat begins.`,
             '#d34c4c'
         );
+
+        // Start combat transition with camera pan to nearest enemy
+        this.startCombatTransition();
+        const nearestEnemy = this.getNearestEnemyToParty();
+        if (nearestEnemy) {
+            this.focusCameraOnCharacter(nearestEnemy, 1500);
+        }
 
         this.beginCurrentTurn();
     }
@@ -863,6 +909,11 @@ class GridScene {
         }
         this.applyExplorationMovementRegen(1);
         this.tryTriggerEnemyAggro();
+    }
+
+    isExplorationMovementActive() {
+        const partyOrder = this.getExplorationPartyOrder();
+        return partyOrder.some((character) => character?.mesh?.userData?.movementState?.active);
     }
 
     findPlayerStartFormation(startRoom) {
@@ -1411,6 +1462,17 @@ class GridScene {
                 }
             }
 
+            if (this.gameMode === 'exploration') {
+                const worldW = this.gridWidth * this.cellSize;
+                const worldH = this.gridHeight * this.cellSize;
+                const worldX = this.raycaster.ray.origin.x;
+                const worldY = this.raycaster.ray.origin.y;
+                const clickedGridX = Math.floor((worldX + worldW / 2) / this.cellSize);
+                const clickedGridY = Math.floor((worldH / 2 - worldY) / this.cellSize);
+                this.navigatePartyToCell(clickedGridX, clickedGridY);
+                return;
+            }
+
             if (this.gameMode !== 'combat') {
                 return;
             }
@@ -1608,43 +1670,12 @@ class GridScene {
     }
 
     getEquipmentLootTable() {
-        return [
-            {
-                id: 'small-shield',
-                name: 'Small Shield',
-                slot: 'hands',
-                handType: '1H',
-                type: 'armor',
-                modifiers: { armorClass: 1 },
-                accentColor: '#9fd1ff'
-            },
-            {
-                id: 'long-bow',
-                name: 'Long Bow',
-                slot: 'hands',
-                handType: '2H',
-                type: 'weapon',
-                appliesToAbilityId: 'bow-shot',
-                modifiers: { attackDamage: 8, attackRange: 6 },
-                accentColor: '#9ee39a'
-            },
-            {
-                id: 'mages-amulet',
-                name: 'Mages Amulet',
-                slot: 'neck',
-                type: 'armor',
-                modifiers: { spellDamage: 1 },
-                accentColor: '#b7b7ff'
-            },
-            {
-                id: 'healers-circlet',
-                name: 'Healers Circlet',
-                slot: 'head',
-                type: 'armor',
-                modifiers: { healingBonus: 2 },
-                accentColor: '#ffd2a8'
-            }
-        ];
+        const defaultLootIds = ['small-shield', 'long-bow', 'mages-amulet', 'healers-circlet'];
+        const lootIds = window.GameData?.EQUIPMENT_LOOT_ITEM_IDS ?? defaultLootIds;
+
+        return lootIds
+            .map((itemId) => window.GameData?.getItemTemplateById(itemId) || null)
+            .filter(Boolean);
     }
 
     createEquipmentItemInstance(template) {
@@ -1675,144 +1706,28 @@ class GridScene {
         const attackDamageMatch = normalized.match(/([+-]?\d+)\s*DMG/i);
         const attackRangeMatch = normalized.match(/Range\s*([+-]?\d+)/i);
 
-        const armorTemplate = (name, slot, armorClass, accentColor) => ({
-            id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-            name,
-            slot: fallbackSlot || slot,
-            type: 'armor',
-            modifiers: { armorClass },
-            accentColor
-        });
-
-        if (/chain mail/i.test(normalized)) {
-            return armorTemplate('Chain Mail', 'body', armorClassMatch ? Number(armorClassMatch[1]) : 2, '#d5c2a1');
+        const template = window.GameData?.getItemTemplateByRef(normalized);
+        if (!template) {
+            return null;
         }
 
-        if (/leather armor/i.test(normalized)) {
-            return armorTemplate('Leather Armor', 'body', armorClassMatch ? Number(armorClassMatch[1]) : 1, '#b98c62');
+        const resolved = {
+            ...template,
+            slot: fallbackSlot || template.slot,
+            modifiers: { ...(template.modifiers || {}) }
+        };
+
+        if (armorClassMatch) {
+            resolved.modifiers.armorClass = Number(armorClassMatch[1]);
+        }
+        if (attackDamageMatch) {
+            resolved.modifiers.attackDamage = Number(attackDamageMatch[1]);
+        }
+        if (attackRangeMatch) {
+            resolved.modifiers.attackRange = Number(attackRangeMatch[1]);
         }
 
-        if (/steel helm/i.test(normalized) || /helm/i.test(normalized)) {
-            return armorTemplate('Steel Helm', 'head', armorClassMatch ? Number(armorClassMatch[1]) : 1, '#c6d0da');
-        }
-
-        if (/robe/i.test(normalized)) {
-            return {
-                id: 'robe',
-                name: 'Robe',
-                slot: fallbackSlot || 'body',
-                type: 'armor',
-                modifiers: {},
-                accentColor: '#b6a8cf'
-            };
-        }
-
-        if (/shortbow/i.test(normalized)) {
-            return {
-                id: 'short-bow',
-                name: 'Short Bow',
-                slot: fallbackSlot || 'hands',
-                handType: '2H',
-                type: 'weapon',
-                appliesToAbilityId: 'bow-shot',
-                modifiers: {
-                    attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6,
-                    attackRange: attackRangeMatch ? Number(attackRangeMatch[1]) : 5
-                },
-                accentColor: '#9bcf86'
-            };
-        }
-
-        if (/long bow/i.test(normalized)) {
-            return {
-                id: 'long-bow',
-                name: 'Long Bow',
-                slot: fallbackSlot || 'hands',
-                handType: '2H',
-                type: 'weapon',
-                appliesToAbilityId: 'bow-shot',
-                modifiers: {
-                    attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 8,
-                    attackRange: attackRangeMatch ? Number(attackRangeMatch[1]) : 6
-                },
-                accentColor: '#9ee39a'
-            };
-        }
-
-        if (/staff/i.test(normalized)) {
-            return {
-                id: 'staff',
-                name: normalized,
-                slot: fallbackSlot || 'hands',
-                handType: '2H',
-                type: 'weapon',
-                appliesToAbilityId: 'melee',
-                modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 4 },
-                accentColor: '#bda7db'
-            };
-        }
-
-        if (/mace/i.test(normalized)) {
-            return {
-                id: 'mace',
-                name: normalized,
-                slot: fallbackSlot || 'hands',
-                handType: '1H',
-                type: 'weapon',
-                appliesToAbilityId: 'mace-strike',
-                modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6 },
-                accentColor: '#d7c28f'
-            };
-        }
-
-        if (/axe/i.test(normalized)) {
-            return {
-                id: 'axe',
-                name: normalized,
-                slot: fallbackSlot || 'hands',
-                handType: '1H',
-                type: 'weapon',
-                appliesToAbilityId: 'melee',
-                modifiers: { attackDamage: attackDamageMatch ? Number(attackDamageMatch[1]) : 6 },
-                accentColor: '#d9b08c'
-            };
-        }
-
-        if (/small shield/i.test(normalized)) {
-            return {
-                id: 'small-shield',
-                name: 'Small Shield',
-                slot: fallbackSlot || 'hands',
-                handType: '1H',
-                type: 'armor',
-                modifiers: { armorClass: 1 },
-                accentColor: '#9fd1ff'
-            };
-        }
-
-        if (/circlet/i.test(normalized)) {
-            return {
-                id: 'circlet',
-                name: normalized,
-                slot: fallbackSlot || 'head',
-                type: 'armor',
-                modifiers: { healingBonus: 2 },
-                accentColor: '#ffd2a8'
-            };
-        }
-
-        if (/amulet/i.test(normalized)) {
-            return {
-                id: 'amulet',
-                name: normalized,
-                slot: fallbackSlot || 'neck',
-                type: 'armor',
-                modifiers: { spellDamage: 1 },
-                accentColor: '#b7b7ff'
-            };
-        }
-
-        return null;
+        return resolved;
     }
 
     ensureEquipmentItemInstance(item, fallbackSlot = null) {
@@ -2009,6 +1924,14 @@ class GridScene {
         };
     }
 
+    syncCharacterHandAliases(character) {
+        if (!character?.equipment) {
+            return;
+        }
+
+        character.equipment.hands = character.equipment.rightHand ?? null;
+    }
+
     getCharacterAttackEquipmentItem(character, ability = null) {
         return this.getCharacterWeaponItem(character, ability);
     }
@@ -2035,12 +1958,33 @@ class GridScene {
         return weaponItems[0] || null;
     }
 
+    getCharacterMeleeWeaponDamage(character, ability = null) {
+        const weaponItems = this.getCharacterWeaponItems(character);
+        const matchedWeaponItems = ability?.id
+            ? weaponItems.filter((item) => item.appliesToAbilityId === ability.id)
+            : [];
+        const damageSources = matchedWeaponItems.length > 0 ? matchedWeaponItems : weaponItems.filter((item) => item.appliesToAbilityId === 'melee');
+
+        return damageSources.reduce((totalDamage, item) => {
+            return totalDamage + Math.max(0, item.modifiers?.attackDamage ?? 0);
+        }, 0);
+    }
+
+    getCharacterMeleeDamageBonus(character) {
+        return this.getCharacterStrengthDamageBonus(character)
+            + this.getCharacterEffectBonus(character, 'damageBonus');
+    }
+
     canCharacterUseAttackAbility(character, ability = null) {
         if (!ability || ability.type !== 'attack') {
             return true;
         }
 
-        return Boolean(this.getCharacterWeaponItem(character, ability));
+        if (this.getCharacterWeaponItem(character, ability)) {
+            return true;
+        }
+
+        return (ability.range ?? 1) <= 1;
     }
 
     getEquipmentPlacementForItem(character, item) {
@@ -2262,22 +2206,16 @@ class GridScene {
         }
 
         if (ability?.type === 'attack') {
-            if (!this.canCharacterUseAttackAbility(character, ability)) {
-                return 0;
-            }
-
             if (ability.range && ability.range > 1) {
                 const storedDamage = ability?.damage ?? 0;
                 const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - dexterityBonus) : 0;
                 return Math.max(baseDamage, override?.damage ?? 0) + dexterityBonus;
             }
 
-            const storedDamage = ability?.damage ?? 0;
-            const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - strengthBonus) : 0;
-            return Math.max(baseDamage, override?.damage ?? 0) + strengthBonus;
+            return this.getCharacterMeleeWeaponDamage(character, ability) + this.getCharacterMeleeDamageBonus(character);
         }
 
-        return override?.damage ?? (ability?.damage ?? character?.meleeAttackDamage ?? 0);
+        return override?.damage ?? (ability?.damage ?? 0);
     }
 
     getEffectiveAbilityHealAmount(character, ability) {
@@ -2333,8 +2271,79 @@ class GridScene {
         });
     }
 
+    navigatePartyToCell(targetX, targetY) {
+        const partyOrder = this.getExplorationPartyOrder();
+        const lead = partyOrder[0];
+        if (!lead) {
+            return;
+        }
+
+        if (targetX < 0 || targetX >= this.gridWidth || targetY < 0 || targetY >= this.gridHeight) {
+            return;
+        }
+        if (this.isObstacle(targetX, targetY)) {
+            return;
+        }
+
+        // BFS from lead position to target
+        const start = { x: lead.gridX, y: lead.gridY };
+        if (start.x === targetX && start.y === targetY) {
+            return;
+        }
+
+        const visited = new Set();
+        const queue = [{ x: start.x, y: start.y, path: [] }];
+        visited.add(`${start.x},${start.y}`);
+
+        const dirs = [
+            { dx: 0, dy: -1, key: 'W' },
+            { dx: 0, dy: 1, key: 'S' },
+            { dx: -1, dy: 0, key: 'A' },
+            { dx: 1, dy: 0, key: 'D' }
+        ];
+
+        while (queue.length > 0) {
+            const current = queue.shift();
+            for (const dir of dirs) {
+                const nx = current.x + dir.dx;
+                const ny = current.y + dir.dy;
+                const cellKey = `${nx},${ny}`;
+
+                if (nx < 0 || nx >= this.gridWidth || ny < 0 || ny >= this.gridHeight) {
+                    continue;
+                }
+                if (visited.has(cellKey) || this.isObstacle(nx, ny)) {
+                    continue;
+                }
+                // Block on non-party living characters (enemies)
+                const blockedByOther = this.characters.some((c) =>
+                    !c.isDead &&
+                    !c.removedFromScene &&
+                    !partyOrder.includes(c) &&
+                    c.gridX === nx &&
+                    c.gridY === ny
+                );
+                if (blockedByOther) {
+                    continue;
+                }
+
+                const newPath = [...current.path, dir.key];
+                if (nx === targetX && ny === targetY) {
+                    this.explorationClickMoveQueue = newPath;
+                    this.explorationClickMoveTimer = 0;
+                    return;
+                }
+                visited.add(cellKey);
+                queue.push({ x: nx, y: ny, path: newPath });
+            }
+        }
+        // No path found — clear any existing queue
+        this.explorationClickMoveQueue = [];
+    }
+
     handleMovement(key) {
         if (this.gameMode === 'exploration') {
+            this.explorationClickMoveQueue = [];
             this.movePartyInExploration(key);
             return;
         }
@@ -2637,10 +2646,17 @@ class GridScene {
             const dx = Math.abs(ally.gridX - caster.gridX);
             const dy = Math.abs(ally.gridY - caster.gridY);
             if (dx <= range && dy <= range) {
-                ally.meleeAttackDamage += damageBonus;
                 affectedCount += 1;
                 const pos = this.getCharacterWorldPos(ally);
                 this.spawnInflictPainEffect(pos);
+
+                const existing = ally.activeEffects.find((effect) => effect.type === 'inflict-pain');
+                if (existing) {
+                    existing.damageBonus = Math.max(existing.damageBonus ?? 0, damageBonus);
+                    existing.roundsRemaining = Math.max(existing.roundsRemaining ?? 0, 2);
+                } else {
+                    ally.activeEffects.push({ type: 'inflict-pain', damageBonus, roundsRemaining: 2 });
+                }
             }
         });
 
@@ -2962,6 +2978,8 @@ class GridScene {
             return false;
         }
 
+        items.splice(itemIndex, 1);
+
         const slotsToClear = Array.isArray(placement.slotsToClear) ? placement.slotsToClear : [slotKey];
         slotsToClear.forEach((clearSlotKey) => {
             if (character.equipment?.[clearSlotKey]) {
@@ -2969,17 +2987,12 @@ class GridScene {
             }
         });
 
-        items.splice(itemIndex, 1);
         character.equipment[slotKey] = item;
+        this.syncCharacterHandAliases(character);
 
         if ((item.modifiers?.armorClass ?? 0) > 0) {
             character.armorClass += item.modifiers.armorClass;
         }
-
-        this.appendCombatLogEntry(
-            `${character.name} equips ${this.getEquipmentItemLabel(item)} (${this.getEquipmentItemSlotLabel(slotKey)}).`,
-            character.accentColor
-        );
         this.showToast(
             `${character.name} equips ${this.getEquipmentItemLabel(item)}.`,
             item.accentColor || character.accentColor,
@@ -3004,7 +3017,9 @@ class GridScene {
             return false;
         }
 
-        const equipped = character.equipment?.[slotKey];
+        const equipped = slotKey === 'rightHand'
+            ? (character.equipment?.rightHand ?? character.equipment?.hands ?? null)
+            : character.equipment?.[slotKey];
         if (!equipped) {
             this.showToast('That slot is already empty.', '#b8ad96', 2200);
             return false;
@@ -3022,11 +3037,10 @@ class GridScene {
 
         this.addEquipmentItemToSharedInventory(unequippedItem);
         character.equipment[slotKey] = null;
-
-        this.appendCombatLogEntry(
-            `${character.name} unequips ${this.getEquipmentItemLabel(unequippedItem)} (${this.getEquipmentItemSlotLabel(slotKey)}).`,
-            '#c8bea8'
-        );
+        if (slotKey === 'rightHand') {
+            character.equipment.hands = null;
+        }
+        this.syncCharacterHandAliases(character);
         this.showToast(
             `${character.name} unequips ${this.getEquipmentItemLabel(unequippedItem)}.`,
             '#c8bea8',
@@ -3194,6 +3208,7 @@ class GridScene {
             this.fadeAndRemoveCharacter(character);
             this.updateHitAnimation(character, nowMs);
         });
+        this.updateCharacterMovementAnimations(nowMs);
         this.updateTurnOrderQueue(activeCharacter);
 
         if (!this.isGameOver && this.areAllPartyMembersDead(this.playerParty)) {
@@ -3206,6 +3221,8 @@ class GridScene {
             this.startVictorySequence();
         }
 
+        this.updateCombatTransition();
+
         if (this.isGameOver) {
             this.updateVictorySequence();
             return;
@@ -3213,6 +3230,19 @@ class GridScene {
 
         if (this.gameMode === 'exploration') {
             this.tryTriggerEnemyAggro();
+            if (this.explorationClickMoveQueue.length > 0) {
+                if (!this.isExplorationMovementActive()) {
+                    this.explorationClickMoveTimer += 1;
+                    if (this.explorationClickMoveTimer >= this.explorationClickMoveStepInterval) {
+                        this.explorationClickMoveTimer = 0;
+                        const nextKey = this.explorationClickMoveQueue.shift();
+                        this.movePartyInExploration(nextKey);
+                        if (this.gameMode !== 'exploration') {
+                            this.explorationClickMoveQueue = [];
+                        }
+                    }
+                }
+            }
             return;
         }
 

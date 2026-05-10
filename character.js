@@ -1,6 +1,71 @@
 // Character Data - sprite definitions, character creation, and party initialization
 window.CharacterData = {
 
+    resolveAbilityReference(abilityRef) {
+        if (!abilityRef) {
+            return null;
+        }
+
+        if (typeof abilityRef === 'string') {
+            return window.GameData?.getAbilityOrSpellTemplateById(abilityRef) || null;
+        }
+
+        if (typeof abilityRef === 'object') {
+            const baseTemplate = abilityRef.id
+                ? (window.GameData?.getAbilityOrSpellTemplateById(abilityRef.id) || null)
+                : null;
+            return {
+                ...(baseTemplate || {}),
+                ...abilityRef
+            };
+        }
+
+        return null;
+    },
+
+    resolveAbilityConfigList(abilityRefs) {
+        const refs = Array.isArray(abilityRefs) && abilityRefs.length > 0 ? abilityRefs : ['melee'];
+        const resolved = refs
+            .map((abilityRef) => this.resolveAbilityReference(abilityRef))
+            .filter(Boolean)
+            .map((ability) => ({ ...ability }));
+
+        if (resolved.length > 0) {
+            return resolved;
+        }
+
+        const defaultMelee = window.GameData?.getAbilityTemplateById('melee');
+        if (defaultMelee) {
+            return [defaultMelee];
+        }
+
+        return [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }];
+    },
+
+    resolveEquipmentReference(itemRef) {
+        if (!itemRef || typeof itemRef !== 'string') {
+            return itemRef;
+        }
+
+        const template = window.GameData?.getItemTemplateByRef(itemRef);
+        if (!template) {
+            return itemRef;
+        }
+
+        return template;
+    },
+
+    resolveEquipmentConfig(equipmentConfig) {
+        if (!equipmentConfig || typeof equipmentConfig !== 'object') {
+            return {};
+        }
+
+        return Object.entries(equipmentConfig).reduce((acc, [slotKey, itemRef]) => {
+            acc[slotKey] = this.resolveEquipmentReference(itemRef);
+            return acc;
+        }, {});
+    },
+
     createCharacter(config) {
         const strength = config.strength ?? 10;
         const strAbove10 = Math.max(0, strength - 10);
@@ -23,12 +88,18 @@ window.CharacterData = {
 
         const baseHp = config.hitPoints ?? 10;
         const baseMaxHp = config.maxHitPoints ?? config.hitPoints ?? 10;
-        const equipmentConfig = config.equipment ?? {};
+        const equipmentConfig = this.resolveEquipmentConfig(config.equipment ?? {});
         const legacyHandsItem = equipmentConfig.hands ?? null;
         const rightHandItem = equipmentConfig.rightHand ?? legacyHandsItem ?? null;
         const leftHandItem = equipmentConfig.leftHand ?? null;
+        const {
+            hands: _legacyHands,
+            rightHand: _configuredRightHand,
+            leftHand: _configuredLeftHand,
+            ...otherEquipment
+        } = equipmentConfig;
 
-        const baseAbilities = config.abilities ?? [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }];
+        const baseAbilities = this.resolveAbilityConfigList(config.abilities);
         const abilities = baseAbilities.map((ability) => {
             if (ability.type === 'attack' && ability.range > 1 && ability.damage !== undefined && dexRangedDamageBonus > 0) {
                 return { ...ability, damage: ability.damage + dexRangedDamageBonus };
@@ -70,7 +141,6 @@ window.CharacterData = {
             maxHitPoints: baseMaxHp + strHpBonus,
             magicPoints: config.magicPoints ?? 0,
             maxMagicPoints: config.maxMagicPoints ?? 0,
-            meleeAttackDamage: (config.meleeAttackDamage ?? 5) + strDamageBonus,
             armorClass: config.armorClass ?? 0,
             attackCost: config.attackCost ?? 3,
             maxActionsPerTurn: config.maxActionsPerTurn ?? 5,
@@ -88,7 +158,7 @@ window.CharacterData = {
                 feet: null,
                 neck: null,
                 hands: null,
-                ...(equipmentConfig ?? {})
+                ...otherEquipment
             },
             abilities,
             selectedAbilityId: abilities[0].id,
@@ -157,15 +227,14 @@ window.CharacterData = {
             maxHitPoints: 6,
             magicPoints: 10,
             maxMagicPoints: 10,
-            meleeAttackDamage: 4,
             armorClass: 0,
             equipment: {
-                body: 'Robe',
-                hands: '2H Staff (4 DMG)'
+                body: 'robe',
+                hands: 'staff'
             },
             abilities: [
-                { id: 'melee', name: 'Staff Strike', type: 'attack', range: 1, mpCost: 0 },
-                { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4 }
+                'staff-strike',
+                'magic-missile'
             ]
         });
 
@@ -182,16 +251,15 @@ window.CharacterData = {
             dexterity: 11,
             intelligence: 6,
             wisdom: 6,
-            meleeAttackDamage: 6,
             armorClass: 3,
             equipment: {
-                body: 'Chain Mail (+2 AC)',
-                head: 'Steel Helm (+1 AC)',
-                hands: '1H Axe (6 DMG)'
+                body: 'chain-mail',
+                head: 'steel-helm',
+                hands: 'axe'
             },
             abilities: [
-                { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
-                { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, acBonus: 1 }
+                'melee',
+                'battle-shout'
             ]
         });
 
@@ -212,15 +280,14 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 8,
             maxMagicPoints: 8,
-            meleeAttackDamage: 6,
             armorClass: 2,
             equipment: {
-                body: 'Chain Mail (+2 AC)',
-                hands: '1H Mace (6 DMG)'
+                body: 'chain-mail',
+                hands: 'mace'
             },
             abilities: [
-                { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
-                { id: 'heal', name: 'Holy Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 }
+                'mace-strike',
+                'holy-heal'
             ]
         });
 
@@ -241,15 +308,14 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 4,
             maxMagicPoints: 4,
-            meleeAttackDamage: 4,
             armorClass: 1,
             equipment: {
-                body: 'Leather Armor (+1 AC)',
-                hands: '2H Shortbow (6 DMG)'
+                body: 'leather-armor',
+                hands: 'short-bow'
             },
             abilities: [
-                { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
-                { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6 }
+                'dagger-strike',
+                'bow-shot'
             ]
         });
 
@@ -269,7 +335,13 @@ window.CharacterData = {
             hitPoints: 8,
             maxHitPoints: 8,
             experiencePoints: 220,
-            armorClass: 1
+            armorClass: 1,
+            abilities: [
+                'melee'
+            ],
+            equipment: {
+                hands: 'axe'
+            }
         });
 
         this.goblinArcher = this.createCharacter({
@@ -290,11 +362,13 @@ window.CharacterData = {
             experiencePoints: 240,
             magicPoints: 0,
             maxMagicPoints: 0,
-            meleeAttackDamage: 4,
             armorClass: 1,
             abilities: [
-                { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4 }
-            ]
+                'bow-shot'
+            ],
+            equipment: {
+                hands: 'short-bow'
+            }
         });
 
         this.goblinShaman = this.createCharacter({
@@ -315,11 +389,10 @@ window.CharacterData = {
             experiencePoints: 260,
             magicPoints: 10,
             maxMagicPoints: 10,
-            meleeAttackDamage: 3,
             armorClass: 0,
             abilities: [
-                { id: 'heal', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
-                { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1 }
+                'mend-flesh',
+                'inflict-pain'
             ]
         });
 
@@ -339,8 +412,13 @@ window.CharacterData = {
             hitPoints: 12,
             maxHitPoints: 12,
             experiencePoints: 320,
-            meleeAttackDamage: 6,
-            armorClass: 2
+            armorClass: 2,
+            abilities: [
+                'melee'
+            ],
+            equipment: {
+                hands: 'axe'
+            }
         });
 
         this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];

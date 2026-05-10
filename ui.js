@@ -667,8 +667,27 @@ window.GridUI = {
         this.victoryText.style.display = 'none';
         this.victoryText.style.zIndex = '20';
 
+        this.enteringCombatText = document.createElement('div');
+        this.enteringCombatText.id = 'enteringCombatText';
+        this.enteringCombatText.textContent = 'Entering Combat!';
+        this.enteringCombatText.style.position = 'absolute';
+        this.enteringCombatText.style.top = '50%';
+        this.enteringCombatText.style.left = '50%';
+        this.enteringCombatText.style.transform = 'translate(-50%, -50%)';
+        this.enteringCombatText.style.fontFamily = 'Arial, sans-serif';
+        this.enteringCombatText.style.fontSize = '96px';
+        this.enteringCombatText.style.fontWeight = '900';
+        this.enteringCombatText.style.letterSpacing = '4px';
+        this.enteringCombatText.style.color = '#ff6b6b';
+        this.enteringCombatText.style.textShadow = '0 0 16px rgba(255, 107, 107, 0.8), 0 0 32px rgba(255, 0, 0, 0.6)';
+        this.enteringCombatText.style.pointerEvents = 'none';
+        this.enteringCombatText.style.opacity = '0';
+        this.enteringCombatText.style.display = 'none';
+        this.enteringCombatText.style.zIndex = '20';
+
         this.container.style.position = 'relative';
         this.container.appendChild(this.victoryText);
+        this.container.appendChild(this.enteringCombatText);
         this.setupTargetPreviewPanel();
         this.setupCharacterInventoryModal();
         this.setupLootMenuWindow();
@@ -1706,7 +1725,7 @@ window.GridUI = {
             { label: 'Hit Points', value: `${character.hitPoints} / ${character.maxHitPoints}` },
             { label: 'Magic Points', value: `${character.magicPoints} / ${character.maxMagicPoints}` },
             { label: 'Initiative', value: String(character.initiative ?? 0) },
-            { label: 'Melee Damage', value: String(meleeAttackDamage), bonus: 'STR + weapon + buffs' },
+            { label: 'Melee Damage', value: String(meleeAttackDamage), bonus: 'STR + weapon(s) + buffs' },
             { label: 'Ranged Damage', value: String(rangedAttackDamage), bonus: 'DEX + weapon + buffs' },
             { label: 'Armor Class', value: String(character.armorClass), bonus: equipmentBonuses.armorClass > 0 ? `Armor bonus +${equipmentBonuses.armorClass}` : null },
             { label: 'Spell Damage Bonus', value: `+${spellDamageBonus}`, bonus: 'INT + gear + buffs' },
@@ -1960,11 +1979,7 @@ window.GridUI = {
             stats.style.marginTop = '8px';
             stats.style.fontSize = '11px';
             stats.style.color = '#8f856f';
-            const itemTypeLabel = typeof this.getEquipmentItemTypeLabel === 'function'
-                ? this.getEquipmentItemTypeLabel(normalizedEquipped.type)
-                : (normalizedEquipped.type || 'Item');
-            const modifierSummary = this.getEquipmentItemModifierSummary(normalizedEquipped) || 'No stat changes';
-            stats.textContent = `${itemTypeLabel} • ${modifierSummary}`;
+            const rangeText = `Range ${this.getEffectiveAbilityRange(character, ability)}`;
             const costText = `Cost ${ability.mpCost ?? 0} MP`;
             const typeText = `Type ${ability.type}`;
             stats.textContent = `${typeText} • ${rangeText} • ${costText}`;
@@ -2728,6 +2743,31 @@ window.GridUI = {
         if (progress >= 1 && !this.restartTriggered) {
             this.restartTriggered = true;
             window.location.reload();
+        }
+    },
+
+    startCombatTransition() {
+        this.combatTransitionActive = true;
+        this.combatTransitionStartTime = performance.now();
+        this.enteringCombatText.textContent = 'Entering Combat!';
+        this.enteringCombatText.style.color = '#ff6b6b';
+        this.enteringCombatText.style.textShadow = '0 0 16px rgba(255, 107, 107, 0.8), 0 0 32px rgba(255, 0, 0, 0.6)';
+        this.enteringCombatText.style.display = 'block';
+        this.enteringCombatText.style.opacity = '1';
+    },
+
+    updateCombatTransition() {
+        if (!this.combatTransitionActive) {
+            return;
+        }
+
+        const elapsedMs = performance.now() - this.combatTransitionStartTime;
+        const progress = Math.min(1, elapsedMs / this.combatTransitionDurationMs);
+        this.enteringCombatText.style.opacity = String(1 - progress);
+
+        if (progress >= 1) {
+            this.combatTransitionActive = false;
+            this.enteringCombatText.style.display = 'none';
         }
     }
 };

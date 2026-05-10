@@ -524,7 +524,63 @@ window.GridGraphics = {
         }
 
         const { x, y } = this.getWorldPositionForCell(character.gridX, character.gridY);
-        character.mesh.position.set(x, y, 0);
+        character.mesh.userData ||= {};
+        const movementState = character.mesh.userData.movementState ||= {
+            initialized: false,
+            active: false,
+            startX: x,
+            startY: y,
+            targetX: x,
+            targetY: y,
+            startTime: performance.now(),
+            durationMs: 220
+        };
+
+        if (this.gameMode !== 'exploration' || !movementState.initialized) {
+            movementState.initialized = true;
+            movementState.active = false;
+            movementState.startX = x;
+            movementState.startY = y;
+            movementState.targetX = x;
+            movementState.targetY = y;
+            movementState.startTime = performance.now();
+            character.mesh.position.set(x, y, 0);
+            return;
+        }
+
+        movementState.active = true;
+        movementState.startX = character.mesh.position.x;
+        movementState.startY = character.mesh.position.y;
+        movementState.targetX = x;
+        movementState.targetY = y;
+        movementState.startTime = performance.now();
+        movementState.durationMs = 220;
+    },
+
+    updateCharacterMovementAnimations(nowMs = performance.now()) {
+        this.characters?.forEach((character) => {
+            const movementState = character?.mesh?.userData?.movementState;
+            if (!movementState || !movementState.active) {
+                return;
+            }
+
+            const elapsed = nowMs - movementState.startTime;
+            const progress = Math.min(1, Math.max(0, elapsed / movementState.durationMs));
+            const eased = 1 - Math.pow(1 - progress, 3);
+
+            character.mesh.position.set(
+                movementState.startX + (movementState.targetX - movementState.startX) * eased,
+                movementState.startY + (movementState.targetY - movementState.startY) * eased,
+                0
+            );
+
+            if (progress >= 1) {
+                character.mesh.position.set(movementState.targetX, movementState.targetY, 0);
+                movementState.active = false;
+                movementState.startX = movementState.targetX;
+                movementState.startY = movementState.targetY;
+            }
+        });
     },
 
     getWorldPositionForCell(gridX, gridY) {
@@ -538,6 +594,17 @@ window.GridGraphics = {
 
     getCharacterWorldPos(character) {
         return this.getWorldPositionForCell(character.gridX, character.gridY);
+    },
+
+    getCharacterRenderedWorldPos(character) {
+        if (this.gameMode === 'exploration' && character?.mesh) {
+            return {
+                x: character.mesh.position.x,
+                y: character.mesh.position.y
+            };
+        }
+
+        return this.getCharacterWorldPos(character);
     },
 
     focusCameraOnCharacter(character, durationMs = 1800) {
@@ -580,29 +647,32 @@ window.GridGraphics = {
             return;
         }
 
-        const worldW = this.gridWidth * this.cellSize;
-        const worldH = this.gridHeight * this.cellSize;
-        const targetX = (focusCharacter.gridX * this.cellSize + this.cellSize / 2) - worldW / 2;
-        const targetY = (worldH / 2) - (focusCharacter.gridY * this.cellSize + this.cellSize / 2);
+        const worldPos = this.getCharacterRenderedWorldPos(focusCharacter);
         const zoom = this.camera.zoom || 1;
         const viewHalfW = ((this.camera.right - this.camera.left) / zoom) / 2;
         const viewHalfH = ((this.camera.top - this.camera.bottom) / zoom) / 2;
 
+        const worldW = this.gridWidth * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
         const minCameraX = -worldW / 2 + viewHalfW;
         const maxCameraX = worldW / 2 - viewHalfW;
         const minCameraY = -worldH / 2 + viewHalfH;
         const maxCameraY = worldH / 2 - viewHalfH;
 
-        const desiredX = targetX + (this.cameraPanOffsetX ?? 0);
-        const desiredY = targetY + (this.cameraPanOffsetY ?? 0);
+        const desiredX = worldPos.x + (this.cameraPanOffsetX ?? 0);
+        const desiredY = worldPos.y + (this.cameraPanOffsetY ?? 0);
 
         const clamp = (value, minValue, maxValue) => Math.min(maxValue, Math.max(minValue, value));
-        this.camera.position.x = minCameraX <= maxCameraX
+        const clampedX = minCameraX <= maxCameraX
             ? clamp(desiredX, minCameraX, maxCameraX)
             : 0;
-        this.camera.position.y = minCameraY <= maxCameraY
+        const clampedY = minCameraY <= maxCameraY
             ? clamp(desiredY, minCameraY, maxCameraY)
             : 0;
+
+        const smoothing = this.gameMode === 'exploration' ? 0.18 : 1;
+        this.camera.position.x += (clampedX - this.camera.position.x) * smoothing;
+        this.camera.position.y += (clampedY - this.camera.position.y) * smoothing;
 
         this.updateFogOfWarOverlay();
     },
