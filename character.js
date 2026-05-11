@@ -227,7 +227,7 @@ window.CharacterData = {
             skeletonWarrior: { imagePath, x: 419, y: 307, width: 120, height: 125 },
             orcGuard: { imagePath, x: 546, y: 306, width: 123, height: 127 },
             ghoul: { imagePath, x: 673, y: 309, width: 135, height: 124 },
-            spider: { imagePath, x: 5, y: 442, width: 149, height: 95 },
+            giantSpider: { imagePath, x: 5, y: 442, width: 149, height: 95 },
             goblinScout: { imagePath, x: 160, y: 439, width: 112, height: 107 },
             goblinShaman: { imagePath, x: 278, y: 438, width: 132, height: 108 },
             skeletonAdept: { imagePath, x: 415, y: 434, width: 130, height: 113 },
@@ -326,7 +326,8 @@ window.CharacterData = {
                 'mace-strike'
             ],
             spells: [
-                'lesser-heal'
+                'lesser-heal',
+                'cure-poison'
             ]
         });
 
@@ -461,8 +462,30 @@ window.CharacterData = {
             }
         });
 
-        this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
+        this.giantSpider = this.createCharacter({
+            id: 'giant-spider',
+            name: 'Giant Spider',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#6f8b5f',
+            pointerColor: 0xa8c98f,
+            spriteFrame: this.getCharacterSpriteFrame('giantSpider'),
+            race: 'spider',
+            strength: 6,
+            dexterity: 6,
+            intelligence: 2,
+            wisdom: 4,
+            hitPoints: 5,
+            maxHitPoints: 5,
+            experiencePoints: 250,
+            armorClass: 1,
+            abilities: [
+                'venomous-bite'
+            ]
+        });
+
+        this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.giantSpider];
         this.playerParty = [this.wizard, this.warrior, this.cleric, this.ranger];
-        this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
+        this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.giantSpider];
     }
 };

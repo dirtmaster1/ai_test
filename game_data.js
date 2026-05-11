@@ -141,6 +141,7 @@ window.GameData = {
 
     ABILITY_DEFS: {
         melee: { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
+        'venomous-bite': { id: 'venomous-bite', name: 'Venomous Bite', type: 'attack', range: 1, mpCost: 0, damage: 4 },
         'staff-strike': { id: 'staff-strike', name: 'Staff Strike', type: 'attack', range: 1, mpCost: 0 },
         'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
         'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
@@ -154,7 +155,8 @@ window.GameData = {
         'lesser-heal': { id: 'lesser-heal', name: 'Lesser Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
         'mend-flesh': { id: 'mend-flesh', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
         'inflict-pain': { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1, duration: 2 },
-        'blessing': { id: 'blessing', name: 'Blessing', type: 'buff', range: 3, mpCost: 0, acBonus: 1 },
+        'blessing': { id: 'blessing', name: 'Blessing', type: 'buff', range: 3, mpCost: 5, acBonus: 1, duration: 3 },
+        'cure-poison': { id: 'cure-poison', name: 'Cure Poison', type: 'heal', range: 3, mpCost: 3, curePoison: true },
     },
 
     normalizeRefKey(ref) {

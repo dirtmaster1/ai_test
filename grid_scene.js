@@ -399,6 +399,7 @@ class GridScene {
 
     spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells) {
         const baseArchetypes = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute];
+        const spiderArchetype = this.giantSpider;
         const enemyRooms = rooms.slice(1);
         const shuffledRooms = [...enemyRooms].sort(() => Math.random() - 0.5);
 
@@ -419,10 +420,12 @@ class GridScene {
             };
             const fallback = this.findNearbyFloorTile(anchor.x, anchor.y, 0, 4, occupiedCells) || anchor;
             const memberCount = 2 + Math.floor(Math.random() * 3);
+            const spiderCount = 1 + Math.floor(Math.random() * 3);
             const members = [];
+            let memberIndex = 0;
 
-            for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
-                const archetype = baseArchetypes[(groupIndex + memberIndex) % baseArchetypes.length];
+            for (let goblinIndex = 0; goblinIndex < memberCount; goblinIndex++) {
+                const archetype = baseArchetypes[(groupIndex + goblinIndex) % baseArchetypes.length];
                 const enemy = this.createEnemyFromArchetype(archetype, groupIndex, memberIndex);
 
                 this.placeCharacterNear(enemy, fallback.x, fallback.y, 0, 3, occupiedCells, fallback);
@@ -431,6 +434,19 @@ class GridScene {
                 enemy.encounterGroupId = `group-${groupIndex + 1}`;
                 members.push(enemy);
                 this.aiParty.push(enemy);
+                memberIndex += 1;
+            }
+
+            for (let spiderIndex = 0; spiderIndex < spiderCount; spiderIndex++) {
+                const enemy = this.createEnemyFromArchetype(spiderArchetype, groupIndex, memberIndex);
+
+                this.placeCharacterNear(enemy, fallback.x, fallback.y, 0, 3, occupiedCells, fallback);
+                occupiedCells.add(this.getCellKey(enemy.gridX, enemy.gridY));
+
+                enemy.encounterGroupId = `group-${groupIndex + 1}`;
+                members.push(enemy);
+                this.aiParty.push(enemy);
+                memberIndex += 1;
             }
 
             this.enemyGroups.push({
@@ -1132,20 +1148,61 @@ class GridScene {
             }
         }
 
-        if (activeCharacter.activeEffects && activeCharacter.activeEffects.length > 0) {
-            activeCharacter.activeEffects = activeCharacter.activeEffects.filter((effect) => {
-                effect.roundsRemaining -= 1;
-                if (effect.roundsRemaining <= 0) {
-                    return false;
-                }
-                return true;
-            });
+        this.applyStartOfTurnEffects(activeCharacter);
+        if (activeCharacter.isDead) {
+            return;
         }
 
         activeCharacter.actionsRemaining = activeCharacter.maxActionsPerTurn;
         this.turnTransitionFrames = this.turnTransitionDelay;
         this.enemyMoveTimer = 0;
         this.updateCamera();
+    }
+
+    applyStartOfTurnEffects(character) {
+        if (!character || !Array.isArray(character.activeEffects) || character.activeEffects.length === 0) {
+            return;
+        }
+
+        const remainingEffects = [];
+        for (const effect of character.activeEffects) {
+            if (!effect) {
+                continue;
+            }
+
+            if (effect.type === 'poison') {
+                if (effect.poisonStartsNextTurn) {
+                    effect.poisonStartsNextTurn = false;
+                    remainingEffects.push(effect);
+                    continue;
+                }
+
+                const poisonDamage = effect.damagePerRound ?? 3;
+                character.hitPoints = Math.max(0, character.hitPoints - poisonDamage);
+                this.playHitAnimation(character);
+                this.appendCombatLogEntry(`${character.name} suffers ${poisonDamage} poison damage.`, '#7bcf84');
+
+                if (character.hitPoints <= 0) {
+                    character.hitPoints = 0;
+                    this.markCharacterDead(character);
+                    character.activeEffects = remainingEffects;
+                    return;
+                }
+
+                effect.roundsRemaining = (effect.roundsRemaining ?? 0) - 1;
+                if (effect.roundsRemaining > 0) {
+                    remainingEffects.push(effect);
+                }
+                continue;
+            }
+
+            effect.roundsRemaining = (effect.roundsRemaining ?? 0) - 1;
+            if (effect.roundsRemaining > 0) {
+                remainingEffects.push(effect);
+            }
+        }
+
+        character.activeEffects = remainingEffects;
     }
 
     endCurrentTurn() {
@@ -2033,9 +2090,15 @@ class GridScene {
             : [];
         const damageSources = matchedWeaponItems.length > 0 ? matchedWeaponItems : weaponItems.filter((item) => item.appliesToAbilityId === 'melee');
 
-        return damageSources.reduce((totalDamage, item) => {
+        const weaponDamage = damageSources.reduce((totalDamage, item) => {
             return totalDamage + Math.max(0, item.modifiers?.attackDamage ?? 0);
         }, 0);
+
+        if (weaponDamage > 0 || ability?.damage === undefined) {
+            return weaponDamage;
+        }
+
+        return Math.max(weaponDamage, ability.damage ?? 0);
     }
 
     getCharacterMeleeDamageBonus(character) {
@@ -2527,6 +2590,7 @@ class GridScene {
                     `${attacker.name} attacks ${target.name} for ${damageDealt} ${damageKind} dmg with ${sourceLabel}.`,
                     attacker.accentColor
                 );
+                this.applyOnHitAttackEffects(attacker, target, resolvedAttackAbility, damageDealt);
             });
         } else {
             const damageDealt = this.applyPhysicalAttackDamage(target, baseDamage, attacker);
@@ -2535,6 +2599,7 @@ class GridScene {
                 `${attacker.name} attacks ${target.name} for ${damageDealt} ${damageKind} dmg with ${sourceLabel}.`,
                 attacker.accentColor
             );
+            this.applyOnHitAttackEffects(attacker, target, resolvedAttackAbility, damageDealt);
         }
 
         attacker.actionsRemaining -= attacker.attackCost;
@@ -2560,6 +2625,47 @@ class GridScene {
         }
 
         return physicalDamage;
+    }
+
+    applyOnHitAttackEffects(attacker, target, attackAbility, damageDealt = 0) {
+        if (!attacker || !target || target.isDead || damageDealt <= 0 || attackAbility?.id !== 'venomous-bite') {
+            return false;
+        }
+
+        if (Math.random() >= 0.5) {
+            return false;
+        }
+
+        this.applyPoisonEffect(target);
+        this.appendCombatLogEntry(`${target.name} is poisoned.`, '#7bcf84');
+        return true;
+    }
+
+    applyPoisonEffect(target, damagePerRound = 3, roundsRemaining = 3) {
+        if (!target || target.isDead) {
+            return false;
+        }
+
+        if (!Array.isArray(target.activeEffects)) {
+            target.activeEffects = [];
+        }
+
+        const existing = target.activeEffects.find((effect) => effect.type === 'poison');
+        if (existing) {
+            existing.damagePerRound = damagePerRound;
+            existing.roundsRemaining = roundsRemaining;
+            existing.poisonStartsNextTurn = true;
+            return true;
+        }
+
+        target.activeEffects.push({
+            type: 'poison',
+            damagePerRound,
+            roundsRemaining,
+            poisonStartsNextTurn: true
+        });
+
+        return true;
     }
 
     castMagicMissile(caster, target) {
@@ -2784,13 +2890,29 @@ class GridScene {
             this.faceCharacterToward(caster, target);
         }
 
-        const healAmount = this.getEffectiveAbilityHealAmount(caster, ability);
-        const restored = Math.min(healAmount, target.maxHitPoints - target.hitPoints);
-        target.hitPoints = Math.min(target.maxHitPoints, target.hitPoints + healAmount);
+        const curedPoison = ability.curePoison ? this.curePoisonEffect(target) : false;
+        const healAmount = ability.curePoison ? 0 : this.getEffectiveAbilityHealAmount(caster, ability);
+        const restored = ability.curePoison
+            ? 0
+            : Math.min(healAmount, target.maxHitPoints - target.hitPoints);
+        if (!ability.curePoison) {
+            target.hitPoints = Math.min(target.maxHitPoints, target.hitPoints + healAmount);
+        }
         caster.magicPoints -= ability.mpCost;
 
+        const resultParts = [];
+        if (restored > 0) {
+            resultParts.push(`${restored} healing`);
+        }
+        if (curedPoison) {
+            resultParts.push('cures poison');
+        }
+        if (resultParts.length === 0) {
+            resultParts.push('no effect');
+        }
+
         this.appendCombatLogEntry(
-            `${caster.name} casts ${ability.name} on ${target.name} for ${restored} healing.`,
+            `${caster.name} casts ${ability.name} on ${target.name} for ${resultParts.join(' and ')}.`,
             caster.accentColor
         );
 
@@ -2804,6 +2926,17 @@ class GridScene {
         }
 
         return true;
+    }
+
+    curePoisonEffect(target) {
+        if (!target || !Array.isArray(target.activeEffects) || target.activeEffects.length === 0) {
+            return false;
+        }
+
+        const remainingEffects = target.activeEffects.filter((effect) => effect?.type !== 'poison');
+        const cured = remainingEffects.length !== target.activeEffects.length;
+        target.activeEffects = remainingEffects;
+        return cured;
     }
 
     // --- Death / Game State ---

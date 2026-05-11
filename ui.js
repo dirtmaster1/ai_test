@@ -78,6 +78,10 @@ window.GridUI = {
             return 'Effect';
         }
 
+        if (ability.curePoison) {
+            return 'Effect: Cure Poison';
+        }
+
         if (ability.id === 'inflict-pain') {
             const damageBonus = ability.damageBonus ?? 1;
             return `Effect: +${damageBonus} DMG`;
@@ -164,6 +168,10 @@ window.GridUI = {
             return this.getEquipmentItemLabel(attackItem);
         }
 
+        if (ability?.id === 'venomous-bite') {
+            return ability.name || 'Venomous Bite';
+        }
+
         if (ability?.type === 'attack') {
             return 'Unarmed';
         }
@@ -185,6 +193,14 @@ window.GridUI = {
             return {
                 kind: 'buff',
                 text: `Battle Shout +${damageBonus} DMG (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
+            };
+        }
+
+        if (effect.type === 'poison') {
+            const damagePerRound = effect.damagePerRound ?? 3;
+            return {
+                kind: 'debuff',
+                text: `Poison -${damagePerRound} HP (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
             };
         }
 
