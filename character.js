@@ -1,45 +1,74 @@
 // Character Data - sprite definitions, character creation, and party initialization
 window.CharacterData = {
 
-    resolveAbilityReference(abilityRef) {
-        if (!abilityRef) {
+    resolveActionReference(actionRef, templateGetter) {
+        if (!actionRef) {
             return null;
         }
 
-        if (typeof abilityRef === 'string') {
-            return window.GameData?.getAbilityOrSpellTemplateById(abilityRef) || null;
+        if (typeof actionRef === 'string') {
+            return templateGetter ? templateGetter(actionRef) || null : null;
         }
 
-        if (typeof abilityRef === 'object') {
-            const baseTemplate = abilityRef.id
-                ? (window.GameData?.getAbilityOrSpellTemplateById(abilityRef.id) || null)
+        if (typeof actionRef === 'object') {
+            const baseTemplate = actionRef.id && templateGetter
+                ? templateGetter(actionRef.id) || null
                 : null;
             return {
                 ...(baseTemplate || {}),
-                ...abilityRef
+                ...actionRef
             };
         }
 
         return null;
     },
 
-    resolveAbilityConfigList(abilityRefs) {
-        const refs = Array.isArray(abilityRefs) && abilityRefs.length > 0 ? abilityRefs : ['melee'];
-        const resolved = refs
-            .map((abilityRef) => this.resolveAbilityReference(abilityRef))
+    resolveActionConfigList(actionRefs, resolver, fallbackRefs = []) {
+        const refs = Array.isArray(actionRefs)
+            ? actionRefs
+            : actionRefs
+                ? [actionRefs]
+                : fallbackRefs;
+
+        return refs
+            .map((actionRef) => resolver(actionRef))
             .filter(Boolean)
-            .map((ability) => ({ ...ability }));
+            .map((action) => ({ ...action }));
+    },
 
-        if (resolved.length > 0) {
-            return resolved;
+    resolveAbilityReference(abilityRef) {
+        return this.resolveActionReference(abilityRef, (id) => window.GameData?.getAbilityTemplateById(id));
+    },
+
+    resolveSpellReference(spellRef) {
+        return this.resolveActionReference(spellRef, (id) => window.GameData?.getSpellTemplateById(id));
+    },
+
+    resolveAbilityConfigList(abilityRefs) {
+        return this.resolveActionConfigList(abilityRefs, (abilityRef) => this.resolveAbilityReference(abilityRef), ['melee']);
+    },
+
+    resolveSpellConfigList(spellRefs) {
+        return this.resolveActionConfigList(spellRefs, (spellRef) => this.resolveSpellReference(spellRef));
+    },
+
+    getCharacterActionList(character) {
+        if (!character) {
+            return [];
         }
 
-        const defaultMelee = window.GameData?.getAbilityTemplateById('melee');
-        if (defaultMelee) {
-            return [defaultMelee];
+        return [
+            ...(character.abilities ?? []),
+            ...(character.spells ?? [])
+        ];
+    },
+
+    getCharacterActionById(character, actionId = character?.selectedAbilityId) {
+        if (!character || !actionId) {
+            return null;
         }
 
-        return [{ id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 }];
+        return this.getCharacterActionList(character).find((action) => action.id === actionId) || null;
     },
 
     resolveEquipmentReference(itemRef) {
@@ -100,18 +129,23 @@ window.CharacterData = {
         } = equipmentConfig;
 
         const baseAbilities = this.resolveAbilityConfigList(config.abilities);
-        const abilities = baseAbilities.map((ability) => {
-            if (ability.type === 'attack' && ability.range > 1 && ability.damage !== undefined && dexRangedDamageBonus > 0) {
-                return { ...ability, damage: ability.damage + dexRangedDamageBonus };
+        const baseSpells = this.resolveSpellConfigList(config.spells);
+
+        const enhanceActionList = (actions) => actions.map((action) => {
+            if (action.type === 'attack' && action.range > 1 && action.damage !== undefined && dexRangedDamageBonus > 0) {
+                return { ...action, damage: action.damage + dexRangedDamageBonus };
             }
-            if (ability.type === 'spell' && ability.damage !== undefined && intMagicDamageBonus > 0) {
-                return { ...ability, damage: ability.damage + intMagicDamageBonus };
+            if (action.type === 'spell' && action.damage !== undefined && intMagicDamageBonus > 0) {
+                return { ...action, damage: action.damage + intMagicDamageBonus };
             }
-            if (ability.type === 'heal' && ability.healAmount !== undefined && healingSpellBonus > 0) {
-                return { ...ability, healAmount: ability.healAmount + healingSpellBonus };
+            if (action.type === 'heal' && action.healAmount !== undefined && healingSpellBonus > 0) {
+                return { ...action, healAmount: action.healAmount + healingSpellBonus };
             }
-            return ability;
+            return action;
         });
+
+        const abilities = enhanceActionList(baseAbilities);
+        const spells = enhanceActionList(baseSpells);
 
         return {
             id: config.id,
@@ -161,7 +195,8 @@ window.CharacterData = {
                 ...otherEquipment
             },
             abilities,
-            selectedAbilityId: abilities[0].id,
+            spells,
+            selectedAbilityId: abilities[0]?.id ?? spells[0]?.id ?? null,
             activeEffects: [],
             pendingLevelUpNotices: []
         };
@@ -233,7 +268,9 @@ window.CharacterData = {
                 hands: 'staff'
             },
             abilities: [
-                'staff-strike',
+                'staff-strike'
+            ],
+            spells: [
                 'magic-missile'
             ]
         });
@@ -286,8 +323,10 @@ window.CharacterData = {
                 hands: 'mace'
             },
             abilities: [
-                'mace-strike',
-                'holy-heal'
+                'mace-strike'
+            ],
+            spells: [
+                'lesser-heal'
             ]
         });
 
@@ -390,7 +429,8 @@ window.CharacterData = {
             magicPoints: 10,
             maxMagicPoints: 10,
             armorClass: 0,
-            abilities: [
+            abilities: [],
+            spells: [
                 'mend-flesh',
                 'inflict-pain'
             ]

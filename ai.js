@@ -78,16 +78,21 @@ window.GridAI = {
             return null;
         }
 
-        return character.abilities.find((ability) => ability.id === abilityId) || null;
+        return window.CharacterData?.getCharacterActionById(character, abilityId) || null;
+    },
+
+    getCharacterActionList(character) {
+        return window.CharacterData?.getCharacterActionList(character) || [];
     },
 
     getBestOffensiveAbility(character) {
-        if (!character?.abilities?.length) {
+        const actions = this.getCharacterActionList(character);
+        if (actions.length === 0) {
             return null;
         }
 
-        const offensiveAbilities = character.abilities.filter((ability) =>
-            (ability.type === 'attack' || ability.type === 'spell') &&
+        const offensiveAbilities = actions.filter((ability) =>
+            (ability.type === 'attack' || (ability.type === 'spell' && ability.id !== 'inflict-pain')) &&
             (ability.type !== 'attack' || this.canCharacterUseAttackAbility(character, ability)) &&
             ((ability.mpCost ?? 0) === 0 || character.magicPoints >= (ability.mpCost ?? 0))
         );
@@ -111,7 +116,7 @@ window.GridAI = {
             return 'enemy';
         }
 
-        if (ability.type === 'heal' || ability.type === 'buff') {
+        if (ability.type === 'heal' || ability.type === 'buff' || ability.id === 'inflict-pain') {
             return 'ally';
         }
 
@@ -257,6 +262,23 @@ window.GridAI = {
                 canAct,
                 isValid: correctTeam && withinRange && hasLineOfSight && canAfford && canAct && amount > 0,
                 damageKind: 'heal'
+            };
+        }
+
+        if (resolvedAbility.id === 'inflict-pain') {
+            return {
+                ability: resolvedAbility,
+                amount: 0,
+                effectType: 'inflict-pain',
+                description: `Grant ${resolvedAbility.damageBonus ?? 1} DMG`,
+                distance,
+                withinRange,
+                hasLineOfSight,
+                correctTeam,
+                canAfford,
+                canAct,
+                isValid: correctTeam && withinRange && hasLineOfSight && canAfford && canAct,
+                damageKind: 'buff'
             };
         }
 
@@ -656,7 +678,7 @@ window.GridAI = {
     },
 
     moveGoblinArcher(character) {
-        const bowAbility = character.abilities.find((ability) => ability.id === 'bow-shot');
+        const bowAbility = this.getAbilityForCharacter(character, 'bow-shot');
         if (!bowAbility) {
             return false;
         }
@@ -723,8 +745,8 @@ window.GridAI = {
     },
 
     moveGoblinShaman(character) {
-        const healAbility = character.abilities.find((ability) => ability.id === 'heal');
-        const buffAbility = character.abilities.find((ability) => ability.id === 'inflict-pain');
+        const healAbility = this.getAbilityForCharacter(character, 'mend-flesh');
+        const buffAbility = this.getAbilityForCharacter(character, 'inflict-pain');
         if (!healAbility || !buffAbility) {
             character.actionsRemaining = 0;
             this.endCurrentTurn();
@@ -849,8 +871,9 @@ window.GridAI = {
             return;
         }
 
-        const canBuff = character.abilities.some((ability) => ability.id === 'inflict-pain');
-        const canBow = character.abilities.some((ability) => ability.id === 'bow-shot');
+        const actions = this.getCharacterActionList(character);
+        const canBuff = actions.some((ability) => ability.id === 'inflict-pain');
+        const canBow = actions.some((ability) => ability.id === 'bow-shot');
         const goblinRole = this.getGoblinRole(character);
 
         if (goblinRole === 'warrior' || goblinRole === 'brute') {

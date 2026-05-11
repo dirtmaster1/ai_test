@@ -758,7 +758,7 @@ window.GridGraphics = {
         }
 
         const range = ability.range ?? 0;
-        const includeOrigin = ability.type === 'heal' || ability.type === 'buff';
+        const includeOrigin = ability.type === 'heal' || ability.type === 'buff' || ability.id === 'inflict-pain';
         const cells = [];
 
         for (let gridY = character.gridY - range; gridY <= character.gridY + range; gridY++) {
@@ -797,7 +797,7 @@ window.GridGraphics = {
             return;
         }
 
-        const selectedAbility = activeCharacter.abilities.find((ability) => ability.id === activeCharacter.selectedAbilityId) || null;
+        const selectedAbility = window.CharacterData?.getCharacterActionById(activeCharacter, activeCharacter.selectedAbilityId) || null;
         const canAfford = !selectedAbility || selectedAbility.mpCost === 0 || activeCharacter.magicPoints >= selectedAbility.mpCost;
         const canAct = activeCharacter.actionsRemaining >= activeCharacter.attackCost;
         const canUseAbility = !selectedAbility || selectedAbility.type !== 'attack' || this.canCharacterUseAttackAbility(activeCharacter, selectedAbility);

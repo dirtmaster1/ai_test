@@ -168,9 +168,18 @@ class GridScene {
         return alivePlayers[0] || null;
     }
 
-    updatePartyVisionState() {
+    getVisionSourceCharacters() {
+        if (this.gameMode === 'combat') {
+            return this.getLivingCharacters(this.playerParty);
+        }
+
         const source = this.getVisionSourceCharacter();
-        if (!source) {
+        return source ? [source] : [];
+    }
+
+    updatePartyVisionState() {
+        const sources = this.getVisionSourceCharacters();
+        if (sources.length === 0) {
             if (this.visibleCells.size > 0) {
                 this.visibleCells = new Set();
                 this.visionNeedsRedraw = true;
@@ -182,30 +191,32 @@ class GridScene {
         const nextVisibleCells = new Set();
         let discoveredChanged = false;
 
-        for (let gridY = source.gridY - radius; gridY <= source.gridY + radius; gridY++) {
-            for (let gridX = source.gridX - radius; gridX <= source.gridX + radius; gridX++) {
-                if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
-                    continue;
-                }
+        sources.forEach((source) => {
+            for (let gridY = source.gridY - radius; gridY <= source.gridY + radius; gridY++) {
+                for (let gridX = source.gridX - radius; gridX <= source.gridX + radius; gridX++) {
+                    if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+                        continue;
+                    }
 
-                const distance = this.getAttackDistanceBetweenPositions(source.gridX, source.gridY, gridX, gridY);
-                if (distance > radius) {
-                    continue;
-                }
+                    const distance = this.getAttackDistanceBetweenPositions(source.gridX, source.gridY, gridX, gridY);
+                    if (distance > radius) {
+                        continue;
+                    }
 
-                if (!this.hasLineOfSightBetweenCells(source.gridX, source.gridY, gridX, gridY)) {
-                    continue;
-                }
+                    if (!this.hasLineOfSightBetweenCells(source.gridX, source.gridY, gridX, gridY)) {
+                        continue;
+                    }
 
-                const cellKey = this.getCellKey(gridX, gridY);
-                nextVisibleCells.add(cellKey);
+                    const cellKey = this.getCellKey(gridX, gridY);
+                    nextVisibleCells.add(cellKey);
 
-                if (!this.discoveredCells.has(cellKey)) {
-                    this.discoveredCells.add(cellKey);
-                    discoveredChanged = true;
+                    if (!this.discoveredCells.has(cellKey)) {
+                        this.discoveredCells.add(cellKey);
+                        discoveredChanged = true;
+                    }
                 }
             }
-        }
+        });
 
         let visibilityChanged = nextVisibleCells.size !== this.visibleCells.size;
         if (!visibilityChanged) {
@@ -903,6 +914,7 @@ class GridScene {
 
         partyOrder.forEach((character) => this.updateCharacterPosition(character));
         this.updateCamera();
+        this.triggerDungeonTrapAtCell(lead.gridX, lead.gridY);
         const leadCharacter = partyOrder[0];
         if (leadCharacter) {
             this.tryAutoOpenLootFromCharacterCell(leadCharacter);
@@ -1124,9 +1136,6 @@ class GridScene {
             activeCharacter.activeEffects = activeCharacter.activeEffects.filter((effect) => {
                 effect.roundsRemaining -= 1;
                 if (effect.roundsRemaining <= 0) {
-                    if (effect.type === 'battle-shout') {
-                        activeCharacter.armorClass -= effect.acBonus;
-                    }
                     return false;
                 }
                 return true;
@@ -1482,14 +1491,15 @@ class GridScene {
                 return;
             }
 
-            const selectedAbility = activeCharacter.abilities.find((a) => a.id === activeCharacter.selectedAbilityId);
+            const selectedAbility = window.CharacterData?.getCharacterActionById(activeCharacter, activeCharacter.selectedAbilityId);
             if (selectedAbility && selectedAbility.type === 'buff') {
                 return;
             }
 
             const isHeal = selectedAbility && selectedAbility.type === 'heal';
+            const isInflictPain = selectedAbility && selectedAbility.id === 'inflict-pain';
 
-            const targetPool = isHeal
+            const targetPool = isHeal || isInflictPain
                 ? this.getLivingCharacters(this.playerParty).filter((c) => c.mesh)
                 : this.getCombatEnemiesForPlayers().filter((c) => c.mesh);
 
@@ -1506,6 +1516,8 @@ class GridScene {
             if (targetCharacter) {
                 if (isHeal) {
                     this.castHeal(activeCharacter, targetCharacter);
+                } else if (isInflictPain) {
+                    this.castInflictPain(activeCharacter);
                 } else if (selectedAbility && selectedAbility.id === 'magic-missile') {
                     this.castMagicMissile(activeCharacter, targetCharacter);
                 } else {
@@ -1540,6 +1552,21 @@ class GridScene {
         return distance <= maxDistance;
     }
 
+    isCellOccupiedByLivingEnemy(cellKey) {
+        const cell = this.parseCellKey(cellKey);
+        if (!cell) {
+            return false;
+        }
+
+        return this.characters.some((character) =>
+            character.team === 'enemy' &&
+            !character.isDead &&
+            !character.removedFromScene &&
+            character.gridX === cell.gridX &&
+            character.gridY === cell.gridY
+        );
+    }
+
     parseCellKey(cellKey) {
         if (!cellKey || typeof cellKey !== 'string') {
             return null;
@@ -1558,6 +1585,10 @@ class GridScene {
     trySearchDungeonPropAtCell(cellKey, interactor = null, screenX = null, screenY = null) {
         const prop = this.dungeonPropsByCell.get(cellKey);
         if (!prop || !prop.searchable) {
+            return false;
+        }
+
+        if (this.isCellOccupiedByLivingEnemy(cellKey)) {
             return false;
         }
 
@@ -1623,6 +1654,43 @@ class GridScene {
         }
 
         return false;
+    }
+
+    isTriggeredDungeonTrap(prop) {
+        if (!prop || prop.hasBeenTriggered) {
+            return false;
+        }
+
+        const frameId = String(prop.frameId || '').toLowerCase();
+        const roomTheme = String(prop.roomTheme || '').toLowerCase();
+        return roomTheme === 'trap' || frameId.includes('trap');
+    }
+
+    triggerDungeonTrapAtCell(gridX, gridY) {
+        const cellKey = this.getCellKey(gridX, gridY);
+        const prop = this.dungeonPropsByCell.get(cellKey);
+
+        if (!this.isTriggeredDungeonTrap(prop)) {
+            return false;
+        }
+
+        prop.hasBeenTriggered = true;
+
+        const affectedParty = this.getLivingCharacters(this.playerParty);
+        affectedParty.forEach((character) => {
+            character.hitPoints = Math.max(0, character.hitPoints - 3);
+            this.playHitAnimation(character);
+            if (character.hitPoints <= 0) {
+                this.markCharacterDead(character);
+            }
+        });
+
+        this.appendCombatLogEntry(
+            `The party triggers ${prop.frameId} and takes 3 damage each.`,
+            '#d97d7d'
+        );
+
+        return true;
     }
 
     rollDungeonPropLoot(prop) {
@@ -2427,7 +2495,7 @@ class GridScene {
 
         const resolvedAttackAbility = attackAbility && attackAbility.type === 'attack'
             ? attackAbility
-            : attacker.abilities.find((ability) => ability.id === attacker.selectedAbilityId && ability.type === 'attack') || null;
+            : (window.CharacterData?.getCharacterActionList(attacker) || []).find((ability) => ability.id === attacker.selectedAbilityId && ability.type === 'attack') || null;
 
         if (!this.canCharacterUseAttackAbility(attacker, resolvedAttackAbility)) {
             return false;
@@ -2508,7 +2576,7 @@ class GridScene {
             return false;
         }
 
-        const ability = caster.abilities.find((a) => a.id === 'magic-missile');
+        const ability = window.CharacterData?.getCharacterActionById(caster, 'magic-missile');
         if (!ability) {
             return false;
         }
@@ -2574,12 +2642,13 @@ class GridScene {
             return false;
         }
 
-        const ability = caster.abilities.find((a) => a.id === 'battle-shout');
+        const ability = window.CharacterData?.getCharacterActionById(caster, 'battle-shout');
         if (!ability) {
             return false;
         }
 
-        const acBonus = ability.acBonus ?? 1;
+        const damageBonus = ability.damageBonus ?? 1;
+        const duration = ability.duration ?? 2;
         const range = ability.range ?? 3;
 
         const allies = this.getLivingCharacters(this.playerParty);
@@ -2590,10 +2659,10 @@ class GridScene {
             if (dx <= range && dy <= range) {
                 const existing = ally.activeEffects.find((e) => e.type === 'battle-shout');
                 if (existing) {
-                    existing.roundsRemaining = 2;
+                    existing.damageBonus = Math.max(existing.damageBonus ?? 0, damageBonus);
+                    existing.roundsRemaining = duration;
                 } else {
-                    ally.armorClass += acBonus;
-                    ally.activeEffects.push({ type: 'battle-shout', acBonus, roundsRemaining: 2 });
+                    ally.activeEffects.push({ type: 'battle-shout', damageBonus, roundsRemaining: duration });
                 }
                 affectedCount += 1;
                 const pos = this.getCharacterWorldPos(ally);
@@ -2602,7 +2671,7 @@ class GridScene {
         });
 
         this.appendCombatLogEntry(
-            `${caster.name} uses ${ability.name} and grants +${acBonus} AC to ${affectedCount} ${affectedCount === 1 ? 'ally' : 'allies'}.`,
+            `${caster.name} uses ${ability.name} and grants +${damageBonus} dmg to ${affectedCount} ${affectedCount === 1 ? 'ally' : 'allies'}.`,
             caster.accentColor
         );
 
@@ -2628,7 +2697,7 @@ class GridScene {
             return false;
         }
 
-        const ability = caster.abilities.find((a) => a.id === 'inflict-pain');
+        const ability = window.CharacterData?.getCharacterActionById(caster, 'inflict-pain');
         if (!ability) {
             return false;
         }
@@ -2639,6 +2708,7 @@ class GridScene {
         }
 
         const damageBonus = ability.damageBonus ?? 1;
+        const duration = ability.duration ?? 2;
         const range = ability.range ?? 2;
         let affectedCount = 0;
 
@@ -2653,9 +2723,9 @@ class GridScene {
                 const existing = ally.activeEffects.find((effect) => effect.type === 'inflict-pain');
                 if (existing) {
                     existing.damageBonus = Math.max(existing.damageBonus ?? 0, damageBonus);
-                    existing.roundsRemaining = Math.max(existing.roundsRemaining ?? 0, 2);
+                    existing.roundsRemaining = Math.max(existing.roundsRemaining ?? 0, duration);
                 } else {
-                    ally.activeEffects.push({ type: 'inflict-pain', damageBonus, roundsRemaining: 2 });
+                    ally.activeEffects.push({ type: 'inflict-pain', damageBonus, roundsRemaining: duration });
                 }
             }
         });
@@ -2688,7 +2758,9 @@ class GridScene {
             return false;
         }
 
-        const ability = caster.abilities.find((a) => a.id === 'heal');
+        const ability = window.CharacterData?.getCharacterActionById(caster, 'lesser-heal')
+            || window.CharacterData?.getCharacterActionById(caster, 'mend-flesh')
+            || window.CharacterData?.getCharacterActionById(caster, 'heal');
         if (!ability) {
             return false;
         }
@@ -3138,6 +3210,10 @@ class GridScene {
 
     openLootMenuForCell(cellKey, interactor = null) {
         if (!cellKey || !this.lootDropsByCell.has(cellKey)) {
+            return false;
+        }
+
+        if (this.isCellOccupiedByLivingEnemy(cellKey)) {
             return false;
         }
 

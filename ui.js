@@ -29,7 +29,7 @@ window.GridUI = {
                 </svg>`;
         }
 
-        if (ability.id === 'heal') {
+        if (ability.type === 'heal') {
             return `
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
                     <rect x="10" y="3" width="4" height="18" rx="1.5" fill="currentColor"/>
@@ -78,6 +78,11 @@ window.GridUI = {
             return 'Effect';
         }
 
+        if (ability.id === 'inflict-pain') {
+            const damageBonus = ability.damageBonus ?? 1;
+            return `Effect: +${damageBonus} DMG`;
+        }
+
         if (ability.type === 'heal') {
             const healAmount = this.getEffectiveAbilityHealAmount(character, ability);
             return `Healing: ${healAmount} HP`;
@@ -85,10 +90,6 @@ window.GridUI = {
 
         if (ability.type === 'buff') {
             if (ability.id === 'battle-shout') {
-                const acBonus = ability.acBonus ?? 1;
-                return `Effect: +${acBonus} AC`;
-            }
-            if (ability.id === 'inflict-pain') {
                 const damageBonus = ability.damageBonus ?? 1;
                 return `Effect: +${damageBonus} DMG`;
             }
@@ -125,16 +126,17 @@ window.GridUI = {
             return 'No description.';
         }
 
+        if (ability.id === 'inflict-pain') {
+            return 'Empower nearby allies with extra damage.';
+        }
+
         if (ability.type === 'heal') {
             return 'Restore hit points to an ally within range.';
         }
 
         if (ability.type === 'buff') {
             if (ability.id === 'battle-shout') {
-                return 'Bolster nearby allies with extra armor.';
-            }
-            if (ability.id === 'inflict-pain') {
-                return 'Empower nearby allies with extra damage.';
+                return 'Bolster nearby allies with extra damage.';
             }
             return 'Apply a supportive combat effect.';
         }
@@ -179,10 +181,10 @@ window.GridUI = {
         }
 
         if (effect.type === 'battle-shout') {
-            const acBonus = effect.acBonus ?? 0;
+            const damageBonus = effect.damageBonus ?? 0;
             return {
                 kind: 'buff',
-                text: `Battle Shout +${acBonus} AC (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
+                text: `Battle Shout +${damageBonus} DMG (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
             };
         }
 
@@ -715,14 +717,8 @@ window.GridUI = {
         title.style.color = '#e3d6bb';
         title.textContent = 'Party Status';
 
-        const subtitle = document.createElement('div');
-        subtitle.style.marginTop = '2px';
-        subtitle.style.fontSize = '9px';
-        subtitle.style.color = '#8d8169';
-        subtitle.textContent = 'Exploration Mode';
 
         heading.appendChild(title);
-        heading.appendChild(subtitle);
         section.appendChild(heading);
 
         const list = document.createElement('div');
@@ -734,7 +730,7 @@ window.GridUI = {
         list.style.scrollbarWidth = 'thin';
         section.appendChild(list);
 
-        this.turnOrderQueuePanel = { section, list, title, subtitle };
+        this.turnOrderQueuePanel = { section, list, title };
         return this.turnOrderQueuePanel;
     },
 
@@ -780,12 +776,6 @@ window.GridUI = {
             this.turnOrderQueuePanel.title.textContent = this.gameMode === 'combat'
                 ? 'Combat Mode'
                 : 'Exploration Mode';
-        }
-
-        if (this.turnOrderQueuePanel.subtitle) {
-            this.turnOrderQueuePanel.subtitle.textContent = this.gameMode === 'combat'
-                ? 'Initiative order with party and enemy status'
-                : 'Party movement and marching order';
         }
 
         this.characters.forEach((character) => {
@@ -963,16 +953,10 @@ window.GridUI = {
 
         const targetHpText = `${hoveredCharacter.hitPoints} / ${hoveredCharacter.maxHitPoints} HP`;
         const effectSummaryText = this.getCharacterEffectSummaryText(hoveredCharacter);
-        const equipmentSummaryText = typeof this.getCharacterEquipmentSummaryText === 'function'
-            ? this.getCharacterEquipmentSummaryText(hoveredCharacter)
-            : '';
-        const equipmentDetailText = equipmentSummaryText && equipmentSummaryText !== 'No equipment bonuses'
-            ? ` • ${equipmentSummaryText}`
-            : '';
         if (targetInfo.effectType === 'heal') {
             preview.effect.textContent = `Restore ${targetInfo.amount} HP`;
             preview.effect.style.color = '#9af0c0';
-            preview.detail.textContent = `${targetHpText} • ${Math.max(0, hoveredCharacter.maxHitPoints - hoveredCharacter.hitPoints)} missing HP${equipmentDetailText} • ${effectSummaryText}`;
+            preview.detail.textContent = `${targetHpText} • ${effectSummaryText}`;
             this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
@@ -980,14 +964,14 @@ window.GridUI = {
         if (targetInfo.effectType === 'damage') {
             preview.effect.textContent = `Deal ${targetInfo.amount} damage`;
             preview.effect.style.color = targetInfo.amount >= hoveredCharacter.hitPoints ? '#ffd470' : '#f0e8d2';
-            preview.detail.textContent = `${targetHpText} • AC ${hoveredCharacter.armorClass}${equipmentDetailText} • ${targetInfo.damageKind} • ${effectSummaryText}`;
+            preview.detail.textContent = `${targetHpText} • ${targetInfo.damageKind} • ${effectSummaryText}`;
             this.positionTargetPreviewPanel(hoveredCharacter);
             return;
         }
 
         preview.effect.textContent = targetInfo.description;
         preview.effect.style.color = '#f0e8d2';
-        preview.detail.textContent = `${targetHpText}${equipmentDetailText} • ${effectSummaryText}`;
+        preview.detail.textContent = `${targetHpText} • ${effectSummaryText}`;
         this.positionTargetPreviewPanel(hoveredCharacter);
     },
 
@@ -1928,7 +1912,7 @@ window.GridUI = {
             return;
         }
 
-        const nonSpellAbilities = (character.abilities ?? []).filter((ability) => ability.type !== 'spell' && ability.type !== 'heal');
+        const nonSpellAbilities = character.abilities ?? [];
 
         modal.content.innerHTML = '';
 
@@ -2007,7 +1991,7 @@ window.GridUI = {
             return;
         }
 
-        const spells = (character.abilities ?? []).filter((ability) => ability.type === 'spell' || ability.type === 'heal');
+        const spells = character.spells ?? [];
 
         modal.content.innerHTML = '';
 
@@ -2388,7 +2372,9 @@ window.GridUI = {
             abilityBar.appendChild(abilityButtons);
             turnControls.appendChild(abilityBar);
 
-            character.abilities.forEach((ability) => {
+            const combatActions = window.CharacterData?.getCharacterActionList(character) || [];
+
+            combatActions.forEach((ability) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.style.position = 'relative';
@@ -2648,9 +2634,18 @@ window.GridUI = {
         this.setCombatCardActiveState(hud.card, hud.portraitFrame, character.accentColor, isActiveTurn, character.isDead);
 
         hud.abilityButtonMap.forEach((btn, abilityId) => {
-            const ability = character.abilities.find((a) => a.id === abilityId);
+            const ability = window.CharacterData?.getCharacterActionById(character, abilityId);
             const isSelected = character.selectedAbilityId === abilityId;
             const isMyTurn = isActiveTurn && !character.isDead;
+            if (!ability) {
+                btn.disabled = true;
+                btn.style.background = 'rgba(0,0,0,0.30)';
+                btn.style.borderColor = 'rgba(255,255,255,0.08)';
+                btn.style.color = '#5a5248';
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'default';
+                return;
+            }
             const canAfford = ability.mpCost === 0 || character.magicPoints >= ability.mpCost;
             const canUseAttack = ability.type !== 'attack' || this.canCharacterUseAttackAbility(character, ability);
             const canUseAbility = canAfford && canUseAttack;

@@ -146,15 +146,15 @@ window.GameData = {
         'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
         'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6 },
         'goblin-bow-shot': { id: 'goblin-bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4 },
-        'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, acBonus: 1 },
-        'inflict-pain': { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1 }
+        'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2 }
     },
 
     SPELL_DEFS: {
         'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4 },
-        heal: { id: 'heal', name: 'Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
-        'holy-heal': { id: 'holy-heal', name: 'Holy Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
-        'mend-flesh': { id: 'mend-flesh', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 }
+        'lesser-heal': { id: 'lesser-heal', name: 'Lesser Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
+        'mend-flesh': { id: 'mend-flesh', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
+        'inflict-pain': { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1, duration: 2 },
+        'blessing': { id: 'blessing', name: 'Blessing', type: 'buff', range: 3, mpCost: 0, acBonus: 1 },
     },
 
     normalizeRefKey(ref) {
