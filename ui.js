@@ -197,7 +197,7 @@ window.GridUI = {
         }
 
         if (effect.type === 'poison') {
-            const damagePerRound = effect.damagePerRound ?? 3;
+            const damagePerRound = Math.max(0, Math.floor(Number(effect.damagePerRound ?? 3) || 0));
             return {
                 kind: 'debuff',
                 text: `Poison -${damagePerRound} HP (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
@@ -207,8 +207,16 @@ window.GridUI = {
         if (effect.type === 'inflict-pain') {
             const damageBonus = effect.damageBonus ?? 0;
             return {
-                kind: 'debuff',
+                kind: 'buff',
                 text: `Inflict Pain +${damageBonus} DMG (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
+            };
+        }
+
+        if (effect.type === 'blessing') {
+            const armorBonus = effect.acBonus ?? effect.modifiers?.armorClass ?? 0;
+            return {
+                kind: 'buff',
+                text: `Blessing +${armorBonus} AC (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
             };
         }
 
@@ -246,6 +254,104 @@ window.GridUI = {
         const buffText = buffs.length > 0 ? buffs.join(', ') : 'none';
         const debuffText = debuffs.length > 0 ? debuffs.join(', ') : 'none';
         return `Buffs: ${buffText} | Debuffs: ${debuffText}`;
+    },
+
+    renderCharacterEffectsSection(character, accentColor) {
+        const effects = Array.isArray(character?.activeEffects) ? character.activeEffects : [];
+        const section = document.createElement('section');
+        section.style.marginTop = '16px';
+
+        const heading = document.createElement('div');
+        heading.style.marginBottom = '10px';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '11px';
+        title.style.letterSpacing = '0.08em';
+        title.style.textTransform = 'uppercase';
+        title.style.color = accentColor || '#e3d6bb';
+        title.textContent = 'Active Effects';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '3px';
+        subtitle.style.fontSize = '11px';
+        subtitle.style.color = '#8f856f';
+        subtitle.textContent = 'Current buffs and debuffs from spells, abilities, and status effects.';
+
+        heading.appendChild(title);
+        heading.appendChild(subtitle);
+        section.appendChild(heading);
+
+        const categorizedEffects = effects.reduce((groups, effect) => {
+            const display = this.getActiveEffectDisplayData(effect);
+            if (!display) {
+                return groups;
+            }
+
+            if (display.kind === 'debuff') {
+                groups.debuffs.push(display.text);
+            } else {
+                groups.buffs.push(display.text);
+            }
+
+            return groups;
+        }, { buffs: [], debuffs: [] });
+
+        const columns = document.createElement('div');
+        columns.style.display = 'grid';
+        columns.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+        columns.style.gap = '10px';
+
+        const createEffectCard = (label, items, borderColor, textColor, emptyText) => {
+            const card = document.createElement('div');
+            card.style.padding = '12px';
+            card.style.border = `1px solid ${borderColor}`;
+            card.style.borderRadius = '8px';
+            card.style.background = 'rgba(255,255,255,0.03)';
+
+            const cardLabel = document.createElement('div');
+            cardLabel.style.fontSize = '10px';
+            cardLabel.style.letterSpacing = '0.08em';
+            cardLabel.style.textTransform = 'uppercase';
+            cardLabel.style.color = '#8f856f';
+            cardLabel.textContent = label;
+            card.appendChild(cardLabel);
+
+            if (items.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.marginTop = '8px';
+                empty.style.fontSize = '12px';
+                empty.style.color = '#8f856f';
+                empty.textContent = emptyText;
+                card.appendChild(empty);
+                return card;
+            }
+
+            const list = document.createElement('div');
+            list.style.display = 'grid';
+            list.style.gap = '6px';
+            list.style.marginTop = '8px';
+
+            items.forEach((itemText) => {
+                const item = document.createElement('div');
+                item.style.padding = '8px 10px';
+                item.style.borderRadius = '6px';
+                item.style.background = 'rgba(0,0,0,0.18)';
+                item.style.color = textColor;
+                item.style.fontSize = '12px';
+                item.style.lineHeight = '1.4';
+                item.textContent = itemText;
+                list.appendChild(item);
+            });
+
+            card.appendChild(list);
+            return card;
+        };
+
+        columns.appendChild(createEffectCard('Buffs', categorizedEffects.buffs, 'rgba(115, 191, 132, 0.25)', '#bfe7c6', 'No active buffs'));
+        columns.appendChild(createEffectCard('Debuffs', categorizedEffects.debuffs, 'rgba(217, 125, 125, 0.25)', '#f0b3b3', 'No active debuffs'));
+
+        section.appendChild(columns);
+        return section;
     },
 
     closeCombatLogWindow() {
@@ -650,6 +756,9 @@ window.GridUI = {
         const hudRoot = document.getElementById('battleHud') || this.container;
         hudRoot.style.pointerEvents = 'none';
         hudRoot.innerHTML = '';
+        if (this.sharedActionBar?.root?.parentElement) {
+            this.sharedActionBar.root.remove();
+        }
         this.activeInventoryCharacter = null;
         this.activeInventoryTab = 'info';
         this.turnQueueState = '';
@@ -660,6 +769,8 @@ window.GridUI = {
 
         const turnQueueSection = this.createTurnOrderQueuePanel();
         hudRoot.appendChild(turnQueueSection.section);
+        const sharedActionBar = this.createSharedActionBar();
+    this.container.appendChild(sharedActionBar.root);
 
         this.characters.forEach((character) => {
             const card = this.createCombatCard(character);
@@ -711,6 +822,251 @@ window.GridUI = {
         this.setupLootMenuWindow();
         this.setupCombatLogWindow();
         this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+    },
+
+    createSharedActionBar() {
+        const root = document.createElement('section');
+        root.style.position = 'fixed';
+        root.style.left = '50%';
+        root.style.bottom = '12px';
+        root.style.transform = 'translateX(-50%)';
+        root.style.width = 'fit-content';
+        root.style.minWidth = '220px';
+        root.style.maxWidth = 'calc(100vw - 24px)';
+        root.style.padding = '10px 12px';
+        root.style.border = '1px solid rgba(232, 224, 202, 0.18)';
+        root.style.borderRadius = '12px';
+        root.style.background = 'linear-gradient(180deg, rgba(21, 20, 18, 0.96), rgba(10, 10, 10, 0.98))';
+        root.style.boxShadow = '0 10px 28px rgba(0, 0, 0, 0.40)';
+        root.style.pointerEvents = 'auto';
+        root.style.zIndex = '15';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'baseline';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '12px';
+        title.style.fontWeight = '700';
+        title.style.letterSpacing = '0.08em';
+        title.style.textTransform = 'uppercase';
+        title.style.color = '#e3d6bb';
+        title.textContent = 'Actions';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.fontSize = '11px';
+        subtitle.style.color = '#8f856f';
+        subtitle.textContent = 'No active character';
+
+        header.appendChild(title);
+        header.appendChild(subtitle);
+        root.appendChild(header);
+
+        const controls = document.createElement('div');
+        controls.style.display = 'flex';
+        controls.style.alignItems = 'center';
+        controls.style.gap = '8px';
+        controls.style.marginTop = '10px';
+        controls.style.flexWrap = 'wrap';
+        root.appendChild(controls);
+
+        const abilityButtons = document.createElement('div');
+        abilityButtons.style.display = 'flex';
+        abilityButtons.style.alignItems = 'center';
+        abilityButtons.style.gap = '6px';
+        abilityButtons.style.flexWrap = 'wrap';
+        abilityButtons.style.flex = '1 1 auto';
+        controls.appendChild(abilityButtons);
+
+        const endTurnButton = document.createElement('button');
+        endTurnButton.type = 'button';
+        endTurnButton.textContent = 'End Turn';
+        endTurnButton.style.padding = '7px 10px';
+        endTurnButton.style.border = '1px solid rgba(255,255,255,0.18)';
+        endTurnButton.style.borderRadius = '7px';
+        endTurnButton.style.background = 'rgba(0,0,0,0.45)';
+        endTurnButton.style.color = '#bcb29c';
+        endTurnButton.style.fontSize = '11px';
+        endTurnButton.style.lineHeight = '1';
+        endTurnButton.style.fontFamily = 'inherit';
+        endTurnButton.style.cursor = 'pointer';
+        endTurnButton.style.pointerEvents = 'auto';
+        endTurnButton.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
+        endTurnButton.addEventListener('click', () => {
+            const character = this.getActionBarCharacter();
+            if (!character || character.team !== 'player' || character.isDead || this.gameMode !== 'combat') {
+                return;
+            }
+
+            this.endCurrentTurn();
+        });
+        controls.appendChild(endTurnButton);
+
+        this.sharedActionBar = {
+            root,
+            title,
+            subtitle,
+            abilityButtons,
+            abilityButtonMap: new Map(),
+            endTurnButton,
+            stateKey: ''
+        };
+
+        return this.sharedActionBar;
+    },
+
+    createSharedActionBarAbilityButton(character, ability) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.position = 'relative';
+        btn.style.display = 'inline-flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.width = '32px';
+        btn.style.height = '32px';
+        btn.style.flex = '0 0 32px';
+        btn.style.padding = '0';
+        btn.style.fontSize = '12px';
+        btn.style.lineHeight = '1';
+        btn.style.border = '1px solid rgba(255,255,255,0.18)';
+        btn.style.borderRadius = '7px';
+        btn.style.cursor = 'pointer';
+        btn.style.background = 'rgba(0,0,0,0.45)';
+        btn.style.color = '#bcb29c';
+        btn.style.fontFamily = 'inherit';
+        btn.style.textAlign = 'center';
+        btn.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
+        btn.style.pointerEvents = 'auto';
+        const tooltipText = this.getAbilityTooltipText(character, ability);
+        btn.title = tooltipText;
+        btn.setAttribute('aria-label', tooltipText.replace(/\n/g, ', '));
+        btn.innerHTML = this.getAbilityIconSvg(ability);
+
+        if (ability.mpCost > 0) {
+            const costBadge = document.createElement('span');
+            costBadge.style.position = 'absolute';
+            costBadge.style.right = '3px';
+            costBadge.style.bottom = '2px';
+            costBadge.style.fontSize = '9px';
+            costBadge.style.lineHeight = '1';
+            costBadge.style.color = '#d7e4ff';
+            costBadge.style.textShadow = '0 0 4px rgba(0, 0, 0, 0.8)';
+            costBadge.textContent = String(ability.mpCost);
+            btn.appendChild(costBadge);
+        }
+
+        btn.addEventListener('click', () => {
+            const activeCharacter = this.getActionBarCharacter();
+            if (!activeCharacter || activeCharacter.id !== character.id || activeCharacter.isDead || activeCharacter.team !== 'player') {
+                return;
+            }
+
+            const wasSelected = activeCharacter.selectedAbilityId === ability.id;
+            activeCharacter.selectedAbilityId = ability.id;
+
+            if (ability.type === 'buff' && wasSelected) {
+                this.useAbilityOnTarget(activeCharacter, ability);
+            }
+        });
+
+        return btn;
+    },
+
+    updateSharedActionBar(character) {
+        const actionBar = this.sharedActionBar;
+        if (!actionBar) {
+            return;
+        }
+
+        if (!character || character.team !== 'player' || character.isDead) {
+            actionBar.root.style.display = 'block';
+            actionBar.title.textContent = 'Actions';
+            actionBar.title.style.color = '#e3d6bb';
+            actionBar.subtitle.textContent = 'No active character';
+            actionBar.stateKey = 'idle';
+            actionBar.abilityButtons.innerHTML = '';
+            actionBar.abilityButtonMap.clear();
+            actionBar.endTurnButton.style.display = 'none';
+            return;
+        }
+
+        actionBar.root.style.display = 'block';
+        actionBar.title.textContent = character.name;
+        actionBar.title.style.color = character.accentColor || '#e3d6bb';
+        actionBar.subtitle.textContent = this.gameMode === 'combat'
+            ? `${character.actionsRemaining}/${character.maxActionsPerTurn} actions`
+            : 'Choose an ability or spell';
+
+        const actions = window.CharacterData?.getCharacterActionList(character) || [];
+        const nextState = `${this.gameMode}|${character.id}|${actions.map((ability) => ability.id).join('|')}`;
+        if (actionBar.stateKey !== nextState) {
+            actionBar.stateKey = nextState;
+            actionBar.abilityButtons.innerHTML = '';
+            actionBar.abilityButtonMap.clear();
+
+            actions.forEach((ability) => {
+                const button = this.createSharedActionBarAbilityButton(character, ability);
+                actionBar.abilityButtonMap.set(ability.id, button);
+                actionBar.abilityButtons.appendChild(button);
+            });
+        }
+
+        actionBar.abilityButtonMap.forEach((btn, abilityId) => {
+            const ability = window.CharacterData?.getCharacterActionById(character, abilityId);
+            const isSelected = character.selectedAbilityId === abilityId;
+            const canAfford = ability && (ability.mpCost === 0 || character.magicPoints >= ability.mpCost);
+            const canUseAttack = ability && (ability.type !== 'attack' || this.canCharacterUseAttackAbility(character, ability));
+            const canUseAbility = Boolean(ability && canAfford && canUseAttack);
+
+            btn.disabled = !canUseAbility;
+            if (isSelected && canUseAbility) {
+                btn.style.background = this.hexToRgba(character.accentColor, 0.35);
+                btn.style.borderColor = character.accentColor;
+                btn.style.color = '#f0e8d2';
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            } else if (!canUseAbility) {
+                btn.style.background = 'rgba(0,0,0,0.30)';
+                btn.style.borderColor = 'rgba(255,255,255,0.08)';
+                btn.style.color = '#5a5248';
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'default';
+            } else {
+                btn.style.background = 'rgba(0,0,0,0.45)';
+                btn.style.borderColor = 'rgba(255,255,255,0.18)';
+                btn.style.color = '#bcb29c';
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            }
+        });
+
+        const canEndTurn = this.gameMode === 'combat';
+        actionBar.endTurnButton.style.display = canEndTurn ? 'inline-flex' : 'none';
+        actionBar.endTurnButton.disabled = !canEndTurn;
+        if (canEndTurn) {
+            actionBar.endTurnButton.style.background = this.hexToRgba(character.accentColor, 0.24);
+            actionBar.endTurnButton.style.borderColor = this.hexToRgba(character.accentColor, 0.78);
+            actionBar.endTurnButton.style.color = '#f0e8d2';
+            actionBar.endTurnButton.style.opacity = '1';
+            actionBar.endTurnButton.style.cursor = 'pointer';
+        } else {
+            actionBar.endTurnButton.style.background = 'rgba(0,0,0,0.30)';
+            actionBar.endTurnButton.style.borderColor = 'rgba(255,255,255,0.08)';
+            actionBar.endTurnButton.style.color = '#5a5248';
+            actionBar.endTurnButton.style.opacity = '0.5';
+            actionBar.endTurnButton.style.cursor = 'default';
+        }
+
+        const actionCount = actionBar.abilityButtonMap.size;
+        const endTurnWidth = canEndTurn ? 108 : 0;
+        const paddingWidth = 56;
+        const gapWidth = actionCount > 0 ? Math.max(0, (actionCount - 1) * 6) : 0;
+        const buttonWidth = actionCount * 32;
+        const controlGap = canEndTurn && actionCount > 0 ? 8 : 0;
+        const targetWidth = Math.max(220, buttonWidth + gapWidth + endTurnWidth + controlGap + paddingWidth);
+        actionBar.root.style.width = `min(${targetWidth}px, calc(100vw - 24px))`;
     },
 
     createTurnOrderQueuePanel() {
@@ -793,6 +1149,8 @@ window.GridUI = {
                 ? 'Combat Mode'
                 : 'Exploration Mode';
         }
+
+        this.updateSharedActionBar(this.getActionBarCharacter());
 
         this.characters.forEach((character) => {
             const hud = this.characterHud.get(character.id);
@@ -1782,6 +2140,7 @@ window.GridUI = {
         });
 
         modal.content.appendChild(infoGrid);
+        modal.content.appendChild(this.renderCharacterEffectsSection(character, character.accentColor));
     },
 
     renderCharacterEquipmentTab(character) {
@@ -2357,122 +2716,15 @@ window.GridUI = {
         mpTrack.appendChild(mpFill);
         card.appendChild(mpTrack);
 
-        const turnControls = document.createElement('div');
-        turnControls.style.display = 'none';
-        turnControls.style.marginTop = '4px';
-        card.appendChild(turnControls);
-
         const actionText = document.createElement('div');
-        actionText.style.marginBottom = '5px';
+        actionText.style.marginTop = '5px';
         actionText.style.fontSize = '10px';
         actionText.style.color = '#bcb29c';
-        turnControls.appendChild(actionText);
+        card.appendChild(actionText);
 
         const abilityButtonMap = new Map();
-        let endTurnButton = null;
-        if (character.team === 'player') {
-            const abilityBar = document.createElement('div');
-            abilityBar.style.display = 'flex';
-            abilityBar.style.alignItems = 'center';
-            abilityBar.style.gap = '4px';
-            abilityBar.style.flexWrap = 'wrap';
-            abilityBar.style.justifyContent = 'space-between';
-            abilityBar.style.pointerEvents = 'auto';
-
-            const abilityButtons = document.createElement('div');
-            abilityButtons.style.display = 'flex';
-            abilityButtons.style.alignItems = 'center';
-            abilityButtons.style.gap = '4px';
-            abilityButtons.style.flexWrap = 'wrap';
-            abilityButtons.style.flex = '1 1 auto';
-            abilityBar.appendChild(abilityButtons);
-            turnControls.appendChild(abilityBar);
-
-            const combatActions = window.CharacterData?.getCharacterActionList(character) || [];
-
-            combatActions.forEach((ability) => {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.style.position = 'relative';
-                btn.style.display = 'inline-flex';
-                btn.style.alignItems = 'center';
-                btn.style.justifyContent = 'center';
-                btn.style.width = '24px';
-                btn.style.height = '24px';
-                btn.style.flex = '0 0 24px';
-                btn.style.padding = '0';
-                btn.style.fontSize = '10px';
-                btn.style.lineHeight = '1';
-                btn.style.border = '1px solid rgba(255,255,255,0.18)';
-                btn.style.borderRadius = '4px';
-                btn.style.cursor = 'pointer';
-                btn.style.background = 'rgba(0,0,0,0.45)';
-                btn.style.color = '#bcb29c';
-                btn.style.fontFamily = 'inherit';
-                btn.style.textAlign = 'center';
-                btn.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
-                btn.style.pointerEvents = 'auto';
-                const tooltipText = this.getAbilityTooltipText(character, ability);
-                btn.title = tooltipText;
-                btn.setAttribute('aria-label', tooltipText.replace(/\n/g, ', '));
-                btn.innerHTML = this.getAbilityIconSvg(ability);
-
-                if (ability.mpCost > 0) {
-                    const costBadge = document.createElement('span');
-                    costBadge.style.position = 'absolute';
-                    costBadge.style.right = '2px';
-                    costBadge.style.bottom = '1px';
-                    costBadge.style.fontSize = '8px';
-                    costBadge.style.lineHeight = '1';
-                    costBadge.style.color = '#d7e4ff';
-                    costBadge.style.textShadow = '0 0 4px rgba(0, 0, 0, 0.8)';
-                    costBadge.textContent = String(ability.mpCost);
-                    btn.appendChild(costBadge);
-                }
-
-                btn.addEventListener('click', () => {
-                    if (this.getActiveTurnCharacter() !== character || character.isDead) {
-                        return;
-                    }
-                    const wasSelected = character.selectedAbilityId === ability.id;
-                    character.selectedAbilityId = ability.id;
-
-                    if (ability.type === 'buff' && wasSelected) {
-                        if (ability.id === 'battle-shout') {
-                            this.castBattleShout(character);
-                        }
-                    }
-                });
-                abilityButtonMap.set(ability.id, btn);
-                abilityButtons.appendChild(btn);
-            });
-
-            endTurnButton = document.createElement('button');
-            endTurnButton.type = 'button';
-            endTurnButton.textContent = 'End Turn';
-            endTurnButton.style.marginLeft = '6px';
-            endTurnButton.style.padding = '4px 6px';
-            endTurnButton.style.flex = '0 0 auto';
-            endTurnButton.style.border = '1px solid rgba(255,255,255,0.18)';
-            endTurnButton.style.borderRadius = '4px';
-            endTurnButton.style.background = 'rgba(0,0,0,0.45)';
-            endTurnButton.style.color = '#bcb29c';
-            endTurnButton.style.fontSize = '9px';
-            endTurnButton.style.lineHeight = '1';
-            endTurnButton.style.fontFamily = 'inherit';
-            endTurnButton.style.cursor = 'pointer';
-            endTurnButton.style.pointerEvents = 'auto';
-            endTurnButton.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
-            endTurnButton.setAttribute('aria-label', `End ${character.name}'s turn`);
-            endTurnButton.addEventListener('click', () => {
-                if (this.getActiveTurnCharacter() !== character || character.isDead) {
-                    return;
-                }
-
-                this.endCurrentTurn();
-            });
-            abilityBar.appendChild(endTurnButton);
-        }
+        const endTurnButton = null;
+        const turnControls = null;
 
         const focusCardCharacter = () => {
             this.focusCameraOnCharacter(character, 1800);

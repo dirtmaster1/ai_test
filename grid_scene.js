@@ -263,6 +263,7 @@ class GridScene {
         ]);
 
         this.spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells);
+        this.spawnTemporaryTestSpidersNearParty(occupiedCells);
         this.characters = [...this.playerParty, ...this.aiParty];
 
         // Keep legacy references pointing at any matching enemy so existing UI text/helpers still work.
@@ -458,6 +459,68 @@ class GridScene {
         }
     }
 
+    spawnTemporaryTestSpidersNearParty(occupiedCells) {
+        if (!this.giantSpider) {
+            return;
+        }
+
+        const partyAnchor = this.explorationLeadCharacter
+            || this.wizard
+            || this.playerParty?.[0]
+            || null;
+        if (!partyAnchor) {
+            return;
+        }
+
+        const groupId = 'group-test-spiders';
+        const members = [];
+        const spawnOrder = [
+            { x: partyAnchor.gridX + 1, y: partyAnchor.gridY },
+            { x: partyAnchor.gridX, y: partyAnchor.gridY + 1 },
+            { x: partyAnchor.gridX - 1, y: partyAnchor.gridY },
+            { x: partyAnchor.gridX, y: partyAnchor.gridY - 1 },
+            { x: partyAnchor.gridX + 1, y: partyAnchor.gridY + 1 },
+            { x: partyAnchor.gridX - 1, y: partyAnchor.gridY + 1 },
+            { x: partyAnchor.gridX + 1, y: partyAnchor.gridY - 1 },
+            { x: partyAnchor.gridX - 1, y: partyAnchor.gridY - 1 }
+        ];
+
+        for (let index = 0; index < 2; index++) {
+            const spider = this.createEnemyFromArchetype(this.giantSpider, 998, index);
+            const spawn = spawnOrder.find((candidate) => {
+                if (candidate.x < 0 || candidate.x >= this.gridWidth || candidate.y < 0 || candidate.y >= this.gridHeight) {
+                    return false;
+                }
+
+                if (this.dungeonMap[candidate.y][candidate.x] !== this.TILE_FLOOR) {
+                    return false;
+                }
+
+                return !occupiedCells.has(this.getCellKey(candidate.x, candidate.y));
+            }) || this.findNearbyFloorTile(partyAnchor.gridX, partyAnchor.gridY, 1, 2, occupiedCells);
+
+            if (!spawn) {
+                break;
+            }
+
+            spider.gridX = spawn.x;
+            spider.gridY = spawn.y;
+            spider.encounterGroupId = groupId;
+            occupiedCells.add(this.getCellKey(spawn.x, spawn.y));
+            members.push(spider);
+            this.aiParty.push(spider);
+        }
+
+        if (members.length > 0) {
+            this.enemyGroups.push({
+                id: groupId,
+                members,
+                isAggro: false,
+                isCleared: false
+            });
+        }
+    }
+
     createEnemyFromArchetype(archetype, groupIndex, memberIndex) {
         const idSuffix = `g${groupIndex + 1}m${memberIndex + 1}`;
         const clonedAbilities = (archetype.abilities || []).map((ability) => ({ ...ability }));
@@ -617,9 +680,12 @@ class GridScene {
             this.explorationCellsMovedSinceRegen -= this.explorationRegenStride;
 
             const alivePlayers = this.getLivingCharacters(this.playerParty);
+            alivePlayers.forEach((character) => this.advanceRoundBasedEffects(character));
+
+            const survivingPlayers = this.getLivingCharacters(this.playerParty);
             let hadRecovery = false;
 
-            alivePlayers.forEach((character) => {
+            survivingPlayers.forEach((character) => {
                 if (character.hitPoints < character.maxHitPoints) {
                     character.hitPoints = Math.min(character.maxHitPoints, character.hitPoints + 1);
                     hadRecovery = true;
@@ -1164,6 +1230,14 @@ class GridScene {
             return;
         }
 
+        this.advanceRoundBasedEffects(character);
+    }
+
+    advanceRoundBasedEffects(character) {
+        if (!character || !Array.isArray(character.activeEffects) || character.activeEffects.length === 0) {
+            return;
+        }
+
         const remainingEffects = [];
         for (const effect of character.activeEffects) {
             if (!effect) {
@@ -1177,7 +1251,7 @@ class GridScene {
                     continue;
                 }
 
-                const poisonDamage = effect.damagePerRound ?? 3;
+                const poisonDamage = Math.max(0, Math.floor(Number(effect.damagePerRound ?? 3) || 0));
                 character.hitPoints = Math.max(0, character.hitPoints - poisonDamage);
                 this.playHitAnimation(character);
                 this.appendCombatLogEntry(`${character.name} suffers ${poisonDamage} poison damage.`, '#7bcf84');
@@ -1491,7 +1565,8 @@ class GridScene {
                 return;
             }
 
-            if (this.isGameOver || !this.isPlayerTurn()) {
+            const actionCharacter = this.getActionBarCharacter();
+            if (this.isGameOver || !actionCharacter || actionCharacter.team !== 'player' || actionCharacter.isDead) {
                 return;
             }
 
@@ -1528,6 +1603,17 @@ class GridScene {
                 }
             }
 
+            const selectedAbility = window.CharacterData?.getCharacterActionById(actionCharacter, actionCharacter.selectedAbilityId) || null;
+            const clickedAbilityTarget = selectedAbility
+                ? this.findClickedAbilityTarget(event, actionCharacter, selectedAbility)
+                : null;
+            if (clickedAbilityTarget) {
+                const didUseAbility = this.useAbilityOnTarget(actionCharacter, selectedAbility, clickedAbilityTarget);
+                if (didUseAbility) {
+                    return;
+                }
+            }
+
             if (this.gameMode === 'exploration') {
                 const worldW = this.gridWidth * this.cellSize;
                 const worldH = this.gridHeight * this.cellSize;
@@ -1547,8 +1633,6 @@ class GridScene {
             if (!activeCharacter || activeCharacter.isDead) {
                 return;
             }
-
-            const selectedAbility = window.CharacterData?.getCharacterActionById(activeCharacter, activeCharacter.selectedAbilityId);
             if (selectedAbility && selectedAbility.type === 'buff') {
                 return;
             }
@@ -1571,17 +1655,108 @@ class GridScene {
 
             const targetCharacter = targetPool.find((c) => c.mesh === intersects[0].object);
             if (targetCharacter) {
-                if (isHeal) {
-                    this.castHeal(activeCharacter, targetCharacter);
-                } else if (isInflictPain) {
-                    this.castInflictPain(activeCharacter);
-                } else if (selectedAbility && selectedAbility.id === 'magic-missile') {
-                    this.castMagicMissile(activeCharacter, targetCharacter);
-                } else {
-                    this.characterAttack(activeCharacter, targetCharacter, selectedAbility);
-                }
+                this.useAbilityOnTarget(activeCharacter, selectedAbility, targetCharacter);
             }
         });
+    }
+
+    getActionBarCharacter() {
+        const activeCharacter = this.getActiveTurnCharacter();
+        return activeCharacter && !activeCharacter.isDead ? activeCharacter : null;
+    }
+
+    getAbilityTargetPool(character, ability) {
+        if (!character || !ability) {
+            return [];
+        }
+
+        if (ability.type === 'heal' || ability.type === 'buff' || ability.id === 'inflict-pain') {
+            return this.characters.filter((candidate) =>
+                candidate.team === character.team &&
+                !candidate.isDead &&
+                !candidate.removedFromScene &&
+                candidate.mesh
+            );
+        }
+
+        if (this.gameMode === 'combat' && character.team === 'player') {
+            return this.getCombatEnemiesForPlayers().filter((candidate) => candidate.mesh);
+        }
+
+        return this.characters.filter((candidate) =>
+            candidate.team !== character.team &&
+            !candidate.isDead &&
+            !candidate.removedFromScene &&
+            candidate.mesh
+        );
+    }
+
+    findClickedAbilityTarget(event, character, ability) {
+        if (!character || !ability) {
+            return null;
+        }
+
+        if (ability.type === 'buff') {
+            return null;
+        }
+
+        const targetPool = this.getAbilityTargetPool(character, ability);
+        if (targetPool.length === 0) {
+            return null;
+        }
+
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+
+        const intersects = this.raycaster.intersectObjects(targetPool.map((candidate) => candidate.mesh));
+        if (intersects.length === 0) {
+            return null;
+        }
+
+        return targetPool.find((candidate) => candidate.mesh === intersects[0].object) || null;
+    }
+
+    useAbilityOnTarget(character, ability, targetCharacter = null) {
+        if (!character || character.isDead || !ability) {
+            return false;
+        }
+
+        let didUseAbility = false;
+        if (ability.type === 'heal') {
+            didUseAbility = Boolean(targetCharacter) && this.castHeal(character, targetCharacter, ability);
+        } else if (ability.id === 'inflict-pain') {
+            didUseAbility = this.castInflictPain(character);
+        } else if (ability.id === 'magic-missile') {
+            didUseAbility = Boolean(targetCharacter) && this.castMagicMissile(character, targetCharacter);
+        } else if (ability.type === 'buff') {
+            if (ability.id === 'battle-shout') {
+                didUseAbility = this.castBattleShout(character);
+            }
+        } else {
+            didUseAbility = Boolean(targetCharacter) && this.characterAttack(character, targetCharacter, ability);
+        }
+
+        if (didUseAbility && this.gameMode === 'exploration' && targetCharacter && targetCharacter.team !== character.team) {
+            this.beginCombatWithEnemyCharacter(targetCharacter);
+        }
+
+        return didUseAbility;
+    }
+
+    beginCombatWithEnemyCharacter(character) {
+        if (!character || character.team === 'player') {
+            return false;
+        }
+
+        const enemyGroup = this.getEnemyGroupById(character.encounterGroupId);
+        if (!enemyGroup) {
+            return false;
+        }
+
+        this.beginCombatWithGroup(enemyGroup);
+        return true;
     }
 
     getLootInteractionCharacter() {
@@ -2543,16 +2718,22 @@ class GridScene {
     // --- Combat ---
 
     characterAttack(attacker, target, attackAbility = null) {
-        if (this.gameMode !== 'combat') {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
             return false;
         }
+
+        const isExploration = this.gameMode === 'exploration';
 
         if (!attacker || !target || attacker.isDead || target.isDead || attacker.team === target.team) {
             return false;
         }
 
         const activeCharacter = this.getActiveTurnCharacter();
-        if (activeCharacter !== attacker || attacker.actionsRemaining < attacker.attackCost) {
+        if (!isExploration && (activeCharacter !== attacker || attacker.actionsRemaining < attacker.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && attacker.team !== 'player') {
             return false;
         }
 
@@ -2602,9 +2783,11 @@ class GridScene {
             this.applyOnHitAttackEffects(attacker, target, resolvedAttackAbility, damageDealt);
         }
 
-        attacker.actionsRemaining -= attacker.attackCost;
-        if (attacker.actionsRemaining <= 0) {
-            this.endCurrentTurn();
+        if (!isExploration) {
+            attacker.actionsRemaining -= attacker.attackCost;
+            if (attacker.actionsRemaining <= 0) {
+                this.endCurrentTurn();
+            }
         }
 
         return true;
@@ -2650,18 +2833,21 @@ class GridScene {
             target.activeEffects = [];
         }
 
+        const normalizedDamagePerRound = Math.max(0, Math.floor(Number(damagePerRound) || 0));
+        const normalizedRoundsRemaining = Math.max(1, Math.floor(Number(roundsRemaining) || 0));
+
         const existing = target.activeEffects.find((effect) => effect.type === 'poison');
         if (existing) {
-            existing.damagePerRound = damagePerRound;
-            existing.roundsRemaining = roundsRemaining;
+            existing.damagePerRound = normalizedDamagePerRound;
+            existing.roundsRemaining = normalizedRoundsRemaining;
             existing.poisonStartsNextTurn = true;
             return true;
         }
 
         target.activeEffects.push({
             type: 'poison',
-            damagePerRound,
-            roundsRemaining,
+            damagePerRound: normalizedDamagePerRound,
+            roundsRemaining: normalizedRoundsRemaining,
             poisonStartsNextTurn: true
         });
 
@@ -2669,16 +2855,22 @@ class GridScene {
     }
 
     castMagicMissile(caster, target) {
-        if (this.gameMode !== 'combat') {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
             return false;
         }
+
+        const isExploration = this.gameMode === 'exploration';
 
         if (!caster || !target || caster.isDead || target.isDead || caster.team === target.team) {
             return false;
         }
 
         const activeCharacter = this.getActiveTurnCharacter();
-        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && caster.team !== 'player') {
             return false;
         }
 
@@ -2726,25 +2918,33 @@ class GridScene {
             }
         });
 
-        caster.actionsRemaining -= caster.attackCost;
-        if (caster.actionsRemaining <= 0) {
-            this.endCurrentTurn();
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (caster.actionsRemaining <= 0) {
+                this.endCurrentTurn();
+            }
         }
 
         return true;
     }
 
     castBattleShout(caster) {
-        if (this.gameMode !== 'combat') {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
             return false;
         }
+
+        const isExploration = this.gameMode === 'exploration';
 
         if (!caster || caster.isDead) {
             return false;
         }
 
         const activeCharacter = this.getActiveTurnCharacter();
-        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && caster.team !== 'player') {
             return false;
         }
 
@@ -2781,25 +2981,33 @@ class GridScene {
             caster.accentColor
         );
 
-        caster.actionsRemaining -= caster.attackCost;
-        if (caster.actionsRemaining <= 0) {
-            this.endCurrentTurn();
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (caster.actionsRemaining <= 0) {
+                this.endCurrentTurn();
+            }
         }
 
         return true;
     }
 
     castInflictPain(caster) {
-        if (this.gameMode !== 'combat') {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
             return false;
         }
+
+        const isExploration = this.gameMode === 'exploration';
 
         if (!caster || caster.isDead) {
             return false;
         }
 
         const activeCharacter = this.getActiveTurnCharacter();
-        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && caster.team !== 'player') {
             return false;
         }
 
@@ -2842,32 +3050,48 @@ class GridScene {
         );
 
         caster.magicPoints -= mpCost;
-        caster.actionsRemaining -= caster.attackCost;
-        if (caster.actionsRemaining <= 0) {
-            this.endCurrentTurn();
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (caster.actionsRemaining <= 0) {
+                this.endCurrentTurn();
+            }
         }
 
         return true;
     }
 
-    castHeal(caster, target) {
-        if (this.gameMode !== 'combat') {
+    castHeal(caster, target, healAbility = null) {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
             return false;
         }
+
+        const isExploration = this.gameMode === 'exploration';
 
         if (!caster || !target || caster.isDead || target.isDead || caster.team !== target.team) {
             return false;
         }
 
         const activeCharacter = this.getActiveTurnCharacter();
-        if (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost) {
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
             return false;
         }
 
-        const ability = window.CharacterData?.getCharacterActionById(caster, 'lesser-heal')
-            || window.CharacterData?.getCharacterActionById(caster, 'mend-flesh')
-            || window.CharacterData?.getCharacterActionById(caster, 'heal');
+        if (isExploration && caster.team !== 'player') {
+            return false;
+        }
+
+        const ability = healAbility?.type === 'heal'
+            ? healAbility
+            : window.CharacterData?.getCharacterActionById(caster, caster.selectedAbilityId)
+                || window.CharacterData?.getCharacterActionById(caster, 'lesser-heal')
+                || window.CharacterData?.getCharacterActionById(caster, 'mend-flesh')
+                || window.CharacterData?.getCharacterActionById(caster, 'heal')
+                || window.CharacterData?.getCharacterActionById(caster, 'cure-poison');
         if (!ability) {
+            return false;
+        }
+
+        if (ability.type !== 'heal') {
             return false;
         }
 
@@ -2920,9 +3144,11 @@ class GridScene {
         const targetPos = this.getCharacterWorldPos(target);
         this.spawnHealEffect(casterPos, targetPos);
 
-        caster.actionsRemaining -= caster.attackCost;
-        if (caster.actionsRemaining <= 0) {
-            this.endCurrentTurn();
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (caster.actionsRemaining <= 0) {
+                this.endCurrentTurn();
+            }
         }
 
         return true;
