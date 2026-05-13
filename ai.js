@@ -514,13 +514,16 @@ window.GridAI = {
             return false;
         }
 
+        if (!this.consumeCharacterMovement(character, 1)) {
+            return false;
+        }
+
         character.gridX = destination.x;
         character.gridY = destination.y;
         this.updateCharacterFacing(character, destination.facing);
         this.updateCharacterPosition(character);
-        character.actionsRemaining -= 1;
 
-        if (character.actionsRemaining <= 0) {
+        if (this.shouldEndCurrentTurn(character)) {
             this.endCurrentTurn();
         }
 
@@ -528,7 +531,7 @@ window.GridAI = {
     },
 
     getBestRangedPlan(character, ability) {
-        const maxMoveSteps = Math.max(0, character.actionsRemaining - character.attackCost);
+        const maxMoveSteps = this.getCharacterMovementBudget(character, character.attackCost);
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
         const preferredRange = Math.max(3, ability.range ?? 1);
         let bestPlan = null;
@@ -566,7 +569,7 @@ window.GridAI = {
     },
 
     getBestMeleePlan(character, ability) {
-        const maxMoveSteps = Math.max(0, character.actionsRemaining - character.attackCost);
+        const maxMoveSteps = this.getCharacterMovementBudget(character, character.attackCost);
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
         let bestPlan = null;
 
@@ -710,7 +713,7 @@ window.GridAI = {
 
         const idealMinimumDistance = Math.max(3, (bowAbility.range ?? 4) - 3);
         if (distanceToFallbackTarget <= idealMinimumDistance) {
-            const retreatMoves = this.getReachablePositions(character, Math.max(0, character.actionsRemaining - character.attackCost));
+            const retreatMoves = this.getReachablePositions(character, this.getCharacterMovementBudget(character, character.attackCost));
             let bestRetreat = null;
             let bestRetreatScore = Number.NEGATIVE_INFINITY;
 
@@ -749,17 +752,12 @@ window.GridAI = {
         const buffAbility = this.getAbilityForCharacter(character, 'inflict-pain');
         if (!healAbility || !buffAbility) {
             character.actionsRemaining = 0;
+            character.bonusMovementRemaining = 0;
             this.endCurrentTurn();
             return true;
         }
 
-        if (character.actionsRemaining < character.attackCost) {
-            character.actionsRemaining = 0;
-            this.endCurrentTurn();
-            return true;
-        }
-
-        if (character.magicPoints >= healAbility.mpCost) {
+        if (character.actionsRemaining >= character.attackCost && character.magicPoints >= healAbility.mpCost) {
             const healTarget = this.getNearbyHurtGoblin(character, healAbility.range ?? 3);
             if (healTarget) {
                 character.selectedAbilityId = healAbility.id;
@@ -767,15 +765,16 @@ window.GridAI = {
             }
         }
 
-        if (character.magicPoints < (buffAbility.mpCost ?? 0)) {
+        if (character.actionsRemaining >= character.attackCost && character.magicPoints < (buffAbility.mpCost ?? 0)) {
             character.actionsRemaining = 0;
+            character.bonusMovementRemaining = 0;
             this.endCurrentTurn();
             return true;
         }
 
         character.selectedAbilityId = buffAbility.id;
 
-        const maxMoveSteps = Math.max(0, character.actionsRemaining - character.attackCost);
+        const maxMoveSteps = this.getCharacterMovementBudget(character, character.attackCost);
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
         const buffRange = buffAbility.range ?? 2;
 
@@ -866,7 +865,7 @@ window.GridAI = {
             !character ||
             character.isDead ||
             this.getActiveTurnCharacter() !== character ||
-            character.actionsRemaining <= 0
+            this.getCharacterMovementBudget(character) <= 0
         ) {
             return;
         }

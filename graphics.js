@@ -743,11 +743,11 @@ window.GridGraphics = {
     },
 
     getReachableMovementCells(character) {
-        if (!character || character.isDead || character.actionsRemaining <= 0) {
+        if (!character || character.isDead) {
             return [];
         }
 
-        return this.getReachablePositions(character, character.actionsRemaining)
+        return this.getReachablePositions(character, this.getCharacterMovementBudget(character))
             .filter((position) => position.steps > 0)
             .map((position) => ({ gridX: position.x, gridY: position.y }));
     },
@@ -856,6 +856,7 @@ window.GridGraphics = {
             activeCharacter.gridX,
             activeCharacter.gridY,
             activeCharacter.actionsRemaining,
+            this.getCharacterBonusMovementRemaining(activeCharacter),
             this.turnTransitionFrames,
             this.getActiveTurnCharacter() === activeCharacter
         ].join('|');
@@ -867,7 +868,7 @@ window.GridGraphics = {
         this.clearReachableMovementHighlights();
         this.reachableHighlightState = nextState;
 
-        if (activeCharacter.actionsRemaining <= 0 || this.getActiveTurnCharacter() !== activeCharacter) {
+        if (this.getCharacterMovementBudget(activeCharacter) <= 0 || this.getActiveTurnCharacter() !== activeCharacter) {
             return;
         }
 

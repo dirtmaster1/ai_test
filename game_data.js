@@ -60,6 +60,16 @@ window.GameData = {
             modifiers: { attackDamage: 6 },
             accentColor: '#d9b08c'
         },
+        'chieftain-club': {
+            id: 'chieftain-club',
+            name: 'Chieftain Club',
+            slot: 'hands',
+            handType: '2H',
+            type: 'weapon',
+            appliesToAbilityId: 'melee',
+            modifiers: { attackDamage: 8, strength: 2 },
+            accentColor: '#f0d28b'
+        },
         robe: {
             id: 'robe',
             name: 'Robe',
@@ -130,6 +140,7 @@ window.GameData = {
         'small shield': 'small-shield',
         'long bow': 'long-bow',
         'short bow': 'short-bow',
+        'chieftain club': 'chieftain-club',
         'chain mail': 'chain-mail',
         'leather armor': 'leather-armor',
         'steel helm': 'steel-helm',

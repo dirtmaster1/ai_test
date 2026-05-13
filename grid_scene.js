@@ -409,12 +409,31 @@ class GridScene {
         const baseGroupCount = minGroups + Math.floor(Math.random() * (maxGroupsByRooms - minGroups + 1));
         const maxSafeGroups = Math.max(2, (shuffledRooms.length || 1) * 3);
         const groupCount = Math.min(baseGroupCount * 2, maxSafeGroups);
+        const specialRoom = shuffledRooms[0] || rooms[rooms.length - 1] || rooms[0] || null;
+        const regularRooms = shuffledRooms.length > 1 ? shuffledRooms.slice(1) : shuffledRooms;
+        const regularGroupCount = specialRoom ? Math.max(0, groupCount - 1) : groupCount;
 
         this.enemyGroups = [];
         this.aiParty = [];
 
-        for (let groupIndex = 0; groupIndex < groupCount; groupIndex++) {
-            const room = shuffledRooms[groupIndex % Math.max(1, shuffledRooms.length)] || rooms[rooms.length - 1];
+        if (specialRoom && this.goblinChieftain) {
+            this.spawnFixedEnemyGroup(specialRoom, occupiedCells, 'group-goblin-chieftain', [
+                this.goblinChieftain,
+                this.goblinBrute,
+                this.goblin,
+                this.goblin,
+                this.goblinShaman,
+                this.goblinArcher,
+                this.goblinArcher,
+                spiderArchetype,
+                spiderArchetype,
+                spiderArchetype
+            ], 900);
+        }
+
+        for (let groupIndex = 0; groupIndex < regularGroupCount; groupIndex++) {
+            const roomPool = regularRooms.length > 0 ? regularRooms : shuffledRooms;
+            const room = roomPool[groupIndex % Math.max(1, roomPool.length)] || rooms[rooms.length - 1];
             const anchor = {
                 x: Math.floor(room.x + room.w / 2),
                 y: Math.floor(room.y + room.h / 2)
@@ -457,6 +476,37 @@ class GridScene {
                 isCleared: false
             });
         }
+    }
+
+    spawnFixedEnemyGroup(room, occupiedCells, groupId, archetypes, groupIndexSeed = 0) {
+        if (!room || !Array.isArray(archetypes) || archetypes.length === 0) {
+            return false;
+        }
+
+        const anchor = {
+            x: Math.floor(room.x + room.w / 2),
+            y: Math.floor(room.y + room.h / 2)
+        };
+        const fallback = this.findNearbyFloorTile(anchor.x, anchor.y, 0, 4, occupiedCells) || anchor;
+        const members = [];
+
+        archetypes.forEach((archetype, memberIndex) => {
+            const enemy = this.createEnemyFromArchetype(archetype, groupIndexSeed, memberIndex);
+            this.placeCharacterNear(enemy, fallback.x, fallback.y, 0, 4, occupiedCells, fallback);
+            occupiedCells.add(this.getCellKey(enemy.gridX, enemy.gridY));
+            enemy.encounterGroupId = groupId;
+            members.push(enemy);
+            this.aiParty.push(enemy);
+        });
+
+        this.enemyGroups.push({
+            id: groupId,
+            members,
+            isAggro: false,
+            isCleared: false
+        });
+
+        return true;
     }
 
     spawnTemporaryTestSpidersNearParty(occupiedCells) {
@@ -524,6 +574,7 @@ class GridScene {
     createEnemyFromArchetype(archetype, groupIndex, memberIndex) {
         const idSuffix = `g${groupIndex + 1}m${memberIndex + 1}`;
         const clonedAbilities = (archetype.abilities || []).map((ability) => ({ ...ability }));
+        const clonedSpells = (archetype.spells || []).map((spell) => ({ ...spell }));
         const clonedEquipment = Object.entries(archetype.equipment || {}).reduce((equipment, [slotKey, item]) => {
             const clonedItem = this.ensureEquipmentItemInstance(item, slotKey);
             if (clonedItem) {
@@ -553,8 +604,10 @@ class GridScene {
             armorClass: archetype.armorClass,
             attackCost: archetype.attackCost,
             maxActionsPerTurn: archetype.maxActionsPerTurn,
+            bonusMovement: archetype.bonusMovement,
             experiencePoints: archetype.experiencePoints,
             abilities: clonedAbilities,
+            spells: clonedSpells,
             equipment: clonedEquipment
         });
     }
@@ -665,7 +718,7 @@ class GridScene {
         this.enemyMoveTimer = 0;
         this.explorationCellsMovedSinceRegen = 0;
         alivePlayers.forEach((character) => {
-            character.actionsRemaining = character.maxActionsPerTurn;
+            this.resetCharacterTurnResources(character);
         });
     }
 
@@ -1127,6 +1180,64 @@ class GridScene {
         return source.filter((character) => !character.isDead && character.race === 'goblin');
     }
 
+    getCharacterBonusMovement(character) {
+        return Math.max(0, Math.floor(character?.bonusMovement ?? 0));
+    }
+
+    getCharacterBonusMovementRemaining(character) {
+        return Math.max(
+            0,
+            Math.floor(character?.bonusMovementRemaining ?? this.getCharacterBonusMovement(character))
+        );
+    }
+
+    resetCharacterTurnResources(character) {
+        if (!character) {
+            return;
+        }
+
+        character.actionsRemaining = Math.max(0, Math.floor(character.maxActionsPerTurn ?? 0));
+        character.bonusMovementRemaining = this.getCharacterBonusMovement(character);
+    }
+
+    getCharacterMovementBudget(character, reservedActionCost = 0) {
+        if (!character || character.isDead) {
+            return 0;
+        }
+
+        const actionsRemaining = Math.max(0, Math.floor(character.actionsRemaining ?? 0));
+        const normalizedReserve = Math.max(0, Math.floor(reservedActionCost ?? 0));
+        const reservedActions = actionsRemaining >= normalizedReserve ? normalizedReserve : 0;
+
+        return this.getCharacterBonusMovementRemaining(character) + Math.max(0, actionsRemaining - reservedActions);
+    }
+
+    consumeCharacterMovement(character, steps = 1) {
+        if (!character) {
+            return false;
+        }
+
+        const normalizedSteps = Math.max(0, Math.floor(steps ?? 0));
+        if (normalizedSteps <= 0 || this.getCharacterMovementBudget(character) < normalizedSteps) {
+            return false;
+        }
+
+        for (let step = 0; step < normalizedSteps; step += 1) {
+            const bonusRemaining = this.getCharacterBonusMovementRemaining(character);
+            if (bonusRemaining > 0) {
+                character.bonusMovementRemaining = bonusRemaining - 1;
+            } else {
+                character.actionsRemaining = Math.max(0, (character.actionsRemaining ?? 0) - 1);
+            }
+        }
+
+        return true;
+    }
+
+    shouldEndCurrentTurn(character) {
+        return this.getCharacterMovementBudget(character) <= 0;
+    }
+
     createInitiativeTurnOrder(characters) {
         const seededCharacters = characters.map((character, index) => ({
             character,
@@ -1219,7 +1330,7 @@ class GridScene {
             return;
         }
 
-        activeCharacter.actionsRemaining = activeCharacter.maxActionsPerTurn;
+        this.resetCharacterTurnResources(activeCharacter);
         this.turnTransitionFrames = this.turnTransitionDelay;
         this.enemyMoveTimer = 0;
         this.updateCamera();
@@ -1612,6 +1723,13 @@ class GridScene {
                 if (didUseAbility) {
                     return;
                 }
+
+                if (this.isAbilityTargetOutOfRange(actionCharacter, selectedAbility, clickedAbilityTarget)) {
+                    this.showOutOfRangeToastAtCell(clickedAbilityTarget.gridX, clickedAbilityTarget.gridY);
+                    return;
+                }
+
+                return;
             }
 
             if (this.gameMode === 'exploration') {
@@ -1655,7 +1773,10 @@ class GridScene {
 
             const targetCharacter = targetPool.find((c) => c.mesh === intersects[0].object);
             if (targetCharacter) {
-                this.useAbilityOnTarget(activeCharacter, selectedAbility, targetCharacter);
+                const didUseAbility = this.useAbilityOnTarget(activeCharacter, selectedAbility, targetCharacter);
+                if (!didUseAbility && this.isAbilityTargetOutOfRange(activeCharacter, selectedAbility, targetCharacter)) {
+                    this.showOutOfRangeToastAtCell(targetCharacter.gridX, targetCharacter.gridY);
+                }
             }
         });
     }
@@ -1814,6 +1935,36 @@ class GridScene {
         return { gridX, gridY };
     }
 
+    getScreenPositionForCell(gridX, gridY) {
+        if (!this.renderer?.domElement || !this.camera) {
+            return null;
+        }
+
+        const worldPos = this.getWorldPositionForCell(gridX, gridY);
+        const vec = new THREE.Vector3(worldPos.x, worldPos.y, 0);
+        vec.project(this.camera);
+
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        return {
+            screenX: (vec.x * 0.5 + 0.5) * rect.width + rect.left,
+            screenY: (-vec.y * 0.5 + 0.5) * rect.height + rect.top
+        };
+    }
+
+    showOutOfRangeToastAtCell(gridX, gridY, message = 'Skill is out of range') {
+        const anchor = this.getScreenPositionForCell(gridX, gridY);
+        this.showToast(message, '#d6cbb8', 2200, anchor?.screenX ?? null, anchor?.screenY ?? null);
+    }
+
+    isAbilityTargetOutOfRange(character, ability, targetCharacter) {
+        if (!character || !ability || !targetCharacter) {
+            return false;
+        }
+
+        const targetInfo = this.getExpectedActionEffect(character, targetCharacter, ability);
+        return Boolean(targetInfo) && !targetInfo.withinRange;
+    }
+
     trySearchDungeonPropAtCell(cellKey, interactor = null, screenX = null, screenY = null) {
         const prop = this.dungeonPropsByCell.get(cellKey);
         if (!prop || !prop.searchable) {
@@ -1826,6 +1977,10 @@ class GridScene {
 
         const actingCharacter = interactor || this.getLootInteractionCharacter();
         if (!this.canCharacterInteractWithCell(actingCharacter, prop.gridX, prop.gridY, 1)) {
+            const anchor = screenX !== null && screenY !== null
+                ? { screenX, screenY }
+                : this.getScreenPositionForCell(prop.gridX, prop.gridY);
+            this.showToast('Skill is out of range', '#d6cbb8', 2200, anchor?.screenX ?? null, anchor?.screenY ?? null);
             return false;
         }
 
@@ -1869,13 +2024,8 @@ class GridScene {
 
         const cellKey = this.getCellKey(character.gridX, character.gridY);
         if (this.dungeonPropsByCell.has(cellKey)) {
-            const worldPos = this.getWorldPositionForCell(character.gridX, character.gridY);
-            const vec = new THREE.Vector3(worldPos.x, worldPos.y, 0);
-            vec.project(this.camera);
-            const rect = this.renderer.domElement.getBoundingClientRect();
-            const screenX = (vec.x * 0.5 + 0.5) * rect.width + rect.left;
-            const screenY = (-vec.y * 0.5 + 0.5) * rect.height + rect.top;
-            const searched = this.trySearchDungeonPropAtCell(cellKey, character, screenX, screenY);
+            const anchor = this.getScreenPositionForCell(character.gridX, character.gridY);
+            const searched = this.trySearchDungeonPropAtCell(cellKey, character, anchor?.screenX ?? null, anchor?.screenY ?? null);
             if (searched) {
                 return true;
             }
@@ -2110,6 +2260,9 @@ class GridScene {
         }
         if ((item.modifiers.healingBonus ?? 0) > 0) {
             parts.push(`+${item.modifiers.healingBonus} healing`);
+        }
+        if ((item.modifiers.strength ?? 0) > 0) {
+            parts.push(`+${item.modifiers.strength} STR`);
         }
 
         return parts.join(', ');
@@ -2386,7 +2539,8 @@ class GridScene {
             attackDamage: 0,
             attackRange: 0,
             spellDamage: 0,
-            healingBonus: 0
+            healingBonus: 0,
+            strength: 0
         };
 
         ['head', 'body', 'rightHand', 'leftHand', 'legs', 'feet', 'neck'].forEach((slotKey) => {
@@ -2409,13 +2563,16 @@ class GridScene {
             if (slotKey === 'head') {
                 summary.healingBonus += item.modifiers?.healingBonus ?? 0;
             }
+
+            summary.strength += item.modifiers?.strength ?? 0;
         });
 
         return summary;
     }
 
     getCharacterStrengthDamageBonus(character) {
-        return Math.floor(Math.max(0, (character?.strength ?? 10) - 10) / 2);
+        const totalStrength = (character?.strength ?? 10) + this.getCharacterEquipmentBonusSummary(character).strength;
+        return Math.floor(Math.max(0, totalStrength - 10) / 2);
     }
 
     getCharacterDexterityDamageBonus(character) {
@@ -2461,6 +2618,9 @@ class GridScene {
         }
         if (summary.healingBonus > 0) {
             parts.push(`Heal +${summary.healingBonus}`);
+        }
+        if (summary.strength > 0) {
+            parts.push(`STR +${summary.strength}`);
         }
 
         return parts.length > 0 ? parts.join(' • ') : 'No equipment bonuses';
@@ -2660,7 +2820,7 @@ class GridScene {
             !this.isPlayerTurn() ||
             !activeCharacter ||
             activeCharacter.isDead ||
-            activeCharacter.actionsRemaining <= 0
+            this.getCharacterMovementBudget(activeCharacter) <= 0
         ) {
             return;
         }
@@ -2689,6 +2849,10 @@ class GridScene {
             return;
         }
 
+        if (!this.consumeCharacterMovement(activeCharacter, 1)) {
+            return;
+        }
+
         const dx = newX - activeCharacter.gridX;
         const dy = newY - activeCharacter.gridY;
 
@@ -2708,9 +2872,8 @@ class GridScene {
         this.updateCharacterPosition(activeCharacter);
         this.updateCamera();
         this.tryAutoOpenLootFromCharacterCell(activeCharacter);
-        activeCharacter.actionsRemaining -= 1;
 
-        if (activeCharacter.actionsRemaining <= 0) {
+        if (this.shouldEndCurrentTurn(activeCharacter)) {
             this.endCurrentTurn();
         }
     }
@@ -2785,7 +2948,7 @@ class GridScene {
 
         if (!isExploration) {
             attacker.actionsRemaining -= attacker.attackCost;
-            if (attacker.actionsRemaining <= 0) {
+            if (this.shouldEndCurrentTurn(attacker)) {
                 this.endCurrentTurn();
             }
         }
@@ -2920,7 +3083,7 @@ class GridScene {
 
         if (!isExploration) {
             caster.actionsRemaining -= caster.attackCost;
-            if (caster.actionsRemaining <= 0) {
+            if (this.shouldEndCurrentTurn(caster)) {
                 this.endCurrentTurn();
             }
         }
@@ -2983,7 +3146,7 @@ class GridScene {
 
         if (!isExploration) {
             caster.actionsRemaining -= caster.attackCost;
-            if (caster.actionsRemaining <= 0) {
+            if (this.shouldEndCurrentTurn(caster)) {
                 this.endCurrentTurn();
             }
         }
@@ -3052,7 +3215,7 @@ class GridScene {
         caster.magicPoints -= mpCost;
         if (!isExploration) {
             caster.actionsRemaining -= caster.attackCost;
-            if (caster.actionsRemaining <= 0) {
+            if (this.shouldEndCurrentTurn(caster)) {
                 this.endCurrentTurn();
             }
         }
@@ -3146,7 +3309,7 @@ class GridScene {
 
         if (!isExploration) {
             caster.actionsRemaining -= caster.attackCost;
-            if (caster.actionsRemaining <= 0) {
+            if (this.shouldEndCurrentTurn(caster)) {
                 this.endCurrentTurn();
             }
         }
@@ -3286,7 +3449,19 @@ class GridScene {
     }
 
     rollEnemyLoot(defeatedEnemy) {
-        if (!defeatedEnemy || defeatedEnemy.race !== 'goblin') {
+        if (!defeatedEnemy) {
+            return null;
+        }
+
+        if (defeatedEnemy.id?.includes('goblin-chieftain')) {
+            const chieftainClubTemplate = window.GameData?.getItemTemplateById('chieftain-club');
+            return {
+                gold: 100,
+                equipmentDrops: chieftainClubTemplate ? [this.createEquipmentItemInstance(chieftainClubTemplate)] : []
+            };
+        }
+
+        if (defeatedEnemy.race !== 'goblin') {
             return null;
         }
 
@@ -3579,6 +3754,9 @@ class GridScene {
         const actingCharacter = interactor || this.getLootInteractionCharacter();
         const cell = this.parseCellKey(cellKey);
         if (!actingCharacter || !cell || !this.canCharacterInteractWithCell(actingCharacter, cell.gridX, cell.gridY, 1)) {
+            if (cell) {
+                this.showOutOfRangeToastAtCell(cell.gridX, cell.gridY);
+            }
             return false;
         }
 

@@ -178,6 +178,8 @@ window.CharacterData = {
             armorClass: config.armorClass ?? 0,
             attackCost: config.attackCost ?? 3,
             maxActionsPerTurn: config.maxActionsPerTurn ?? 5,
+            bonusMovement: Math.max(0, Math.floor(config.bonusMovement ?? 0)),
+            bonusMovementRemaining: 0,
             actionsRemaining: 0,
             hitAnimEndTime: 0,
             isDead: false,
@@ -236,6 +238,7 @@ window.CharacterData = {
             wolf: { imagePath, x: 3, y: 560, width: 143, height: 106 },
             slime: { imagePath, x: 145, y: 561, width: 136, height: 105 },
             necromancer: { imagePath, x: 284, y: 557, width: 126, height: 119 },
+            goblinChieftain: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             ogre: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             drake: { imagePath, x: 563, y: 555, width: 245, height: 121 }
         };
@@ -349,6 +352,7 @@ window.CharacterData = {
             magicPoints: 4,
             maxMagicPoints: 4,
             armorClass: 1,
+            bonusMovement: 2,
             equipment: {
                 body: 'leather-armor',
                 hands: 'short-bow'
@@ -462,6 +466,31 @@ window.CharacterData = {
             }
         });
 
+        this.goblinChieftain = this.createCharacter({
+            id: 'goblin-chieftain',
+            name: 'Goblin Chieftain',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#d37a2d',
+            pointerColor: 0xffc266,
+            spriteFrame: this.getCharacterSpriteFrame('goblinChieftain'),
+            race: 'goblin',
+            strength: 16,
+            dexterity: 8,
+            intelligence: 6,
+            wisdom: 8,
+            hitPoints: 24,
+            maxHitPoints: 24,
+            experiencePoints: 1000,
+            armorClass: 3,
+            abilities: [
+                'melee'
+            ],
+            equipment: {
+                hands: 'chieftain-club'
+            }
+        });
+
         this.giantSpider = this.createCharacter({
             id: 'giant-spider',
             name: 'Giant Spider',
@@ -479,13 +508,14 @@ window.CharacterData = {
             maxHitPoints: 5,
             experiencePoints: 250,
             armorClass: 1,
+            bonusMovement: 1,
             abilities: [
                 'venomous-bite'
             ]
         });
 
-        this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.giantSpider];
+        this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.goblinChieftain, this.giantSpider];
         this.playerParty = [this.wizard, this.warrior, this.cleric, this.ranger];
-        this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.giantSpider];
+        this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.goblinChieftain, this.giantSpider];
     }
 };
