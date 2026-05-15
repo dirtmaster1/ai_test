@@ -859,15 +859,29 @@ window.GridAI = {
         return true;
     },
 
+    forceEndCurrentAITurn(character) {
+        if (!character || this.gameMode !== 'combat' || this.getActiveTurnCharacter() !== character) {
+            return false;
+        }
+
+        character.actionsRemaining = 0;
+        character.bonusMovementRemaining = 0;
+        this.endCurrentTurn();
+        return true;
+    },
+
     moveAICharacter(character) {
         if (
             this.isGameOver ||
             !character ||
             character.isDead ||
-            this.getActiveTurnCharacter() !== character ||
-            this.getCharacterMovementBudget(character) <= 0
+            this.getActiveTurnCharacter() !== character
         ) {
-            return;
+            return false;
+        }
+
+        if (this.getCharacterMovementBudget(character) <= 0) {
+            return this.forceEndCurrentAITurn(character);
         }
 
         const actions = this.getCharacterActionList(character);
@@ -875,21 +889,22 @@ window.GridAI = {
         const canBow = actions.some((ability) => ability.id === 'bow-shot');
         const goblinRole = this.getGoblinRole(character);
 
+        let didAct = false;
+
         if (goblinRole === 'warrior' || goblinRole === 'brute') {
-            this.moveGoblinFrontliner(character);
-            return;
+            didAct = this.moveGoblinFrontliner(character);
+        } else if (canBuff) {
+            didAct = this.moveGoblinShaman(character);
+        } else if (canBow) {
+            didAct = this.moveGoblinArcher(character);
+        } else {
+            didAct = this.moveAIMeleeCharacter(character);
         }
 
-        if (canBuff) {
-            this.moveGoblinShaman(character);
-            return;
+        if (didAct) {
+            return true;
         }
 
-        if (canBow) {
-            this.moveGoblinArcher(character);
-            return;
-        }
-
-        this.moveAIMeleeCharacter(character);
+        return this.forceEndCurrentAITurn(character);
     }
 };

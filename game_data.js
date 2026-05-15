@@ -156,13 +156,14 @@ window.GameData = {
         'staff-strike': { id: 'staff-strike', name: 'Staff Strike', type: 'attack', range: 1, mpCost: 0 },
         'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
         'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
-        'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6 },
-        'goblin-bow-shot': { id: 'goblin-bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4 },
-        'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2 }
+        'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6, projectileAnimation: 'arrow', resolveOnImpact: true },
+        'goblin-bow-shot': { id: 'goblin-bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4, projectileAnimation: 'arrow', resolveOnImpact: true },
+        'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2 },
+        charge: { id: 'charge', name: 'Charge', type: 'move', range: 5, mpCost: 0, actionCost: 3, targetMode: 'cell' }
     },
 
     SPELL_DEFS: {
-        'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4 },
+        'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4, projectileAnimation: 'magic-missile', resolveOnImpact: true },
         'lesser-heal': { id: 'lesser-heal', name: 'Lesser Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
         'mend-flesh': { id: 'mend-flesh', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
         'inflict-pain': { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1, duration: 2 },

@@ -518,7 +518,7 @@ window.GridGraphics = {
         this.scene.add(character.mesh);
     },
 
-    updateCharacterPosition(character) {
+    updateCharacterPosition(character, options = {}) {
         if (!character.mesh) {
             return;
         }
@@ -533,10 +533,17 @@ window.GridGraphics = {
             targetX: x,
             targetY: y,
             startTime: performance.now(),
-            durationMs: 220
+            durationMs: 220,
+            mode: 'move',
+            onComplete: null
         };
 
-        if (this.gameMode !== 'exploration' || !movementState.initialized) {
+        const forceAnimation = options.forceAnimation === true;
+        const durationMs = Math.max(1, Math.floor(options.durationMs ?? 220));
+        const movementMode = options.movementMode || 'move';
+        const onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
+
+        if ((this.gameMode !== 'exploration' && !forceAnimation) || !movementState.initialized) {
             movementState.initialized = true;
             movementState.active = false;
             movementState.startX = x;
@@ -544,7 +551,11 @@ window.GridGraphics = {
             movementState.targetX = x;
             movementState.targetY = y;
             movementState.startTime = performance.now();
+            movementState.durationMs = durationMs;
+            movementState.mode = movementMode;
+            movementState.onComplete = null;
             character.mesh.position.set(x, y, 0);
+            character.mesh.scale.set(1, 1, 1);
             return;
         }
 
@@ -554,7 +565,9 @@ window.GridGraphics = {
         movementState.targetX = x;
         movementState.targetY = y;
         movementState.startTime = performance.now();
-        movementState.durationMs = 220;
+        movementState.durationMs = durationMs;
+        movementState.mode = movementMode;
+        movementState.onComplete = onComplete;
     },
 
     updateCharacterMovementAnimations(nowMs = performance.now()) {
@@ -568,19 +581,85 @@ window.GridGraphics = {
             const progress = Math.min(1, Math.max(0, elapsed / movementState.durationMs));
             const eased = 1 - Math.pow(1 - progress, 3);
 
-            character.mesh.position.set(
-                movementState.startX + (movementState.targetX - movementState.startX) * eased,
-                movementState.startY + (movementState.targetY - movementState.startY) * eased,
-                0
-            );
+            const isCharge = movementState.mode === 'charge';
+            const currentX = movementState.startX + (movementState.targetX - movementState.startX) * eased;
+            const currentY = movementState.startY + (movementState.targetY - movementState.startY) * eased;
+            const lift = isCharge ? Math.sin(progress * Math.PI) * 7 : 0;
+            character.mesh.position.set(currentX, currentY, lift);
+
+            if (isCharge) {
+                const surge = Math.sin(progress * Math.PI);
+                character.mesh.scale.set(1.24 + surge * 0.12, 0.84 - surge * 0.06, 1);
+            } else {
+                character.mesh.scale.set(1, 1, 1);
+            }
 
             if (progress >= 1) {
+                const onComplete = movementState.onComplete;
                 character.mesh.position.set(movementState.targetX, movementState.targetY, 0);
                 movementState.active = false;
                 movementState.startX = movementState.targetX;
                 movementState.startY = movementState.targetY;
+                movementState.mode = 'move';
+                movementState.onComplete = null;
+                character.mesh.scale.set(1, 1, 1);
+                onComplete?.();
             }
         });
+    },
+
+    spawnChargeBurstEffect(pos, accentColor = '#ffffff') {
+        const size = 54;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+        glow.addColorStop(0.00, this.hexToRgba(accentColor, 0.95));
+        glow.addColorStop(0.24, this.hexToRgba(accentColor, 0.55));
+        glow.addColorStop(0.58, 'rgba(255, 240, 190, 0.18)');
+        glow.addColorStop(1.00, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, size, size);
+
+        ctx.strokeStyle = this.hexToRgba(accentColor, 0.8);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.24, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const geometry = new THREE.PlaneGeometry(size, size);
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(pos.x, pos.y, 8);
+        this.scene.add(mesh);
+
+        const durationMs = 180;
+        const startTime = performance.now();
+        const animate = () => {
+            const t = Math.min((performance.now() - startTime) / durationMs, 1);
+            const scale = 0.6 + t * 1.25;
+            mesh.scale.set(scale, scale, 1);
+            material.opacity = 1 - t;
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                this.scene.remove(mesh);
+                geometry.dispose();
+                material.dispose();
+                texture.dispose();
+            }
+        };
+        requestAnimationFrame(animate);
     },
 
     getWorldPositionForCell(gridX, gridY) {
@@ -757,6 +836,12 @@ window.GridGraphics = {
             return [];
         }
 
+        if (this.isCellTargetedAbility?.(ability)) {
+            return this.getReachablePositions(character, this.getEffectiveAbilityRange(character, ability))
+                .filter((position) => position.steps > 0)
+                .map((position) => ({ gridX: position.x, gridY: position.y }));
+        }
+
         const range = ability.range ?? 0;
         const includeOrigin = ability.type === 'heal' || ability.type === 'buff' || ability.id === 'inflict-pain';
         const cells = [];
@@ -799,7 +884,8 @@ window.GridGraphics = {
 
         const selectedAbility = window.CharacterData?.getCharacterActionById(activeCharacter, activeCharacter.selectedAbilityId) || null;
         const canAfford = !selectedAbility || selectedAbility.mpCost === 0 || activeCharacter.magicPoints >= selectedAbility.mpCost;
-        const canAct = activeCharacter.actionsRemaining >= activeCharacter.attackCost;
+        const actionCost = selectedAbility ? this.getAbilityActionCost(activeCharacter, selectedAbility) : activeCharacter.attackCost;
+        const canAct = activeCharacter.actionsRemaining >= actionCost;
         const canUseAbility = !selectedAbility || selectedAbility.type !== 'attack' || this.canCharacterUseAttackAbility(activeCharacter, selectedAbility);
         const nextState = [
             activeCharacter.id,

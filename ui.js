@@ -29,6 +29,16 @@ window.GridUI = {
                 </svg>`;
         }
 
+        if (ability.id === 'charge') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M4 13h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M10 8l7 4-7 4 1.4-4z" fill="currentColor" opacity="0.95"/>
+                    <path d="M4 9h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+                    <path d="M2.8 17h6.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+                </svg>`;
+        }
+
         if (ability.type === 'heal') {
             return `
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -87,6 +97,10 @@ window.GridUI = {
             return `Effect: +${damageBonus} DMG`;
         }
 
+        if (ability.id === 'charge') {
+            return `Move: ${ability.range ?? 5} cells`;
+        }
+
         if (ability.type === 'heal') {
             const healAmount = this.getEffectiveAbilityHealAmount(character, ability);
             return `Healing: ${healAmount} HP`;
@@ -119,6 +133,9 @@ window.GridUI = {
         if (typeof range === 'number') {
             lines.push(`Range: ${range}`);
         }
+        if ((ability.actionCost ?? 0) > 0) {
+            lines.push(`Cost: ${ability.actionCost} AP`);
+        }
         if ((ability.mpCost ?? 0) > 0) {
             lines.push(`Cost: ${ability.mpCost} MP`);
         }
@@ -132,6 +149,10 @@ window.GridUI = {
 
         if (ability.id === 'inflict-pain') {
             return 'Empower nearby allies with extra damage.';
+        }
+
+        if (ability.id === 'charge') {
+            return 'Rush to a clicked cell within range with a burst of speed and force.';
         }
 
         if (ability.type === 'heal') {

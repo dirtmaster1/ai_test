@@ -74,6 +74,7 @@ class GridScene {
         this.turnTransitionDelay = 18;
         this.turnTransitionFrames = 0;
         this.enemyMoveTimer = 0;
+        this.pendingCombatAction = null;
         this.isGameOver = false;
         this.gameOutcome = null;
         this.victoryStartTime = 0;
@@ -1238,6 +1239,62 @@ class GridScene {
         return this.getCharacterMovementBudget(character) <= 0;
     }
 
+    getAbilityActionCost(character, ability = null) {
+        return Math.max(0, Math.floor(ability?.actionCost ?? character?.attackCost ?? 0));
+    }
+
+    isCellTargetedAbility(ability) {
+        return ability?.targetMode === 'cell';
+    }
+
+    isCombatActionPending(character = null) {
+        if (this.gameMode !== 'combat' || !this.pendingCombatAction) {
+            return false;
+        }
+
+        if (!character) {
+            return true;
+        }
+
+        return this.pendingCombatAction.characterId === character.id;
+    }
+
+    beginPendingCombatAction(character) {
+        if (this.gameMode !== 'combat' || !character) {
+            return;
+        }
+
+        this.pendingCombatAction = { characterId: character.id };
+        this.enemyMoveTimer = 0;
+    }
+
+    finishPendingCombatAction(character) {
+        if (!this.pendingCombatAction || !character) {
+            return;
+        }
+
+        if (this.pendingCombatAction.characterId !== character.id) {
+            return;
+        }
+
+        this.pendingCombatAction = null;
+        if (this.gameMode !== 'combat' || this.getActiveTurnCharacter() !== character) {
+            return;
+        }
+
+        if (this.shouldEndCurrentTurn(character)) {
+            this.endCurrentTurn();
+        }
+    }
+
+    getAbilityProjectileAnimation(ability) {
+        return ability?.projectileAnimation || null;
+    }
+
+    doesAbilityResolveOnImpact(ability) {
+        return Boolean(ability?.resolveOnImpact && this.getAbilityProjectileAnimation(ability));
+    }
+
     createInitiativeTurnOrder(characters) {
         const seededCharacters = characters.map((character, index) => ({
             character,
@@ -1327,6 +1384,9 @@ class GridScene {
 
         this.applyStartOfTurnEffects(activeCharacter);
         if (activeCharacter.isDead) {
+            if (this.turnOrder[this.activeTurnIndex] === activeCharacter) {
+                this.endCurrentTurn();
+            }
             return;
         }
 
@@ -1395,9 +1455,9 @@ class GridScene {
             return;
         }
 
-        const activeCharacter = this.getActiveTurnCharacter();
-        if (activeCharacter) {
-            activeCharacter.actionsRemaining = 0;
+        const currentTurnCharacter = this.turnOrder[this.activeTurnIndex] || null;
+        if (currentTurnCharacter && !currentTurnCharacter.isDead) {
+            currentTurnCharacter.actionsRemaining = 0;
         }
 
         const aliveTurnOrder = this.getAliveTurnOrder();
@@ -1462,6 +1522,9 @@ class GridScene {
 
             if (key === ' ') {
                 if (this.gameMode === 'combat') {
+                    if (this.isCombatActionPending()) {
+                        return;
+                    }
                     this.endCurrentTurn();
                 }
                 return;
@@ -1681,6 +1744,10 @@ class GridScene {
                 return;
             }
 
+            if (this.isCombatActionPending(actionCharacter)) {
+                return;
+            }
+
             updatePointerTarget(event);
 
             const interactor = this.getLootInteractionCharacter();
@@ -1715,6 +1782,24 @@ class GridScene {
             }
 
             const selectedAbility = window.CharacterData?.getCharacterActionById(actionCharacter, actionCharacter.selectedAbilityId) || null;
+            const clickedAbilityCell = selectedAbility && this.isCellTargetedAbility(selectedAbility)
+                ? this.findClickedAbilityCell(event, actionCharacter, selectedAbility)
+                : null;
+            if (clickedAbilityCell) {
+                const didUseAbility = this.useAbilityOnTarget(actionCharacter, selectedAbility, clickedAbilityCell);
+                if (didUseAbility) {
+                    return;
+                }
+
+                if (this.isAbilityTargetOutOfRange(actionCharacter, selectedAbility, clickedAbilityCell)) {
+                    this.showOutOfRangeToastAtCell(clickedAbilityCell.gridX, clickedAbilityCell.gridY);
+                    return;
+                }
+
+                this.showOutOfRangeToastAtCell(clickedAbilityCell.gridX, clickedAbilityCell.gridY, 'Cannot charge there');
+                return;
+            }
+
             const clickedAbilityTarget = selectedAbility
                 ? this.findClickedAbilityTarget(event, actionCharacter, selectedAbility)
                 : null;
@@ -1791,6 +1876,10 @@ class GridScene {
             return [];
         }
 
+        if (this.isCellTargetedAbility(ability)) {
+            return [];
+        }
+
         if (ability.type === 'heal' || ability.type === 'buff' || ability.id === 'inflict-pain') {
             return this.characters.filter((candidate) =>
                 candidate.team === character.team &&
@@ -1812,12 +1901,45 @@ class GridScene {
         );
     }
 
+    getGridCellFromPointerEvent(event) {
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+
+        const worldW = this.gridWidth * this.cellSize;
+        const worldH = this.gridHeight * this.cellSize;
+        const worldX = this.raycaster.ray.origin.x;
+        const worldY = this.raycaster.ray.origin.y;
+        const gridX = Math.floor((worldX + worldW / 2) / this.cellSize);
+        const gridY = Math.floor((worldH / 2 - worldY) / this.cellSize);
+
+        if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+            return null;
+        }
+
+        return { gridX, gridY };
+    }
+
+    findClickedAbilityCell(event, character, ability) {
+        if (!character || !ability || !this.isCellTargetedAbility(ability)) {
+            return null;
+        }
+
+        const cell = this.getGridCellFromPointerEvent(event);
+        if (!cell) {
+            return null;
+        }
+
+        return cell;
+    }
+
     findClickedAbilityTarget(event, character, ability) {
         if (!character || !ability) {
             return null;
         }
 
-        if (ability.type === 'buff') {
+        if (ability.type === 'buff' || this.isCellTargetedAbility(ability)) {
             return null;
         }
 
@@ -1844,9 +1966,15 @@ class GridScene {
             return false;
         }
 
+        if (this.gameMode === 'combat' && this.isCombatActionPending(character)) {
+            return false;
+        }
+
         let didUseAbility = false;
         if (ability.type === 'heal') {
             didUseAbility = Boolean(targetCharacter) && this.castHeal(character, targetCharacter, ability);
+        } else if (ability.id === 'charge') {
+            didUseAbility = Boolean(targetCharacter) && this.castCharge(character, targetCharacter, ability);
         } else if (ability.id === 'inflict-pain') {
             didUseAbility = this.castInflictPain(character);
         } else if (ability.id === 'magic-missile') {
@@ -1959,6 +2087,10 @@ class GridScene {
     isAbilityTargetOutOfRange(character, ability, targetCharacter) {
         if (!character || !ability || !targetCharacter) {
             return false;
+        }
+
+        if (this.isCellTargetedAbility(ability)) {
+            return !this.getChargeDestination(character, ability, targetCharacter.gridX, targetCharacter.gridY);
         }
 
         const targetInfo = this.getExpectedActionEffect(character, targetCharacter, ability);
@@ -2807,6 +2939,25 @@ class GridScene {
         this.explorationClickMoveQueue = [];
     }
 
+    getChargeDestination(character, ability, targetX, targetY) {
+        if (!character || !ability) {
+            return null;
+        }
+
+        if (targetX < 0 || targetX >= this.gridWidth || targetY < 0 || targetY >= this.gridHeight) {
+            return null;
+        }
+
+        if (this.isObstacle(targetX, targetY) || this.isOccupied(targetX, targetY, character)) {
+            return null;
+        }
+
+        const chargeRange = this.getEffectiveAbilityRange(character, ability);
+        return this.getReachablePositions(character, chargeRange).find((position) =>
+            position.steps > 0 && position.x === targetX && position.y === targetY
+        ) || null;
+    }
+
     handleMovement(key) {
         if (this.gameMode === 'exploration') {
             this.explorationClickMoveQueue = [];
@@ -2820,6 +2971,7 @@ class GridScene {
             !this.isPlayerTurn() ||
             !activeCharacter ||
             activeCharacter.isDead ||
+            this.isCombatActionPending(activeCharacter) ||
             this.getCharacterMovementBudget(activeCharacter) <= 0
         ) {
             return;
@@ -2878,6 +3030,74 @@ class GridScene {
         }
     }
 
+    castCharge(caster, targetCell, chargeAbility = null) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
+        if (!caster || caster.isDead || !targetCell) {
+            return false;
+        }
+
+        if (this.isCombatActionPending()) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== caster) {
+            return false;
+        }
+
+        const ability = chargeAbility?.id === 'charge'
+            ? chargeAbility
+            : window.CharacterData?.getCharacterActionById(caster, 'charge');
+        if (!ability) {
+            return false;
+        }
+
+        const actionCost = this.getAbilityActionCost(caster, ability);
+        if ((caster.actionsRemaining ?? 0) < actionCost) {
+            return false;
+        }
+
+        const destination = this.getChargeDestination(caster, ability, targetCell.gridX, targetCell.gridY);
+        if (!destination) {
+            return false;
+        }
+
+        const finalStep = destination.path[destination.path.length - 1] || null;
+        if (finalStep?.facing) {
+            this.updateCharacterFacing(caster, finalStep.facing);
+        }
+
+        caster.actionsRemaining -= actionCost;
+        this.beginPendingCombatAction(caster);
+
+        const startPos = this.getCharacterWorldPos(caster);
+        caster.gridX = destination.x;
+        caster.gridY = destination.y;
+        const endPos = this.getCharacterWorldPos(caster);
+
+        this.spawnChargeBurstEffect(startPos, caster.accentColor);
+        this.updateCharacterPosition(caster, {
+            forceAnimation: true,
+            durationMs: 140,
+            movementMode: 'charge',
+            onComplete: () => {
+                this.spawnChargeBurstEffect(endPos, caster.accentColor);
+                this.tryAutoOpenLootFromCharacterCell(caster);
+                this.finishPendingCombatAction(caster);
+            }
+        });
+        this.focusCameraOnCharacter(caster, 650);
+        this.appendCombatLogEntry(
+            `${caster.name} charges ${destination.steps} ${destination.steps === 1 ? 'cell' : 'cells'} forward.`,
+            caster.accentColor
+        );
+
+        return true;
+    }
+
     // --- Combat ---
 
     characterAttack(attacker, target, attackAbility = null) {
@@ -2886,6 +3106,10 @@ class GridScene {
         }
 
         const isExploration = this.gameMode === 'exploration';
+
+        if (!isExploration && this.isCombatActionPending()) {
+            return false;
+        }
 
         if (!attacker || !target || attacker.isDead || target.isDead || attacker.team === target.team) {
             return false;
@@ -2924,7 +3148,17 @@ class GridScene {
         }
 
         this.faceCharacterToward(attacker, target);
-        if (resolvedAttackAbility?.id === 'bow-shot') {
+        const projectileAnimation = this.getAbilityProjectileAnimation(resolvedAttackAbility);
+        const resolvesOnImpact = this.doesAbilityResolveOnImpact(resolvedAttackAbility);
+
+        if (!isExploration) {
+            attacker.actionsRemaining -= attacker.attackCost;
+            if (resolvesOnImpact) {
+                this.beginPendingCombatAction(attacker);
+            }
+        }
+
+        if (projectileAnimation === 'arrow') {
             const attackerPos = this.getCharacterWorldPos(attacker);
             const targetPos = this.getCharacterWorldPos(target);
             this.spawnArrowProjectile(attackerPos, targetPos, () => {
@@ -2935,6 +3169,9 @@ class GridScene {
                     attacker.accentColor
                 );
                 this.applyOnHitAttackEffects(attacker, target, resolvedAttackAbility, damageDealt);
+                if (!isExploration) {
+                    this.finishPendingCombatAction(attacker);
+                }
             });
         } else {
             const damageDealt = this.applyPhysicalAttackDamage(target, baseDamage, attacker);
@@ -2944,10 +3181,6 @@ class GridScene {
                 attacker.accentColor
             );
             this.applyOnHitAttackEffects(attacker, target, resolvedAttackAbility, damageDealt);
-        }
-
-        if (!isExploration) {
-            attacker.actionsRemaining -= attacker.attackCost;
             if (this.shouldEndCurrentTurn(attacker)) {
                 this.endCurrentTurn();
             }
@@ -3024,6 +3257,10 @@ class GridScene {
 
         const isExploration = this.gameMode === 'exploration';
 
+        if (!isExploration && this.isCombatActionPending()) {
+            return false;
+        }
+
         if (!caster || !target || caster.isDead || target.isDead || caster.team === target.team) {
             return false;
         }
@@ -3059,32 +3296,52 @@ class GridScene {
 
         this.faceCharacterToward(caster, target);
         const damage = this.getEffectiveAbilityDamage(caster, ability);
-        target.hitPoints -= damage;
         caster.magicPoints -= ability.mpCost;
+        const projectileAnimation = this.getAbilityProjectileAnimation(ability);
+        const resolvesOnImpact = this.doesAbilityResolveOnImpact(ability);
+
+        if (!resolvesOnImpact) {
+            target.hitPoints -= damage;
+        }
+
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (resolvesOnImpact) {
+                this.beginPendingCombatAction(caster);
+            }
+        }
 
         this.appendCombatLogEntry(
             `${caster.name} casts ${ability.name} on ${target.name} for ${damage} dmg.`,
             caster.accentColor
         );
 
-        const lethal = target.hitPoints <= 0;
-        if (lethal) {
+        const lethal = resolvesOnImpact ? (target.hitPoints - damage) <= 0 : target.hitPoints <= 0;
+        if (lethal && !resolvesOnImpact) {
             target.hitPoints = 0;
         }
 
         const casterPos = this.getCharacterWorldPos(caster);
         const targetPos = this.getCharacterWorldPos(target);
-        this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
+        if (projectileAnimation === 'magic-missile') {
+            this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
+                target.hitPoints = Math.max(0, target.hitPoints - damage);
+                this.playHitAnimation(target);
+                if (target.hitPoints <= 0) {
+                    target.hitPoints = 0;
+                    this.markCharacterDead(target, caster);
+                }
+                if (!isExploration) {
+                    this.finishPendingCombatAction(caster);
+                }
+            });
+        } else {
             this.playHitAnimation(target);
             if (lethal) {
                 this.markCharacterDead(target, caster);
             }
-        });
-
-        if (!isExploration) {
-            caster.actionsRemaining -= caster.attackCost;
-            if (this.shouldEndCurrentTurn(caster)) {
-                this.endCurrentTurn();
+            if (!isExploration && resolvesOnImpact) {
+                this.finishPendingCombatAction(caster);
             }
         }
 
@@ -3345,7 +3602,12 @@ class GridScene {
 
         switch (character.id) {
             case 'dwarf-warrior':
-                return { hp: 2, strength: 2 };
+                return {
+                    hp: 2,
+                    strength: 2,
+                    maxActionsPerTurn: character.level === 3 ? 1 : 0,
+                    unlockedAbilities: character.level === 3 ? ['charge'] : []
+                };
             case 'cleric':
                 return { hp: 1, mp: 1, wisdom: 1 };
             case 'wizard':
@@ -3381,6 +3643,27 @@ class GridScene {
         character.dexterity = (character.dexterity ?? 0) + (bonuses.dexterity ?? 0);
         character.initiative = (character.initiative ?? 0) + (bonuses.initiative ?? 0);
 
+        const actionGain = Math.max(0, Math.floor(bonuses.maxActionsPerTurn ?? 0));
+        if (actionGain > 0) {
+            character.maxActionsPerTurn = Math.max(0, Math.floor(character.maxActionsPerTurn ?? 0)) + actionGain;
+            character.actionsRemaining = Math.max(0, Math.floor(character.actionsRemaining ?? 0)) + actionGain;
+        }
+
+        const unlockedAbilities = Array.isArray(bonuses.unlockedAbilities)
+            ? bonuses.unlockedAbilities
+                .map((abilityId) => window.GameData?.getAbilityTemplateById(abilityId))
+                .filter(Boolean)
+            : [];
+
+        if (unlockedAbilities.length > 0) {
+            character.abilities ||= [];
+            unlockedAbilities.forEach((ability) => {
+                if (!character.abilities.some((existing) => existing.id === ability.id)) {
+                    character.abilities.push({ ...ability });
+                }
+            });
+        }
+
         const bonusParts = [];
         if (hpGain > 0) bonusParts.push(`+${hpGain} HP`);
         if (mpGain > 0) bonusParts.push(`+${mpGain} MP`);
@@ -3389,6 +3672,8 @@ class GridScene {
         if ((bonuses.intelligence ?? 0) > 0) bonusParts.push(`+${bonuses.intelligence} INT`);
         if ((bonuses.dexterity ?? 0) > 0) bonusParts.push(`+${bonuses.dexterity} DEX`);
         if ((bonuses.initiative ?? 0) > 0) bonusParts.push(`+${bonuses.initiative} Initiative`);
+        if (actionGain > 0) bonusParts.push(`+${actionGain} Action`);
+        unlockedAbilities.forEach((ability) => bonusParts.push(`Unlocked ${ability.name}`));
 
         if (!Array.isArray(character.pendingLevelUpNotices)) {
             character.pendingLevelUpNotices = [];
@@ -3793,7 +4078,7 @@ class GridScene {
             character.hitPoints = 0;
         }
 
-        if (this.getActiveTurnCharacter() === character) {
+        if (this.gameMode === 'combat' && this.turnOrder[this.activeTurnIndex] === character) {
             this.endCurrentTurn();
         }
     }
@@ -3868,7 +4153,7 @@ class GridScene {
             return;
         }
 
-        if (activeCharacter && activeCharacter.team === 'ai') {
+        if (activeCharacter && activeCharacter.team === 'ai' && !this.isCombatActionPending(activeCharacter)) {
             this.enemyMoveTimer += 1;
             if (this.enemyMoveTimer >= 24) {
                 this.moveAICharacter(activeCharacter);
