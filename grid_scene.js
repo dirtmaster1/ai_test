@@ -3595,7 +3595,7 @@ class GridScene {
         return 500 * Math.pow(2, level - 2);
     }
 
-    getLevelUpBonusesForCharacter(character) {
+    getLevelUpBonusesForCharacter(character, newLevel = character?.level ?? 1) {
         if (!character || character.team !== 'player') {
             return null;
         }
@@ -3605,11 +3605,17 @@ class GridScene {
                 return {
                     hp: 2,
                     strength: 2,
-                    maxActionsPerTurn: character.level === 3 ? 1 : 0,
-                    unlockedAbilities: character.level === 3 ? ['charge'] : []
+                    maxActionsPerTurn: newLevel === 3 ? 1 : 0,
+                    unlockedAbilities: newLevel === 3 ? ['charge'] : []
                 };
             case 'cleric':
-                return { hp: 1, mp: 1, wisdom: 1 };
+                return {
+                    hp: 1,
+                    mp: 1,
+                    wisdom: 1,
+                    maxActionsPerTurn: newLevel === 3 ? 1 : 0,
+                    unlockedSpells: newLevel === 3 ? ['blessing'] : []
+                };
             case 'wizard':
                 return { hp: 1, mp: 2, intelligence: 1 };
             case 'ranger-aragon':
@@ -3620,7 +3626,7 @@ class GridScene {
     }
 
     applyLevelUpBonuses(character, newLevel) {
-        const bonuses = this.getLevelUpBonusesForCharacter(character);
+        const bonuses = this.getLevelUpBonusesForCharacter(character, newLevel);
         if (!bonuses) {
             return;
         }
@@ -3655,11 +3661,26 @@ class GridScene {
                 .filter(Boolean)
             : [];
 
+        const unlockedSpells = Array.isArray(bonuses.unlockedSpells)
+            ? bonuses.unlockedSpells
+                .map((spellId) => window.GameData?.getSpellTemplateById(spellId))
+                .filter(Boolean)
+            : [];
+
         if (unlockedAbilities.length > 0) {
             character.abilities ||= [];
             unlockedAbilities.forEach((ability) => {
                 if (!character.abilities.some((existing) => existing.id === ability.id)) {
                     character.abilities.push({ ...ability });
+                }
+            });
+        }
+
+        if (unlockedSpells.length > 0) {
+            character.spells ||= [];
+            unlockedSpells.forEach((spell) => {
+                if (!character.spells.some((existing) => existing.id === spell.id)) {
+                    character.spells.push({ ...spell });
                 }
             });
         }
@@ -3674,6 +3695,7 @@ class GridScene {
         if ((bonuses.initiative ?? 0) > 0) bonusParts.push(`+${bonuses.initiative} Initiative`);
         if (actionGain > 0) bonusParts.push(`+${actionGain} Action`);
         unlockedAbilities.forEach((ability) => bonusParts.push(`Unlocked ${ability.name}`));
+        unlockedSpells.forEach((spell) => bonusParts.push(`Unlocked ${spell.name}`));
 
         if (!Array.isArray(character.pendingLevelUpNotices)) {
             character.pendingLevelUpNotices = [];
