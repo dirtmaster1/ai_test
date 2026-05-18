@@ -301,6 +301,24 @@ class GridScene {
         });
 
         this.populateSpikeTraps(shuffledRooms, occupiedCells);
+        this.placeTemporarySpiderTestCrate();
+    }
+
+    placeTemporarySpiderTestCrate() {
+        const crateCell = this.temporarySpiderCrateCell;
+        if (!crateCell) {
+            return;
+        }
+
+        const cellKey = this.getCellKey(crateCell.gridX, crateCell.gridY);
+        this.dungeonPropsByCell.set(cellKey, {
+            gridX: crateCell.gridX,
+            gridY: crateCell.gridY,
+            frameId: 'crate',
+            roomTheme: 'storage',
+            searchable: true,
+            hasBeenSearched: false
+        });
     }
 
     populateRoomPropsByTheme(room, theme, occupiedCells) {
@@ -515,6 +533,8 @@ class GridScene {
             return;
         }
 
+        this.temporarySpiderCrateCell = null;
+
         const partyAnchor = this.explorationLeadCharacter
             || this.wizard
             || this.playerParty?.[0]
@@ -538,6 +558,7 @@ class GridScene {
 
         for (let index = 0; index < 2; index++) {
             const spider = this.createEnemyFromArchetype(this.giantSpider, 998, index);
+            spider.experiencePoints = 2000;
             const spawn = spawnOrder.find((candidate) => {
                 if (candidate.x < 0 || candidate.x >= this.gridWidth || candidate.y < 0 || candidate.y >= this.gridHeight) {
                     return false;
@@ -558,6 +579,9 @@ class GridScene {
             spider.gridY = spawn.y;
             spider.encounterGroupId = groupId;
             occupiedCells.add(this.getCellKey(spawn.x, spawn.y));
+            if (!this.temporarySpiderCrateCell) {
+                this.temporarySpiderCrateCell = { gridX: spawn.x, gridY: spawn.y };
+            }
             members.push(spider);
             this.aiParty.push(spider);
         }
@@ -1382,11 +1406,19 @@ class GridScene {
             }
         }
 
-        this.applyStartOfTurnEffects(activeCharacter);
+        const startOfTurnResult = this.applyStartOfTurnEffects(activeCharacter);
         if (activeCharacter.isDead) {
             if (this.turnOrder[this.activeTurnIndex] === activeCharacter) {
                 this.endCurrentTurn();
             }
+            return;
+        }
+
+        if (startOfTurnResult?.skipTurn) {
+            this.turnTransitionFrames = this.turnTransitionDelay;
+            this.enemyMoveTimer = 0;
+            this.updateCamera();
+            this.endCurrentTurn();
             return;
         }
 
@@ -1398,18 +1430,19 @@ class GridScene {
 
     applyStartOfTurnEffects(character) {
         if (!character || !Array.isArray(character.activeEffects) || character.activeEffects.length === 0) {
-            return;
+            return { skipTurn: false };
         }
 
-        this.advanceRoundBasedEffects(character);
+        return this.advanceRoundBasedEffects(character);
     }
 
     advanceRoundBasedEffects(character) {
         if (!character || !Array.isArray(character.activeEffects) || character.activeEffects.length === 0) {
-            return;
+            return { skipTurn: false };
         }
 
         const remainingEffects = [];
+        let skipTurn = false;
         for (const effect of character.activeEffects) {
             if (!effect) {
                 continue;
@@ -1423,6 +1456,9 @@ class GridScene {
                 }
 
                 const poisonDamage = Math.max(0, Math.floor(Number(effect.damagePerRound ?? 3) || 0));
+                if (poisonDamage > 0) {
+                    this.removeSleepEffect(character);
+                }
                 character.hitPoints = Math.max(0, character.hitPoints - poisonDamage);
                 this.playHitAnimation(character);
                 this.appendCombatLogEntry(`${character.name} suffers ${poisonDamage} poison damage.`, '#7bcf84');
@@ -1441,6 +1477,16 @@ class GridScene {
                 continue;
             }
 
+            if (effect.type === 'sleep') {
+                skipTurn = true;
+                this.appendCombatLogEntry(`${character.name} is asleep and misses the turn.`, '#8a9bb0');
+                effect.roundsRemaining = (effect.roundsRemaining ?? 0) - 1;
+                if (effect.roundsRemaining > 0) {
+                    remainingEffects.push(effect);
+                }
+                continue;
+            }
+
             effect.roundsRemaining = (effect.roundsRemaining ?? 0) - 1;
             if (effect.roundsRemaining > 0) {
                 remainingEffects.push(effect);
@@ -1448,6 +1494,7 @@ class GridScene {
         }
 
         character.activeEffects = remainingEffects;
+        return { skipTurn };
     }
 
     endCurrentTurn() {
@@ -1760,6 +1807,22 @@ class GridScene {
             this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
 
+            const selectedAbility = window.CharacterData?.getCharacterActionById(actionCharacter, actionCharacter.selectedAbilityId) || null;
+            const clickedAbilityTarget = selectedAbility
+                ? this.findClickedAbilityTarget(event, actionCharacter, selectedAbility)
+                : null;
+            if (clickedAbilityTarget) {
+                const didUseAbility = this.useAbilityOnTarget(actionCharacter, selectedAbility, clickedAbilityTarget);
+                if (didUseAbility) {
+                    return;
+                }
+
+                if (this.isAbilityTargetOutOfRange(actionCharacter, selectedAbility, clickedAbilityTarget)) {
+                    this.showOutOfRangeToastAtCell(clickedAbilityTarget.gridX, clickedAbilityTarget.gridY);
+                    return;
+                }
+            }
+
             const lootBagIntersects = this.raycaster.intersectObjects(this.lootBagGroup.children);
             if (lootBagIntersects.length > 0) {
                 const clickedLootMesh = lootBagIntersects[0].object;
@@ -1781,7 +1844,6 @@ class GridScene {
                 }
             }
 
-            const selectedAbility = window.CharacterData?.getCharacterActionById(actionCharacter, actionCharacter.selectedAbilityId) || null;
             const clickedAbilityCell = selectedAbility && this.isCellTargetedAbility(selectedAbility)
                 ? this.findClickedAbilityCell(event, actionCharacter, selectedAbility)
                 : null;
@@ -1796,24 +1858,12 @@ class GridScene {
                     return;
                 }
 
-                this.showOutOfRangeToastAtCell(clickedAbilityCell.gridX, clickedAbilityCell.gridY, 'Cannot charge there');
-                return;
-            }
-
-            const clickedAbilityTarget = selectedAbility
-                ? this.findClickedAbilityTarget(event, actionCharacter, selectedAbility)
-                : null;
-            if (clickedAbilityTarget) {
-                const didUseAbility = this.useAbilityOnTarget(actionCharacter, selectedAbility, clickedAbilityTarget);
-                if (didUseAbility) {
-                    return;
-                }
-
-                if (this.isAbilityTargetOutOfRange(actionCharacter, selectedAbility, clickedAbilityTarget)) {
-                    this.showOutOfRangeToastAtCell(clickedAbilityTarget.gridX, clickedAbilityTarget.gridY);
-                    return;
-                }
-
+                const invalidCellMessage = selectedAbility.id === 'charge'
+                    ? 'Cannot charge there'
+                    : selectedAbility.id === 'sleep'
+                        ? 'No enemies there to sleep'
+                        : 'Cannot target that cell';
+                this.showOutOfRangeToastAtCell(clickedAbilityCell.gridX, clickedAbilityCell.gridY, invalidCellMessage);
                 return;
             }
 
@@ -1954,11 +2004,19 @@ class GridScene {
         this.raycaster.setFromCamera(this.mouse, this.camera);
 
         const intersects = this.raycaster.intersectObjects(targetPool.map((candidate) => candidate.mesh));
-        if (intersects.length === 0) {
+        if (intersects.length > 0) {
+            return targetPool.find((candidate) => candidate.mesh === intersects[0].object) || null;
+        }
+
+        const clickedCell = this.getGridCellFromPointerEvent(event);
+        if (!clickedCell) {
             return null;
         }
 
-        return targetPool.find((candidate) => candidate.mesh === intersects[0].object) || null;
+        return targetPool.find((candidate) =>
+            candidate.gridX === clickedCell.gridX &&
+            candidate.gridY === clickedCell.gridY
+        ) || null;
     }
 
     useAbilityOnTarget(character, ability, targetCharacter = null) {
@@ -1979,9 +2037,13 @@ class GridScene {
             didUseAbility = this.castInflictPain(character);
         } else if (ability.id === 'magic-missile') {
             didUseAbility = Boolean(targetCharacter) && this.castMagicMissile(character, targetCharacter);
+        } else if (ability.id === 'sleep') {
+            didUseAbility = Boolean(targetCharacter) && this.castSleep(character, targetCharacter, ability);
         } else if (ability.type === 'buff') {
             if (ability.id === 'battle-shout') {
                 didUseAbility = this.castBattleShout(character);
+            } else if (ability.id === 'blessing') {
+                didUseAbility = this.castBlessing(character);
             }
         } else {
             didUseAbility = Boolean(targetCharacter) && this.characterAttack(character, targetCharacter, ability);
@@ -2090,7 +2152,13 @@ class GridScene {
         }
 
         if (this.isCellTargetedAbility(ability)) {
-            return !this.getChargeDestination(character, ability, targetCharacter.gridX, targetCharacter.gridY);
+            if (ability.id === 'charge') {
+                return !this.getChargeDestination(character, ability, targetCharacter.gridX, targetCharacter.gridY);
+            }
+
+            const range = this.getEffectiveAbilityRange(character, ability);
+            const distance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, targetCharacter.gridX, targetCharacter.gridY);
+            return distance > range;
         }
 
         const targetInfo = this.getExpectedActionEffect(character, targetCharacter, ability);
@@ -2732,6 +2800,19 @@ class GridScene {
         }, 0);
     }
 
+    getCharacterArmorClass(character) {
+        if (!character) {
+            return 0;
+        }
+
+        return Math.max(
+            0,
+            (character.armorClass ?? 0)
+            + this.getCharacterEffectBonus(character, 'armorClass')
+            + this.getCharacterEffectBonus(character, 'acBonus')
+        );
+    }
+
     getCharacterEquipmentSummaryText(character) {
         const summary = this.getCharacterEquipmentBonusSummary(character);
         const parts = [];
@@ -3194,7 +3275,10 @@ class GridScene {
             return;
         }
 
-        const physicalDamage = Math.max(0, baseDamage - target.armorClass);
+        const physicalDamage = Math.max(0, baseDamage - this.getCharacterArmorClass(target));
+        if (physicalDamage > 0) {
+            this.removeSleepEffect(target);
+        }
         target.hitPoints -= physicalDamage;
         this.playHitAnimation(target);
 
@@ -3250,6 +3334,21 @@ class GridScene {
         return true;
     }
 
+    removeSleepEffect(target) {
+        if (!target || !Array.isArray(target.activeEffects) || target.activeEffects.length === 0) {
+            return false;
+        }
+
+        const remainingEffects = target.activeEffects.filter((effect) => effect?.type !== 'sleep');
+        const removed = remainingEffects.length !== target.activeEffects.length;
+        if (removed) {
+            target.activeEffects = remainingEffects;
+            this.appendCombatLogEntry(`${target.name} wakes up.`, '#a9c4de');
+        }
+
+        return removed;
+    }
+
     castMagicMissile(caster, target) {
         if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
             return false;
@@ -3301,6 +3400,9 @@ class GridScene {
         const resolvesOnImpact = this.doesAbilityResolveOnImpact(ability);
 
         if (!resolvesOnImpact) {
+            if (damage > 0) {
+                this.removeSleepEffect(target);
+            }
             target.hitPoints -= damage;
         }
 
@@ -3325,6 +3427,9 @@ class GridScene {
         const targetPos = this.getCharacterWorldPos(target);
         if (projectileAnimation === 'magic-missile') {
             this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
+                if (damage > 0) {
+                    this.removeSleepEffect(target);
+                }
                 target.hitPoints = Math.max(0, target.hitPoints - damage);
                 this.playHitAnimation(target);
                 if (target.hitPoints <= 0) {
@@ -3343,6 +3448,91 @@ class GridScene {
             if (!isExploration && resolvesOnImpact) {
                 this.finishPendingCombatAction(caster);
             }
+        }
+
+        return true;
+    }
+
+    castSleep(caster, targetCell, sleepAbility = null) {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
+            return false;
+        }
+
+        const isExploration = this.gameMode === 'exploration';
+        if (!caster || caster.isDead || !targetCell) {
+            return false;
+        }
+
+        if (!isExploration && this.isCombatActionPending()) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && caster.team !== 'player') {
+            return false;
+        }
+
+        const ability = sleepAbility?.id === 'sleep'
+            ? sleepAbility
+            : window.CharacterData?.getCharacterActionById(caster, 'sleep');
+        if (!ability) {
+            return false;
+        }
+
+        if ((caster.magicPoints ?? 0) < (ability.mpCost ?? 0)) {
+            return false;
+        }
+
+        const range = this.getEffectiveAbilityRange(caster, ability);
+        const distance = this.getAttackDistanceBetweenPositions(caster.gridX, caster.gridY, targetCell.gridX, targetCell.gridY);
+        if (distance > range) {
+            return false;
+        }
+
+        if (this.requiresLineOfSight(ability) && !this.hasLineOfSightBetweenCells(caster.gridX, caster.gridY, targetCell.gridX, targetCell.gridY)) {
+            return false;
+        }
+
+        const radius = Math.max(0, Math.floor(ability.radius ?? 1));
+        const duration = Math.max(1, Math.floor(ability.duration ?? 2));
+        const affectedEnemies = this.characters.filter((candidate) =>
+            candidate.team !== caster.team &&
+            !candidate.isDead &&
+            !candidate.removedFromScene &&
+            this.getAttackDistanceBetweenPositions(targetCell.gridX, targetCell.gridY, candidate.gridX, candidate.gridY) <= radius
+        );
+
+        if (affectedEnemies.length === 0) {
+            return false;
+        }
+
+        caster.magicPoints -= ability.mpCost ?? 0;
+        affectedEnemies.forEach((enemy) => {
+            const existing = enemy.activeEffects.find((effect) => effect.type === 'sleep');
+            if (existing) {
+                existing.roundsRemaining = Math.max(existing.roundsRemaining ?? 0, duration);
+            } else {
+                enemy.activeEffects.push({ type: 'sleep', roundsRemaining: duration });
+            }
+            this.spawnHealEffect(this.getCharacterWorldPos(caster), this.getCharacterWorldPos(enemy));
+        });
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name}, sending ${affectedEnemies.length} ${affectedEnemies.length === 1 ? 'enemy' : 'enemies'} to sleep.`,
+            caster.accentColor
+        );
+
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (this.shouldEndCurrentTurn(caster)) {
+                this.endCurrentTurn();
+            }
+        } else {
+            this.beginCombatWithEnemyCharacter(affectedEnemies[0]);
         }
 
         return true;
@@ -3398,6 +3588,75 @@ class GridScene {
 
         this.appendCombatLogEntry(
             `${caster.name} uses ${ability.name} and grants +${damageBonus} dmg to ${affectedCount} ${affectedCount === 1 ? 'ally' : 'allies'}.`,
+            caster.accentColor
+        );
+
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (this.shouldEndCurrentTurn(caster)) {
+                this.endCurrentTurn();
+            }
+        }
+
+        return true;
+    }
+
+    castBlessing(caster) {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
+            return false;
+        }
+
+        const isExploration = this.gameMode === 'exploration';
+
+        if (!caster || caster.isDead) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && caster.team !== 'player') {
+            return false;
+        }
+
+        const ability = window.CharacterData?.getCharacterActionById(caster, 'blessing');
+        if (!ability) {
+            return false;
+        }
+
+        const mpCost = ability.mpCost ?? 0;
+        if ((caster.magicPoints ?? 0) < mpCost) {
+            return false;
+        }
+
+        const acBonus = ability.acBonus ?? ability.modifiers?.armorClass ?? 1;
+        const duration = ability.duration ?? 3;
+        const range = ability.range ?? 3;
+        const casterPos = this.getCharacterWorldPos(caster);
+        let affectedCount = 0;
+
+        this.getLivingCharacters(this.playerParty).forEach((ally) => {
+            const dx = Math.abs(ally.gridX - caster.gridX);
+            const dy = Math.abs(ally.gridY - caster.gridY);
+            if (dx <= range && dy <= range) {
+                const existing = ally.activeEffects.find((effect) => effect.type === 'blessing');
+                if (existing) {
+                    existing.acBonus = Math.max(existing.acBonus ?? 0, acBonus);
+                    existing.roundsRemaining = duration;
+                } else {
+                    ally.activeEffects.push({ type: 'blessing', acBonus, roundsRemaining: duration });
+                }
+
+                affectedCount += 1;
+                this.spawnHealEffect(casterPos, this.getCharacterWorldPos(ally));
+            }
+        });
+
+        caster.magicPoints -= mpCost;
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} and grants +${acBonus} AC to ${affectedCount} ${affectedCount === 1 ? 'ally' : 'allies'}.`,
             caster.accentColor
         );
 
@@ -3617,7 +3876,13 @@ class GridScene {
                     unlockedSpells: newLevel === 3 ? ['blessing'] : []
                 };
             case 'wizard':
-                return { hp: 1, mp: 2, intelligence: 1 };
+                return {
+                    hp: 1,
+                    mp: 2,
+                    intelligence: 1,
+                    maxActionsPerTurn: newLevel === 3 ? 1 : 0,
+                    unlockedSpells: newLevel === 3 ? ['sleep'] : []
+                };
             case 'ranger-aragon':
                 return { hp: 1, initiative: 1, dexterity: 1 };
             default:

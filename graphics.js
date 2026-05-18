@@ -837,9 +837,34 @@ window.GridGraphics = {
         }
 
         if (this.isCellTargetedAbility?.(ability)) {
-            return this.getReachablePositions(character, this.getEffectiveAbilityRange(character, ability))
-                .filter((position) => position.steps > 0)
-                .map((position) => ({ gridX: position.x, gridY: position.y }));
+            if (ability.id === 'charge') {
+                return this.getReachablePositions(character, this.getEffectiveAbilityRange(character, ability))
+                    .filter((position) => position.steps > 0)
+                    .map((position) => ({ gridX: position.x, gridY: position.y }));
+            }
+
+            const range = this.getEffectiveAbilityRange(character, ability);
+            const cells = [];
+            for (let gridY = character.gridY - range; gridY <= character.gridY + range; gridY++) {
+                for (let gridX = character.gridX - range; gridX <= character.gridX + range; gridX++) {
+                    if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+                        continue;
+                    }
+
+                    if (this.dungeonMap[gridY][gridX] !== this.TILE_FLOOR) {
+                        continue;
+                    }
+
+                    const distance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, gridX, gridY);
+                    if (distance === 0 || distance > range) {
+                        continue;
+                    }
+
+                    cells.push({ gridX, gridY });
+                }
+            }
+
+            return cells;
         }
 
         const range = ability.range ?? 0;

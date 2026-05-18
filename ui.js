@@ -29,6 +29,15 @@ window.GridUI = {
                 </svg>`;
         }
 
+        if (ability.id === 'sleep') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M6.5 14.5c0 2.5 2.1 4.5 4.7 4.5 2.9 0 5.3-2.2 5.3-5 0-2.5-2-4.5-4.6-4.5-2.9 0-5.4 2.2-5.4 5z" fill="currentColor" opacity="0.82"/>
+                    <path d="M14.8 5.3h3.4l-2.1 2.3h3.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12.4 2.8h2.6l-1.5 1.6h2.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" opacity="0.78"/>
+                </svg>`;
+        }
+
         if (ability.id === 'charge') {
             return `
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -101,6 +110,11 @@ window.GridUI = {
             return `Move: ${ability.range ?? 5} cells`;
         }
 
+        if (ability.id === 'sleep') {
+            const radius = ability.radius ?? 1;
+            return `Effect: Sleep ${radius}-cell burst`;
+        }
+
         if (ability.type === 'heal') {
             const healAmount = this.getEffectiveAbilityHealAmount(character, ability);
             return `Healing: ${healAmount} HP`;
@@ -153,6 +167,10 @@ window.GridUI = {
 
         if (ability.id === 'charge') {
             return 'Rush to a clicked cell within range with a burst of speed and force.';
+        }
+
+        if (ability.id === 'sleep') {
+            return 'Click a cell to put nearby enemies to sleep for 2 turns, ending early if they take damage.';
         }
 
         if (ability.type === 'heal') {
@@ -238,6 +256,13 @@ window.GridUI = {
             return {
                 kind: 'buff',
                 text: `Blessing +${armorBonus} AC (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
+            };
+        }
+
+        if (effect.type === 'sleep') {
+            return {
+                kind: 'debuff',
+                text: `Sleep skips turns (${Math.max(0, effect.roundsRemaining ?? 0)}r)`
             };
         }
 
@@ -984,10 +1009,9 @@ window.GridUI = {
                 return;
             }
 
-            const wasSelected = activeCharacter.selectedAbilityId === ability.id;
             activeCharacter.selectedAbilityId = ability.id;
 
-            if (ability.type === 'buff' && wasSelected) {
+            if (ability.type === 'buff') {
                 this.useAbilityOnTarget(activeCharacter, ability);
             }
         });
@@ -2097,6 +2121,9 @@ window.GridUI = {
         const equipmentBonuses = this.getCharacterEquipmentBonusSummary(character);
         const spellDamageBonus = this.getCharacterSpellDamageBonus(character);
         const healingBonus = this.getCharacterHealingBonus(character);
+        const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
+            ? this.getCharacterArmorClass(character)
+            : character.armorClass;
 
         const infoStats = [
             { label: 'Level', value: String(character.level ?? 1) },
@@ -2106,7 +2133,7 @@ window.GridUI = {
             { label: 'Initiative', value: String(character.initiative ?? 0) },
             { label: 'Melee Damage', value: String(meleeAttackDamage), bonus: 'STR + weapon(s) + buffs' },
             { label: 'Ranged Damage', value: String(rangedAttackDamage), bonus: 'DEX + weapon + buffs' },
-            { label: 'Armor Class', value: String(character.armorClass), bonus: equipmentBonuses.armorClass > 0 ? `Armor bonus +${equipmentBonuses.armorClass}` : null },
+            { label: 'Armor Class', value: String(effectiveArmorClass), bonus: equipmentBonuses.armorClass > 0 ? `Armor bonus +${equipmentBonuses.armorClass}` : null },
             { label: 'Spell Damage Bonus', value: `+${spellDamageBonus}`, bonus: 'INT + gear + buffs' },
             { label: 'Healing Bonus', value: `+${healingBonus}`, bonus: 'WIS + gear + buffs' },
             { label: 'Strength', value: String(character.strength), bonus: `HP +${strengthBonusHp}, Damage +${strengthBonusDamage}` },
@@ -2575,7 +2602,10 @@ window.GridUI = {
         acBadge.style.flexShrink = '0';
         acBadge.style.marginLeft = 'auto';
         acBadge.title = 'Armor Class — reduces physical damage';
-        acBadge.textContent = `AC ${character.armorClass}`;
+        const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
+            ? this.getCharacterArmorClass(character)
+            : character.armorClass;
+        acBadge.textContent = `AC ${effectiveArmorClass}`;
 
         const levelUpButton = document.createElement('button');
         levelUpButton.type = 'button';
@@ -2880,7 +2910,10 @@ window.GridUI = {
 
         hud.hpText.textContent = `${character.hitPoints} / ${character.maxHitPoints}`;
         if (hud.acBadge) {
-            hud.acBadge.textContent = `AC ${character.armorClass}`;
+            const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
+                ? this.getCharacterArmorClass(character)
+                : character.armorClass;
+            hud.acBadge.textContent = `AC ${effectiveArmorClass}`;
             hud.acBadge.title = typeof this.getCharacterEquipmentSummaryText === 'function'
                 ? `Armor Class and gear bonuses: ${this.getCharacterEquipmentSummaryText(character)}`
                 : 'Armor Class — reduces physical damage';

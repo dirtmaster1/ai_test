@@ -302,7 +302,10 @@ window.GridAI = {
 
         const baseDamage = this.getEffectiveAbilityDamage(character, resolvedAbility);
         const isSpell = resolvedAbility.type === 'spell' || resolvedAbility.id === 'magic-missile';
-        const amount = isSpell ? baseDamage : Math.max(0, baseDamage - target.armorClass);
+        const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
+            ? this.getCharacterArmorClass(target)
+            : target.armorClass;
+        const amount = isSpell ? baseDamage : Math.max(0, baseDamage - effectiveArmorClass);
 
         return {
             ability: resolvedAbility,
@@ -371,7 +374,7 @@ window.GridAI = {
             weakTargetBonus -
             effect.distance * distanceWeight -
             focusPenalty -
-            target.armorClass * 1.2
+            (typeof this.getCharacterArmorClass === 'function' ? this.getCharacterArmorClass(target) : target.armorClass) * 1.2
         );
     },
 
@@ -421,7 +424,7 @@ window.GridAI = {
                 nearestBonus +
                 this.getTargetRolePriority(character, candidate) * 1.1 -
                 effect.distance * 4.75 -
-                candidate.armorClass * 1.5
+                (typeof this.getCharacterArmorClass === 'function' ? this.getCharacterArmorClass(candidate) : candidate.armorClass) * 1.5
             );
 
             if (score > bestScore) {
