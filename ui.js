@@ -29,6 +29,24 @@ window.GridUI = {
                 </svg>`;
         }
 
+        if (ability.id === 'poison-dart') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M4 12h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M12.5 9.4L18 12l-5.5 2.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="19.2" cy="12" r="2.2" fill="currentColor" opacity="0.85"/>
+                    <circle cx="16.4" cy="8.6" r="1" fill="currentColor" opacity="0.45"/>
+                </svg>`;
+        }
+
+        if (ability.id === 'call-of-the-wolf') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M4.5 16.2l2.1-6.7 3.4-2.9 2.8 1 2.1-1.8 2.1 1.3 2.2 4.4-1.4 5.1-3.5.7-2.9-1.1-2.7 1.2z" fill="currentColor" opacity="0.88"/>
+                    <path d="M7.8 8.5l1.7-2.3 2.8-.9 2.3.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+                </svg>`;
+        }
+
         if (ability.id === 'sleep') {
             return `
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -115,6 +133,14 @@ window.GridUI = {
             return `Effect: Sleep ${radius}-cell burst`;
         }
 
+        if (ability.id === 'call-of-the-wolf') {
+            return 'Effect: Summon wolf ally';
+        }
+
+        if (ability.id === 'poison-dart') {
+            return 'Effect: Apply poison';
+        }
+
         if (ability.type === 'heal') {
             const healAmount = this.getEffectiveAbilityHealAmount(character, ability);
             return `Healing: ${healAmount} HP`;
@@ -144,7 +170,7 @@ window.GridUI = {
     getAbilityTooltipText(character, ability) {
         const lines = [ability.name, this.getAbilityDetailText(character, ability)];
         const range = this.getEffectiveAbilityRange(character, ability);
-        if (typeof range === 'number') {
+        if (typeof range === 'number' && ability.id !== 'call-of-the-wolf') {
             lines.push(`Range: ${range}`);
         }
         if ((ability.actionCost ?? 0) > 0) {
@@ -171,6 +197,14 @@ window.GridUI = {
 
         if (ability.id === 'sleep') {
             return 'Click a cell to put nearby enemies to sleep for 2 turns, ending early if they take damage.';
+        }
+
+        if (ability.id === 'call-of-the-wolf') {
+            return 'Summon a friendly wolf companion that fights on its own and attacks the nearest enemy.';
+        }
+
+        if (ability.id === 'poison-dart') {
+            return 'Launch a toxic dart that applies the same poison effect used by giant spiders.';
         }
 
         if (ability.type === 'heal') {
@@ -209,6 +243,10 @@ window.GridUI = {
 
         if (ability?.id === 'venomous-bite') {
             return ability.name || 'Venomous Bite';
+        }
+
+        if (ability?.id === 'wolf-bite') {
+            return ability.name || 'Bite';
         }
 
         if (ability?.type === 'attack') {
@@ -1011,7 +1049,7 @@ window.GridUI = {
 
             activeCharacter.selectedAbilityId = ability.id;
 
-            if (ability.type === 'buff') {
+            if (ability.type === 'buff' || ability.id === 'call-of-the-wolf') {
                 this.useAbilityOnTarget(activeCharacter, ability);
             }
         });

@@ -6,7 +6,7 @@ window.GridAI = {
             return [];
         }
 
-        if (character.team === 'player') {
+        if (this.isPartyAlignedCharacter?.(character)) {
             if (this.gameMode === 'combat') {
                 return this.getCombatEnemiesForPlayers();
             }
@@ -21,7 +21,10 @@ window.GridAI = {
             return [];
         }
 
-        if (character.team === 'player') {
+        if (this.isPartyAlignedCharacter?.(character)) {
+            if (this.gameMode === 'combat') {
+                return this.getCombatPartyMembers?.() || this.playerParty;
+            }
             return this.playerParty;
         }
 
@@ -512,6 +515,51 @@ window.GridAI = {
         return candidates[0];
     },
 
+    getNearbyHurtGoblinAt(caster, range, originX = caster?.gridX, originY = caster?.gridY) {
+        if (!caster) {
+            return null;
+        }
+
+        const candidates = this.getLivingGoblinAllies().filter((ally) => {
+            if (ally.hitPoints >= ally.maxHitPoints) {
+                return false;
+            }
+
+            const effect = this.getExpectedActionEffect(caster, ally, this.getAbilityForCharacter(caster, 'mend-flesh'), originX, originY);
+            return Boolean(effect?.isValid) && effect.distance <= range;
+        });
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        candidates.sort((left, right) => {
+            const leftMissing = left.maxHitPoints - left.hitPoints;
+            const rightMissing = right.maxHitPoints - right.hitPoints;
+            if (leftMissing !== rightMissing) {
+                return rightMissing - leftMissing;
+            }
+
+            const leftDistance = this.getAttackDistanceBetweenPositions(originX, originY, left.gridX, left.gridY);
+            const rightDistance = this.getAttackDistanceBetweenPositions(originX, originY, right.gridX, right.gridY);
+            return leftDistance - rightDistance;
+        });
+
+        return candidates[0];
+    },
+
+    getDistanceToNearestGoblinAllyAt(character, gridX, gridY) {
+        const allies = this.getLivingGoblinAllies().filter((ally) => ally !== character);
+        if (allies.length === 0) {
+            return 0;
+        }
+
+        return allies.reduce((nearestDistance, ally) => {
+            const distance = this.getAttackDistanceBetweenPositions(gridX, gridY, ally.gridX, ally.gridY);
+            return Math.min(nearestDistance, distance);
+        }, Number.POSITIVE_INFINITY);
+    },
+
     moveCharacterToCell(character, destination) {
         if (!character || !destination) {
             return false;
@@ -752,8 +800,8 @@ window.GridAI = {
 
     moveGoblinShaman(character) {
         const healAbility = this.getAbilityForCharacter(character, 'mend-flesh');
-        const buffAbility = this.getAbilityForCharacter(character, 'inflict-pain');
-        if (!healAbility || !buffAbility) {
+        const poisonDartAbility = this.getAbilityForCharacter(character, 'poison-dart');
+        if (!healAbility || !poisonDartAbility) {
             character.actionsRemaining = 0;
             character.bonusMovementRemaining = 0;
             this.endCurrentTurn();
@@ -768,40 +816,66 @@ window.GridAI = {
             }
         }
 
-        if (character.actionsRemaining >= character.attackCost && character.magicPoints < (buffAbility.mpCost ?? 0)) {
-            character.actionsRemaining = 0;
-            character.bonusMovementRemaining = 0;
-            this.endCurrentTurn();
-            return true;
+        if (character.actionsRemaining >= character.attackCost && character.magicPoints >= (poisonDartAbility.mpCost ?? 0)) {
+            const poisonTarget = this.getBestImmediateAttackTarget(character, poisonDartAbility);
+            if (poisonTarget) {
+                character.selectedAbilityId = poisonDartAbility.id;
+                return this.castPoisonDart(character, poisonTarget, poisonDartAbility);
+            }
         }
-
-        character.selectedAbilityId = buffAbility.id;
 
         const maxMoveSteps = this.getCharacterMovementBudget(character, character.attackCost);
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
-        const buffRange = buffAbility.range ?? 2;
-
         let bestPosition = reachablePositions[0];
-        let bestCoverage = this.countGoblinCoverageAt(bestPosition.x, bestPosition.y, buffRange) + this.getDistanceToNearestOpponentAt(character, bestPosition.x, bestPosition.y) * 2;
+        let bestScore = Number.NEGATIVE_INFINITY;
 
         reachablePositions.forEach((candidate) => {
-            const coverage = this.countGoblinCoverageAt(candidate.x, candidate.y, buffRange) + this.getDistanceToNearestOpponentAt(character, candidate.x, candidate.y) * 2;
-            if (coverage > bestCoverage) {
-                bestCoverage = coverage;
+            const adjacentSupport = this.countAdjacentAlliesAt(character, candidate.x, candidate.y);
+            const goblinCoverage = this.countGoblinCoverageAt(candidate.x, candidate.y, 2);
+            const nearestAllyDistance = this.getDistanceToNearestGoblinAllyAt(character, candidate.x, candidate.y);
+            const healTarget = character.magicPoints >= (healAbility.mpCost ?? 0)
+                ? this.getNearbyHurtGoblinAt(character, healAbility.range ?? 3, candidate.x, candidate.y)
+                : null;
+
+            let poisonOptionScore = 0;
+            if (character.magicPoints >= (poisonDartAbility.mpCost ?? 0)) {
+                const poisonTarget = this.getLivingCharacters(this.getOpposingGroupForCharacter(character)).find((target) => {
+                    const effect = this.getExpectedActionEffect(character, target, poisonDartAbility, candidate.x, candidate.y);
+                    return Boolean(effect?.isValid);
+                });
+                if (poisonTarget) {
+                    poisonOptionScore = 6;
+                }
+            }
+
+            const score = (
+                adjacentSupport * 4 +
+                goblinCoverage * 2.5 +
+                (healTarget ? 10 : 0) +
+                poisonOptionScore -
+                nearestAllyDistance * 3 -
+                candidate.steps * 1.25
+            );
+
+            if (score > bestScore) {
                 bestPosition = candidate;
+                bestScore = score;
                 return;
             }
 
-            if (coverage === bestCoverage && candidate.steps < bestPosition.steps) {
+            if (score === bestScore && candidate.steps < bestPosition.steps) {
                 bestPosition = candidate;
             }
         });
 
-        if (bestPosition.path.length > 0) {
+        if (bestPosition?.path?.length > 0) {
             return this.moveCharacterToCell(character, bestPosition.path[0]);
         }
 
-        return this.castInflictPain(character);
+        character.actionsRemaining = 0;
+        character.bonusMovementRemaining = 0;
+        this.endCurrentTurn();
+        return true;
     },
 
     moveAIMeleeCharacter(character) {
@@ -862,6 +936,31 @@ window.GridAI = {
         return true;
     },
 
+    moveWolfCompanion(character) {
+        const ability = this.getAbilityForCharacter(character, 'wolf-bite') || this.getBestOffensiveAbility(character);
+        const target = this.getNearestLivingOpponent(character);
+        if (!ability || !target) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        const immediateTarget = this.getExpectedActionEffect(character, target, ability)?.isValid ? target : null;
+        if (immediateTarget && this.characterAttack(character, immediateTarget, ability)) {
+            return true;
+        }
+
+        const shortestPath = this.findShortestPathToAttackPosition(character, target, ability);
+        if (shortestPath?.length > 0) {
+            return this.moveCharacterToCell(character, shortestPath[0]);
+        }
+
+        const fallbackMove = this.chooseBestAdvanceMove(character, target, ability);
+        if (fallbackMove) {
+            return this.moveCharacterToCell(character, fallbackMove);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
     forceEndCurrentAITurn(character) {
         if (!character || this.gameMode !== 'combat' || this.getActiveTurnCharacter() !== character) {
             return false;
@@ -888,15 +987,16 @@ window.GridAI = {
         }
 
         const actions = this.getCharacterActionList(character);
-        const canBuff = actions.some((ability) => ability.id === 'inflict-pain');
         const canBow = actions.some((ability) => ability.id === 'bow-shot');
         const goblinRole = this.getGoblinRole(character);
 
         let didAct = false;
 
-        if (goblinRole === 'warrior' || goblinRole === 'brute') {
+        if (character.isSummonedWolf) {
+            didAct = this.moveWolfCompanion(character);
+        } else if (goblinRole === 'warrior' || goblinRole === 'brute') {
             didAct = this.moveGoblinFrontliner(character);
-        } else if (canBuff) {
+        } else if (goblinRole === 'shaman') {
             didAct = this.moveGoblinShaman(character);
         } else if (canBow) {
             didAct = this.moveGoblinArcher(character);

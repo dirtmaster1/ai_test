@@ -67,12 +67,15 @@ class GridScene {
         // Initialize characters from character.js
         this.initializeCharacters();
         this.characterHud = new Map();
+        this.summonedAllies = [];
+        this.nextSummonedAllyId = 1;
 
         // Turn system
         this.turnOrder = this.createInitiativeTurnOrder(this.characters);
         this.activeTurnIndex = 0;
         this.turnTransitionDelay = 18;
         this.turnTransitionFrames = 0;
+        this.sleepSkipTurnTimeoutId = null;
         this.enemyMoveTimer = 0;
         this.pendingCombatAction = null;
         this.isGameOver = false;
@@ -656,6 +659,21 @@ class GridScene {
         return this.getAggroedEnemyGroups().flatMap((group) => this.getLivingCharacters(group.members));
     }
 
+    isPartyAlignedCharacter(character) {
+        return Boolean(character && (character.team === 'player' || character.team === 'ally'));
+    }
+
+    getCombatPartyMembers() {
+        if (this.gameMode !== 'combat') {
+            return [];
+        }
+
+        return [
+            ...this.getLivingCharacters(this.playerParty),
+            ...this.getLivingCharacters(this.summonedAllies ?? [])
+        ];
+    }
+
     getCombatEnemiesForPlayers() {
         if (this.gameMode !== 'combat') {
             return [];
@@ -698,7 +716,7 @@ class GridScene {
     refreshCombatTurnOrder(preserveCurrentCharacter = true) {
         const currentCharacter = preserveCurrentCharacter ? this.getActiveTurnCharacter() : null;
         const combatants = [
-            ...this.getLivingCharacters(this.playerParty),
+            ...this.getCombatPartyMembers(),
             ...this.getAggroedEnemyMembers()
         ];
 
@@ -720,6 +738,7 @@ class GridScene {
 
     enterExplorationMode() {
         this.gameMode = 'exploration';
+        this.clearSummonedAllies();
         const alivePlayers = this.getLivingCharacters(this.playerParty);
 
         if (!this.explorationMarchingOrderIds || this.explorationMarchingOrderIds.length === 0) {
@@ -1335,8 +1354,10 @@ class GridScene {
 
             const leftIsPlayer = left.character.team === 'player';
             const rightIsPlayer = right.character.team === 'player';
-            if (leftIsPlayer !== rightIsPlayer) {
-                return leftIsPlayer ? -1 : 1;
+            const leftIsPartyAligned = this.isPartyAlignedCharacter(left.character);
+            const rightIsPartyAligned = this.isPartyAlignedCharacter(right.character);
+            if (leftIsPartyAligned !== rightIsPartyAligned) {
+                return leftIsPartyAligned ? -1 : 1;
             }
 
             if (left.randomTieBreaker !== right.randomTieBreaker) {
@@ -1389,6 +1410,11 @@ class GridScene {
             return;
         }
 
+        if (this.sleepSkipTurnTimeoutId !== null) {
+            clearTimeout(this.sleepSkipTurnTimeoutId);
+            this.sleepSkipTurnTimeoutId = null;
+        }
+
         const activeCharacter = this.getActiveTurnCharacter();
         if (!activeCharacter) {
             return;
@@ -1418,7 +1444,17 @@ class GridScene {
             this.turnTransitionFrames = this.turnTransitionDelay;
             this.enemyMoveTimer = 0;
             this.updateCamera();
-            this.endCurrentTurn();
+            this.showCharacterToast(activeCharacter, 'Zzzz', '#a9c4de', 1000);
+            this.sleepSkipTurnTimeoutId = setTimeout(() => {
+                this.sleepSkipTurnTimeoutId = null;
+                if (this.gameMode !== 'combat') {
+                    return;
+                }
+                if (this.turnOrder[this.activeTurnIndex] !== activeCharacter) {
+                    return;
+                }
+                this.endCurrentTurn();
+            }, 1000);
             return;
         }
 
@@ -2029,7 +2065,9 @@ class GridScene {
         }
 
         let didUseAbility = false;
-        if (ability.type === 'heal') {
+        if (ability.id === 'call-of-the-wolf') {
+            didUseAbility = this.castCallOfTheWolf(character, ability);
+        } else if (ability.type === 'heal') {
             didUseAbility = Boolean(targetCharacter) && this.castHeal(character, targetCharacter, ability);
         } else if (ability.id === 'charge') {
             didUseAbility = Boolean(targetCharacter) && this.castCharge(character, targetCharacter, ability);
@@ -2037,6 +2075,8 @@ class GridScene {
             didUseAbility = this.castInflictPain(character);
         } else if (ability.id === 'magic-missile') {
             didUseAbility = Boolean(targetCharacter) && this.castMagicMissile(character, targetCharacter);
+        } else if (ability.id === 'poison-dart') {
+            didUseAbility = Boolean(targetCharacter) && this.castPoisonDart(character, targetCharacter, ability);
         } else if (ability.id === 'sleep') {
             didUseAbility = Boolean(targetCharacter) && this.castSleep(character, targetCharacter, ability);
         } else if (ability.type === 'buff') {
@@ -2068,6 +2108,68 @@ class GridScene {
 
         this.beginCombatWithGroup(enemyGroup);
         return true;
+    }
+
+    clearSummonedAllies() {
+        if (!Array.isArray(this.summonedAllies) || this.summonedAllies.length === 0) {
+            this.summonedAllies = [];
+            return;
+        }
+
+        const summonedSet = new Set(this.summonedAllies);
+        this.summonedAllies.forEach((ally) => {
+            ally.removedFromScene = true;
+            if (ally.mesh?.parent) {
+                ally.mesh.parent.remove(ally.mesh);
+            }
+        });
+
+        this.characters = this.characters.filter((character) => !summonedSet.has(character));
+        this.summonedAllies = [];
+    }
+
+    findSummonPlacementNearCharacter(character, minDistance = 1, maxDistance = 2) {
+        if (!character) {
+            return null;
+        }
+
+        const occupiedCells = new Set(
+            this.characters
+                .filter((candidate) => !candidate.isDead && !candidate.removedFromScene)
+                .map((candidate) => this.getCellKey(candidate.gridX, candidate.gridY))
+        );
+
+        return this.findNearbyFloorTile(character.gridX, character.gridY, minDistance, maxDistance, occupiedCells);
+    }
+
+    createWolfCompanion(caster) {
+        const wolf = this.createCharacter({
+            id: `wolf-companion-${this.nextSummonedAllyId++}`,
+            name: 'Wolf Companion',
+            role: 'AI',
+            team: 'ally',
+            accentColor: '#b9c68b',
+            pointerColor: 0xd6f0a2,
+            spriteFrame: this.getCharacterSpriteFrame('wolf'),
+            race: 'wolf',
+            strength: 10,
+            dexterity: 12,
+            intelligence: 2,
+            wisdom: 6,
+            initiative: 10,
+            hitPoints: 10,
+            maxHitPoints: 10,
+            magicPoints: 0,
+            maxMagicPoints: 0,
+            armorClass: 1,
+            attackCost: 2,
+            maxActionsPerTurn: 5,
+            abilities: ['wolf-bite'],
+            spells: []
+        });
+        wolf.isSummonedWolf = true;
+        wolf.summonerId = caster?.id || null;
+        return wolf;
     }
 
     getLootInteractionCharacter() {
@@ -2131,7 +2233,15 @@ class GridScene {
         }
 
         const worldPos = this.getWorldPositionForCell(gridX, gridY);
-        const vec = new THREE.Vector3(worldPos.x, worldPos.y, 0);
+        return this.getScreenPositionForWorldPosition(worldPos.x, worldPos.y);
+    }
+
+    getScreenPositionForWorldPosition(worldX, worldY) {
+        if (!this.renderer?.domElement || !this.camera) {
+            return null;
+        }
+
+        const vec = new THREE.Vector3(worldX, worldY, 0);
         vec.project(this.camera);
 
         const rect = this.renderer.domElement.getBoundingClientRect();
@@ -2139,6 +2249,19 @@ class GridScene {
             screenX: (vec.x * 0.5 + 0.5) * rect.width + rect.left,
             screenY: (-vec.y * 0.5 + 0.5) * rect.height + rect.top
         };
+    }
+
+    showCharacterToast(character, message, color = '#d6cbb8', durationMs = 2200) {
+        if (!character) {
+            this.showToast(message, color, durationMs);
+            return;
+        }
+
+        const worldPos = this.getCharacterRenderedWorldPos(character);
+        const anchor = worldPos
+            ? this.getScreenPositionForWorldPosition(worldPos.x, worldPos.y)
+            : this.getScreenPositionForCell(character.gridX, character.gridY);
+        this.showToast(message, color, durationMs, anchor?.screenX ?? null, anchor?.screenY ?? null);
     }
 
     showOutOfRangeToastAtCell(gridX, gridY, message = 'Skill is out of range') {
@@ -3304,6 +3427,139 @@ class GridScene {
         return true;
     }
 
+    castPoisonDart(caster, target, poisonDartAbility = null) {
+        if (this.gameMode !== 'combat' && this.gameMode !== 'exploration') {
+            return false;
+        }
+
+        const isExploration = this.gameMode === 'exploration';
+
+        if (!caster || !target || caster.isDead || target.isDead || caster.team === target.team) {
+            return false;
+        }
+
+        if (!isExploration && this.isCombatActionPending()) {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (!isExploration && (activeCharacter !== caster || caster.actionsRemaining < caster.attackCost)) {
+            return false;
+        }
+
+        if (isExploration && caster.team !== 'player') {
+            return false;
+        }
+
+        const ability = poisonDartAbility?.id === 'poison-dart'
+            ? poisonDartAbility
+            : window.CharacterData?.getCharacterActionById(caster, 'poison-dart');
+        if (!ability) {
+            return false;
+        }
+
+        if ((caster.magicPoints ?? 0) < (ability.mpCost ?? 0)) {
+            return false;
+        }
+
+        const range = this.getEffectiveAbilityRange(caster, ability);
+        const distance = this.getAttackDistanceBetweenPositions(caster.gridX, caster.gridY, target.gridX, target.gridY);
+        if (distance > range) {
+            return false;
+        }
+
+        if (this.requiresLineOfSight(ability) && !this.hasLineOfSightBetweenCells(caster.gridX, caster.gridY, target.gridX, target.gridY)) {
+            return false;
+        }
+
+        this.faceCharacterToward(caster, target);
+        caster.magicPoints -= ability.mpCost ?? 0;
+        this.applyPoisonEffect(target);
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} on ${target.name}, poisoning them.`,
+            caster.accentColor
+        );
+
+        if (!isExploration) {
+            caster.actionsRemaining -= caster.attackCost;
+            if (this.shouldEndCurrentTurn(caster)) {
+                this.endCurrentTurn();
+            }
+        } else {
+            this.beginCombatWithEnemyCharacter(target);
+        }
+
+        return true;
+    }
+
+    castCallOfTheWolf(caster, summonAbility = null) {
+        if (this.gameMode !== 'combat') {
+            return false;
+        }
+
+        if (!caster || caster.isDead || caster.team !== 'player') {
+            return false;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        if (activeCharacter !== caster || this.isCombatActionPending()) {
+            return false;
+        }
+
+        const ability = summonAbility?.id === 'call-of-the-wolf'
+            ? summonAbility
+            : window.CharacterData?.getCharacterActionById(caster, 'call-of-the-wolf');
+        if (!ability) {
+            return false;
+        }
+
+        const actionCost = this.getAbilityActionCost(caster, ability);
+        if ((caster.actionsRemaining ?? 0) < actionCost || (caster.magicPoints ?? 0) < (ability.mpCost ?? 0)) {
+            return false;
+        }
+
+        const existingWolf = (this.summonedAllies ?? []).find((ally) => ally?.isSummonedWolf && !ally.isDead && !ally.removedFromScene);
+        if (existingWolf) {
+            this.showToast('A wolf is already fighting with the party.', '#b9c68b', 2200);
+            return false;
+        }
+
+        const summonCell = this.findSummonPlacementNearCharacter(caster, 1, 2);
+        if (!summonCell) {
+            this.showToast('No room to summon a wolf here.', '#b9c68b', 2200);
+            return false;
+        }
+
+        const wolf = this.createWolfCompanion(caster);
+        wolf.gridX = summonCell.x;
+        wolf.gridY = summonCell.y;
+        this.summonedAllies.push(wolf);
+        this.characters.push(wolf);
+        this.setupCharacterSprite(
+            wolf,
+            this.createSpriteTexture(wolf.spriteFrame),
+            wolf.pointerColor
+        );
+
+        caster.magicPoints -= ability.mpCost ?? 0;
+        caster.actionsRemaining = Math.max(0, (caster.actionsRemaining ?? 0) - actionCost);
+
+        this.refreshCombatTurnOrder(true);
+        this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} and summons a wolf companion.`,
+            caster.accentColor
+        );
+
+        if (this.shouldEndCurrentTurn(caster)) {
+            this.endCurrentTurn();
+        }
+
+        return true;
+    }
+
     applyPoisonEffect(target, damagePerRound = 3, roundsRemaining = 3) {
         if (!target || target.isDead) {
             return false;
@@ -3862,29 +4118,35 @@ class GridScene {
         switch (character.id) {
             case 'dwarf-warrior':
                 return {
-                    hp: 2,
+                    hp: 4,
                     strength: 2,
                     maxActionsPerTurn: newLevel === 3 ? 1 : 0,
                     unlockedAbilities: newLevel === 3 ? ['charge'] : []
                 };
             case 'cleric':
                 return {
-                    hp: 1,
-                    mp: 1,
+                    hp: 3,
+                    mp: 2,
                     wisdom: 1,
                     maxActionsPerTurn: newLevel === 3 ? 1 : 0,
                     unlockedSpells: newLevel === 3 ? ['blessing'] : []
                 };
             case 'wizard':
                 return {
-                    hp: 1,
-                    mp: 2,
+                    hp: 2,
+                    mp: 3,
                     intelligence: 1,
                     maxActionsPerTurn: newLevel === 3 ? 1 : 0,
                     unlockedSpells: newLevel === 3 ? ['sleep'] : []
                 };
             case 'ranger-aragon':
-                return { hp: 1, initiative: 1, dexterity: 1 };
+                return {
+                    hp: 3,
+                    initiative: 1,
+                    dexterity: 1,
+                    maxActionsPerTurn: newLevel === 3 ? 1 : 0,
+                    unlockedSpells: newLevel === 3 ? ['call-of-the-wolf'] : []
+                };
             default:
                 return null;
         }
@@ -3989,7 +4251,7 @@ class GridScene {
     }
 
     awardEnemyDefeatExperience(defeatedEnemy, defeatedBy) {
-        if (!defeatedEnemy || defeatedEnemy.team !== 'ai' || defeatedBy?.team !== 'player') {
+        if (!defeatedEnemy || defeatedEnemy.team !== 'ai' || !this.isPartyAlignedCharacter(defeatedBy)) {
             return;
         }
 
@@ -4440,7 +4702,7 @@ class GridScene {
             return;
         }
 
-        if (activeCharacter && activeCharacter.team === 'ai' && !this.isCombatActionPending(activeCharacter)) {
+        if (activeCharacter && activeCharacter.team !== 'player' && !this.isCombatActionPending(activeCharacter)) {
             this.enemyMoveTimer += 1;
             if (this.enemyMoveTimer >= 24) {
                 this.moveAICharacter(activeCharacter);

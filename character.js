@@ -436,8 +436,8 @@ window.CharacterData = {
             armorClass: 0,
             abilities: [],
             spells: [
-                'mend-flesh',
-                'inflict-pain'
+                'poison-dart',
+                'mend-flesh'
             ]
         });
 
