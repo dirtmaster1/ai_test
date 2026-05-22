@@ -1,10 +1,8 @@
 // Authored dungeon layouts with layered base, prop, and encounter grids.
 (() => {
     const createTokenRow = (row) => row.trim().split(/\s+/);
-    const createBaseRow = (row) => row.split('|');
 
     window.CustomDungeonMaps = {
-        createBaseRow,
         createTokenRow,
 
         starterKeep: {
@@ -12,27 +10,27 @@
             name: 'Starter Keep',
             size: 21,
             baseRows: [
-                createBaseRow('wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa'),
-                createBaseRow('wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |dr|  |  |  |  |  |dr|  |  |  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |  |  |wa'),
-                createBaseRow('wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa|wa|wa'),
-                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |wa|  |  |  |wa|  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |wa|  |  |  |wa|  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |dr|  |  |  |dr|  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |wa|  |  |  |wa|  |  |  |  |  |wa'),
-                createBaseRow('wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa'),
-                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
-                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
-                createBaseRow('wa|dr|wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa|wa|wa|  |dr|wa|wa'),
-                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
-                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
-                createBaseRow('wa|wa|wa|  |wa|  |wa|wa|wa|  |wa|  |wa|wa|wa|  |wa|  |wa|wa|wa'),
-                createBaseRow('wa|  |  |  |dr|  |  |  |wa|  |  |  |wa|  |  |  |dr|  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |  |  |wa|  |  |  |  |  |  |  |wa'),
-                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |  |  |wa|  |  |  |  |  |  |  |wa'),
-                createBaseRow('wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa')
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ dr __ __ __ __ __ dr __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa __ wa wa wa wa wa __ wa wa wa wa wa __ wa wa wa wa wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ wa __ __ __ wa __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ wa __ __ __ wa __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ dr __ __ __ dr __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ wa __ __ __ wa __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa __ wa wa wa wa wa __ wa __ wa wa wa wa wa __ wa wa wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa dr wa wa wa __ wa wa wa wa wa __ wa wa wa wa wa __ dr wa wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa wa wa __ wa __ wa wa wa __ wa __ wa wa wa __ wa __ wa wa wa'),
+                createTokenRow('wa __ __ __ dr __ __ __ wa __ __ __ wa __ __ __ dr __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
             ],
             propRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
@@ -83,7 +81,7 @@
             baseLegend: {
                 wa: { type: 'wall' },
                 dr: { type: 'door' },
-                '  ': { type: 'floor' }
+                __: { type: 'floor' }
             },
             propLegend: {
                 bd: { frameId: 'bed', roomTheme: 'barracks', searchable: false },
