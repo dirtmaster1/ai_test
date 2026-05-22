@@ -113,9 +113,10 @@ class GridScene {
 
         const dungeon = this.generateDungeonMap();
         this.dungeonMap = dungeon.map;
-        this.dungeonRooms = dungeon.rooms;
-        this.placeCharacters(this.dungeonRooms);
-        this.populateDungeonProps(this.dungeonRooms);
+        this.dungeonRooms = dungeon.rooms || [];
+        this.dungeonLayout = dungeon.layout || null;
+        this.placeCharacters(dungeon);
+        this.populateDungeonProps(dungeon);
         this.enterExplorationMode();
         this.updatePartyVisionState();
 
@@ -243,21 +244,28 @@ class GridScene {
 
     // --- Character Placement ---
 
-    placeCharacters(rooms) {
-        if (rooms.length < 1) {
-            return;
-        }
+    placeCharacters(dungeon) {
+        const rooms = Array.isArray(dungeon) ? dungeon : dungeon?.rooms || [];
+        const layout = Array.isArray(dungeon) ? null : dungeon?.layout || this.dungeonLayout;
 
-        const startRoom = rooms[0];
-        const playerFormation = this.findPlayerStartFormation(startRoom);
-        this.wizard.gridX = playerFormation.wizard.x;
-        this.wizard.gridY = playerFormation.wizard.y;
-        this.warrior.gridX = playerFormation.warrior.x;
-        this.warrior.gridY = playerFormation.warrior.y;
-        this.cleric.gridX = playerFormation.cleric.x;
-        this.cleric.gridY = playerFormation.cleric.y;
-        this.ranger.gridX = playerFormation.ranger.x;
-        this.ranger.gridY = playerFormation.ranger.y;
+        if (layout?.playerStarts && Object.keys(layout.playerStarts).length > 0) {
+            this.placeConfiguredPlayerCharacters(layout.playerStarts);
+        } else {
+            if (rooms.length < 1) {
+                return;
+            }
+
+            const startRoom = rooms[0];
+            const playerFormation = this.findPlayerStartFormation(startRoom);
+            this.wizard.gridX = playerFormation.wizard.x;
+            this.wizard.gridY = playerFormation.wizard.y;
+            this.warrior.gridX = playerFormation.warrior.x;
+            this.warrior.gridY = playerFormation.warrior.y;
+            this.cleric.gridX = playerFormation.cleric.x;
+            this.cleric.gridY = playerFormation.cleric.y;
+            this.ranger.gridX = playerFormation.ranger.x;
+            this.ranger.gridY = playerFormation.ranger.y;
+        }
 
         const occupiedCells = new Set([
             this.getCellKey(this.wizard.gridX, this.wizard.gridY),
@@ -266,8 +274,12 @@ class GridScene {
             this.getCellKey(this.ranger.gridX, this.ranger.gridY)
         ]);
 
-        this.spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells);
-        this.spawnTemporaryTestSpidersNearParty(occupiedCells);
+        if (layout?.enemyPlacements?.length) {
+            this.spawnConfiguredEnemyPlacements(layout.enemyPlacements, occupiedCells);
+        } else {
+            this.spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells);
+            this.spawnTemporaryTestSpidersNearParty(occupiedCells);
+        }
         this.characters = [...this.playerParty, ...this.aiParty];
 
         // Keep legacy references pointing at any matching enemy so existing UI text/helpers still work.
@@ -277,8 +289,16 @@ class GridScene {
         this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute')) || this.aiParty[0] || null;
     }
 
-    populateDungeonProps(rooms) {
+    populateDungeonProps(dungeon) {
         this.dungeonPropsByCell.clear();
+
+        const rooms = Array.isArray(dungeon) ? dungeon : dungeon?.rooms || [];
+        const layout = Array.isArray(dungeon) ? null : dungeon?.layout || this.dungeonLayout;
+
+        if (layout?.propPlacements?.length) {
+            this.populateConfiguredDungeonProps(layout.propPlacements);
+            return;
+        }
 
         if (!rooms || rooms.length === 0) {
             return;
@@ -305,6 +325,125 @@ class GridScene {
 
         this.populateSpikeTraps(shuffledRooms, occupiedCells);
         this.placeTemporarySpiderTestCrate();
+    }
+
+    placeConfiguredPlayerCharacters(playerStarts) {
+        const occupiedCells = new Set();
+        const anchor = Object.values(playerStarts)[0] || {
+            x: Math.floor(this.gridWidth / 2),
+            y: Math.floor(this.gridHeight / 2)
+        };
+
+        this.playerParty.forEach((character) => {
+            const desiredStart = playerStarts[character.id];
+            const desiredKey = desiredStart ? this.getCellKey(desiredStart.x, desiredStart.y) : null;
+            const canUseDesiredStart = Boolean(
+                desiredStart &&
+                this.dungeonMap[desiredStart.y]?.[desiredStart.x] === this.TILE_FLOOR &&
+                !occupiedCells.has(desiredKey)
+            );
+
+            if (canUseDesiredStart) {
+                character.gridX = desiredStart.x;
+                character.gridY = desiredStart.y;
+                occupiedCells.add(desiredKey);
+                return;
+            }
+
+            const fallback = this.findNearbyFloorTile(anchor.x, anchor.y, 0, 5, occupiedCells) || anchor;
+            character.gridX = fallback.x;
+            character.gridY = fallback.y;
+            occupiedCells.add(this.getCellKey(fallback.x, fallback.y));
+        });
+    }
+
+    populateConfiguredDungeonProps(propPlacements) {
+        propPlacements.forEach((propPlacement) => {
+            if (this.dungeonMap[propPlacement.gridY]?.[propPlacement.gridX] !== this.TILE_FLOOR) {
+                return;
+            }
+
+            const cellKey = this.getCellKey(propPlacement.gridX, propPlacement.gridY);
+            this.dungeonPropsByCell.set(cellKey, {
+                gridX: propPlacement.gridX,
+                gridY: propPlacement.gridY,
+                frameId: propPlacement.frameId,
+                roomTheme: propPlacement.roomTheme || 'custom',
+                searchable: Boolean(propPlacement.searchable),
+                hasBeenSearched: Boolean(propPlacement.hasBeenSearched)
+            });
+        });
+    }
+
+    spawnConfiguredEnemyPlacements(enemyPlacements, occupiedCells) {
+        const groupsById = new Map();
+        const groupMemberCounts = new Map();
+        const groupSeedById = new Map();
+
+        this.enemyGroups = [];
+        this.aiParty = [];
+
+        enemyPlacements.forEach((placement, placementIndex) => {
+            const archetype = this.getEnemyArchetypeById(placement.archetypeId);
+            if (!archetype) {
+                return;
+            }
+
+            const groupId = placement.groupId || `group-${placementIndex + 1}`;
+            if (!groupsById.has(groupId)) {
+                groupsById.set(groupId, {
+                    id: groupId,
+                    members: [],
+                    isAggro: false,
+                    isCleared: false
+                });
+                groupSeedById.set(groupId, groupSeedById.size + 1);
+                groupMemberCounts.set(groupId, 0);
+            }
+
+            const memberIndex = groupMemberCounts.get(groupId) || 0;
+            const enemy = this.createEnemyFromArchetype(archetype, groupSeedById.get(groupId), memberIndex);
+            const desiredCellKey = this.getCellKey(placement.gridX, placement.gridY);
+            const canUseDesiredCell =
+                this.dungeonMap[placement.gridY]?.[placement.gridX] === this.TILE_FLOOR &&
+                !occupiedCells.has(desiredCellKey);
+
+            if (canUseDesiredCell) {
+                enemy.gridX = placement.gridX;
+                enemy.gridY = placement.gridY;
+            } else {
+                this.placeCharacterNear(
+                    enemy,
+                    placement.gridX,
+                    placement.gridY,
+                    0,
+                    4,
+                    occupiedCells,
+                    { x: placement.gridX, y: placement.gridY }
+                );
+            }
+
+            occupiedCells.add(this.getCellKey(enemy.gridX, enemy.gridY));
+            enemy.encounterGroupId = groupId;
+            groupsById.get(groupId).members.push(enemy);
+            this.aiParty.push(enemy);
+            groupMemberCounts.set(groupId, memberIndex + 1);
+        });
+
+        this.enemyGroups = [...groupsById.values()];
+    }
+
+    getEnemyArchetypeById(archetypeId) {
+        const archetypes = {
+            'goblin-warrior': this.goblin,
+            'goblin-archer': this.goblinArcher,
+            'goblin-shaman': this.goblinShaman,
+            'goblin-brute': this.goblinBrute,
+            'goblin-chieftain': this.goblinChieftain,
+            'giant-spider': this.giantSpider
+        };
+
+        return archetypes[archetypeId] || null;
     }
 
     placeTemporarySpiderTestCrate() {

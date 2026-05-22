@@ -1,0 +1,126 @@
+// Authored dungeon layouts with layered base, prop, and encounter grids.
+(() => {
+    const createTokenRow = (row) => row.trim().split(/\s+/);
+    const createBaseRow = (row) => row.split('|');
+
+    window.CustomDungeonMaps = {
+        createBaseRow,
+        createTokenRow,
+
+        starterKeep: {
+            id: 'starter-keep',
+            name: 'Starter Keep',
+            size: 21,
+            baseRows: [
+                createBaseRow('wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa'),
+                createBaseRow('wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |dr|  |  |  |  |  |dr|  |  |  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |  |  |wa'),
+                createBaseRow('wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa|wa|wa'),
+                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |wa|  |  |  |wa|  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |wa|  |  |  |wa|  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |dr|  |  |  |dr|  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |wa|  |  |  |wa|  |  |  |  |  |wa'),
+                createBaseRow('wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa'),
+                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
+                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
+                createBaseRow('wa|dr|wa|wa|wa|  |wa|wa|wa|wa|wa|  |wa|wa|wa|wa|wa|  |dr|wa|wa'),
+                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
+                createBaseRow('wa|  |  |  |wa|  |  |  |  |  |wa|  |  |  |  |  |wa|  |  |  |wa'),
+                createBaseRow('wa|wa|wa|  |wa|  |wa|wa|wa|  |wa|  |wa|wa|wa|  |wa|  |wa|wa|wa'),
+                createBaseRow('wa|  |  |  |dr|  |  |  |wa|  |  |  |wa|  |  |  |dr|  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |  |  |wa|  |  |  |  |  |  |  |wa'),
+                createBaseRow('wa|  |  |  |  |  |  |  |wa|  |  |  |wa|  |  |  |  |  |  |  |wa'),
+                createBaseRow('wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa|wa')
+            ],
+            propRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ bd __ __ __ __ wr1 __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ chI __ __ chS __ __ __ __ __ __ __ __ __ __ __ __ wr2 __ chG __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ tb __ chI __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ st1 __ __ __ st2 __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ br1 __ cr __ __ __ __ __ __ __ __ __ __ __ __ __ br2 __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ chG __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ chS __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
+            encounterRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GCB GBB GCW1 GCA1 __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GCW2 GCS1 GCA2 __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ GW1 __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GA1 __ __ __'),
+                createTokenRow('__ __ __ __ GS1 __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GB1 __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ GW2 __ __ __ __ __ __ __ __ __ __ __ __ GA2 __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ GS2 __ __ __ __ __ __ __ __ __ __ __ __ GB2 __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ GSD __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ PW __ PR __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ PZ __ PC __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
+            baseLegend: {
+                wa: { type: 'wall' },
+                dr: { type: 'door' },
+                '  ': { type: 'floor' }
+            },
+            propLegend: {
+                bd: { frameId: 'bed', roomTheme: 'barracks', searchable: false },
+                tb: { frameId: 'tableCandles', roomTheme: 'barracks', searchable: false },
+                wr1: { frameId: 'weaponRack1', roomTheme: 'armory', searchable: true },
+                wr2: { frameId: 'weaponRack2', roomTheme: 'armory', searchable: true },
+                chI: { frameId: 'chestClosedIron', roomTheme: 'treasure', searchable: true },
+                chS: { frameId: 'chestClosedSteel', roomTheme: 'treasure', searchable: true },
+                chG: { frameId: 'chestClosedGold', roomTheme: 'treasure', searchable: true },
+                br1: { frameId: 'barrels1', roomTheme: 'storage', searchable: true },
+                br2: { frameId: 'barrels2', roomTheme: 'storage', searchable: true },
+                cr: { frameId: 'crate', roomTheme: 'storage', searchable: true },
+                st1: { frameId: 'spikeTrap1', roomTheme: 'trap', searchable: false },
+                st2: { frameId: 'spikeTrap2', roomTheme: 'trap', searchable: false }
+            },
+            encounterLegend: {
+                PW: { kind: 'player', characterId: 'dwarf-warrior' },
+                PZ: { kind: 'player', characterId: 'wizard' },
+                PC: { kind: 'player', characterId: 'cleric' },
+                PR: { kind: 'player', characterId: 'ranger-aragon' },
+                GW1: { kind: 'enemy', archetypeId: 'goblin-warrior', groupId: 'group-goblin-1' },
+                GA1: { kind: 'enemy', archetypeId: 'goblin-archer', groupId: 'group-goblin-1' },
+                GS1: { kind: 'enemy', archetypeId: 'goblin-shaman', groupId: 'group-goblin-1' },
+                GB1: { kind: 'enemy', archetypeId: 'goblin-brute', groupId: 'group-goblin-1' },
+                GSD: { kind: 'enemy', archetypeId: 'giant-spider', groupId: 'group-goblin-1' },
+                GW2: { kind: 'enemy', archetypeId: 'goblin-warrior', groupId: 'group-goblin-2' },
+                GA2: { kind: 'enemy', archetypeId: 'goblin-archer', groupId: 'group-goblin-2' },
+                GS2: { kind: 'enemy', archetypeId: 'goblin-shaman', groupId: 'group-goblin-2' },
+                GB2: { kind: 'enemy', archetypeId: 'goblin-brute', groupId: 'group-goblin-2' },
+                GCB: { kind: 'enemy', archetypeId: 'goblin-chieftain', groupId: 'group-goblin-chieftain' },
+                GBB: { kind: 'enemy', archetypeId: 'goblin-brute', groupId: 'group-goblin-chieftain' },
+                GCW1: { kind: 'enemy', archetypeId: 'goblin-warrior', groupId: 'group-goblin-chieftain' },
+                GCW2: { kind: 'enemy', archetypeId: 'goblin-warrior', groupId: 'group-goblin-chieftain' },
+                GCA1: { kind: 'enemy', archetypeId: 'goblin-archer', groupId: 'group-goblin-chieftain' },
+                GCA2: { kind: 'enemy', archetypeId: 'goblin-archer', groupId: 'group-goblin-chieftain' },
+                GCS1: { kind: 'enemy', archetypeId: 'goblin-shaman', groupId: 'group-goblin-chieftain' }
+            }
+        }
+    };
+})();
