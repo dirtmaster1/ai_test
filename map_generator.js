@@ -70,7 +70,12 @@ window.MapGenerator = {
                             frameId: propConfig.frameId,
                             roomTheme: propConfig.roomTheme || 'custom',
                             searchable: Boolean(propConfig.searchable),
-                            hasBeenSearched: false
+                            hasBeenSearched: false,
+                            lootMode: propConfig.lootMode,
+                            goldAmount: propConfig.goldAmount,
+                            lootItemIds: Array.isArray(propConfig.lootItemIds)
+                                ? [...propConfig.lootItemIds]
+                                : []
                         });
                     }
                 }
@@ -94,7 +99,12 @@ window.MapGenerator = {
                     gridX,
                     gridY,
                     archetypeId: encounterConfig.archetypeId,
-                    groupId: encounterConfig.groupId || `group-${enemyPlacements.length + 1}`
+                    lootMode: encounterConfig.lootMode,
+                    goldAmount: encounterConfig.goldAmount,
+                    lootItemIds: Array.isArray(encounterConfig.lootItemIds)
+                        ? [...encounterConfig.lootItemIds]
+                        : [],
+                    experiencePoints: encounterConfig.experiencePoints
                 });
             }
         }

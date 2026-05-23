@@ -370,7 +370,12 @@ class GridScene {
                 frameId: propPlacement.frameId,
                 roomTheme: propPlacement.roomTheme || 'custom',
                 searchable: Boolean(propPlacement.searchable),
-                hasBeenSearched: Boolean(propPlacement.hasBeenSearched)
+                hasBeenSearched: Boolean(propPlacement.hasBeenSearched),
+                lootMode: propPlacement.lootMode,
+                goldAmount: propPlacement.goldAmount,
+                lootItemIds: Array.isArray(propPlacement.lootItemIds)
+                    ? [...propPlacement.lootItemIds]
+                    : []
             });
         });
     }
@@ -403,6 +408,16 @@ class GridScene {
 
             const memberIndex = groupMemberCounts.get(groupId) || 0;
             const enemy = this.createEnemyFromArchetype(archetype, groupSeedById.get(groupId), memberIndex);
+            if (Number.isFinite(placement.experiencePoints)) {
+                enemy.experiencePoints = Math.max(0, Math.floor(placement.experiencePoints));
+            }
+            enemy.configuredLoot = {
+                lootMode: placement.lootMode,
+                goldAmount: placement.goldAmount,
+                lootItemIds: Array.isArray(placement.lootItemIds)
+                    ? [...placement.lootItemIds]
+                    : []
+            };
             const desiredCellKey = this.getCellKey(placement.gridX, placement.gridY);
             const canUseDesiredCell =
                 this.dungeonMap[placement.gridY]?.[placement.gridX] === this.TILE_FLOOR &&
@@ -2542,6 +2557,11 @@ class GridScene {
             return null;
         }
 
+        const customLootItemIds = Array.isArray(prop.lootItemIds)
+            ? prop.lootItemIds.filter((itemId) => typeof itemId === 'string' && itemId.trim().length > 0)
+            : [];
+        const customLootMode = prop.lootMode === 'all' ? 'all' : 'random';
+
         const chestFrames = new Set(['chestClosedIron', 'chestClosedGold', 'chestClosedSteel']);
         const rackFrames = new Set(['weaponRack1', 'weaponRack2', 'weaponRack3']);
         const storageFrames = new Set(['crate', 'barrel', 'barrels1', 'barrels2']);
@@ -2564,14 +2584,33 @@ class GridScene {
             maxGold = 7;
         }
 
+        if (customLootItemIds.length > 0 && customLootMode === 'all') {
+            chance = 1;
+        }
+
         if (Math.random() > chance) {
             return null;
         }
 
-        const gold = minGold + Math.floor(Math.random() * (maxGold - minGold + 1));
+        const hasConfiguredGold = Number.isFinite(prop.goldAmount);
+        const gold = hasConfiguredGold
+            ? Math.max(0, Math.floor(prop.goldAmount))
+            : minGold + Math.floor(Math.random() * (maxGold - minGold + 1));
         const equipmentDropChance = chestFrames.has(prop.frameId) ? 0.5 : 0.10;
         const equipmentDrops = [];
-        if (Math.random() < equipmentDropChance) {
+        if (customLootItemIds.length > 0) {
+            if (customLootMode === 'all') {
+                const configuredDrops = this.createEquipmentItemsFromIds(customLootItemIds);
+                if (configuredDrops.length > 0) {
+                    equipmentDrops.push(...configuredDrops);
+                }
+            } else if (Math.random() < equipmentDropChance) {
+                const equipment = this.rollEquipmentLootItem(customLootItemIds);
+                if (equipment) {
+                    equipmentDrops.push(equipment);
+                }
+            }
+        } else if (Math.random() < equipmentDropChance) {
             const equipment = this.rollEquipmentLootItem();
             if (equipment) {
                 equipmentDrops.push(equipment);
@@ -2581,12 +2620,22 @@ class GridScene {
         return { gold, equipmentDrops };
     }
 
-    getEquipmentLootTable() {
+    getEquipmentLootTable(lootItemIds = null) {
         const defaultLootIds = ['small-shield', 'long-bow', 'mages-amulet', 'healers-circlet'];
-        const lootIds = window.GameData?.EQUIPMENT_LOOT_ITEM_IDS ?? defaultLootIds;
+        const hasCustomLootIds = Array.isArray(lootItemIds) && lootItemIds.length > 0;
+        const lootIds = hasCustomLootIds
+            ? lootItemIds
+            : (window.GameData?.EQUIPMENT_LOOT_ITEM_IDS ?? defaultLootIds);
 
         return lootIds
             .map((itemId) => window.GameData?.getItemTemplateById(itemId) || null)
+            .filter(Boolean);
+    }
+
+    createEquipmentItemsFromIds(lootItemIds) {
+        const table = this.getEquipmentLootTable(lootItemIds);
+        return table
+            .map((template) => this.createEquipmentItemInstance(template))
             .filter(Boolean);
     }
 
@@ -2680,8 +2729,8 @@ class GridScene {
         return ensured;
     }
 
-    rollEquipmentLootItem() {
-        const table = this.getEquipmentLootTable();
+    rollEquipmentLootItem(lootItemIds = null) {
+        const table = this.getEquipmentLootTable(lootItemIds);
         if (!Array.isArray(table) || table.length === 0) {
             return null;
         }
@@ -4255,7 +4304,7 @@ class GridScene {
         }
 
         switch (character.id) {
-            case 'dwarf-warrior':
+            case 'warrior':
                 return {
                     hp: 4,
                     strength: 2,
@@ -4278,7 +4327,7 @@ class GridScene {
                     maxActionsPerTurn: newLevel === 3 ? 1 : 0,
                     unlockedSpells: newLevel === 3 ? ['sleep'] : []
                 };
-            case 'ranger-aragon':
+            case 'ranger':
                 return {
                     hp: 3,
                     initiative: 1,
@@ -4424,6 +4473,39 @@ class GridScene {
     rollEnemyLoot(defeatedEnemy) {
         if (!defeatedEnemy) {
             return null;
+        }
+
+        const configuredLoot = defeatedEnemy.configuredLoot || null;
+        const configuredLootItemIds = Array.isArray(configuredLoot?.lootItemIds)
+            ? configuredLoot.lootItemIds.filter((itemId) => typeof itemId === 'string' && itemId.trim().length > 0)
+            : [];
+        const configuredLootMode = configuredLoot?.lootMode === 'all' ? 'all' : 'random';
+        if (configuredLoot && (configuredLootItemIds.length > 0 || Number.isFinite(configuredLoot.goldAmount))) {
+            const hasConfiguredGold = Number.isFinite(configuredLoot.goldAmount);
+            const gold = hasConfiguredGold
+                ? Math.max(0, Math.floor(configuredLoot.goldAmount))
+                : 0;
+            let equipmentDrops = [];
+
+            if (configuredLootItemIds.length > 0) {
+                if (configuredLootMode === 'all') {
+                    equipmentDrops = this.createEquipmentItemsFromIds(configuredLootItemIds);
+                } else {
+                    const roll = this.rollEquipmentLootItem(configuredLootItemIds);
+                    if (roll) {
+                        equipmentDrops = [roll];
+                    }
+                }
+            }
+
+            if (gold <= 0 && equipmentDrops.length === 0) {
+                return null;
+            }
+
+            return {
+                gold,
+                equipmentDrops
+            };
         }
 
         if (defeatedEnemy.id?.includes('goblin-chieftain')) {

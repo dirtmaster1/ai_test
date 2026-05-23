@@ -279,7 +279,7 @@ window.CharacterData = {
         });
 
         this.warrior = this.createCharacter({
-            id: 'dwarf-warrior',
+            id: 'warrior',
             name: 'Therin',
             role: 'Player',
             team: 'player',
@@ -335,7 +335,7 @@ window.CharacterData = {
         });
 
         this.ranger = this.createCharacter({
-            id: 'ranger-aragon',
+            id: 'ranger',
             name: 'Aragon',
             role: 'Player',
             team: 'player',
