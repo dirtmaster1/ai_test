@@ -102,22 +102,6 @@ window.GameData = {
             modifiers: { armorClass: 1 },
             accentColor: '#c6d0da'
         },
-        amulet: {
-            id: 'amulet',
-            name: 'Amulet',
-            slot: 'neck',
-            type: 'armor',
-            modifiers: { spellDamage: 1 },
-            accentColor: '#b7b7ff'
-        },
-        circlet: {
-            id: 'circlet',
-            name: 'Circlet',
-            slot: 'head',
-            type: 'armor',
-            modifiers: { healingBonus: 2 },
-            accentColor: '#ffd2a8'
-        },
         'mages-amulet': {
             id: 'mages-amulet',
             name: 'Mages Amulet',
