@@ -16,10 +16,10 @@
             baseRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
                 createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ dr __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ dr __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa wa __ __ wa wa wa wa wa __ __ wa wa wa wa __ __ wa wa wa wa'),
+                createTokenRow('wa wa __ __ wa wa wa wa wa __ __ wa wa wa wa dr dr wa wa wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa'),
@@ -30,11 +30,11 @@
                 createTokenRow('wa __ __ wa wa __ __ wa wa wa wa __ __ wa wa wa wa __ __ wa wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa wa __ __ wa __ __ wa wa __ __ __ wa wa __ __ wa __ __ wa wa'),
+                createTokenRow('wa wa dr dr wa __ __ wa wa __ __ __ wa wa __ __ wa __ __ wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
+                createTokenRow('wa mt mt wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
             ],
             propRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
@@ -84,6 +84,7 @@
             ],
             baseLegend: {
                 wa: { type: 'wall' },
+                mt: { type: 'mapTransition', mapId: 'forest-town' },
                 dr: { type: 'door' },
                 __: { type: 'floor' }
             },
@@ -138,6 +139,43 @@
                 },
                 GCB: { kind: 'enemy', archetypeId: 'goblin-chieftain' },
             }
+        },
+
+        forestTown: {
+            id: 'forest-town',
+            name: 'Forest Town',
+            size: 20,
+            baseRows: [
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ wa wa __ __ __ __ wa wa __ __ __ __ wa wa __ __ __ wa'),
+                createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ wa __ wa wa wa __ wa __ wa wa __ wa __ wa __ wa __ wa'),
+                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ wa __ wa __ __ __ wa __ wa'),
+                createTokenRow('wa __ wa wa wa __ wa wa wa __ __ wa __ wa wa wa __ wa __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ wa __ wa wa wa __ wa wa wa wa wa wa __ wa wa wa __ wa'),
+                createTokenRow('wa __ wa __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa __ wa'),
+                createTokenRow('wa __ wa wa wa wa wa wa wa wa wa wa __ wa wa wa __ wa __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ wa wa wa wa wa wa wa __ __ wa wa wa __ wa wa wa __ wa'),
+                createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ wa'),
+                createTokenRow('wa __ wa __ wa wa wa __ wa wa wa wa __ wa wa wa wa wa __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ __ wa __ wa'),
+                createTokenRow('wa __ wa wa wa __ wa wa wa wa wa wa wa wa wa wa __ wa __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
+            ],
+            propRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
+            encounterRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
+            baseLegend: {
+                wa: { type: 'wall' },
+                mt: { type: 'mapTransition', mapId: 'starter-keep' },
+                __: { type: 'floor' }
+            },
+            propLegend: {},
+            encounterLegend: {}
         }
     };
 })();
@@ -175,7 +213,38 @@ window.MapGenerator = {
     },
 
     getConfiguredDungeonLayout() {
-        return window.CustomDungeonMaps?.starterKeep || null;
+        const activeMapId = this.activeDungeonMapId || 'starter-keep';
+        return this.getConfiguredDungeonLayoutById(activeMapId)
+            || window.CustomDungeonMaps?.starterKeep
+            || null;
+    },
+
+    getConfiguredDungeonLayoutById(mapId) {
+        if (!mapId || !window.CustomDungeonMaps) {
+            return null;
+        }
+
+        const normalizedMapId = String(mapId).trim();
+        if (!normalizedMapId) {
+            return null;
+        }
+
+        const configuredMaps = Object.values(window.CustomDungeonMaps)
+            .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));
+
+        const byId = configuredMaps.find((entry) => entry.id === normalizedMapId) || null;
+        if (byId) {
+            return byId;
+        }
+
+        const normalizedKey = normalizedMapId
+            .replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+            .replace(/[^a-zA-Z0-9]/g, '');
+        if (window.CustomDungeonMaps[normalizedKey]) {
+            return window.CustomDungeonMaps[normalizedKey];
+        }
+
+        return null;
     },
 
     buildConfiguredDungeonMap(layoutConfig) {
@@ -193,6 +262,7 @@ window.MapGenerator = {
         const enemyPlacements = [];
         const playerStarts = {};
         const baseCellTypes = {};
+        const transitionCells = {};
 
         for (let rowIndex = 0; rowIndex < normalized.size; rowIndex++) {
             for (let columnIndex = 0; columnIndex < normalized.size; columnIndex++) {
@@ -203,6 +273,14 @@ window.MapGenerator = {
                 const baseCell = this.resolveConfiguredBaseCell(baseToken, VOID, FLOOR, WALL, normalized.baseLegend);
                 map[gridY][gridX] = baseCell.tileValue;
                 baseCellTypes[cellKey] = baseCell.baseType;
+                if (baseCell.baseType === 'mapTransition') {
+                    const transitionConfig = normalized.baseLegend[baseToken] || {};
+                    if (transitionConfig.mapId) {
+                        transitionCells[cellKey] = {
+                            mapId: transitionConfig.mapId
+                        };
+                    }
+                }
 
                 const propToken = normalized.propRows[rowIndex][columnIndex];
                 if (propToken !== '__') {
@@ -265,7 +343,8 @@ window.MapGenerator = {
                 playerStarts,
                 enemyPlacements,
                 propPlacements,
-                baseCellTypes
+                baseCellTypes,
+                transitionCells
             }
         };
     },
@@ -328,6 +407,9 @@ window.MapGenerator = {
             case '+':
                 // Doors are authored distinctly even though they currently behave like floor tiles.
                 return { tileValue: FLOOR, baseType: 'door' };
+            case 'mapTransition':
+            case 'mt':
+                return { tileValue: FLOOR, baseType: 'mapTransition' };
             case 'floor':
             case '.':
                 return { tileValue: FLOOR, baseType: 'floor' };

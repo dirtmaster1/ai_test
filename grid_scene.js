@@ -52,6 +52,11 @@ class GridScene {
         this.lootBagGroup = new THREE.Group();
         this.lootBagState = '';
         this.lootDropsByCell = new Map();
+        this.doorGroup = new THREE.Group();
+        this.doorStatesByCell = new Map();
+        this.doorMeshesByCell = new Map();
+        this.mapTransitionsByCell = new Map();
+        this.activeDungeonMapId = 'starter-keep';
         this.sharedLootInventory = {
             gold: 0,
             drops: [],
@@ -63,6 +68,7 @@ class GridScene {
         this.scene.add(this.targetHighlightGroup);
         this.scene.add(this.dungeonPropGroup);
         this.scene.add(this.lootBagGroup);
+        this.scene.add(this.doorGroup);
 
         // Initialize characters from character.js
         this.initializeCharacters();
@@ -115,6 +121,8 @@ class GridScene {
         this.dungeonMap = dungeon.map;
         this.dungeonRooms = dungeon.rooms || [];
         this.dungeonLayout = dungeon.layout || null;
+        this.initializeDoorStates(dungeon);
+        this.initializeMapTransitions(dungeon);
         this.placeCharacters(dungeon);
         this.populateDungeonProps(dungeon);
         this.enterExplorationMode();
@@ -142,7 +150,474 @@ class GridScene {
         if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
             return true;
         }
+
+        const doorState = this.getDoorStateAtCell(gridX, gridY);
+        if (doorState && !doorState.isOpen) {
+            return true;
+        }
+
         return this.dungeonMap[gridY][gridX] !== this.TILE_FLOOR;
+    }
+
+    initializeDoorStates(dungeon) {
+        this.doorStatesByCell.clear();
+
+        const layout = Array.isArray(dungeon) ? null : dungeon?.layout || this.dungeonLayout;
+        const baseCellTypes = layout?.baseCellTypes || {};
+
+        Object.entries(baseCellTypes).forEach(([cellKey, baseType]) => {
+            if (baseType !== 'door') {
+                return;
+            }
+
+            const cell = this.parseCellKey(cellKey);
+            if (!cell) {
+                return;
+            }
+
+            const anchorDirection = this.getDoorAnchorDirection(cell.gridX, cell.gridY);
+            const swingDirection = this.getDoorSwingDirectionFromAnchor(anchorDirection);
+            const closedRotation = this.getDoorClosedRotation(cell.gridX, cell.gridY);
+
+            this.doorStatesByCell.set(cellKey, {
+                gridX: cell.gridX,
+                gridY: cell.gridY,
+                isOpen: false,
+                openness: 0,
+                targetOpenness: 0,
+                swingDirection,
+                closedRotation,
+                anchorDirectionX: anchorDirection.dx,
+                anchorDirectionY: anchorDirection.dy
+            });
+        });
+
+        if (this.doorStatesByCell.size > 0) {
+            return;
+        }
+
+        for (let gridY = 0; gridY < this.gridHeight; gridY++) {
+            for (let gridX = 0; gridX < this.gridWidth; gridX++) {
+                if (this.dungeonMap?.[gridY]?.[gridX] !== this.TILE_DOOR) {
+                    continue;
+                }
+
+                const cellKey = this.getCellKey(gridX, gridY);
+                const anchorDirection = this.getDoorAnchorDirection(gridX, gridY);
+                const swingDirection = this.getDoorSwingDirectionFromAnchor(anchorDirection);
+                const closedRotation = this.getDoorClosedRotation(gridX, gridY);
+                this.doorStatesByCell.set(cellKey, {
+                    gridX,
+                    gridY,
+                    isOpen: false,
+                    openness: 0,
+                    targetOpenness: 0,
+                    swingDirection,
+                    closedRotation,
+                    anchorDirectionX: anchorDirection.dx,
+                    anchorDirectionY: anchorDirection.dy
+                });
+            }
+        }
+    }
+
+    isStaticWallCell(gridX, gridY) {
+        if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+            return true;
+        }
+
+        const baseType = this.dungeonLayout?.baseCellTypes?.[this.getCellKey(gridX, gridY)] || null;
+        if (baseType === 'wall') {
+            return true;
+        }
+
+        return this.dungeonMap?.[gridY]?.[gridX] === this.TILE_WALL;
+    }
+
+    getDoorAnchorDirection(gridX, gridY) {
+        const directions = [
+            { dx: 1, dy: 0 },
+            { dx: -1, dy: 0 },
+            { dx: 0, dy: -1 },
+            { dx: 0, dy: 1 }
+        ];
+
+        const maxDistance = 4;
+        let bestDirection = null;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        directions.forEach((direction) => {
+            for (let distance = 1; distance <= maxDistance; distance++) {
+                const sampleX = gridX + direction.dx * distance;
+                const sampleY = gridY + direction.dy * distance;
+                if (!this.isStaticWallCell(sampleX, sampleY)) {
+                    continue;
+                }
+
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestDirection = direction;
+                }
+
+                break;
+            }
+        });
+
+        if (bestDirection) {
+            return bestDirection;
+        }
+
+        return ((gridX + gridY) % 2 === 0)
+            ? { dx: 1, dy: 0 }
+            : { dx: -1, dy: 0 };
+    }
+
+    getDoorSwingDirectionFromAnchor(anchorDirection) {
+        if (!anchorDirection) {
+            return 1;
+        }
+
+        if (anchorDirection.dx > 0) {
+            return 1;
+        }
+
+        if (anchorDirection.dx < 0) {
+            return -1;
+        }
+
+        return anchorDirection.dy < 0 ? 1 : -1;
+    }
+
+    getDoorClosedRotation(gridX, gridY) {
+        const hasWallLeft = this.isStaticWallCell(gridX - 1, gridY);
+        const hasWallRight = this.isStaticWallCell(gridX + 1, gridY);
+        const hasWallUp = this.isStaticWallCell(gridX, gridY - 1);
+        const hasWallDown = this.isStaticWallCell(gridX, gridY + 1);
+
+        const horizontalWallSegment = hasWallLeft || hasWallRight;
+        const verticalWallSegment = hasWallUp || hasWallDown;
+
+        if (horizontalWallSegment && !verticalWallSegment) {
+            return 0;
+        }
+
+        if (verticalWallSegment && !horizontalWallSegment) {
+            return Math.PI / 2;
+        }
+
+        return 0;
+    }
+
+    getDoorStateAtCell(gridX, gridY) {
+        return this.doorStatesByCell.get(this.getCellKey(gridX, gridY)) || null;
+    }
+
+    initializeMapTransitions(dungeon) {
+        this.mapTransitionsByCell.clear();
+
+        const layout = Array.isArray(dungeon) ? null : dungeon?.layout || this.dungeonLayout;
+        const transitionCells = layout?.transitionCells || {};
+        Object.entries(transitionCells).forEach(([cellKey, transitionConfig]) => {
+            const targetMapId = String(transitionConfig?.mapId || '').trim();
+            if (!targetMapId) {
+                return;
+            }
+
+            this.mapTransitionsByCell.set(cellKey, {
+                mapId: targetMapId
+            });
+        });
+    }
+
+    resolveMapTransitionTargetMapId(targetMapId, sourceMapId = null) {
+        const normalizedTarget = String(targetMapId || '').trim();
+        const normalizedSource = String(sourceMapId || this.activeDungeonMapId || '').trim();
+
+        const pairFallbackBySource = {
+            'starter-keep': 'forest-town',
+            'forest-town': 'starter-keep'
+        };
+
+        if (normalizedTarget && normalizedTarget !== normalizedSource && this.getConfiguredDungeonLayoutById?.(normalizedTarget)) {
+            return normalizedTarget;
+        }
+
+        const fallbackTarget = pairFallbackBySource[normalizedSource] || null;
+        if (fallbackTarget && fallbackTarget !== normalizedSource && this.getConfiguredDungeonLayoutById?.(fallbackTarget)) {
+            return fallbackTarget;
+        }
+
+        return null;
+    }
+
+    getMapTransitionAtCell(gridX, gridY) {
+        return this.mapTransitionsByCell.get(this.getCellKey(gridX, gridY)) || null;
+    }
+
+    getDirectMapTransitionForCellKey(cellKey) {
+        return this.dungeonLayout?.transitionCells?.[cellKey] || null;
+    }
+
+    isMapTransitionCell(gridX, gridY) {
+        const cellKey = this.getCellKey(gridX, gridY);
+        return this.dungeonLayout?.baseCellTypes?.[cellKey] === 'mapTransition';
+    }
+
+    removeCharacterMeshFromScene(character) {
+        if (!character?.mesh) {
+            return;
+        }
+
+        if (character.mesh.parent) {
+            character.mesh.parent.remove(character.mesh);
+        }
+
+        character.mesh.geometry?.dispose?.();
+
+        const materials = Array.isArray(character.mesh.material)
+            ? character.mesh.material
+            : [character.mesh.material];
+        materials.forEach((material) => material?.dispose?.());
+
+        character.mesh = null;
+        character.directionPointer = null;
+    }
+
+    syncCharacterSceneAfterMapTransition(previousCharacters = []) {
+        const activeCharacters = new Set(this.characters || []);
+
+        previousCharacters.forEach((character) => {
+            if (activeCharacters.has(character)) {
+                return;
+            }
+
+            this.removeCharacterMeshFromScene(character);
+            if (this.characterHud?.has(character.id)) {
+                const staleHud = this.characterHud.get(character.id);
+                staleHud?.remove?.();
+                this.characterHud.delete(character.id);
+            }
+        });
+
+        this.characters.forEach((character) => {
+            if (!character.mesh) {
+                this.setupCharacterSprite(
+                    character,
+                    this.createSpriteTexture(character.spriteFrame),
+                    character.pointerColor
+                );
+            }
+
+            const worldPos = this.getWorldPositionForCell(character.gridX, character.gridY);
+            character.mesh.position.set(worldPos.x, worldPos.y, 0);
+            character.mesh.userData.movementState = {
+                initialized: true,
+                active: false,
+                startX: worldPos.x,
+                startY: worldPos.y,
+                targetX: worldPos.x,
+                targetY: worldPos.y,
+                startTime: performance.now(),
+                durationMs: 220,
+                mode: 'move',
+                onComplete: null
+            };
+        });
+    }
+
+    transitionToConfiguredMap(mapId, interactor = null) {
+        const normalizedMapId = String(mapId || '').trim();
+        const layout = this.getConfiguredDungeonLayoutById?.(normalizedMapId) || null;
+        if (!layout) {
+            this.showToast('That destination is unavailable.', '#b8ad96', 2200);
+            this.appendCombatLogEntry(`Transition failed: unknown destination '${normalizedMapId}'.`, '#d97d7d');
+            return false;
+        }
+
+        try {
+            const previousCharacters = Array.isArray(this.characters) ? [...this.characters] : [];
+            this.closeLootMenu?.();
+            this.activeLootCellKey = null;
+            this.explorationClickMoveQueue = [];
+            this.explorationClickMoveTimer = 0;
+            this.pendingCombatAction = null;
+            this.activeEnemyGroupId = null;
+            this.clearSummonedAllies();
+
+            // Build the requested configured map directly to avoid accidental fallback to a different map id.
+            const dungeon = this.buildConfiguredDungeonMap(layout);
+            this.dungeonMap = dungeon.map;
+            this.dungeonRooms = dungeon.rooms || [];
+            this.dungeonLayout = dungeon.layout || null;
+            this.activeDungeonMapId = this.dungeonLayout?.id || layout.id || normalizedMapId;
+
+            const loadedMapId = String(this.dungeonLayout?.id || '').trim();
+            if (!loadedMapId || loadedMapId !== normalizedMapId) {
+                this.showToast('Map transition failed: destination mismatch.', '#d97d7d', 2600);
+                this.appendCombatLogEntry(
+                    `Transition mismatch: requested ${normalizedMapId}, loaded ${loadedMapId || 'unknown'}.`,
+                    '#d97d7d'
+                );
+                return false;
+            }
+
+            this.lootDropsByCell.clear();
+            this.lootBagState = '';
+            this.initializeDoorStates(dungeon);
+            this.initializeMapTransitions(dungeon);
+            this.placeCharacters(dungeon, { forceTransitionSpawn: true });
+            this.populateDungeonProps(dungeon);
+            this.setupGrid();
+            this.syncCharacterSceneAfterMapTransition(previousCharacters);
+            this.enterExplorationMode();
+            this.updatePartyVisionState();
+            this.updateCharacterVisibilityByVision();
+            this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+            this.updateCamera();
+
+            const actorName = interactor?.name || 'Party';
+            const destinationName = this.dungeonLayout?.name || layout.name || normalizedMapId;
+            this.appendCombatLogEntry(`${actorName} travels to ${destinationName}.`, '#7fc9ff');
+            this.showToast(`Travel: ${destinationName}`, '#7fc9ff', 2200);
+            return true;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.showToast('Map transition failed unexpectedly.', '#d97d7d', 2600);
+            this.appendCombatLogEntry(
+                `Transition exception (${normalizedMapId}): ${errorMessage}`,
+                '#d97d7d'
+            );
+            return false;
+        }
+    }
+
+    tryUseMapTransitionAtCell(cellKey, interactor = null, screenX = null, screenY = null) {
+        if (this.gameMode !== 'exploration') {
+            return false;
+        }
+
+        const cell = this.parseCellKey(cellKey);
+        if (!cell) {
+            return false;
+        }
+
+        const transition = this.getDirectMapTransitionForCellKey(cellKey)
+            || this.mapTransitionsByCell.get(cellKey);
+        if (!transition?.mapId) {
+            if (this.isMapTransitionCell(cell.gridX, cell.gridY)) {
+                this.showToast('Transition is missing destination data.', '#d97d7d', 2400, screenX, screenY);
+                this.appendCombatLogEntry(
+                    `Transition data missing at (${cell.gridX}, ${cell.gridY}) on ${this.dungeonLayout?.id || 'unknown-map'}.`,
+                    '#d97d7d'
+                );
+                return true;
+            }
+            return false;
+        }
+
+        const sourceMapId = String(this.dungeonLayout?.id || this.activeDungeonMapId || '').trim();
+        const targetMapId = String(transition.mapId || '').trim();
+        if (!targetMapId || !this.getConfiguredDungeonLayoutById?.(targetMapId)) {
+            this.showToast('No linked destination.', '#b8ad96', 1800, screenX, screenY);
+            return true;
+        }
+
+        if (targetMapId === sourceMapId) {
+            this.showToast('Already in this area.', '#8f856f', 1800, screenX, screenY);
+            return true;
+        }
+
+        this.appendCombatLogEntry(
+            `Transition click: ${sourceMapId} -> ${targetMapId} at (${cell.gridX}, ${cell.gridY}).`,
+            '#7fc9ff'
+        );
+
+        const preferredCharacter = interactor || this.getLootInteractionCharacter();
+        const actingCharacter = this.getNearbyPartyInteractionCharacter(cell.gridX, cell.gridY, 1, preferredCharacter);
+        if (!actingCharacter) {
+            const anchor = screenX !== null && screenY !== null
+                ? { screenX, screenY }
+                : this.getScreenPositionForCell(cell.gridX, cell.gridY);
+            this.showToast('Need to be adjacent to travel.', '#d6cbb8', 2200, anchor?.screenX ?? null, anchor?.screenY ?? null);
+            this.appendCombatLogEntry(
+                `Transition blocked: no party member adjacent to (${cell.gridX}, ${cell.gridY}).`,
+                '#d6cbb8'
+            );
+            return true;
+        }
+
+        const didTransition = this.transitionToConfiguredMap(targetMapId, actingCharacter);
+        if (!didTransition) {
+            this.appendCombatLogEntry(
+                `Transition aborted: ${sourceMapId} -> ${targetMapId}.`,
+                '#d97d7d'
+            );
+        }
+        return true;
+    }
+
+    isDoorCell(gridX, gridY) {
+        return this.getDoorStateAtCell(gridX, gridY) !== null;
+    }
+
+    isDoorOpenAtCell(gridX, gridY) {
+        const doorState = this.getDoorStateAtCell(gridX, gridY);
+        return Boolean(doorState?.isOpen);
+    }
+
+    isLineOfSightBlockingCell(gridX, gridY) {
+        if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+            return true;
+        }
+
+        const baseType = this.dungeonLayout?.baseCellTypes?.[this.getCellKey(gridX, gridY)] || null;
+        if (baseType === 'wall') {
+            return true;
+        }
+
+        if (baseType === 'door') {
+            return !this.isDoorOpenAtCell(gridX, gridY);
+        }
+
+        if (this.isDoorCell(gridX, gridY)) {
+            return !this.isDoorOpenAtCell(gridX, gridY);
+        }
+
+        return this.dungeonMap[gridY][gridX] !== this.TILE_FLOOR;
+    }
+
+    toggleDoorAtCell(gridX, gridY, interactor = null) {
+        const doorState = this.getDoorStateAtCell(gridX, gridY);
+        if (!doorState) {
+            return false;
+        }
+
+        const nextIsOpen = !doorState.isOpen;
+        doorState.isOpen = nextIsOpen;
+        doorState.targetOpenness = nextIsOpen ? 1 : 0;
+
+        const actorName = interactor?.name || 'Party';
+        const actionLabel = nextIsOpen ? 'opens' : 'closes';
+        this.appendCombatLogEntry(
+            `${actorName} ${actionLabel} a door.`,
+            nextIsOpen ? '#8ed1a3' : '#c9b28f'
+        );
+
+        this.updatePartyVisionState();
+        return true;
+    }
+
+    tryToggleDoorAtCell(gridX, gridY, interactor = null) {
+        if (!this.isDoorCell(gridX, gridY)) {
+            return false;
+        }
+
+        const actingCharacter = interactor || this.getLootInteractionCharacter();
+        if (!this.canCharacterInteractWithCell(actingCharacter, gridX, gridY, 1)) {
+            return false;
+        }
+
+        return this.toggleDoorAtCell(gridX, gridY, actingCharacter);
     }
 
     isOccupied(gridX, gridY, excludedCharacter = null) {
@@ -264,12 +739,17 @@ class GridScene {
 
     // --- Character Placement ---
 
-    placeCharacters(dungeon) {
+    placeCharacters(dungeon, options = {}) {
+        const forceTransitionSpawn = Boolean(options?.forceTransitionSpawn);
         const rooms = Array.isArray(dungeon) ? dungeon : dungeon?.rooms || [];
         const layout = Array.isArray(dungeon) ? null : dungeon?.layout || this.dungeonLayout;
 
-        if (layout?.playerStarts && Object.keys(layout.playerStarts).length > 0) {
+        if (layout && forceTransitionSpawn) {
+            this.placeConfiguredPlayerCharactersFromTransitions(layout);
+        } else if (layout?.playerStarts && Object.keys(layout.playerStarts).length > 0) {
             this.placeConfiguredPlayerCharacters(layout.playerStarts);
+        } else if (layout) {
+            this.placeConfiguredPlayerCharactersFromTransitions(layout);
         } else {
             if (rooms.length < 1) {
                 return;
@@ -294,8 +774,13 @@ class GridScene {
             this.getCellKey(this.ranger.gridX, this.ranger.gridY)
         ]);
 
-        if (layout?.enemyPlacements?.length) {
-            this.spawnConfiguredEnemyPlacements(layout.enemyPlacements, occupiedCells);
+        if (layout) {
+            if (layout.enemyPlacements?.length) {
+                this.spawnConfiguredEnemyPlacements(layout.enemyPlacements, occupiedCells);
+            } else {
+                this.enemyGroups = [];
+                this.aiParty = [];
+            }
         } else {
             this.spawnEnemyGroupsAcrossDungeon(rooms, occupiedCells);
             this.spawnTemporaryTestSpidersNearParty(occupiedCells);
@@ -307,6 +792,77 @@ class GridScene {
         this.goblinArcher = this.aiParty.find((enemy) => enemy.id.includes('goblin-archer')) || this.aiParty[0] || null;
         this.goblinShaman = this.aiParty.find((enemy) => enemy.id.includes('goblin-shaman')) || this.aiParty[0] || null;
         this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute')) || this.aiParty[0] || null;
+    }
+
+    placeConfiguredPlayerCharactersFromTransitions(layout) {
+        const transitionEntries = Object.entries(layout?.transitionCells || {})
+            .filter(([, config]) => Boolean(config?.mapId))
+            .map(([cellKey]) => this.parseCellKey(cellKey))
+            .filter(Boolean)
+            .sort((left, right) => (left.gridY - right.gridY) || (left.gridX - right.gridX));
+
+        const centerFallback = {
+            x: Math.floor(this.gridWidth / 2),
+            y: Math.floor(this.gridHeight / 2)
+        };
+
+        const entryAnchor = transitionEntries[0]
+            ? { x: transitionEntries[0].gridX, y: transitionEntries[0].gridY }
+            : centerFallback;
+
+        const occupiedCells = new Set();
+        const candidateKeys = new Set();
+        const spawnCandidates = [];
+        const addCandidate = (x, y) => {
+            if (x < 0 || x >= this.gridWidth || y < 0 || y >= this.gridHeight) {
+                return;
+            }
+
+            if (this.dungeonMap?.[y]?.[x] !== this.TILE_FLOOR) {
+                return;
+            }
+
+            const cellKey = this.getCellKey(x, y);
+            if (candidateKeys.has(cellKey)) {
+                return;
+            }
+
+            candidateKeys.add(cellKey);
+            spawnCandidates.push({ x, y, key: cellKey });
+        };
+
+        transitionEntries.forEach((entry) => {
+            addCandidate(entry.gridX, entry.gridY);
+        });
+
+        for (let radius = 1; radius <= 3; radius++) {
+            for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    addCandidate(entryAnchor.x + dx, entryAnchor.y + dy);
+                }
+            }
+        }
+
+        for (let y = 0; y < this.gridHeight; y++) {
+            for (let x = 0; x < this.gridWidth; x++) {
+                addCandidate(x, y);
+            }
+        }
+
+        this.playerParty.forEach((character) => {
+            const candidate = spawnCandidates.find((entry) => !occupiedCells.has(entry.key));
+            if (candidate) {
+                character.gridX = candidate.x;
+                character.gridY = candidate.y;
+                occupiedCells.add(candidate.key);
+                return;
+            }
+
+            const fallback = this.findNearbyFloorTile(entryAnchor.x, entryAnchor.y, 0, 6, occupiedCells) || entryAnchor;
+            character.gridX = fallback.x;
+            character.gridY = fallback.y;
+            occupiedCells.add(this.getCellKey(fallback.x, fallback.y));
+        });
     }
 
     populateDungeonProps(dungeon) {
@@ -2089,14 +2645,22 @@ class GridScene {
                 return;
             }
 
+            const clickedCell = this.getGridCellFromPointerEvent(event);
+            if (clickedCell && this.tryToggleDoorAtCell(clickedCell.gridX, clickedCell.gridY, interactor)) {
+                return;
+            }
+
             if (this.gameMode === 'exploration') {
-                const worldW = this.gridWidth * this.cellSize;
-                const worldH = this.gridHeight * this.cellSize;
-                const worldX = this.raycaster.ray.origin.x;
-                const worldY = this.raycaster.ray.origin.y;
-                const clickedGridX = Math.floor((worldX + worldW / 2) / this.cellSize);
-                const clickedGridY = Math.floor((worldH / 2 - worldY) / this.cellSize);
-                this.navigatePartyToCell(clickedGridX, clickedGridY);
+                if (clickedCell && this.isMapTransitionCell(clickedCell.gridX, clickedCell.gridY)) {
+                    this.tryUseMapTransitionAtCell(this.getCellKey(clickedCell.gridX, clickedCell.gridY), interactor, event.clientX, event.clientY);
+                    return;
+                }
+
+                if (!clickedCell) {
+                    return;
+                }
+
+                this.navigatePartyToCell(clickedCell.gridX, clickedCell.gridY);
                 return;
             }
 
@@ -2373,6 +2937,25 @@ class GridScene {
         }
 
         return this.getLivingCharacters(this.playerParty)[0] || null;
+    }
+
+    getNearbyPartyInteractionCharacter(gridX, gridY, maxDistance = 1, preferredCharacter = null) {
+        const candidates = this.getLivingCharacters(this.playerParty)
+            .filter((character) => this.canCharacterInteractWithCell(character, gridX, gridY, maxDistance));
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        if (preferredCharacter && candidates.includes(preferredCharacter)) {
+            return preferredCharacter;
+        }
+
+        return candidates.sort((left, right) => {
+            const leftDistance = this.getAttackDistanceBetweenPositions(left.gridX, left.gridY, gridX, gridY);
+            const rightDistance = this.getAttackDistanceBetweenPositions(right.gridX, right.gridY, gridX, gridY);
+            return leftDistance - rightDistance;
+        })[0];
     }
 
     canCharacterInteractWithCell(character, gridX, gridY, maxDistance = 1) {
@@ -4927,6 +5510,7 @@ class GridScene {
         this.updateTargetHighlights(activeCharacter);
         this.updateTargetPreview(activeCharacter);
         this.updateLootBagMarkers();
+        this.updateDoorAnimations(nowMs);
 
         this.characters.forEach((character) => {
             this.updateCharacterCard(character, activeCharacter);

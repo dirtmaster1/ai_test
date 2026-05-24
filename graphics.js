@@ -195,6 +195,21 @@ window.GridGraphics = {
     },
 
     setupGrid() {
+        if (this.gridMesh) {
+            this.scene.remove(this.gridMesh);
+            this.gridMesh.geometry?.dispose?.();
+            this.gridMesh.material?.dispose?.();
+            this.gridMesh = null;
+        }
+
+        if (this.fogOfWar?.mesh) {
+            this.scene.remove(this.fogOfWar.mesh);
+            this.fogOfWar.mesh.geometry?.dispose?.();
+            this.fogOfWar.mesh.material?.dispose?.();
+            this.fogOfWar.texture?.dispose?.();
+            this.fogOfWar = null;
+        }
+
         const TILE_RES = this.cellSize;
         const canvasW = this.gridWidth * TILE_RES;
         const canvasH = this.gridHeight * TILE_RES;
@@ -221,11 +236,131 @@ window.GridGraphics = {
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.z = -2;
         this.scene.add(mesh);
+        this.gridMesh = mesh;
 
         this.setupDungeonPropLayer();
+        this.setupDoorLayer();
 
         this.setupFogOfWarOverlay();
         this.updateFogOfWarOverlay();
+    },
+
+    createDoorTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, 16, 16);
+        ctx.fillStyle = '#6d4423';
+        ctx.fillRect(0, 0, 16, 16);
+
+        ctx.strokeStyle = 'rgba(255, 224, 170, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0.5, 0.5, 15, 15);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        for (let x = 2; x <= 13; x += 3) {
+            ctx.fillRect(x, 1, 1, 14);
+        }
+
+        ctx.fillStyle = '#d9b26e';
+        ctx.fillRect(13, 8, 2, 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+    },
+
+    setupDoorLayer() {
+        if (!this.doorGroup) {
+            return;
+        }
+
+        this.clearHighlightGroup(this.doorGroup);
+        this.doorMeshesByCell?.clear?.();
+
+        const doorStates = this.doorStatesByCell ? [...this.doorStatesByCell.values()] : [];
+        if (doorStates.length === 0) {
+            return;
+        }
+
+        if (!this.doorTexture) {
+            this.doorTexture = this.createDoorTexture();
+        }
+
+        doorStates.forEach((doorState) => {
+            const geometry = new THREE.PlaneGeometry(this.cellSize + 2, this.cellSize - 40);
+            const material = new THREE.MeshBasicMaterial({
+                map: this.doorTexture,
+                transparent: true,
+                opacity: 1,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            const { x, y } = this.getWorldPositionForCell(doorState.gridX, doorState.gridY);
+            const initialOpenness = Math.max(0, Math.min(1, doorState.openness ?? 0));
+            const anchorDirectionX = doorState.anchorDirectionX ?? 0;
+            const anchorDirectionY = doorState.anchorDirectionY ?? 0;
+            const wallOffset = this.cellSize * 0.32;
+            mesh.position.set(
+                x + anchorDirectionX * wallOffset * initialOpenness,
+                y - anchorDirectionY * wallOffset * initialOpenness,
+                -0.42
+            );
+            mesh.userData.doorCellKey = this.getCellKey(doorState.gridX, doorState.gridY);
+            const swingDirection = doorState.swingDirection ?? 1;
+            const closedRotation = doorState.closedRotation ?? 0;
+            mesh.rotation.z = closedRotation + (doorState.openness ?? 0) * swingDirection * (Math.PI / 2);
+            mesh.scale.set(1 - initialOpenness * 0.72, 1, 1);
+            material.opacity = 1 - initialOpenness * 0.48;
+
+            this.doorGroup.add(mesh);
+            this.doorMeshesByCell.set(mesh.userData.doorCellKey, mesh);
+        });
+    },
+
+    updateDoorAnimations(nowMs = performance.now()) {
+        if (!this.doorStatesByCell || this.doorStatesByCell.size === 0) {
+            return;
+        }
+
+        const deltaSeconds = Math.max(0.001, Math.min(0.05, (nowMs - (this.lastDoorAnimTimeMs || nowMs)) / 1000));
+        this.lastDoorAnimTimeMs = nowMs;
+
+        this.doorStatesByCell.forEach((doorState, cellKey) => {
+            const target = Math.max(0, Math.min(1, doorState.targetOpenness ?? 0));
+            const current = Math.max(0, Math.min(1, doorState.openness ?? 0));
+            if (Math.abs(target - current) < 0.001) {
+                doorState.openness = target;
+            } else {
+                const swingSpeed = 4.8;
+                const step = swingSpeed * deltaSeconds;
+                doorState.openness = target > current
+                    ? Math.min(target, current + step)
+                    : Math.max(target, current - step);
+            }
+
+            const mesh = this.doorMeshesByCell?.get(cellKey);
+            if (!mesh) {
+                return;
+            }
+
+            const basePos = this.getWorldPositionForCell(doorState.gridX, doorState.gridY);
+            const anchorDirectionX = doorState.anchorDirectionX ?? 0;
+            const anchorDirectionY = doorState.anchorDirectionY ?? 0;
+            const wallOffset = this.cellSize * 0.32;
+            const swingDirection = doorState.swingDirection ?? 1;
+            const closedRotation = doorState.closedRotation ?? 0;
+            mesh.rotation.z = closedRotation + doorState.openness * swingDirection * (Math.PI / 2);
+            mesh.position.x = basePos.x + anchorDirectionX * wallOffset * doorState.openness;
+            mesh.position.y = basePos.y - anchorDirectionY * wallOffset * doorState.openness;
+            mesh.scale.x = 1 - doorState.openness * 0.72;
+            if (mesh.material) {
+                mesh.material.opacity = 1 - doorState.openness * 0.48;
+            }
+        });
     },
 
     setupDungeonPropLayer() {
@@ -386,17 +521,29 @@ window.GridGraphics = {
     },
 
     drawDungeonTile(ctx, tileType, px, py, T, cx, cy) {
+        const cellKey = this.getCellKey(cx, cy);
+        const baseType = this.dungeonLayout?.baseCellTypes?.[cellKey] || null;
+
         if (tileType === this.TILE_VOID) {
             ctx.fillStyle = '#000000';
             ctx.fillRect(px, py, T, T);
         } else if (tileType === this.TILE_WALL) {
-            this.drawWallTile(ctx, px, py, T, cx, cy);
+            this.drawWallTile(ctx, px, py, T, cx, cy, baseType);
         } else {
-            this.drawFloorTile(ctx, px, py, T, cx, cy);
+            this.drawFloorTile(ctx, px, py, T, cx, cy, baseType);
+        }
+
+        if (baseType === 'mapTransition') {
+            this.drawMapTransitionGlow(ctx, px, py, T, cx, cy);
         }
     },
 
-    drawWallTile(ctx, px, py, T, cx, cy) {
+    drawWallTile(ctx, px, py, T, cx, cy, baseType = null) {
+        if (this.dungeonLayout?.id === 'forest-town') {
+            this.drawForestWallTile(ctx, px, py, T, cx, cy);
+            return;
+        }
+
         const s = (cx * 1664525 + cy * 214013) >>> 0;
         const u = Math.max(1, Math.floor(T / 16));
         const block = Math.max(4, Math.floor(T / 8));
@@ -440,7 +587,34 @@ window.GridGraphics = {
         }
     },
 
-    drawFloorTile(ctx, px, py, T, cx, cy) {
+    drawForestWallTile(ctx, px, py, T, cx, cy) {
+        const s = (cx * 1103515245 + cy * 12345) >>> 0;
+        const u = Math.max(1, Math.floor(T / 16));
+        ctx.fillStyle = '#1f3a22';
+        ctx.fillRect(px, py, T, T);
+
+        const patchCount = 8 + (s % 6);
+        for (let i = 0; i < patchCount; i++) {
+            const rx = px + ((s >> (i + 1)) % Math.max(1, T - u * 4));
+            const ry = py + ((s >> (i + 5)) % Math.max(1, T - u * 4));
+            const rw = u * (2 + ((s >> (i + 9)) % 3));
+            const rh = u * (2 + ((s >> (i + 12)) % 3));
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(72, 126, 64, 0.75)' : 'rgba(38, 87, 41, 0.72)';
+            ctx.fillRect(rx, ry, rw, rh);
+        }
+
+        ctx.fillStyle = 'rgba(30, 66, 28, 0.55)';
+        ctx.fillRect(px, py + T - u * 2, T, u * 2);
+        ctx.fillStyle = 'rgba(104, 157, 81, 0.28)';
+        ctx.fillRect(px, py, T, u * 2);
+    },
+
+    drawFloorTile(ctx, px, py, T, cx, cy, baseType = null) {
+        if (this.dungeonLayout?.id === 'forest-town') {
+            this.drawForestFloorTile(ctx, px, py, T, cx, cy);
+            return;
+        }
+
         const s = (cx * 1664525 ^ cy * 214013 ^ 0xDEAD) >>> 0;
         const v = s % 5;
         const u = Math.max(1, Math.floor(T / 16));
@@ -494,6 +668,56 @@ window.GridGraphics = {
             ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.20)' : 'rgba(255,215,140,0.08)';
             ctx.fillRect(gx, gy, 1, 1);
         }
+    },
+
+    drawForestFloorTile(ctx, px, py, T, cx, cy) {
+        const s = (cx * 196613 + cy * 314159) >>> 0;
+        const u = Math.max(1, Math.floor(T / 16));
+        ctx.fillStyle = '#6d5532';
+        ctx.fillRect(px, py, T, T);
+
+        const pathBands = 4;
+        for (let band = 0; band < pathBands; band++) {
+            const bandY = py + Math.floor((band * T) / pathBands);
+            ctx.fillStyle = band % 2 === 0 ? 'rgba(120, 95, 58, 0.35)' : 'rgba(88, 67, 42, 0.28)';
+            ctx.fillRect(px, bandY, T, Math.max(1, Math.floor(T / pathBands)));
+        }
+
+        const rockCount = 5 + (s % 7);
+        for (let i = 0; i < rockCount; i++) {
+            const rx = px + u + ((s >> (i + 2)) % Math.max(1, T - u * 3));
+            const ry = py + u + ((s >> (i + 7)) % Math.max(1, T - u * 3));
+            const rSize = 1 + ((s >> (i + 11)) % 2);
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(148, 143, 131, 0.42)' : 'rgba(96, 95, 91, 0.40)';
+            ctx.fillRect(rx, ry, rSize, rSize);
+        }
+
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        ctx.fillRect(px, py + T - u * 2, T, u * 2);
+    },
+
+    drawMapTransitionGlow(ctx, px, py, T, cx, cy) {
+        const glow = ctx.createRadialGradient(
+            px + T / 2,
+            py + T / 2,
+            Math.max(1, T * 0.12),
+            px + T / 2,
+            py + T / 2,
+            Math.max(1, T * 0.52)
+        );
+        glow.addColorStop(0, 'rgba(120, 220, 255, 0.70)');
+        glow.addColorStop(0.6, 'rgba(42, 150, 242, 0.42)');
+        glow.addColorStop(1, 'rgba(18, 76, 142, 0.10)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(px, py, T, T);
+
+        ctx.strokeStyle = 'rgba(126, 215, 255, 0.72)';
+        ctx.lineWidth = Math.max(1, Math.floor(T / 18));
+        ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
+
+        const pulse = ((cx * 13 + cy * 7) % 4) * 0.04;
+        ctx.fillStyle = `rgba(176, 236, 255, ${0.22 + pulse})`;
+        ctx.fillRect(px + Math.floor(T * 0.3), py + Math.floor(T * 0.3), Math.floor(T * 0.4), Math.floor(T * 0.4));
     },
 
     setupCharacters() {

@@ -165,7 +165,10 @@ window.GridAI = {
                 continue;
             }
 
-            if (this.isObstacle(gridX, gridY)) {
+            const isBlockingCell = typeof this.isLineOfSightBlockingCell === 'function'
+                ? this.isLineOfSightBlockingCell(gridX, gridY)
+                : this.isObstacle(gridX, gridY);
+            if (isBlockingCell) {
                 return false;
             }
         }
