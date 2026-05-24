@@ -17,7 +17,7 @@ window.GameData = {
             handType: '2H',
             type: 'weapon',
             appliesToAbilityId: 'bow-shot',
-            modifiers: { attackDamage: 8, attackRange: 6 },
+            modifiers: { attackDamage: 6, attackRange: 6 },
             accentColor: '#9ee39a'
         },
         'short-bow': {
@@ -27,7 +27,7 @@ window.GameData = {
             handType: '2H',
             type: 'weapon',
             appliesToAbilityId: 'bow-shot',
-            modifiers: { attackDamage: 6, attackRange: 5 },
+            modifiers: { attackDamage: 5, attackRange: 5 },
             accentColor: '#9bcf86'
         },
         staff: {

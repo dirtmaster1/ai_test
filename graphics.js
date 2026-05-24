@@ -608,6 +608,34 @@ window.GridGraphics = {
         });
     },
 
+    updateCharacterVisibilityByVision() {
+        if (!Array.isArray(this.characters)) {
+            return;
+        }
+
+        this.characters.forEach((character) => {
+            if (!character?.mesh) {
+                return;
+            }
+
+            if (character.removedFromScene) {
+                character.mesh.visible = false;
+                return;
+            }
+
+            if (character.isDead) {
+                character.mesh.visible = true;
+                return;
+            }
+
+            character.mesh.visible = this.isCharacterVisibleToParty(character);
+        });
+
+        if (this.hoveredCharacter && !this.isCharacterVisibleToParty(this.hoveredCharacter)) {
+            this.hoveredCharacter = null;
+        }
+    },
+
     spawnChargeBurstEffect(pos, accentColor = '#ffffff') {
         const size = 54;
         const canvas = document.createElement('canvas');

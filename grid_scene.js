@@ -242,6 +242,26 @@ class GridScene {
         }
     }
 
+    isCellVisibleToParty(gridX, gridY) {
+        if (!Number.isFinite(gridX) || !Number.isFinite(gridY)) {
+            return false;
+        }
+
+        return this.visibleCells.has(this.getCellKey(gridX, gridY));
+    }
+
+    isCharacterVisibleToParty(character) {
+        if (!character || character.removedFromScene) {
+            return false;
+        }
+
+        if (this.isPartyAlignedCharacter(character)) {
+            return true;
+        }
+
+        return this.isCellVisibleToParty(character.gridX, character.gridY);
+    }
+
     // --- Character Placement ---
 
     placeCharacters(dungeon) {
@@ -829,19 +849,26 @@ class GridScene {
     }
 
     getCombatEnemiesForPlayers() {
-        return this.getCombatEnemyMembers();
+        return this.getCombatEnemyMembers({ visibleToPartyOnly: true });
     }
 
     getCombatAlliedEnemies() {
         return this.getCombatEnemyMembers();
     }
 
-    getCombatEnemyMembers() {
+    getCombatEnemyMembers(options = {}) {
+        const { visibleToPartyOnly = false } = options;
+
         if (this.gameMode !== 'combat') {
             return [];
         }
 
-        return this.getAggroedEnemyMembers();
+        const enemies = this.getAggroedEnemyMembers();
+        if (!visibleToPartyOnly) {
+            return enemies;
+        }
+
+        return enemies.filter((enemy) => this.isCharacterVisibleToParty(enemy));
     }
 
     setExplorationLeadCharacter(character) {
@@ -965,7 +992,7 @@ class GridScene {
 
         for (const player of alivePlayers) {
             for (const enemy of this.characters) {
-                if (enemy.team !== 'enemy' || enemy.isDead || enemy.removedFromScene) {
+                if (this.isPartyAlignedCharacter(enemy) || enemy.isDead || enemy.removedFromScene) {
                     continue;
                 }
 
@@ -1882,7 +1909,12 @@ class GridScene {
             this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
 
-            const livingCharacters = this.characters.filter((character) => !character.isDead && character.mesh);
+            const livingCharacters = this.characters.filter((character) =>
+                !character.isDead &&
+                character.mesh &&
+                character.mesh.visible !== false &&
+                this.isCharacterVisibleToParty(character)
+            );
             if (livingCharacters.length === 0) {
                 this.hoveredCharacter = null;
                 return;
@@ -2137,7 +2169,8 @@ class GridScene {
             candidate.team !== character.team &&
             !candidate.isDead &&
             !candidate.removedFromScene &&
-            candidate.mesh
+            candidate.mesh &&
+            this.isCharacterVisibleToParty(candidate)
         );
     }
 
@@ -2358,7 +2391,7 @@ class GridScene {
         }
 
         return this.characters.some((character) =>
-            character.team === 'enemy' &&
+            !this.isPartyAlignedCharacter(character) &&
             !character.isDead &&
             !character.removedFromScene &&
             character.gridX === cell.gridX &&
@@ -4781,6 +4814,30 @@ class GridScene {
         return true;
     }
 
+    takeAllLootFromCell(cellKey, options = {}) {
+        const drop = this.lootDropsByCell.get(cellKey);
+        if (!drop) {
+            return false;
+        }
+
+        const propsOnly = Boolean(options?.propsOnly);
+        if (propsOnly && drop.sourceType !== 'prop') {
+            return false;
+        }
+
+        const itemKeys = this.getLootMenuItemsForCell(cellKey).map((entry) => entry.itemKey);
+        if (itemKeys.length === 0) {
+            return false;
+        }
+
+        let tookAny = false;
+        itemKeys.forEach((itemKey) => {
+            tookAny = this.takeLootItem(cellKey, itemKey) || tookAny;
+        });
+
+        return tookAny;
+    }
+
     leaveLootItemOnGround(cellKey, itemKey) {
         const item = this.getLootMenuItemsForCell(cellKey).find((entry) => entry.itemKey === itemKey);
         if (!item) {
@@ -4862,6 +4919,7 @@ class GridScene {
         const nowMs = performance.now();
         const activeCharacter = this.getActiveTurnCharacter();
         this.updatePartyVisionState();
+        this.updateCharacterVisibilityByVision();
 
         this.updateProjectiles(nowMs);
         this.updateReachableMovementHighlights(activeCharacter);

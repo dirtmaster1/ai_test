@@ -1575,6 +1575,29 @@ window.GridUI = {
             return;
         }
 
+        if (drop.sourceType === 'prop') {
+            const bulkActions = document.createElement('div');
+            bulkActions.style.marginBottom = '10px';
+            bulkActions.style.display = 'flex';
+            bulkActions.style.justifyContent = 'flex-end';
+
+            const lootAllButton = document.createElement('button');
+            lootAllButton.type = 'button';
+            lootAllButton.textContent = 'Loot All';
+            lootAllButton.style.padding = '7px 11px';
+            lootAllButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            lootAllButton.style.borderRadius = '6px';
+            lootAllButton.style.background = 'rgba(78, 126, 54, 0.45)';
+            lootAllButton.style.color = '#dff2d4';
+            lootAllButton.style.fontSize = '11px';
+            lootAllButton.style.fontWeight = '700';
+            lootAllButton.style.cursor = 'pointer';
+            lootAllButton.addEventListener('click', () => this.takeAllLootFromCell(cellKey, { propsOnly: true }));
+
+            bulkActions.appendChild(lootAllButton);
+            modal.content.appendChild(bulkActions);
+        }
+
         const info = document.createElement('div');
         info.style.marginBottom = '10px';
         info.style.fontSize = '12px';
@@ -2805,12 +2828,6 @@ window.GridUI = {
         mpTrack.appendChild(mpFill);
         card.appendChild(mpTrack);
 
-        const actionText = document.createElement('div');
-        actionText.style.marginTop = '5px';
-        actionText.style.fontSize = '10px';
-        actionText.style.color = '#bcb29c';
-        card.appendChild(actionText);
-
         const abilityButtonMap = new Map();
         const endTurnButton = null;
         const turnControls = null;
@@ -2900,7 +2917,7 @@ window.GridUI = {
             }
         });
 
-        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, actionText, abilityButtonMap, acBadge, teamBadge, turnBadge, endTurnButton, turnControls, levelUpButton };
+        return { card, portraitFrame, nameText, hpText, hpFill, mpText, mpFill, abilityButtonMap, acBadge, teamBadge, turnBadge, endTurnButton, turnControls, levelUpButton };
     },
 
     setCombatCardActiveState(card, portraitFrame, accentColor, isActiveTurn, isDead) {
@@ -2975,17 +2992,6 @@ window.GridUI = {
         }
 
         hud.hpText.style.color = character.isDead ? deadColor : aliveInfoColor;
-
-        if (character.isDead) {
-            hud.actionText.textContent = 'Defeated';
-            hud.actionText.style.color = deadColor;
-        } else if (isActiveTurn) {
-            hud.actionText.textContent = `${character.actionsRemaining} of ${character.maxActionsPerTurn} actions remaining`;
-            hud.actionText.style.color = '#e1d6c1';
-        } else {
-            hud.actionText.textContent = `${character.maxActionsPerTurn} action turn on deck`;
-            hud.actionText.style.color = '#bcb29c';
-        }
 
         if (hud.turnControls) {
             hud.turnControls.style.display = isActiveTurn && !character.isDead ? 'block' : 'none';
