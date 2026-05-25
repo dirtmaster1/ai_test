@@ -56,7 +56,8 @@ class GridScene {
         this.doorStatesByCell = new Map();
         this.doorMeshesByCell = new Map();
         this.mapTransitionsByCell = new Map();
-        this.activeDungeonMapId = 'starter-keep';
+        this.persistedMapStateById = new Map();
+        this.activeDungeonMapId = 'goblin-cave';
         this.sharedLootInventory = {
             gold: 0,
             drops: [],
@@ -323,9 +324,7 @@ class GridScene {
                 return;
             }
 
-            this.mapTransitionsByCell.set(cellKey, {
-                mapId: targetMapId
-            });
+            this.mapTransitionsByCell.set(cellKey, { mapId: targetMapId });
         });
     }
 
@@ -334,8 +333,9 @@ class GridScene {
         const normalizedSource = String(sourceMapId || this.activeDungeonMapId || '').trim();
 
         const pairFallbackBySource = {
-            'starter-keep': 'forest-town',
-            'forest-town': 'starter-keep'
+            'goblin-cave': 'forest-path',
+            'forest-path': 'goblin-cave',
+            'forest-town': 'forest-path'
         };
 
         if (normalizedTarget && normalizedTarget !== normalizedSource && this.getConfiguredDungeonLayoutById?.(normalizedTarget)) {
@@ -361,6 +361,167 @@ class GridScene {
     isMapTransitionCell(gridX, gridY) {
         const cellKey = this.getCellKey(gridX, gridY);
         return this.dungeonLayout?.baseCellTypes?.[cellKey] === 'mapTransition';
+    }
+
+    cloneMapPersistenceValue(value) {
+        if (typeof structuredClone === 'function') {
+            try {
+                return structuredClone(value);
+            } catch (_error) {
+                // Fall back to JSON cloning when structuredClone fails.
+            }
+        }
+
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    getCurrentMapPersistenceId() {
+        return String(this.dungeonLayout?.id || this.activeDungeonMapId || '').trim();
+    }
+
+    saveCurrentMapPersistentState() {
+        const mapId = this.getCurrentMapPersistenceId();
+        if (!mapId) {
+            return;
+        }
+
+        const enemyGroups = (this.enemyGroups || []).map((group) => ({
+            id: group.id,
+            isAggro: Boolean(group.isAggro),
+            isCleared: Boolean(group.isCleared),
+            members: (group.members || []).map((member) => ({
+                id: member.id,
+                mapPersistenceKey: member.mapPersistenceKey || null,
+                gridX: member.gridX,
+                gridY: member.gridY,
+                hitPoints: member.hitPoints,
+                magicPoints: member.magicPoints,
+                isDead: Boolean(member.isDead),
+                removedFromScene: Boolean(member.removedFromScene),
+                fadeFrames: member.fadeFrames,
+                activeEffects: this.cloneMapPersistenceValue(member.activeEffects || [])
+            }))
+        }));
+
+        const propsByCell = {};
+        this.dungeonPropsByCell.forEach((prop, cellKey) => {
+            propsByCell[cellKey] = {
+                mapPersistenceKey: prop.mapPersistenceKey || null,
+                hasBeenSearched: Boolean(prop.hasBeenSearched),
+                hasBeenTriggered: Boolean(prop.hasBeenTriggered)
+            };
+        });
+
+        const lootDrops = [];
+        this.lootDropsByCell.forEach((drop) => {
+            lootDrops.push({
+                gridX: drop.gridX,
+                gridY: drop.gridY,
+                gold: Math.max(0, Math.floor(drop.gold ?? 0)),
+                equipmentDrops: this.cloneMapPersistenceValue(drop.equipmentDrops || []),
+                sources: this.cloneMapPersistenceValue(drop.sources || []),
+                sourceType: drop.sourceType || 'enemy',
+                containerName: drop.containerName || 'Loot Bag'
+            });
+        });
+
+        this.persistedMapStateById.set(mapId, {
+            enemyGroups,
+            propsByCell,
+            lootDrops
+        });
+    }
+
+    restorePersistentStateForCurrentMap() {
+        const mapId = this.getCurrentMapPersistenceId();
+        if (!mapId) {
+            return;
+        }
+
+        const snapshot = this.persistedMapStateById.get(mapId);
+        if (!snapshot) {
+            return;
+        }
+
+        const enemyById = new Map((this.aiParty || []).map((enemy) => [enemy.id, enemy]));
+        const enemyByPersistenceKey = new Map(
+            (this.aiParty || [])
+                .filter((enemy) => enemy.mapPersistenceKey)
+                .map((enemy) => [enemy.mapPersistenceKey, enemy])
+        );
+        const groupById = new Map((this.enemyGroups || []).map((group) => [group.id, group]));
+
+        (snapshot.enemyGroups || []).forEach((savedGroup) => {
+            const group = groupById.get(savedGroup.id);
+            if (!group) {
+                return;
+            }
+
+            group.isAggro = Boolean(savedGroup.isAggro);
+            group.isCleared = Boolean(savedGroup.isCleared);
+
+            (savedGroup.members || []).forEach((savedMember) => {
+                const enemy = enemyById.get(savedMember.id)
+                    || (savedMember.mapPersistenceKey ? enemyByPersistenceKey.get(savedMember.mapPersistenceKey) : null);
+                if (!enemy) {
+                    return;
+                }
+
+                enemy.gridX = savedMember.gridX;
+                enemy.gridY = savedMember.gridY;
+                enemy.hitPoints = Math.max(0, Math.floor(savedMember.hitPoints ?? enemy.hitPoints ?? 0));
+                enemy.magicPoints = Math.max(0, Math.floor(savedMember.magicPoints ?? enemy.magicPoints ?? 0));
+                enemy.isDead = Boolean(savedMember.isDead);
+                enemy.removedFromScene = Boolean(savedMember.removedFromScene);
+                enemy.fadeFrames = Math.max(0, Math.floor(savedMember.fadeFrames ?? enemy.fadeFrames ?? 0));
+                enemy.activeEffects = this.cloneMapPersistenceValue(savedMember.activeEffects || []);
+                if (savedMember.mapPersistenceKey && !enemy.mapPersistenceKey) {
+                    enemy.mapPersistenceKey = savedMember.mapPersistenceKey;
+                }
+
+                if (enemy.isDead) {
+                    enemy.hitPoints = 0;
+                    enemy.removedFromScene = true;
+                    enemy.fadeFrames = 60;
+                }
+            });
+        });
+
+        const propSnapshot = snapshot.propsByCell || {};
+        const propSnapshotByPersistenceKey = new Map(
+            Object.values(propSnapshot)
+                .filter((entry) => entry?.mapPersistenceKey)
+                .map((entry) => [entry.mapPersistenceKey, entry])
+        );
+        this.dungeonPropsByCell.forEach((prop, cellKey) => {
+            const directSavedProp = propSnapshot[cellKey];
+            const keyedSavedProp = prop.mapPersistenceKey
+                ? propSnapshotByPersistenceKey.get(prop.mapPersistenceKey)
+                : null;
+            const savedProp = directSavedProp || keyedSavedProp;
+            if (!savedProp) {
+                return;
+            }
+
+            prop.hasBeenSearched = Boolean(savedProp.hasBeenSearched);
+            prop.hasBeenTriggered = Boolean(savedProp.hasBeenTriggered);
+        });
+
+        this.lootDropsByCell.clear();
+        (snapshot.lootDrops || []).forEach((savedDrop) => {
+            const cellKey = this.getCellKey(savedDrop.gridX, savedDrop.gridY);
+            this.lootDropsByCell.set(cellKey, {
+                gridX: savedDrop.gridX,
+                gridY: savedDrop.gridY,
+                gold: Math.max(0, Math.floor(savedDrop.gold ?? 0)),
+                equipmentDrops: (savedDrop.equipmentDrops || [])
+                    .map((item) => this.ensureEquipmentItemInstance(item))
+                    .filter(Boolean),
+                sources: this.cloneMapPersistenceValue(savedDrop.sources || []),
+                sourceType: savedDrop.sourceType || 'enemy',
+                containerName: savedDrop.containerName || 'Loot Bag'
+            });
+        });
     }
 
     removeCharacterMeshFromScene(character) {
@@ -400,6 +561,11 @@ class GridScene {
         });
 
         this.characters.forEach((character) => {
+            if (character.removedFromScene) {
+                this.removeCharacterMeshFromScene(character);
+                return;
+            }
+
             if (!character.mesh) {
                 this.setupCharacterSprite(
                     character,
@@ -425,7 +591,7 @@ class GridScene {
         });
     }
 
-    transitionToConfiguredMap(mapId, interactor = null) {
+    transitionToConfiguredMap(mapId, interactor = null, transitionContext = null) {
         const normalizedMapId = String(mapId || '').trim();
         const layout = this.getConfiguredDungeonLayoutById?.(normalizedMapId) || null;
         if (!layout) {
@@ -433,6 +599,8 @@ class GridScene {
             this.appendCombatLogEntry(`Transition failed: unknown destination '${normalizedMapId}'.`, '#d97d7d');
             return false;
         }
+
+        this.saveCurrentMapPersistentState();
 
         try {
             const previousCharacters = Array.isArray(this.characters) ? [...this.characters] : [];
@@ -443,6 +611,7 @@ class GridScene {
             this.pendingCombatAction = null;
             this.activeEnemyGroupId = null;
             this.clearSummonedAllies();
+            this.closeVendorStoreMenu?.();
 
             // Build the requested configured map directly to avoid accidental fallback to a different map id.
             const dungeon = this.buildConfiguredDungeonMap(layout);
@@ -465,8 +634,12 @@ class GridScene {
             this.lootBagState = '';
             this.initializeDoorStates(dungeon);
             this.initializeMapTransitions(dungeon);
-            this.placeCharacters(dungeon, { forceTransitionSpawn: true });
+            this.placeCharacters(dungeon, {
+                forceTransitionSpawn: true,
+                transitionContext: transitionContext || null
+            });
             this.populateDungeonProps(dungeon);
+            this.restorePersistentStateForCurrentMap();
             this.setupGrid();
             this.syncCharacterSceneAfterMapTransition(previousCharacters);
             this.enterExplorationMode();
@@ -527,6 +700,9 @@ class GridScene {
             return true;
         }
 
+        const targetLayout = this.getConfiguredDungeonLayoutById?.(targetMapId) || null;
+        const destinationName = targetLayout?.name || targetMapId;
+
         this.appendCombatLogEntry(
             `Transition click: ${sourceMapId} -> ${targetMapId} at (${cell.gridX}, ${cell.gridY}).`,
             '#7fc9ff'
@@ -546,13 +722,40 @@ class GridScene {
             return true;
         }
 
-        const didTransition = this.transitionToConfiguredMap(targetMapId, actingCharacter);
-        if (!didTransition) {
-            this.appendCombatLogEntry(
-                `Transition aborted: ${sourceMapId} -> ${targetMapId}.`,
-                '#d97d7d'
-            );
-        }
+        const anchor = screenX !== null && screenY !== null
+            ? { screenX, screenY }
+            : this.getScreenPositionForCell(cell.gridX, cell.gridY);
+
+        this.showConfirmationToast(
+            `Travel to ${destinationName}?`,
+            {
+                confirmLabel: 'Travel',
+                cancelLabel: 'Stay',
+                color: '#7fc9ff',
+                screenX: anchor?.screenX ?? null,
+                screenY: anchor?.screenY ?? null,
+                onConfirm: () => {
+                    const didTransition = this.transitionToConfiguredMap(targetMapId, actingCharacter, {
+                        sourceMapId,
+                        sourceCellKey: cellKey,
+                        targetMapId
+                    });
+                    if (!didTransition) {
+                        this.appendCombatLogEntry(
+                            `Transition aborted: ${sourceMapId} -> ${targetMapId}.`,
+                            '#d97d7d'
+                        );
+                    }
+                },
+                onCancel: () => {
+                    this.appendCombatLogEntry(
+                        `Transition canceled: ${sourceMapId} -> ${targetMapId}.`,
+                        '#b8ad96'
+                    );
+                }
+            }
+        );
+
         return true;
     }
 
@@ -741,11 +944,12 @@ class GridScene {
 
     placeCharacters(dungeon, options = {}) {
         const forceTransitionSpawn = Boolean(options?.forceTransitionSpawn);
+        const transitionContext = options?.transitionContext || null;
         const rooms = Array.isArray(dungeon) ? dungeon : dungeon?.rooms || [];
         const layout = Array.isArray(dungeon) ? null : dungeon?.layout || this.dungeonLayout;
 
         if (layout && forceTransitionSpawn) {
-            this.placeConfiguredPlayerCharactersFromTransitions(layout);
+            this.placeConfiguredPlayerCharactersFromTransitions(layout, transitionContext);
         } else if (layout?.playerStarts && Object.keys(layout.playerStarts).length > 0) {
             this.placeConfiguredPlayerCharacters(layout.playerStarts);
         } else if (layout) {
@@ -794,20 +998,39 @@ class GridScene {
         this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute')) || this.aiParty[0] || null;
     }
 
-    placeConfiguredPlayerCharactersFromTransitions(layout) {
+    placeConfiguredPlayerCharactersFromTransitions(layout, transitionContext = null) {
+        const sourceMapId = String(transitionContext?.sourceMapId || '').trim();
         const transitionEntries = Object.entries(layout?.transitionCells || {})
             .filter(([, config]) => Boolean(config?.mapId))
-            .map(([cellKey]) => this.parseCellKey(cellKey))
+            .map(([cellKey, config]) => {
+                const parsed = this.parseCellKey(cellKey);
+                if (!parsed) {
+                    return null;
+                }
+
+                return {
+                    gridX: parsed.gridX,
+                    gridY: parsed.gridY,
+                    mapId: String(config?.mapId || '').trim()
+                };
+            })
             .filter(Boolean)
             .sort((left, right) => (left.gridY - right.gridY) || (left.gridX - right.gridX));
+
+        const preferredTransitionEntries = sourceMapId
+            ? transitionEntries.filter((entry) => entry.mapId === sourceMapId)
+            : [];
+        const spawnAnchors = preferredTransitionEntries.length > 0
+            ? preferredTransitionEntries
+            : transitionEntries;
 
         const centerFallback = {
             x: Math.floor(this.gridWidth / 2),
             y: Math.floor(this.gridHeight / 2)
         };
 
-        const entryAnchor = transitionEntries[0]
-            ? { x: transitionEntries[0].gridX, y: transitionEntries[0].gridY }
+        const entryAnchor = spawnAnchors[0]
+            ? { x: spawnAnchors[0].gridX, y: spawnAnchors[0].gridY }
             : centerFallback;
 
         const occupiedCells = new Set();
@@ -831,7 +1054,7 @@ class GridScene {
             spawnCandidates.push({ x, y, key: cellKey });
         };
 
-        transitionEntries.forEach((entry) => {
+        spawnAnchors.forEach((entry) => {
             addCandidate(entry.gridX, entry.gridY);
         });
 
@@ -934,7 +1157,7 @@ class GridScene {
     }
 
     populateConfiguredDungeonProps(propPlacements) {
-        propPlacements.forEach((propPlacement) => {
+        propPlacements.forEach((propPlacement, propIndex) => {
             if (this.dungeonMap[propPlacement.gridY]?.[propPlacement.gridX] !== this.TILE_FLOOR) {
                 return;
             }
@@ -943,9 +1166,18 @@ class GridScene {
             this.dungeonPropsByCell.set(cellKey, {
                 gridX: propPlacement.gridX,
                 gridY: propPlacement.gridY,
+                mapPersistenceKey: propPlacement.mapPersistenceKey || `prop:${propPlacement.frameId || 'prop'}:${propPlacement.gridX},${propPlacement.gridY}:${propIndex}`,
                 frameId: propPlacement.frameId,
+                name: propPlacement.name || window.GameData?.getDungeonPropDisplayName?.(propPlacement.frameId) || propPlacement.frameId,
                 roomTheme: propPlacement.roomTheme || 'custom',
                 searchable: Boolean(propPlacement.searchable),
+                isVendor: Boolean(propPlacement.isVendor),
+                vendorName: propPlacement.vendorName,
+                storeInventoryItemIds: Array.isArray(propPlacement.storeInventoryItemIds)
+                    ? [...propPlacement.storeInventoryItemIds]
+                    : [],
+                storeBuyMultiplier: propPlacement.storeBuyMultiplier,
+                storeSellMultiplier: propPlacement.storeSellMultiplier,
                 hasBeenSearched: Boolean(propPlacement.hasBeenSearched),
                 lootMode: propPlacement.lootMode,
                 goldAmount: propPlacement.goldAmount,
@@ -984,6 +1216,8 @@ class GridScene {
 
             const memberIndex = groupMemberCounts.get(groupId) || 0;
             const enemy = this.createEnemyFromArchetype(archetype, groupSeedById.get(groupId), memberIndex);
+            enemy.mapPersistenceKey = placement.mapPersistenceKey
+                || `enemy:${placement.archetypeId || archetype.id}:${placement.gridX},${placement.gridY}:${placementIndex}`;
             if (Number.isFinite(placement.experiencePoints)) {
                 enemy.experiencePoints = Math.max(0, Math.floor(placement.experiencePoints));
             }
@@ -1044,24 +1278,25 @@ class GridScene {
         }
 
         const cellKey = this.getCellKey(crateCell.gridX, crateCell.gridY);
+        const propConfig = window.GameData?.createDungeonPropConfig?.('crate') || {
+            frameId: 'crate',
+            name: 'Crate',
+            roomTheme: 'storage',
+            searchable: true
+        };
         this.dungeonPropsByCell.set(cellKey, {
             gridX: crateCell.gridX,
             gridY: crateCell.gridY,
-            frameId: 'crate',
-            roomTheme: 'storage',
-            searchable: true,
+            frameId: propConfig.frameId,
+            name: propConfig.name,
+            roomTheme: propConfig.roomTheme,
+            searchable: Boolean(propConfig.searchable),
             hasBeenSearched: false
         });
     }
 
     populateRoomPropsByTheme(room, theme, occupiedCells) {
-        const themeFrames = {
-            barracks: ['bed', 'chestClosedIron', 'tableCandles', 'chair', 'chair'],
-            armory: ['weaponRack1', 'weaponRack2', 'weaponRack3', 'chestClosedSteel'],
-            storage: ['crate', 'barrels1', 'barrel', 'barrels2', 'chestClosedGold']
-        };
-
-        const framePool = themeFrames[theme] || [];
+        const framePool = window.GameData?.getDungeonPropThemePool?.(theme) || [];
         if (framePool.length === 0) {
             return;
         }
@@ -1095,14 +1330,20 @@ class GridScene {
             const pickIndex = Math.floor(Math.random() * interiorCells.length);
             const pickedCell = interiorCells.splice(pickIndex, 1)[0];
             const frameId = framePool[Math.floor(Math.random() * framePool.length)];
-            const isSearchable = !frameId.startsWith('spikeTrap');
+            const propConfig = window.GameData?.createDungeonPropConfig?.(frameId, { roomTheme: theme }) || {
+                frameId,
+                name: frameId,
+                roomTheme: theme,
+                searchable: !frameId.startsWith('spikeTrap')
+            };
 
             this.dungeonPropsByCell.set(pickedCell.key, {
                 gridX: pickedCell.x,
                 gridY: pickedCell.y,
-                frameId,
-                roomTheme: theme,
-                searchable: isSearchable,
+                frameId: propConfig.frameId,
+                name: propConfig.name,
+                roomTheme: propConfig.roomTheme,
+                searchable: Boolean(propConfig.searchable),
                 hasBeenSearched: false
             });
 
@@ -1116,7 +1357,7 @@ class GridScene {
         }
 
         const trapAttempts = Math.min(12, Math.max(4, Math.floor(rooms.length * 1.2)));
-        const trapFrames = ['spikeTrap1', 'spikeTrap2'];
+        const trapFrames = window.GameData?.getDungeonTrapPropIds?.() || ['spikeTrap1', 'spikeTrap2'];
 
         for (let i = 0; i < trapAttempts; i++) {
             const room = rooms[Math.floor(Math.random() * rooms.length)];
@@ -1137,12 +1378,19 @@ class GridScene {
             }
 
             const frameId = trapFrames[Math.floor(Math.random() * trapFrames.length)];
+            const propConfig = window.GameData?.createDungeonPropConfig?.(frameId, { roomTheme: 'trap' }) || {
+                frameId,
+                name: frameId,
+                roomTheme: 'trap',
+                searchable: false
+            };
             this.dungeonPropsByCell.set(cellKey, {
                 gridX: x,
                 gridY: y,
-                frameId,
-                roomTheme: 'trap',
-                searchable: false,
+                frameId: propConfig.frameId,
+                name: propConfig.name,
+                roomTheme: propConfig.roomTheme,
+                searchable: Boolean(propConfig.searchable),
                 hasBeenSearched: false
             });
 
@@ -3060,7 +3308,29 @@ class GridScene {
 
     trySearchDungeonPropAtCell(cellKey, interactor = null, screenX = null, screenY = null) {
         const prop = this.dungeonPropsByCell.get(cellKey);
-        if (!prop || !prop.searchable) {
+        if (!prop) {
+            return false;
+        }
+
+        const propDisplayName = prop.name || window.GameData?.getDungeonPropDisplayName?.(prop.frameId) || prop.frameId || 'container';
+
+        const actingCharacter = interactor || this.getLootInteractionCharacter();
+        const canInteract = this.canCharacterInteractWithCell(actingCharacter, prop.gridX, prop.gridY, 1);
+
+        if (prop.isVendor) {
+            if (!canInteract) {
+                const anchor = screenX !== null && screenY !== null
+                    ? { screenX, screenY }
+                    : this.getScreenPositionForCell(prop.gridX, prop.gridY);
+                this.showToast('Need to be adjacent to talk.', '#d6cbb8', 2200, anchor?.screenX ?? null, anchor?.screenY ?? null);
+                return false;
+            }
+
+            this.openVendorStoreMenu(prop, actingCharacter);
+            return true;
+        }
+
+        if (!prop.searchable) {
             return false;
         }
 
@@ -3068,8 +3338,7 @@ class GridScene {
             return false;
         }
 
-        const actingCharacter = interactor || this.getLootInteractionCharacter();
-        if (!this.canCharacterInteractWithCell(actingCharacter, prop.gridX, prop.gridY, 1)) {
+        if (!canInteract) {
             const anchor = screenX !== null && screenY !== null
                 ? { screenX, screenY }
                 : this.getScreenPositionForCell(prop.gridX, prop.gridY);
@@ -3086,14 +3355,16 @@ class GridScene {
                 this.registerLootDropAtCell(prop.gridX, prop.gridY, loot, {
                     sourceType: 'prop',
                     sourceLabel: prop.roomTheme || 'Room Fixture',
-                    containerName: `Search: ${prop.frameId}`
+                    containerName: `Search: ${propDisplayName}`
                 });
                 this.appendCombatLogEntry(
-                    `${actingCharacter.name} searches ${prop.frameId} and finds something.`,
+                    `${actingCharacter.name} searches ${propDisplayName} and finds something.`,
                     '#d9c47d'
                 );
+                this.saveCurrentMapPersistentState();
             } else {
                 this.showToast('Empty', '#8f856f', 2200, screenX, screenY);
+                this.saveCurrentMapPersistentState();
                 return true;
             }
         }
@@ -3178,27 +3449,16 @@ class GridScene {
             : [];
         const customLootMode = prop.lootMode === 'all' ? 'all' : 'random';
 
-        const chestFrames = new Set(['chestClosedIron', 'chestClosedGold', 'chestClosedSteel']);
-        const rackFrames = new Set(['weaponRack1', 'weaponRack2', 'weaponRack3']);
-        const storageFrames = new Set(['crate', 'barrel', 'barrels1', 'barrels2']);
+        const lootProfile = window.GameData?.getDungeonPropLootProfile?.(prop.frameId) || {
+            chance: 0.35,
+            minGold: 1,
+            maxGold: 4,
+            equipmentDropChance: 0.1
+        };
 
-        let chance = 0.35;
-        let minGold = 1;
-        let maxGold = 4;
-
-        if (chestFrames.has(prop.frameId)) {
-            chance = 0.9;
-            minGold = 4;
-            maxGold = 14;
-        } else if (rackFrames.has(prop.frameId)) {
-            chance = 0.55;
-            minGold = 2;
-            maxGold = 8;
-        } else if (storageFrames.has(prop.frameId)) {
-            chance = 0.65;
-            minGold = 1;
-            maxGold = 7;
-        }
+        let chance = lootProfile.chance;
+        let minGold = lootProfile.minGold;
+        let maxGold = lootProfile.maxGold;
 
         if (customLootItemIds.length > 0 && customLootMode === 'all') {
             chance = 1;
@@ -3212,7 +3472,7 @@ class GridScene {
         const gold = hasConfiguredGold
             ? Math.max(0, Math.floor(prop.goldAmount))
             : minGold + Math.floor(Math.random() * (maxGold - minGold + 1));
-        const equipmentDropChance = chestFrames.has(prop.frameId) ? 0.5 : 0.10;
+        const equipmentDropChance = lootProfile.equipmentDropChance;
         const equipmentDrops = [];
         if (customLootItemIds.length > 0) {
             if (customLootMode === 'all') {
@@ -3246,6 +3506,106 @@ class GridScene {
         return lootIds
             .map((itemId) => window.GameData?.getItemTemplateById(itemId) || null)
             .filter(Boolean);
+    }
+
+    getVendorStockItemIds(vendorProp = null) {
+        const configured = Array.isArray(vendorProp?.storeInventoryItemIds)
+            ? vendorProp.storeInventoryItemIds.filter((itemId) => typeof itemId === 'string' && itemId.trim().length > 0)
+            : [];
+        if (configured.length > 0) {
+            return [...configured];
+        }
+
+        return [...(window.GameData?.EQUIPMENT_LOOT_ITEM_IDS ?? ['small-shield', 'long-bow'])];
+    }
+
+    getVendorItemPrice(itemOrTemplate, mode = 'buy', vendorProp = null) {
+        if (!itemOrTemplate) {
+            return 0;
+        }
+
+        const modifiers = itemOrTemplate.modifiers || {};
+        const baseValue = 18 +
+            (Math.max(0, modifiers.armorClass ?? 0) * 26) +
+            (Math.max(0, modifiers.attackDamage ?? 0) * 14) +
+            (Math.max(0, modifiers.attackRange ?? 0) * 7) +
+            (Math.max(0, modifiers.spellDamage ?? 0) * 18) +
+            (Math.max(0, modifiers.healingBonus ?? 0) * 16) +
+            (Math.max(0, modifiers.strength ?? 0) * 14) +
+            (Math.max(0, modifiers.dexterity ?? 0) * 14) +
+            (Math.max(0, modifiers.intelligence ?? 0) * 14) +
+            (Math.max(0, modifiers.wisdom ?? 0) * 14);
+
+        const isSell = mode === 'sell';
+        const multiplier = isSell
+            ? Math.max(0.05, Number(vendorProp?.storeSellMultiplier ?? 0.5) || 0.5)
+            : Math.max(0.1, Number(vendorProp?.storeBuyMultiplier ?? 1) || 1);
+
+        return Math.max(1, Math.round(baseValue * multiplier));
+    }
+
+    buyVendorItem(vendorProp, itemId) {
+        if (!itemId) {
+            return false;
+        }
+
+        const template = window.GameData?.getItemTemplateById(itemId);
+        if (!template) {
+            this.showToast('That item is unavailable.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const price = this.getVendorItemPrice(template, 'buy', vendorProp);
+        const currentGold = Math.max(0, Math.floor(this.sharedLootInventory?.gold ?? 0));
+        if (currentGold < price) {
+            this.showToast('Not enough gold.', '#d97d7d', 2200);
+            return false;
+        }
+
+        const purchasedItem = this.createEquipmentItemInstance(template);
+        if (!purchasedItem) {
+            this.showToast('Purchase failed.', '#d97d7d', 2200);
+            return false;
+        }
+
+        this.sharedLootInventory.gold = currentGold - price;
+        this.addEquipmentItemToSharedInventory(purchasedItem);
+        this.appendCombatLogEntry(
+            `Party buys ${this.getEquipmentItemLabel(purchasedItem)} for ${price} gold.`,
+            '#d9c47d'
+        );
+        this.showToast(`Purchased ${this.getEquipmentItemLabel(purchasedItem)}.`, purchasedItem.accentColor || '#d9c47d', 2200);
+        return true;
+    }
+
+    sellVendorItem(vendorProp, instanceId) {
+        if (!instanceId) {
+            return false;
+        }
+
+        const sharedItems = this.getSharedLootItems();
+        const itemIndex = sharedItems.findIndex((item) => item.instanceId === instanceId);
+        if (itemIndex < 0) {
+            this.showToast('That item is no longer available.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const item = this.ensureEquipmentItemInstance(sharedItems[itemIndex]);
+        if (!item) {
+            this.showToast('Unable to sell item.', '#d97d7d', 2200);
+            return false;
+        }
+
+        const template = window.GameData?.getItemTemplateById(item.id) || item;
+        const price = this.getVendorItemPrice(template, 'sell', vendorProp);
+        sharedItems.splice(itemIndex, 1);
+        this.sharedLootInventory.gold = Math.max(0, Math.floor(this.sharedLootInventory?.gold ?? 0)) + price;
+        this.appendCombatLogEntry(
+            `Party sells ${this.getEquipmentItemLabel(item)} for ${price} gold.`,
+            '#d9c47d'
+        );
+        this.showToast(`Sold ${this.getEquipmentItemLabel(item)}.`, '#d9c47d', 2200);
+        return true;
     }
 
     createEquipmentItemsFromIds(lootItemIds) {
@@ -5386,6 +5746,8 @@ class GridScene {
             this.closeLootMenu();
         }
 
+        this.saveCurrentMapPersistentState();
+
         if (this.activeInventoryCharacter && this.activeInventoryTab === 'shared') {
             this.renderCharacterInventory();
         }
@@ -5490,6 +5852,8 @@ class GridScene {
         if (this.gameMode === 'combat' && this.turnOrder[this.activeTurnIndex] === character) {
             this.endCurrentTurn();
         }
+
+        this.saveCurrentMapPersistentState();
     }
 
     areAllPartyMembersDead(group) {

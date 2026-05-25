@@ -9,9 +9,9 @@
     window.CustomDungeonMaps = {
         createTokenRow,
 
-        starterKeep: {
-            id: 'starter-keep',
-            name: 'Starter Keep',
+        goblinCave: {
+            id: 'goblin-cave',
+            name: 'Goblin Cave',
             size: 21,
             baseRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
@@ -84,39 +84,35 @@
             ],
             baseLegend: {
                 wa: { type: 'wall' },
-                mt: { type: 'mapTransition', mapId: 'forest-town' },
+                mt: { type: 'mapTransition', mapId: 'forest-path' },
                 dr: { type: 'door' },
                 __: { type: 'floor' }
             },
-            propLegend: {
-                bd: { frameId: 'bed', roomTheme: 'barracks', searchable: false },
-                tb: { frameId: 'tableCandles', roomTheme: 'barracks', searchable: false },
-                wr1: { frameId: 'weaponRack1', roomTheme: 'armory', searchable: true },
-                wr2: { frameId: 'weaponRack2', roomTheme: 'armory', searchable: true },
-                chI: { frameId: 'chestClosedIron', roomTheme: 'treasure', searchable: true },
-                chS: { frameId: 'chestClosedSteel', roomTheme: 'treasure', searchable: true },
+            propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
+                bd: 'bed',
+                tb: 'tableCandles',
+                wr1: 'weaponRack1',
+                wr2: 'weaponRack2',
+                chI: 'chestClosedIron',
+                chS: 'chestClosedSteel',
                 ch1: {
-                    frameId: 'chestClosedGold',
-                    roomTheme: 'treasure',
-                    searchable: true,
+                    propId: 'chestClosedGold',
                     lootMode: 'all',
                     goldAmount: 50,
                     lootItemIds: ['healers-circlet', 'mages-amulet', 'long-bow', 'small-shield']
                 },
                 ch2: {
-                    frameId: 'chestClosedGold',
-                    roomTheme: 'treasure',
-                    searchable: true,
+                    propId: 'chestClosedGold',
                     lootMode: 'all',
                     goldAmount: 200,
                     lootItemIds: ['chain-mail']
                 },
-                br1: { frameId: 'barrels1', roomTheme: 'storage', searchable: true },
-                br2: { frameId: 'barrels2', roomTheme: 'storage', searchable: true },
-                cr: { frameId: 'crate', roomTheme: 'storage', searchable: true },
-                st1: { frameId: 'spikeTrap1', roomTheme: 'trap', searchable: false },
-                st2: { frameId: 'spikeTrap2', roomTheme: 'trap', searchable: false }
-            },
+                br1: 'barrels1',
+                br2: 'barrels2',
+                cr: 'crate',
+                st1: 'spikeTrap1',
+                st2: 'spikeTrap2'
+            }) || {},
             encounterLegend: {
                 PW: { kind: 'player', characterId: 'warrior' },
                 PZ: { kind: 'player', characterId: 'wizard' },
@@ -141,12 +137,12 @@
             }
         },
 
-        forestTown: {
-            id: 'forest-town',
-            name: 'Forest Town',
+        forestPath: {
+            id: 'forest-path',
+            name: 'Forest Path',
             size: 20,
             baseRows: [
-                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa m3 m3 wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ wa wa __ __ __ __ wa wa __ __ __ __ wa wa __ __ __ wa'),
                 createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
@@ -171,10 +167,93 @@
             encounterRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
             baseLegend: {
                 wa: { type: 'wall' },
-                mt: { type: 'mapTransition', mapId: 'starter-keep' },
+                mt: { type: 'mapTransition', mapId: 'goblin-cave' },
+                m3: { type: 'mapTransition', mapId: 'forest-town' },
                 __: { type: 'floor' }
             },
             propLegend: {},
+            encounterLegend: {}
+        },
+
+        forestTown: {
+            id: 'forest-town',
+            name: 'Forest Town',
+            size: 20,
+            baseRows: [
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa wa dr wa wa wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa wa wa wa wa wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ mt mt __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
+            ],
+            propRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ bu __ __ __ __ __ __ __ __ __ __ __ tr __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ hs hs hs hs hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ hs __ __ __ hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ hs __ __ __ hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ hs __ vn __ hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ hs __ __ __ hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ hs hs hs hs hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ tr __ __ __ __ __ __ __ __ __ __ __ __ __ bu __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
+            encounterRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
+            baseLegend: {
+                wa: { type: 'wall' },
+                dr: { type: 'door' },
+                mt: { type: 'mapTransition', mapId: 'forest-path' },
+                __: { type: 'floor' }
+            },
+            propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
+                bu: { propId: 'stoneDebris1', name: 'Bush', searchable: false, roomTheme: 'forest' },
+                tr: { propId: 'stoneUrn', name: 'Tree', searchable: false, roomTheme: 'forest' },
+                hs: { propId: 'workbench', name: 'House Furnishing', searchable: false, roomTheme: 'house' },
+                vn: {
+                    propId: 'tableSkull',
+                    name: 'Mira the Vendor',
+                    searchable: false,
+                    roomTheme: 'town',
+                    isVendor: true,
+                    vendorName: 'Mira the Vendor',
+                    storeInventoryItemIds: [
+                        'small-shield',
+                        'short-bow',
+                        'long-bow',
+                        'chain-mail',
+                        'steel-helm',
+                        'mages-amulet',
+                        'healers-circlet'
+                    ],
+                    storeBuyMultiplier: 1,
+                    storeSellMultiplier: 0.5
+                }
+            }) || {},
             encounterLegend: {}
         }
     };
@@ -213,9 +292,9 @@ window.MapGenerator = {
     },
 
     getConfiguredDungeonLayout() {
-        const activeMapId = this.activeDungeonMapId || 'starter-keep';
+        const activeMapId = this.activeDungeonMapId || 'goblin-cave';
         return this.getConfiguredDungeonLayoutById(activeMapId)
-            || window.CustomDungeonMaps?.starterKeep
+            || window.CustomDungeonMaps?.goblinCave
             || null;
     },
 
@@ -290,8 +369,16 @@ window.MapGenerator = {
                             gridX,
                             gridY,
                             frameId: propConfig.frameId,
+                            name: propConfig.name,
                             roomTheme: propConfig.roomTheme || 'custom',
                             searchable: Boolean(propConfig.searchable),
+                            isVendor: Boolean(propConfig.isVendor),
+                            vendorName: propConfig.vendorName,
+                            storeInventoryItemIds: Array.isArray(propConfig.storeInventoryItemIds)
+                                ? [...propConfig.storeInventoryItemIds]
+                                : [],
+                            storeBuyMultiplier: propConfig.storeBuyMultiplier,
+                            storeSellMultiplier: propConfig.storeSellMultiplier,
                             hasBeenSearched: false,
                             lootMode: propConfig.lootMode,
                             goldAmount: propConfig.goldAmount,

@@ -686,6 +686,128 @@ window.GridUI = {
         toast._dismiss = () => { clearTimeout(timer); fadeOut(); };
     },
 
+    dismissConfirmationToast() {
+        const existing = this.confirmationToast?.root || null;
+        if (!existing) {
+            return;
+        }
+
+        existing.remove();
+        this.confirmationToast = null;
+    },
+
+    showConfirmationToast(message, options = {}) {
+        const {
+            confirmLabel = 'Yes',
+            cancelLabel = 'No',
+            color = '#7fc9ff',
+            screenX = null,
+            screenY = null,
+            onConfirm = null,
+            onCancel = null
+        } = options;
+
+        this.dismissConfirmationToast();
+
+        const toast = document.createElement('div');
+        const useAnchor = screenX !== null && screenY !== null;
+        const positionStyles = useAnchor
+            ? [
+                'position:fixed',
+                `left:${screenX}px`,
+                `top:${screenY - 48}px`,
+                'transform:translateX(-50%) translateY(-100%)'
+              ]
+            : [
+                'position:fixed',
+                'left:50%',
+                'bottom:120px',
+                'transform:translateX(-50%)'
+              ];
+
+        toast.style.cssText = [
+            ...positionStyles,
+            'background:rgba(20,16,10,0.95)',
+            `border-left:3px solid ${color}`,
+            'border-radius:8px',
+            'padding:10px 12px',
+            'font-size:13px',
+            'color:#e8d9b8',
+            'pointer-events:auto',
+            'z-index:10001',
+            'min-width:260px',
+            'max-width:min(420px, calc(100vw - 24px))',
+            'box-shadow:0 4px 18px rgba(0,0,0,0.55)',
+            'display:grid',
+            'gap:8px'
+        ].join(';');
+
+        const messageRow = document.createElement('div');
+        messageRow.textContent = message;
+        messageRow.style.lineHeight = '1.35';
+
+        const buttonRow = document.createElement('div');
+        buttonRow.style.display = 'flex';
+        buttonRow.style.justifyContent = 'flex-end';
+        buttonRow.style.gap = '8px';
+
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.textContent = cancelLabel;
+        cancelButton.style.padding = '5px 10px';
+        cancelButton.style.borderRadius = '6px';
+        cancelButton.style.border = '1px solid rgba(255,255,255,0.25)';
+        cancelButton.style.background = 'rgba(255,255,255,0.08)';
+        cancelButton.style.color = '#e8d9b8';
+        cancelButton.style.fontSize = '12px';
+        cancelButton.style.cursor = 'pointer';
+
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.textContent = confirmLabel;
+        confirmButton.style.padding = '5px 10px';
+        confirmButton.style.borderRadius = '6px';
+        confirmButton.style.border = '1px solid rgba(127, 201, 255, 0.65)';
+        confirmButton.style.background = 'rgba(54, 109, 146, 0.4)';
+        confirmButton.style.color = '#dff2ff';
+        confirmButton.style.fontSize = '12px';
+        confirmButton.style.cursor = 'pointer';
+
+        const close = () => {
+            if (this.confirmationToast?.root === toast) {
+                this.confirmationToast = null;
+            }
+            toast.remove();
+        };
+
+        cancelButton.addEventListener('click', () => {
+            close();
+            if (typeof onCancel === 'function') {
+                onCancel();
+            }
+        });
+
+        confirmButton.addEventListener('click', () => {
+            close();
+            if (typeof onConfirm === 'function') {
+                onConfirm();
+            }
+        });
+
+        buttonRow.appendChild(cancelButton);
+        buttonRow.appendChild(confirmButton);
+        toast.appendChild(messageRow);
+        toast.appendChild(buttonRow);
+        document.body.appendChild(toast);
+
+        this.confirmationToast = {
+            root: toast,
+            close
+        };
+
+        return this.confirmationToast;
+    },
+
     handleLevelUpIndicatorClick(character, triggerButton) {
         if (!character || !Array.isArray(character.pendingLevelUpNotices) || character.pendingLevelUpNotices.length === 0) {
             return;
@@ -1685,6 +1807,392 @@ window.GridUI = {
             row.appendChild(controls);
             list.appendChild(row);
         });
+    },
+
+    setupVendorStoreMenuWindow() {
+        if (this.vendorStoreMenuWindow?.overlay) {
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.style.position = 'absolute';
+        overlay.style.inset = '0';
+        overlay.style.display = 'none';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.background = 'rgba(4, 5, 8, 0.72)';
+        overlay.style.backdropFilter = 'blur(4px)';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.zIndex = '31';
+
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.left = '50%';
+        panel.style.top = '50%';
+        panel.style.transform = 'translate(-50%, -50%)';
+        panel.style.width = 'min(560px, calc(100% - 32px))';
+        panel.style.maxHeight = 'min(580px, calc(100% - 32px))';
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.borderRadius = '12px';
+        panel.style.border = '1px solid rgba(232, 224, 202, 0.22)';
+        panel.style.background = 'linear-gradient(180deg, rgba(25, 24, 28, 0.98), rgba(12, 12, 14, 0.98))';
+        panel.style.boxShadow = '0 20px 50px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04)';
+        panel.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
+        header.style.padding = '16px 18px 12px';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+
+        const titleWrap = document.createElement('div');
+        titleWrap.style.minWidth = '0';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '18px';
+        title.style.fontWeight = '700';
+        title.style.color = '#f0e8d2';
+        title.style.lineHeight = '1.2';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '4px';
+        subtitle.style.fontSize = '11px';
+        subtitle.style.letterSpacing = '0.08em';
+        subtitle.style.textTransform = 'uppercase';
+        subtitle.style.color = '#a89c82';
+
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(subtitle);
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.textContent = 'Close';
+        closeButton.style.padding = '7px 10px';
+        closeButton.style.borderRadius = '6px';
+        closeButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        closeButton.style.background = 'rgba(255,255,255,0.06)';
+        closeButton.style.color = '#f0e8d2';
+        closeButton.style.fontSize = '11px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.addEventListener('click', () => this.closeVendorStoreMenu());
+
+        header.appendChild(titleWrap);
+        header.appendChild(closeButton);
+        panel.appendChild(header);
+
+        const content = document.createElement('div');
+        content.style.padding = '16px';
+        content.style.overflowY = 'auto';
+        content.style.minHeight = '280px';
+        panel.appendChild(content);
+
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                this.closeVendorStoreMenu();
+            }
+        });
+
+        panel.addEventListener('click', (event) => event.stopPropagation());
+        overlay.appendChild(panel);
+        this.container.appendChild(overlay);
+
+        this.vendorStoreMenuWindow = {
+            overlay,
+            panel,
+            title,
+            subtitle,
+            content,
+            closeButton,
+            goldValueEl: null,
+            lastRenderedGold: null
+        };
+    },
+
+    syncVendorStorePartyGoldDisplay() {
+        const modal = this.vendorStoreMenuWindow;
+        if (!modal?.goldValueEl) {
+            return;
+        }
+
+        const partyGold = Math.max(0, Math.floor(this.sharedLootInventory?.gold ?? 0));
+        if (modal.lastRenderedGold === partyGold) {
+            return;
+        }
+
+        modal.lastRenderedGold = partyGold;
+        modal.goldValueEl.textContent = String(partyGold);
+    },
+
+    startVendorStoreGoldSyncLoop() {
+        if (this.vendorStoreGoldSyncTimer) {
+            clearInterval(this.vendorStoreGoldSyncTimer);
+            this.vendorStoreGoldSyncTimer = null;
+        }
+
+        this.syncVendorStorePartyGoldDisplay();
+        this.vendorStoreGoldSyncTimer = setInterval(() => {
+            if (this.vendorStoreMenuWindow?.overlay?.style.display !== 'flex') {
+                return;
+            }
+
+            this.syncVendorStorePartyGoldDisplay();
+        }, 200);
+    },
+
+    stopVendorStoreGoldSyncLoop() {
+        if (!this.vendorStoreGoldSyncTimer) {
+            return;
+        }
+
+        clearInterval(this.vendorStoreGoldSyncTimer);
+        this.vendorStoreGoldSyncTimer = null;
+    },
+
+    openVendorStoreMenu(vendorProp, interactor = null) {
+        if (!vendorProp) {
+            return;
+        }
+
+        if (!this.vendorStoreMenuWindow) {
+            this.setupVendorStoreMenuWindow();
+        }
+
+        this.activeVendorProp = vendorProp;
+        this.activeVendorInteractor = interactor || null;
+        this.vendorStoreMenuWindow.overlay.style.display = 'flex';
+        this.renderVendorStoreMenu();
+        this.startVendorStoreGoldSyncLoop();
+    },
+
+    closeVendorStoreMenu() {
+        if (!this.vendorStoreMenuWindow) {
+            return;
+        }
+
+        this.vendorStoreMenuWindow.overlay.style.display = 'none';
+        this.stopVendorStoreGoldSyncLoop();
+        this.activeVendorProp = null;
+        this.activeVendorInteractor = null;
+    },
+
+    renderVendorStoreMenu() {
+        const modal = this.vendorStoreMenuWindow;
+        const vendorProp = this.activeVendorProp;
+        if (!modal || !vendorProp) {
+            return;
+        }
+
+        const vendorName = vendorProp.vendorName || vendorProp.name || 'Vendor';
+        const stockIds = this.getVendorStockItemIds(vendorProp);
+        const stockTemplates = stockIds
+            .map((itemId) => window.GameData?.getItemTemplateById(itemId) || null)
+            .filter(Boolean);
+
+        modal.title.textContent = vendorName;
+        modal.subtitle.textContent = 'Town Store';
+        modal.content.innerHTML = '';
+
+        const goldCard = document.createElement('div');
+        goldCard.style.padding = '12px';
+        goldCard.style.border = '1px solid rgba(255,255,255,0.08)';
+        goldCard.style.borderRadius = '10px';
+        goldCard.style.background = 'rgba(255,255,255,0.03)';
+
+        const goldLabel = document.createElement('div');
+        goldLabel.style.fontSize = '10px';
+        goldLabel.style.letterSpacing = '0.08em';
+        goldLabel.style.textTransform = 'uppercase';
+        goldLabel.style.color = '#8f856f';
+        goldLabel.textContent = 'Party Gold';
+
+        const goldValue = document.createElement('div');
+        goldValue.style.marginTop = '6px';
+        goldValue.style.fontSize = '24px';
+        goldValue.style.fontWeight = '700';
+        goldValue.style.color = '#ffd86a';
+        goldValue.textContent = '0';
+        modal.goldValueEl = goldValue;
+        modal.lastRenderedGold = null;
+        this.syncVendorStorePartyGoldDisplay();
+
+        goldCard.appendChild(goldLabel);
+        goldCard.appendChild(goldValue);
+        modal.content.appendChild(goldCard);
+
+        const sections = document.createElement('div');
+        sections.style.display = 'grid';
+        sections.style.gridTemplateColumns = '1fr';
+        sections.style.gap = '14px';
+        sections.style.marginTop = '14px';
+        modal.content.appendChild(sections);
+
+        const buySection = document.createElement('div');
+        const buyTitle = document.createElement('div');
+        buyTitle.style.fontSize = '11px';
+        buyTitle.style.letterSpacing = '0.08em';
+        buyTitle.style.textTransform = 'uppercase';
+        buyTitle.style.color = '#8f856f';
+        buyTitle.textContent = 'Buy Items';
+        buySection.appendChild(buyTitle);
+
+        const buyList = document.createElement('div');
+        buyList.style.display = 'grid';
+        buyList.style.gap = '8px';
+        buyList.style.marginTop = '8px';
+        buySection.appendChild(buyList);
+
+        if (stockTemplates.length === 0) {
+            const emptyStock = document.createElement('div');
+            emptyStock.style.padding = '10px 12px';
+            emptyStock.style.border = '1px dashed rgba(255,255,255,0.16)';
+            emptyStock.style.borderRadius = '10px';
+            emptyStock.style.fontSize = '12px';
+            emptyStock.style.color = '#8f856f';
+            emptyStock.textContent = 'No items for sale right now.';
+            buyList.appendChild(emptyStock);
+        }
+
+        stockTemplates.forEach((template) => {
+            const price = this.getVendorItemPrice(template, 'buy', vendorProp);
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.padding = '10px 12px';
+            row.style.border = '1px solid rgba(255,255,255,0.08)';
+            row.style.borderRadius = '10px';
+            row.style.background = 'rgba(255,255,255,0.03)';
+
+            const text = document.createElement('div');
+            text.style.display = 'flex';
+            text.style.flexDirection = 'column';
+            text.style.minWidth = '0';
+
+            const name = document.createElement('div');
+            name.style.fontSize = '13px';
+            name.style.fontWeight = '700';
+            name.style.color = template.accentColor || '#d6cbb8';
+            name.textContent = template.name || template.id;
+
+            const detail = document.createElement('div');
+            detail.style.marginTop = '3px';
+            detail.style.fontSize = '11px';
+            detail.style.color = '#9f9582';
+            detail.textContent = this.getEquipmentItemModifierSummary(template) || 'No stat changes';
+
+            text.appendChild(name);
+            text.appendChild(detail);
+            row.appendChild(text);
+
+            const buyButton = document.createElement('button');
+            buyButton.type = 'button';
+            buyButton.textContent = `Buy ${price}g`;
+            buyButton.style.padding = '6px 9px';
+            buyButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            buyButton.style.borderRadius = '6px';
+            buyButton.style.background = 'rgba(73, 116, 162, 0.35)';
+            buyButton.style.color = '#d7e7fb';
+            buyButton.style.fontSize = '11px';
+            buyButton.style.cursor = 'pointer';
+            buyButton.style.flexShrink = '0';
+            buyButton.addEventListener('click', () => {
+                if (this.buyVendorItem(vendorProp, template.id)) {
+                    this.renderVendorStoreMenu();
+                }
+            });
+
+            row.appendChild(buyButton);
+            buyList.appendChild(row);
+        });
+
+        sections.appendChild(buySection);
+
+        const sellSection = document.createElement('div');
+        const sellTitle = document.createElement('div');
+        sellTitle.style.fontSize = '11px';
+        sellTitle.style.letterSpacing = '0.08em';
+        sellTitle.style.textTransform = 'uppercase';
+        sellTitle.style.color = '#8f856f';
+        sellTitle.textContent = 'Sell Shared Items';
+        sellSection.appendChild(sellTitle);
+
+        const sellList = document.createElement('div');
+        sellList.style.display = 'grid';
+        sellList.style.gap = '8px';
+        sellList.style.marginTop = '8px';
+        sellSection.appendChild(sellList);
+
+        const sharedItems = this.getSharedLootItems();
+        if (sharedItems.length === 0) {
+            const emptySell = document.createElement('div');
+            emptySell.style.padding = '10px 12px';
+            emptySell.style.border = '1px dashed rgba(255,255,255,0.16)';
+            emptySell.style.borderRadius = '10px';
+            emptySell.style.fontSize = '12px';
+            emptySell.style.color = '#8f856f';
+            emptySell.textContent = 'No shared items available to sell.';
+            sellList.appendChild(emptySell);
+        }
+
+        sharedItems.forEach((item) => {
+            const price = this.getVendorItemPrice(item, 'sell', vendorProp);
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.padding = '10px 12px';
+            row.style.border = '1px solid rgba(255,255,255,0.08)';
+            row.style.borderRadius = '10px';
+            row.style.background = 'rgba(255,255,255,0.03)';
+
+            const text = document.createElement('div');
+            text.style.display = 'flex';
+            text.style.flexDirection = 'column';
+            text.style.minWidth = '0';
+
+            const name = document.createElement('div');
+            name.style.fontSize = '13px';
+            name.style.fontWeight = '700';
+            name.style.color = item.accentColor || '#d6cbb8';
+            name.textContent = this.getEquipmentItemLabel(item);
+
+            const detail = document.createElement('div');
+            detail.style.marginTop = '3px';
+            detail.style.fontSize = '11px';
+            detail.style.color = '#9f9582';
+            detail.textContent = this.getEquipmentItemModifierSummary(item) || 'No stat changes';
+
+            text.appendChild(name);
+            text.appendChild(detail);
+            row.appendChild(text);
+
+            const sellButton = document.createElement('button');
+            sellButton.type = 'button';
+            sellButton.textContent = `Sell ${price}g`;
+            sellButton.style.padding = '6px 9px';
+            sellButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            sellButton.style.borderRadius = '6px';
+            sellButton.style.background = 'rgba(140, 104, 64, 0.28)';
+            sellButton.style.color = '#d9c7a8';
+            sellButton.style.fontSize = '11px';
+            sellButton.style.cursor = 'pointer';
+            sellButton.style.flexShrink = '0';
+            sellButton.addEventListener('click', () => {
+                if (this.sellVendorItem(vendorProp, item.instanceId)) {
+                    this.renderVendorStoreMenu();
+                }
+            });
+
+            row.appendChild(sellButton);
+            sellList.appendChild(row);
+        });
+
+        sections.appendChild(sellSection);
     },
 
     setupCharacterInventoryModal() {
