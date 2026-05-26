@@ -3428,9 +3428,9 @@ class GridScene {
                 : this.getScreenPositionForCell(prop.gridX, prop.gridY);
 
             this.showConfirmationToast(
-                `${prop.vendorName || prop.name || 'Vendor'}: choose an interaction.`,
+                `${prop.vendorName || prop.name || 'Vendor'}`,
                 {
-                    confirmLabel: 'Buy/Sell',
+                    confirmLabel: 'Shop',
                     cancelLabel: 'Talk',
                     color: '#8fd3ff',
                     screenX: anchor?.screenX ?? null,
