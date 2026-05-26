@@ -1962,6 +1962,7 @@ window.GridUI = {
 
         this.activeVendorProp = vendorProp;
         this.activeVendorInteractor = interactor || null;
+        this.vendorStoreMenuWindow.activeTab = 'buy';
         this.vendorStoreMenuWindow.overlay.style.display = 'flex';
         this.renderVendorStoreMenu();
         this.startVendorStoreGoldSyncLoop();
@@ -2022,109 +2023,133 @@ window.GridUI = {
         goldCard.appendChild(goldValue);
         modal.content.appendChild(goldCard);
 
-        const sections = document.createElement('div');
-        sections.style.display = 'grid';
-        sections.style.gridTemplateColumns = '1fr';
-        sections.style.gap = '14px';
-        sections.style.marginTop = '14px';
-        modal.content.appendChild(sections);
+        const tabRow = document.createElement('div');
+        tabRow.style.display = 'flex';
+        tabRow.style.gap = '8px';
+        tabRow.style.marginTop = '14px';
+        modal.content.appendChild(tabRow);
 
-        const buySection = document.createElement('div');
-        const buyTitle = document.createElement('div');
-        buyTitle.style.fontSize = '11px';
-        buyTitle.style.letterSpacing = '0.08em';
-        buyTitle.style.textTransform = 'uppercase';
-        buyTitle.style.color = '#8f856f';
-        buyTitle.textContent = 'Buy Items';
-        buySection.appendChild(buyTitle);
+        const activeTab = modal.activeTab === 'sell' ? 'sell' : 'buy';
+        modal.activeTab = activeTab;
 
-        const buyList = document.createElement('div');
-        buyList.style.display = 'grid';
-        buyList.style.gap = '8px';
-        buyList.style.marginTop = '8px';
-        buySection.appendChild(buyList);
-
-        if (stockTemplates.length === 0) {
-            const emptyStock = document.createElement('div');
-            emptyStock.style.padding = '10px 12px';
-            emptyStock.style.border = '1px dashed rgba(255,255,255,0.16)';
-            emptyStock.style.borderRadius = '10px';
-            emptyStock.style.fontSize = '12px';
-            emptyStock.style.color = '#8f856f';
-            emptyStock.textContent = 'No items for sale right now.';
-            buyList.appendChild(emptyStock);
-        }
-
-        stockTemplates.forEach((template) => {
-            const price = this.getVendorItemPrice(template, 'buy', vendorProp);
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.alignItems = 'center';
-            row.style.justifyContent = 'space-between';
-            row.style.gap = '10px';
-            row.style.padding = '10px 12px';
-            row.style.border = '1px solid rgba(255,255,255,0.08)';
-            row.style.borderRadius = '10px';
-            row.style.background = 'rgba(255,255,255,0.03)';
-
-            const text = document.createElement('div');
-            text.style.display = 'flex';
-            text.style.flexDirection = 'column';
-            text.style.minWidth = '0';
-
-            const name = document.createElement('div');
-            name.style.fontSize = '13px';
-            name.style.fontWeight = '700';
-            name.style.color = template.accentColor || '#d6cbb8';
-            name.textContent = template.name || template.id;
-
-            const detail = document.createElement('div');
-            detail.style.marginTop = '3px';
-            detail.style.fontSize = '11px';
-            detail.style.color = '#9f9582';
-            detail.textContent = this.getEquipmentItemModifierSummary(template) || 'No stat changes';
-
-            text.appendChild(name);
-            text.appendChild(detail);
-            row.appendChild(text);
-
-            const buyButton = document.createElement('button');
-            buyButton.type = 'button';
-            buyButton.textContent = `Buy ${price}g`;
-            buyButton.style.padding = '6px 9px';
-            buyButton.style.border = '1px solid rgba(255,255,255,0.2)';
-            buyButton.style.borderRadius = '6px';
-            buyButton.style.background = 'rgba(73, 116, 162, 0.35)';
-            buyButton.style.color = '#d7e7fb';
-            buyButton.style.fontSize = '11px';
-            buyButton.style.cursor = 'pointer';
-            buyButton.style.flexShrink = '0';
-            buyButton.addEventListener('click', () => {
-                if (this.buyVendorItem(vendorProp, template.id)) {
-                    this.renderVendorStoreMenu();
+        const createTabButton = (tabId, label) => {
+            const isActive = activeTab === tabId;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            button.style.padding = '7px 12px';
+            button.style.borderRadius = '8px';
+            button.style.border = isActive
+                ? '1px solid rgba(127, 201, 255, 0.55)'
+                : '1px solid rgba(255,255,255,0.16)';
+            button.style.background = isActive
+                ? 'rgba(73, 116, 162, 0.32)'
+                : 'rgba(255,255,255,0.05)';
+            button.style.color = isActive ? '#dff2ff' : '#cbbd9f';
+            button.style.fontSize = '11px';
+            button.style.fontWeight = '700';
+            button.style.letterSpacing = '0.06em';
+            button.style.textTransform = 'uppercase';
+            button.style.cursor = 'pointer';
+            button.addEventListener('click', () => {
+                if (modal.activeTab === tabId) {
+                    return;
                 }
+                modal.activeTab = tabId;
+                this.renderVendorStoreMenu();
             });
+            return button;
+        };
 
-            row.appendChild(buyButton);
-            buyList.appendChild(row);
-        });
+        tabRow.appendChild(createTabButton('buy', 'Buy'));
+        tabRow.appendChild(createTabButton('sell', 'Sell'));
 
-        sections.appendChild(buySection);
+        const section = document.createElement('div');
+        section.style.display = 'grid';
+        section.style.gap = '8px';
+        section.style.marginTop = '12px';
+        modal.content.appendChild(section);
 
-        const sellSection = document.createElement('div');
-        const sellTitle = document.createElement('div');
-        sellTitle.style.fontSize = '11px';
-        sellTitle.style.letterSpacing = '0.08em';
-        sellTitle.style.textTransform = 'uppercase';
-        sellTitle.style.color = '#8f856f';
-        sellTitle.textContent = 'Sell Shared Items';
-        sellSection.appendChild(sellTitle);
+        const sectionTitle = document.createElement('div');
+        sectionTitle.style.fontSize = '11px';
+        sectionTitle.style.letterSpacing = '0.08em';
+        sectionTitle.style.textTransform = 'uppercase';
+        sectionTitle.style.color = '#8f856f';
+        sectionTitle.textContent = activeTab === 'buy' ? 'Buy Items' : 'Sell Shared Items';
+        section.appendChild(sectionTitle);
 
-        const sellList = document.createElement('div');
-        sellList.style.display = 'grid';
-        sellList.style.gap = '8px';
-        sellList.style.marginTop = '8px';
-        sellSection.appendChild(sellList);
+        const list = document.createElement('div');
+        list.style.display = 'grid';
+        list.style.gap = '8px';
+        section.appendChild(list);
+
+        if (activeTab === 'buy') {
+            if (stockTemplates.length === 0) {
+                const emptyStock = document.createElement('div');
+                emptyStock.style.padding = '10px 12px';
+                emptyStock.style.border = '1px dashed rgba(255,255,255,0.16)';
+                emptyStock.style.borderRadius = '10px';
+                emptyStock.style.fontSize = '12px';
+                emptyStock.style.color = '#8f856f';
+                emptyStock.textContent = 'No items for sale right now.';
+                list.appendChild(emptyStock);
+            }
+
+            stockTemplates.forEach((template) => {
+                const price = this.getVendorItemPrice(template, 'buy', vendorProp);
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.justifyContent = 'space-between';
+                row.style.gap = '10px';
+                row.style.padding = '10px 12px';
+                row.style.border = '1px solid rgba(255,255,255,0.08)';
+                row.style.borderRadius = '10px';
+                row.style.background = 'rgba(255,255,255,0.03)';
+
+                const text = document.createElement('div');
+                text.style.display = 'flex';
+                text.style.flexDirection = 'column';
+                text.style.minWidth = '0';
+
+                const name = document.createElement('div');
+                name.style.fontSize = '13px';
+                name.style.fontWeight = '700';
+                name.style.color = template.accentColor || '#d6cbb8';
+                name.textContent = template.name || template.id;
+
+                const detail = document.createElement('div');
+                detail.style.marginTop = '3px';
+                detail.style.fontSize = '11px';
+                detail.style.color = '#9f9582';
+                detail.textContent = this.getEquipmentItemModifierSummary(template) || 'No stat changes';
+
+                text.appendChild(name);
+                text.appendChild(detail);
+                row.appendChild(text);
+
+                const buyButton = document.createElement('button');
+                buyButton.type = 'button';
+                buyButton.textContent = `Buy ${price}g`;
+                buyButton.style.padding = '6px 9px';
+                buyButton.style.border = '1px solid rgba(255,255,255,0.2)';
+                buyButton.style.borderRadius = '6px';
+                buyButton.style.background = 'rgba(73, 116, 162, 0.35)';
+                buyButton.style.color = '#d7e7fb';
+                buyButton.style.fontSize = '11px';
+                buyButton.style.cursor = 'pointer';
+                buyButton.style.flexShrink = '0';
+                buyButton.addEventListener('click', () => {
+                    if (this.buyVendorItem(vendorProp, template.id)) {
+                        this.renderVendorStoreMenu();
+                    }
+                });
+
+                row.appendChild(buyButton);
+                list.appendChild(row);
+            });
+            return;
+        }
 
         const sharedItems = this.getSharedLootItems();
         if (sharedItems.length === 0) {
@@ -2135,7 +2160,7 @@ window.GridUI = {
             emptySell.style.fontSize = '12px';
             emptySell.style.color = '#8f856f';
             emptySell.textContent = 'No shared items available to sell.';
-            sellList.appendChild(emptySell);
+            list.appendChild(emptySell);
         }
 
         sharedItems.forEach((item) => {
@@ -2189,10 +2214,8 @@ window.GridUI = {
             });
 
             row.appendChild(sellButton);
-            sellList.appendChild(row);
+            list.appendChild(row);
         });
-
-        sections.appendChild(sellSection);
     },
 
     setupCharacterInventoryModal() {

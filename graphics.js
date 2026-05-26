@@ -315,7 +315,9 @@ window.GridGraphics = {
 
         const props = this.dungeonPropsByCell ? [...this.dungeonPropsByCell.values()] : [];
         props.forEach((prop) => {
-            const spriteFrame = this.getDungeonPropSpriteFrame(prop.frameId);
+            const spriteFrame = prop.spriteFrame
+                ? { ...prop.spriteFrame }
+                : this.getDungeonPropSpriteFrame(prop.frameId);
             if (!spriteFrame) {
                 return;
             }

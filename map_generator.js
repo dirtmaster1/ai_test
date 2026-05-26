@@ -78,8 +78,8 @@
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ GSP __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ PW __ PR __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ PZ __ PC __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
             ],
             baseLegend: {
@@ -164,7 +164,28 @@
                 createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
             ],
             propRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
-            encounterRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
+            encounterRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
             baseLegend: {
                 wa: { type: 'wall' },
                 mt: { type: 'mapTransition', mapId: 'goblin-cave' },
@@ -187,19 +208,19 @@
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa wa dr wa wa wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa wa wa wa wa wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa wa dr dr wa wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ mt mt __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
             ],
             propRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
@@ -209,12 +230,12 @@
                 createTokenRow('__ __ bu __ __ __ __ __ __ __ __ __ __ __ tr __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ hs hs hs hs hs __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ hs __ __ __ hs __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ hs __ __ __ hs __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ hs __ vn __ hs __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ hs __ __ __ hs __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ hs hs hs hs hs __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ vn __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
@@ -223,7 +244,28 @@
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
             ],
-            encounterRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
+            encounterRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ PR __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ PW PZ PC __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
             baseLegend: {
                 wa: { type: 'wall' },
                 dr: { type: 'door' },
@@ -239,6 +281,14 @@
                     name: 'Mira the Vendor',
                     searchable: false,
                     roomTheme: 'town',
+                    // Character tileset row 1, column 5 sprite (adventurer) for friendly NPC look.
+                    spriteFrame: {
+                        imagePath: 'character_tileset_1.png',
+                        x: 550,
+                        y: 2,
+                        width: 114,
+                        height: 148
+                    },
                     isVendor: true,
                     vendorName: 'Mira the Vendor',
                     storeInventoryItemIds: [
@@ -254,7 +304,12 @@
                     storeSellMultiplier: 0.5
                 }
             }) || {},
-            encounterLegend: {}
+            encounterLegend: {
+                PW: { kind: 'player', characterId: 'warrior' },
+                PZ: { kind: 'player', characterId: 'wizard' },
+                PC: { kind: 'player', characterId: 'cleric' },
+                PR: { kind: 'player', characterId: 'ranger' }
+            }
         }
     };
 })();
@@ -292,8 +347,9 @@ window.MapGenerator = {
     },
 
     getConfiguredDungeonLayout() {
-        const activeMapId = this.activeDungeonMapId || 'goblin-cave';
+        const activeMapId = this.activeDungeonMapId || 'forest-town';
         return this.getConfiguredDungeonLayoutById(activeMapId)
+            || window.CustomDungeonMaps?.forestTown
             || window.CustomDungeonMaps?.goblinCave
             || null;
     },
@@ -369,6 +425,7 @@ window.MapGenerator = {
                             gridX,
                             gridY,
                             frameId: propConfig.frameId,
+                            spriteFrame: propConfig.spriteFrame ? { ...propConfig.spriteFrame } : null,
                             name: propConfig.name,
                             roomTheme: propConfig.roomTheme || 'custom',
                             searchable: Boolean(propConfig.searchable),

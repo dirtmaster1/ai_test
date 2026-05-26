@@ -57,7 +57,7 @@ class GridScene {
         this.doorMeshesByCell = new Map();
         this.mapTransitionsByCell = new Map();
         this.persistedMapStateById = new Map();
-        this.activeDungeonMapId = 'goblin-cave';
+        this.activeDungeonMapId = 'forest-town';
         this.sharedLootInventory = {
             gold: 0,
             drops: [],
@@ -73,6 +73,7 @@ class GridScene {
 
         // Initialize characters from character.js
         this.initializeCharacters();
+        this.enemyArchetypeTemplatesById = this.buildEnemyArchetypeTemplateMap();
         this.characterHud = new Map();
         this.summonedAllies = [];
         this.nextSummonedAllyId = 1;
@@ -412,6 +413,23 @@ class GridScene {
             };
         });
 
+        const doorStatesByCell = {};
+        this.doorStatesByCell.forEach((doorState, cellKey) => {
+            const isOpen = Boolean(doorState?.isOpen);
+            const openness = Number.isFinite(doorState?.openness)
+                ? Math.max(0, Math.min(1, doorState.openness))
+                : (isOpen ? 1 : 0);
+            const targetOpenness = Number.isFinite(doorState?.targetOpenness)
+                ? Math.max(0, Math.min(1, doorState.targetOpenness))
+                : (isOpen ? 1 : 0);
+
+            doorStatesByCell[cellKey] = {
+                isOpen,
+                openness,
+                targetOpenness
+            };
+        });
+
         const lootDrops = [];
         this.lootDropsByCell.forEach((drop) => {
             lootDrops.push({
@@ -428,6 +446,8 @@ class GridScene {
         this.persistedMapStateById.set(mapId, {
             enemyGroups,
             propsByCell,
+            doorStatesByCell,
+            discoveredCellKeys: [...(this.discoveredCells || [])],
             lootDrops
         });
     }
@@ -438,9 +458,22 @@ class GridScene {
             return;
         }
 
+        // Discovery must be map-scoped: always reset before applying a snapshot.
+        this.discoveredCells = new Set();
+        this.visibleCells = new Set();
+        this.visionNeedsRedraw = true;
+
         const snapshot = this.persistedMapStateById.get(mapId);
         if (!snapshot) {
             return;
+        }
+
+        if (Array.isArray(snapshot.discoveredCellKeys)) {
+            snapshot.discoveredCellKeys.forEach((cellKey) => {
+                if (typeof cellKey === 'string' && cellKey.includes(',')) {
+                    this.discoveredCells.add(cellKey);
+                }
+            });
         }
 
         const enemyById = new Map((this.aiParty || []).map((enemy) => [enemy.id, enemy]));
@@ -505,6 +538,26 @@ class GridScene {
 
             prop.hasBeenSearched = Boolean(savedProp.hasBeenSearched);
             prop.hasBeenTriggered = Boolean(savedProp.hasBeenTriggered);
+        });
+
+        const doorSnapshot = snapshot.doorStatesByCell || {};
+        this.doorStatesByCell.forEach((doorState, cellKey) => {
+            const savedDoorState = doorSnapshot[cellKey];
+            if (!savedDoorState) {
+                return;
+            }
+
+            const isOpen = Boolean(savedDoorState.isOpen);
+            const openness = Number.isFinite(savedDoorState.openness)
+                ? Math.max(0, Math.min(1, savedDoorState.openness))
+                : (isOpen ? 1 : 0);
+            const targetOpenness = Number.isFinite(savedDoorState.targetOpenness)
+                ? Math.max(0, Math.min(1, savedDoorState.targetOpenness))
+                : (isOpen ? 1 : 0);
+
+            doorState.isOpen = isOpen;
+            doorState.openness = openness;
+            doorState.targetOpenness = targetOpenness;
         });
 
         this.lootDropsByCell.clear();
@@ -992,10 +1045,42 @@ class GridScene {
         this.characters = [...this.playerParty, ...this.aiParty];
 
         // Keep legacy references pointing at any matching enemy so existing UI text/helpers still work.
-        this.goblin = this.aiParty.find((enemy) => enemy.id.includes('goblin-warrior')) || this.aiParty[0] || null;
-        this.goblinArcher = this.aiParty.find((enemy) => enemy.id.includes('goblin-archer')) || this.aiParty[0] || null;
-        this.goblinShaman = this.aiParty.find((enemy) => enemy.id.includes('goblin-shaman')) || this.aiParty[0] || null;
-        this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute')) || this.aiParty[0] || null;
+        this.goblin = this.aiParty.find((enemy) => enemy.id.includes('goblin-warrior'))
+            || this.goblin
+            || this.enemyArchetypeTemplatesById?.['goblin-warrior']
+            || null;
+        this.goblinArcher = this.aiParty.find((enemy) => enemy.id.includes('goblin-archer'))
+            || this.goblinArcher
+            || this.enemyArchetypeTemplatesById?.['goblin-archer']
+            || null;
+        this.goblinShaman = this.aiParty.find((enemy) => enemy.id.includes('goblin-shaman'))
+            || this.goblinShaman
+            || this.enemyArchetypeTemplatesById?.['goblin-shaman']
+            || null;
+        this.goblinBrute = this.aiParty.find((enemy) => enemy.id.includes('goblin-brute'))
+            || this.goblinBrute
+            || this.enemyArchetypeTemplatesById?.['goblin-brute']
+            || null;
+    }
+
+    buildEnemyArchetypeTemplateMap() {
+        const archetypes = [
+            this.goblin,
+            this.goblinArcher,
+            this.goblinShaman,
+            this.goblinBrute,
+            this.goblinChieftain,
+            this.giantSpider
+        ];
+
+        return archetypes.reduce((result, archetype) => {
+            if (!archetype?.id) {
+                return result;
+            }
+
+            result[archetype.id] = archetype;
+            return result;
+        }, {});
     }
 
     placeConfiguredPlayerCharactersFromTransitions(layout, transitionContext = null) {
@@ -1168,6 +1253,7 @@ class GridScene {
                 gridY: propPlacement.gridY,
                 mapPersistenceKey: propPlacement.mapPersistenceKey || `prop:${propPlacement.frameId || 'prop'}:${propPlacement.gridX},${propPlacement.gridY}:${propIndex}`,
                 frameId: propPlacement.frameId,
+                spriteFrame: propPlacement.spriteFrame ? { ...propPlacement.spriteFrame } : null,
                 name: propPlacement.name || window.GameData?.getDungeonPropDisplayName?.(propPlacement.frameId) || propPlacement.frameId,
                 roomTheme: propPlacement.roomTheme || 'custom',
                 searchable: Boolean(propPlacement.searchable),
@@ -1259,7 +1345,16 @@ class GridScene {
     }
 
     getEnemyArchetypeById(archetypeId) {
-        const archetypes = {
+        const normalizedArchetypeId = String(archetypeId || '').trim();
+        if (!normalizedArchetypeId) {
+            return null;
+        }
+
+        if (!this.enemyArchetypeTemplatesById || Object.keys(this.enemyArchetypeTemplatesById).length === 0) {
+            this.enemyArchetypeTemplatesById = this.buildEnemyArchetypeTemplateMap();
+        }
+
+        const fallbackArchetypes = {
             'goblin-warrior': this.goblin,
             'goblin-archer': this.goblinArcher,
             'goblin-shaman': this.goblinShaman,
@@ -1268,7 +1363,9 @@ class GridScene {
             'giant-spider': this.giantSpider
         };
 
-        return archetypes[archetypeId] || null;
+        return this.enemyArchetypeTemplatesById[normalizedArchetypeId]
+            || fallbackArchetypes[normalizedArchetypeId]
+            || null;
     }
 
     placeTemporarySpiderTestCrate() {
@@ -3326,7 +3423,26 @@ class GridScene {
                 return false;
             }
 
-            this.openVendorStoreMenu(prop, actingCharacter);
+            const anchor = screenX !== null && screenY !== null
+                ? { screenX, screenY }
+                : this.getScreenPositionForCell(prop.gridX, prop.gridY);
+
+            this.showConfirmationToast(
+                `${prop.vendorName || prop.name || 'Vendor'}: choose an interaction.`,
+                {
+                    confirmLabel: 'Buy/Sell',
+                    cancelLabel: 'Talk',
+                    color: '#8fd3ff',
+                    screenX: anchor?.screenX ?? null,
+                    screenY: anchor?.screenY ?? null,
+                    onConfirm: () => {
+                        this.openVendorStoreMenu(prop, actingCharacter);
+                    },
+                    onCancel: () => {
+                        this.showToast('Welcome to Forest Town!', '#8fd3ff', 2200, anchor?.screenX ?? null, anchor?.screenY ?? null);
+                    }
+                }
+            );
             return true;
         }
 
