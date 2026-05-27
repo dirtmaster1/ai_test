@@ -1068,7 +1068,7 @@ window.GridGraphics = {
             return cells;
         }
 
-        const range = ability.range ?? 0;
+        const range = this.getEffectiveAbilityRange(character, ability);
         const includeOrigin = ability.type === 'heal' || ability.type === 'buff' || ability.id === 'inflict-pain';
         const cells = [];
 

@@ -182,7 +182,7 @@ window.GridUI = {
         return lines.join('\n');
     },
 
-    getAbilityDescriptionText(ability) {
+    getAbilityDescriptionText(ability, character = null) {
         if (!ability) {
             return 'No description.';
         }
@@ -219,7 +219,8 @@ window.GridUI = {
         }
 
         if (ability.type === 'attack') {
-            if ((ability.range ?? 1) > 1) {
+            const range = character ? this.getEffectiveAbilityRange(character, ability) : (ability.range ?? 1);
+            if (range > 1) {
                 return 'Deal damage from a safer distance.';
             }
             return 'Deal close-range physical damage.';
@@ -984,23 +985,23 @@ window.GridUI = {
             this.characterHud.set(character.id, card);
         });
 
-        this.victoryText = document.createElement('div');
-        this.victoryText.id = 'victoryText';
-        this.victoryText.textContent = 'Victory!';
-        this.victoryText.style.position = 'absolute';
-        this.victoryText.style.top = '50%';
-        this.victoryText.style.left = '50%';
-        this.victoryText.style.transform = 'translate(-50%, -50%)';
-        this.victoryText.style.fontFamily = 'Arial, sans-serif';
-        this.victoryText.style.fontSize = '96px';
-        this.victoryText.style.fontWeight = '900';
-        this.victoryText.style.letterSpacing = '4px';
-        this.victoryText.style.color = '#ffd700';
-        this.victoryText.style.textShadow = '0 0 16px rgba(255, 215, 0, 0.6), 0 0 32px rgba(255, 140, 0, 0.45)';
-        this.victoryText.style.pointerEvents = 'none';
-        this.victoryText.style.opacity = '0';
-        this.victoryText.style.display = 'none';
-        this.victoryText.style.zIndex = '20';
+        this.gameOverText = document.createElement('div');
+        this.gameOverText.id = 'gameOverText';
+        this.gameOverText.textContent = 'Game Over';
+        this.gameOverText.style.position = 'absolute';
+        this.gameOverText.style.top = '50%';
+        this.gameOverText.style.left = '50%';
+        this.gameOverText.style.transform = 'translate(-50%, -50%)';
+        this.gameOverText.style.fontFamily = 'Arial, sans-serif';
+        this.gameOverText.style.fontSize = '96px';
+        this.gameOverText.style.fontWeight = '900';
+        this.gameOverText.style.letterSpacing = '4px';
+        this.gameOverText.style.color = '#ff4d4d';
+        this.gameOverText.style.textShadow = '0 0 16px rgba(255, 77, 77, 0.6), 0 0 32px rgba(128, 0, 0, 0.45)';
+        this.gameOverText.style.pointerEvents = 'none';
+        this.gameOverText.style.opacity = '0';
+        this.gameOverText.style.display = 'none';
+        this.gameOverText.style.zIndex = '20';
 
         this.enteringCombatText = document.createElement('div');
         this.enteringCombatText.id = 'enteringCombatText';
@@ -1021,7 +1022,7 @@ window.GridUI = {
         this.enteringCombatText.style.zIndex = '20';
 
         this.container.style.position = 'relative';
-        this.container.appendChild(this.victoryText);
+        this.container.appendChild(this.gameOverText);
         this.container.appendChild(this.enteringCombatText);
         this.setupTargetPreviewPanel();
         this.setupCharacterInventoryModal();
@@ -2988,7 +2989,7 @@ window.GridUI = {
             desc.style.fontSize = '12px';
             desc.style.lineHeight = '1.45';
             desc.style.color = '#d6ccb7';
-            desc.textContent = this.getAbilityDescriptionText(ability);
+            desc.textContent = this.getAbilityDescriptionText(ability, character);
 
             card.appendChild(name);
             card.appendChild(details);
@@ -3067,7 +3068,7 @@ window.GridUI = {
             desc.style.fontSize = '12px';
             desc.style.lineHeight = '1.45';
             desc.style.color = '#d6ccb7';
-            desc.textContent = this.getAbilityDescriptionText(spell);
+            desc.textContent = this.getAbilityDescriptionText(spell, character);
 
             card.appendChild(name);
             card.appendChild(details);
@@ -3593,44 +3594,28 @@ window.GridUI = {
         // before click events can complete.
     },
 
-    startVictorySequence() {
-        if (this.isGameOver) {
-            return;
-        }
-
-        this.isGameOver = true;
-        this.gameOutcome = 'victory';
-        this.victoryStartTime = performance.now();
-        this.victoryText.textContent = 'Victory!';
-        this.victoryText.style.color = '#ffd700';
-        this.victoryText.style.textShadow = '0 0 16px rgba(255, 215, 0, 0.6), 0 0 32px rgba(255, 140, 0, 0.45)';
-        this.victoryText.style.display = 'block';
-        this.victoryText.style.opacity = '1';
-    },
-
     startGameOverSequence() {
         if (this.isGameOver) {
             return;
         }
 
         this.isGameOver = true;
-        this.gameOutcome = 'defeat';
-        this.victoryStartTime = performance.now();
-        this.victoryText.textContent = 'Game Over';
-        this.victoryText.style.color = '#ff4d4d';
-        this.victoryText.style.textShadow = '0 0 16px rgba(255, 77, 77, 0.6), 0 0 32px rgba(128, 0, 0, 0.45)';
-        this.victoryText.style.display = 'block';
-        this.victoryText.style.opacity = '1';
+        this.gameOverStartTime = performance.now();
+        this.gameOverText.textContent = 'Game Over';
+        this.gameOverText.style.color = '#ff4d4d';
+        this.gameOverText.style.textShadow = '0 0 16px rgba(255, 77, 77, 0.6), 0 0 32px rgba(128, 0, 0, 0.45)';
+        this.gameOverText.style.display = 'block';
+        this.gameOverText.style.opacity = '1';
     },
 
-    updateVictorySequence() {
+    updateGameOverSequence() {
         if (!this.isGameOver) {
             return;
         }
 
-        const elapsedMs = performance.now() - this.victoryStartTime;
-        const progress = Math.min(1, elapsedMs / this.victoryFadeDurationMs);
-        this.victoryText.style.opacity = String(1 - progress);
+        const elapsedMs = performance.now() - this.gameOverStartTime;
+        const progress = Math.min(1, elapsedMs / this.gameOverFadeDurationMs);
+        this.gameOverText.style.opacity = String(1 - progress);
 
         if (progress >= 1 && !this.restartTriggered) {
             this.restartTriggered = true;

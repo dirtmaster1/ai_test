@@ -87,9 +87,8 @@ class GridScene {
         this.enemyMoveTimer = 0;
         this.pendingCombatAction = null;
         this.isGameOver = false;
-        this.gameOutcome = null;
-        this.victoryStartTime = 0;
-        this.victoryFadeDurationMs = 3000;
+        this.gameOverStartTime = 0;
+        this.gameOverFadeDurationMs = 3000;
         this.restartTriggered = false;
         this.combatTransitionStartTime = 0;
         this.combatTransitionDurationMs = 2500;
@@ -4019,7 +4018,11 @@ class GridScene {
         const matchedWeaponItems = ability?.id
             ? weaponItems.filter((item) => item.appliesToAbilityId === ability.id)
             : [];
-        const damageSources = matchedWeaponItems.length > 0 ? matchedWeaponItems : weaponItems.filter((item) => item.appliesToAbilityId === 'melee');
+        let damageSources = matchedWeaponItems.length > 0 ? matchedWeaponItems : weaponItems.filter((item) => item.appliesToAbilityId === 'melee');
+
+        if (damageSources.length === 0 && ability?.weaponDriven) {
+            damageSources = weaponItems;
+        }
 
         const weaponDamage = damageSources.reduce((totalDamage, item) => {
             return totalDamage + Math.max(0, item.modifiers?.attackDamage ?? 0);
@@ -4042,11 +4045,15 @@ class GridScene {
             return true;
         }
 
+        if (ability.weaponDriven && !this.getCharacterWeaponItem(character, ability)) {
+            return false;
+        }
+
         if (this.getCharacterWeaponItem(character, ability)) {
             return true;
         }
 
-        return (ability.range ?? 1) <= 1;
+        return this.getEffectiveAbilityRange(character, ability) <= 1;
     }
 
     getEquipmentPlacementForItem(character, item) {
@@ -4108,13 +4115,13 @@ class GridScene {
 
     getCharacterMeleeAttackAbility(character) {
         const abilities = Array.isArray(character?.abilities) ? character.abilities : [];
-        const meleeAbility = abilities.find((ability) => ability.type === 'attack' && (ability.range ?? 1) <= 1) || null;
+        const meleeAbility = abilities.find((ability) => ability.type === 'attack' && this.getEffectiveAbilityRange(character, ability) <= 1) || null;
         return this.canCharacterUseAttackAbility(character, meleeAbility) ? meleeAbility : null;
     }
 
     getCharacterRangedAttackAbility(character) {
         const abilities = Array.isArray(character?.abilities) ? character.abilities : [];
-        const rangedAbility = abilities.find((ability) => ability.type === 'attack' && (ability.range ?? 1) > 1) || null;
+        const rangedAbility = abilities.find((ability) => ability.type === 'attack' && this.getEffectiveAbilityRange(character, ability) > 1) || null;
         return this.canCharacterUseAttackAbility(character, rangedAbility) ? rangedAbility : null;
     }
 
@@ -4288,7 +4295,7 @@ class GridScene {
         }
 
         if (ability?.type === 'attack') {
-            if (ability.range && ability.range > 1) {
+            if (this.getEffectiveAbilityRange(character, ability) > 1) {
                 const storedDamage = ability?.damage ?? 0;
                 const baseDamage = storedDamage > 0 ? Math.max(0, storedDamage - dexterityBonus) : 0;
                 return Math.max(baseDamage, override?.damage ?? 0) + dexterityBonus;
@@ -4583,7 +4590,7 @@ class GridScene {
             return false;
         }
 
-        if (this.requiresLineOfSight(ability) && !this.hasLineOfSightBetweenCells(caster.gridX, caster.gridY, targetX, targetY)) {
+        if (this.requiresLineOfSight(ability, caster) && !this.hasLineOfSightBetweenCells(caster.gridX, caster.gridY, targetX, targetY)) {
             return false;
         }
 
@@ -6006,14 +6013,10 @@ class GridScene {
 
         this.resolveCombatGroupState();
 
-        if (!this.isGameOver && this.areAllPartyMembersDead(this.aiParty)) {
-            this.startVictorySequence();
-        }
-
         this.updateCombatTransition();
 
         if (this.isGameOver) {
-            this.updateVictorySequence();
+            this.updateGameOverSequence();
             return;
         }
 

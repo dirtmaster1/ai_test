@@ -36,7 +36,7 @@ window.GameData = {
             slot: 'hands',
             handType: '2H',
             type: 'weapon',
-            appliesToAbilityId: 'melee',
+            appliesToAbilityId: 'staff-strike',
             modifiers: { attackDamage: 4 },
             accentColor: '#bda7db'
         },
@@ -135,13 +135,13 @@ window.GameData = {
     EQUIPMENT_LOOT_ITEM_IDS: ['small-shield', 'long-bow', 'mages-amulet', 'healers-circlet'],
 
     ABILITY_DEFS: {
-        melee: { id: 'melee', name: 'Melee Strike', type: 'attack', range: 1, mpCost: 0 },
+        melee: { id: 'melee', name: 'Melee Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'wolf-bite': { id: 'wolf-bite', name: 'Bite', type: 'attack', range: 1, mpCost: 0, damage: 5 },
         'venomous-bite': { id: 'venomous-bite', name: 'Venomous Bite', type: 'attack', range: 1, mpCost: 0, damage: 4 },
-        'staff-strike': { id: 'staff-strike', name: 'Staff Strike', type: 'attack', range: 1, mpCost: 0 },
-        'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', range: 1, mpCost: 0 },
-        'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', range: 1, mpCost: 0, damage: 4 },
-        'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', range: 5, mpCost: 0, damage: 6, projectileAnimation: 'arrow', resolveOnImpact: true },
+        'staff-strike': { id: 'staff-strike', name: 'Staff Strike', type: 'attack', mpCost: 0, weaponDriven: true },
+        'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', mpCost: 0, weaponDriven: true },
+        'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', mpCost: 0, weaponDriven: true },
+        'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', mpCost: 0, weaponDriven: true, projectileAnimation: 'arrow', resolveOnImpact: true },
         'goblin-bow-shot': { id: 'goblin-bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4, projectileAnimation: 'arrow', resolveOnImpact: true },
         'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2 },
         charge: { id: 'charge', name: 'Charge', type: 'move', range: 5, mpCost: 0, actionCost: 3, targetMode: 'cell' }

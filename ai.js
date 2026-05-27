@@ -110,7 +110,9 @@ window.GridAI = {
             if (candidateDamage !== bestDamage) {
                 return candidateDamage > bestDamage ? candidate : bestAbility;
             }
-            return (candidate.range ?? 1) > (bestAbility?.range ?? 1) ? candidate : bestAbility;
+            const candidateRange = this.getEffectiveAbilityRange(character, candidate);
+            const bestRange = this.getEffectiveAbilityRange(character, bestAbility);
+            return candidateRange > bestRange ? candidate : bestAbility;
         }, offensiveAbilities[0]);
     },
 
@@ -176,12 +178,12 @@ window.GridAI = {
         return true;
     },
 
-    requiresLineOfSight(ability) {
+    requiresLineOfSight(ability, character = null) {
         if (!ability) {
             return false;
         }
 
-        const range = ability.range ?? 1;
+        const range = character ? this.getEffectiveAbilityRange(character, ability) : (ability.range ?? 1);
         return range > 1 && (ability.type === 'attack' || ability.type === 'spell' || ability.type === 'heal');
     },
 
@@ -244,7 +246,7 @@ window.GridAI = {
         const range = this.getEffectiveAbilityRange(character, resolvedAbility);
         const distance = this.getAttackDistanceBetweenPositions(originX, originY, target.gridX, target.gridY);
         const withinRange = distance <= range;
-        const lineOfSightRequired = this.requiresLineOfSight(resolvedAbility);
+        const lineOfSightRequired = this.requiresLineOfSight(resolvedAbility, character);
         const hasLineOfSight = !lineOfSightRequired || this.hasLineOfSightBetweenCells(originX, originY, target.gridX, target.gridY);
         const canAfford = (resolvedAbility.mpCost ?? 0) <= (character.magicPoints ?? 0);
         const canAct = character.actionsRemaining >= character.attackCost;
@@ -360,7 +362,7 @@ window.GridAI = {
         const missingHp = target.maxHitPoints - target.hitPoints;
         const killBonus = effect.amount >= target.hitPoints ? (isFrontliner ? 34 : 28) : 0;
         const immediateReachBonus = effect.withinRange ? (isFrontliner ? 22 : 18) : 0;
-        const pressureBonus = effect.distance <= (effect.ability.range ?? 1) + Math.max(0, character.actionsRemaining - character.attackCost)
+        const pressureBonus = effect.distance <= this.getEffectiveAbilityRange(character, effect.ability) + Math.max(0, character.actionsRemaining - character.attackCost)
             ? (isFrontliner ? 16 : 8)
             : 0;
         const weakTargetBonus = target.hitPoints <= Math.max(4, Math.ceil(target.maxHitPoints * 0.45)) ? (isFrontliner ? 18 : 10) : 0;
@@ -587,7 +589,7 @@ window.GridAI = {
     getBestRangedPlan(character, ability) {
         const maxMoveSteps = this.getCharacterMovementBudget(character, character.attackCost);
         const reachablePositions = this.getReachablePositions(character, maxMoveSteps);
-        const preferredRange = Math.max(3, ability.range ?? 1);
+        const preferredRange = Math.max(3, this.getEffectiveAbilityRange(character, ability));
         let bestPlan = null;
 
         reachablePositions.forEach((candidatePosition) => {
@@ -716,7 +718,7 @@ window.GridAI = {
             const distanceToTarget = this.getAttackDistanceBetweenPositions(candidate.x, candidate.y, target.gridX, target.gridY);
             const support = this.countAdjacentAlliesAt(character, candidate.x, candidate.y);
             const safety = this.getDistanceToNearestOpponentAt(character, candidate.x, candidate.y);
-            const desiredRange = ability?.range ?? 1;
+            const desiredRange = this.getEffectiveAbilityRange(character, ability);
             const score = (
                 this.scoreTargetForCharacter(character, target, ability) -
                 Math.abs(distanceToTarget - desiredRange) * 5 -
@@ -765,7 +767,7 @@ window.GridAI = {
             fallbackTarget.gridY
         );
 
-        const idealMinimumDistance = Math.max(3, (bowAbility.range ?? 4) - 3);
+        const idealMinimumDistance = Math.max(3, this.getEffectiveAbilityRange(character, bowAbility) - 3);
         if (distanceToFallbackTarget <= idealMinimumDistance) {
             const retreatMoves = this.getReachablePositions(character, this.getCharacterMovementBudget(character, character.attackCost));
             let bestRetreat = null;
