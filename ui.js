@@ -1988,9 +1988,19 @@ window.GridUI = {
         }
 
         const vendorName = vendorProp.vendorName || vendorProp.name || 'Vendor';
-        const stockIds = this.getVendorStockItemIds(vendorProp);
-        const stockTemplates = stockIds
-            .map((itemId) => window.GameData?.getItemTemplateById(itemId) || null)
+        const stockEntries = this.getVendorStockEntries(vendorProp);
+        const stockTemplates = stockEntries
+            .map((entry) => {
+                const template = window.GameData?.getItemTemplateById(entry.itemId) || null;
+                if (!template) {
+                    return null;
+                }
+
+                return {
+                    entry,
+                    template
+                };
+            })
             .filter(Boolean);
 
         modal.title.textContent = vendorName;
@@ -2096,7 +2106,7 @@ window.GridUI = {
                 list.appendChild(emptyStock);
             }
 
-            stockTemplates.forEach((template) => {
+            stockTemplates.forEach(({ entry, template }) => {
                 const price = this.getVendorItemPrice(template, 'buy', vendorProp);
                 const row = document.createElement('div');
                 row.style.display = 'flex';
@@ -2123,7 +2133,8 @@ window.GridUI = {
                 detail.style.marginTop = '3px';
                 detail.style.fontSize = '11px';
                 detail.style.color = '#9f9582';
-                detail.textContent = this.getEquipmentItemModifierSummary(template) || 'No stat changes';
+                const modifierSummary = this.getEquipmentItemModifierSummary(template) || 'No stat changes';
+                detail.textContent = `${modifierSummary} • Available: ${entry.amount}`;
 
                 text.appendChild(name);
                 text.appendChild(detail);

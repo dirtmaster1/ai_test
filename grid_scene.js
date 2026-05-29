@@ -408,7 +408,8 @@ class GridScene {
             propsByCell[cellKey] = {
                 mapPersistenceKey: prop.mapPersistenceKey || null,
                 hasBeenSearched: Boolean(prop.hasBeenSearched),
-                hasBeenTriggered: Boolean(prop.hasBeenTriggered)
+                hasBeenTriggered: Boolean(prop.hasBeenTriggered),
+                storeInventoryItemIds: this.cloneMapPersistenceValue(this.getVendorStockEntries(prop))
             };
         });
 
@@ -537,6 +538,7 @@ class GridScene {
 
             prop.hasBeenSearched = Boolean(savedProp.hasBeenSearched);
             prop.hasBeenTriggered = Boolean(savedProp.hasBeenTriggered);
+            prop.storeInventoryItemIds = this.normalizeVendorStockEntries(savedProp.storeInventoryItemIds);
         });
 
         const doorSnapshot = snapshot.doorStatesByCell || {};
@@ -1060,6 +1062,10 @@ class GridScene {
             || this.goblinBrute
             || this.enemyArchetypeTemplatesById?.['goblin-brute']
             || null;
+        this.direwolf = this.aiParty.find((enemy) => enemy.id.includes('dire-wolf'))
+            || this.direwolf
+            || this.enemyArchetypeTemplatesById?.['dire-wolf']
+            || null;
     }
 
     buildEnemyArchetypeTemplateMap() {
@@ -1069,7 +1075,8 @@ class GridScene {
             this.goblinShaman,
             this.goblinBrute,
             this.goblinChieftain,
-            this.giantSpider
+            this.giantSpider,
+            this.direwolf
         ];
 
         return archetypes.reduce((result, archetype) => {
@@ -1258,9 +1265,8 @@ class GridScene {
                 searchable: Boolean(propPlacement.searchable),
                 isVendor: Boolean(propPlacement.isVendor),
                 vendorName: propPlacement.vendorName,
-                storeInventoryItemIds: Array.isArray(propPlacement.storeInventoryItemIds)
-                    ? [...propPlacement.storeInventoryItemIds]
-                    : [],
+                hasConfiguredStoreInventory: Boolean(propPlacement.hasConfiguredStoreInventory),
+                storeInventoryItemIds: this.normalizeVendorStockEntries(propPlacement.storeInventoryItemIds),
                 storeBuyMultiplier: propPlacement.storeBuyMultiplier,
                 storeSellMultiplier: propPlacement.storeSellMultiplier,
                 hasBeenSearched: Boolean(propPlacement.hasBeenSearched),
@@ -1359,7 +1365,8 @@ class GridScene {
             'goblin-shaman': this.goblinShaman,
             'goblin-brute': this.goblinBrute,
             'goblin-chieftain': this.goblinChieftain,
-            'giant-spider': this.giantSpider
+            'giant-spider': this.giantSpider,
+            'dire-wolf': this.direwolf
         };
 
         return this.enemyArchetypeTemplatesById[normalizedArchetypeId]
@@ -3624,14 +3631,64 @@ class GridScene {
     }
 
     getVendorStockItemIds(vendorProp = null) {
-        const configured = Array.isArray(vendorProp?.storeInventoryItemIds)
-            ? vendorProp.storeInventoryItemIds.filter((itemId) => typeof itemId === 'string' && itemId.trim().length > 0)
-            : [];
-        if (configured.length > 0) {
-            return [...configured];
+        return this.getVendorStockEntries(vendorProp).map((entry) => entry.itemId);
+    }
+
+    normalizeVendorStockEntries(stockEntries) {
+        if (!Array.isArray(stockEntries)) {
+            return [];
         }
 
-        return [...(window.GameData?.EQUIPMENT_LOOT_ITEM_IDS ?? ['small-shield', 'long-bow'])];
+        return stockEntries
+            .map((entry) => {
+                if (typeof entry === 'string') {
+                    const itemId = entry.trim();
+                    if (!itemId) {
+                        return null;
+                    }
+
+                    return { itemId, amount: 1 };
+                }
+
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+                    return null;
+                }
+
+                const itemId = String(entry.itemId ?? entry.id ?? '').trim();
+                if (!itemId) {
+                    return null;
+                }
+
+                const rawAmount = entry.amount;
+                const normalizedAmount = rawAmount === undefined
+                    ? 1
+                    : Math.max(0, Math.floor(Number(rawAmount) || 0));
+
+                if (normalizedAmount <= 0) {
+                    return null;
+                }
+
+                return { itemId, amount: normalizedAmount };
+            })
+            .filter(Boolean);
+    }
+
+    getVendorStockEntries(vendorProp = null) {
+        const configured = this.normalizeVendorStockEntries(vendorProp?.storeInventoryItemIds);
+        if (configured.length > 0 || (vendorProp && vendorProp.hasConfiguredStoreInventory)) {
+            if (vendorProp) {
+                vendorProp.storeInventoryItemIds = configured.map((entry) => ({ ...entry }));
+            }
+
+            return configured;
+        }
+
+        const fallback = this.normalizeVendorStockEntries(window.GameData?.EQUIPMENT_LOOT_ITEM_IDS ?? ['small-shield', 'long-bow']);
+        if (vendorProp) {
+            vendorProp.storeInventoryItemIds = fallback.map((entry) => ({ ...entry }));
+        }
+
+        return fallback;
     }
 
     getVendorItemPrice(itemOrTemplate, mode = 'buy', vendorProp = null) {
@@ -3664,6 +3721,13 @@ class GridScene {
             return false;
         }
 
+        const stockEntries = this.getVendorStockEntries(vendorProp);
+        const stockIndex = stockEntries.findIndex((entry) => entry.itemId === itemId && entry.amount > 0);
+        if (stockIndex < 0) {
+            this.showToast('That item is unavailable.', '#b8ad96', 2200);
+            return false;
+        }
+
         const template = window.GameData?.getItemTemplateById(itemId);
         if (!template) {
             this.showToast('That item is unavailable.', '#b8ad96', 2200);
@@ -3685,6 +3749,11 @@ class GridScene {
 
         this.sharedLootInventory.gold = currentGold - price;
         this.addEquipmentItemToSharedInventory(purchasedItem);
+        stockEntries[stockIndex].amount -= 1;
+        if (stockEntries[stockIndex].amount <= 0) {
+            stockEntries.splice(stockIndex, 1);
+        }
+        vendorProp.storeInventoryItemIds = stockEntries.map((entry) => ({ ...entry }));
         this.appendCombatLogEntry(
             `Party buys ${this.getEquipmentItemLabel(purchasedItem)} for ${price} gold.`,
             '#d9c47d'

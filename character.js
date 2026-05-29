@@ -294,7 +294,6 @@ window.CharacterData = {
             armorClass: 3,
             equipment: {
                 body: 'chain-mail',
-                head: 'steel-helm',
                 hands: 'axe'
             },
             abilities: [
@@ -322,7 +321,7 @@ window.CharacterData = {
             maxMagicPoints: 8,
             armorClass: 2,
             equipment: {
-                body: 'chain-mail',
+                body: 'leather-armor',
                 hands: 'mace'
             },
             abilities: [
@@ -513,6 +512,33 @@ window.CharacterData = {
                 'venomous-bite'
             ]
         });
+
+        this.direwolf = this.createCharacter({
+            id: `dire-wolf`,
+            name: 'Dire Wolf',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#b9c68b',
+            pointerColor: 0xd6f0a2,
+            spriteFrame: this.getCharacterSpriteFrame('wolf'),
+            race: 'wolf',
+            strength: 10,
+            dexterity: 12,
+            intelligence: 2,
+            wisdom: 6,
+            initiative: 16,
+            hitPoints: 10,
+            maxHitPoints: 10,
+            magicPoints: 0,
+            maxMagicPoints: 0,
+            armorClass: 1,
+            attackCost: 2,
+            experiencePoints: 250,
+            maxActionsPerTurn: 5,
+            abilities: ['wolf-bite'],
+            spells: []
+        });
+
 
         this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.goblinChieftain, this.giantSpider];
         this.playerParty = [this.wizard, this.warrior, this.cleric, this.ranger];

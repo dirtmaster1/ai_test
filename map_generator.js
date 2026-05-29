@@ -1,4 +1,14 @@
 // Authored dungeon layouts are colocated with generation to keep map bootstrapping in one file.
+const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
+    ? entries.map((entry) => {
+        if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+            return { ...entry };
+        }
+
+        return entry;
+    })
+    : [];
+
 (() => {
     if (window.CustomDungeonMaps) {
         return;
@@ -144,21 +154,21 @@
             baseRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa m3 m3 wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ wa wa __ __ __ __ wa wa __ __ __ __ wa wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa __ wa __ wa wa wa __ wa __ wa wa __ wa __ wa __ wa __ wa'),
-                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ wa __ wa __ __ __ wa __ wa'),
-                createTokenRow('wa __ wa wa wa __ wa wa wa __ __ wa __ wa wa wa __ wa __ wa'),
+                createTokenRow('wa __ wa __ __ wa __ __ wa __ wa wa __ wa __ __ __ wa __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ wa wa __ __ wa __ __ __ __ wa __ wa __ wa __ wa __ wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa __ wa __ wa wa wa __ wa wa wa wa wa wa __ wa wa wa __ wa'),
-                createTokenRow('wa __ wa __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa __ wa'),
-                createTokenRow('wa __ wa wa wa wa wa wa wa wa wa wa __ wa wa wa __ wa __ wa'),
+                createTokenRow('wa __ wa __ __ __ wa __ wa __ __ wa __ __ __ __ wa __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ wa __ __ __ __ __ wa'),
+                createTokenRow('wa __ wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa __ wa wa wa wa wa wa wa __ __ wa wa wa __ wa wa wa __ wa'),
+                createTokenRow('wa __ wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ wa'),
-                createTokenRow('wa __ wa __ wa wa wa __ wa wa wa wa __ wa wa wa wa wa __ wa'),
+                createTokenRow('wa __ wa __ __ __ wa __ wa __ __ wa __ wa __ __ __ wa __ wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ __ wa __ wa'),
-                createTokenRow('wa __ wa wa wa __ wa wa wa wa wa wa wa wa wa wa __ wa __ wa'),
+                createTokenRow('wa __ wa wa wa __ wa __ __ wa __ wa __ wa __ wa __ wa __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
@@ -167,8 +177,8 @@
             encounterRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
@@ -193,7 +203,15 @@
                 __: { type: 'floor' }
             },
             propLegend: {},
-            encounterLegend: {}
+            encounterLegend: { DW: {
+                    kind: 'enemy',
+                    archetypeId: 'dire-wolf',
+                },
+                GSP: {
+                    kind: 'enemy',
+                    archetypeId: 'giant-spider',
+                },    
+            }
         },
 
         forestTown: {
@@ -293,12 +311,8 @@
                     vendorName: 'Mira the Vendor',
                     storeInventoryItemIds: [
                         'small-shield',
-                        'short-bow',
                         'long-bow',
-                        'chain-mail',
-                        'steel-helm',
-                        'mages-amulet',
-                        'healers-circlet'
+                        'steel-helm  ',
                     ],
                     storeBuyMultiplier: 1,
                     storeSellMultiplier: 0.5
@@ -431,9 +445,8 @@ window.MapGenerator = {
                             searchable: Boolean(propConfig.searchable),
                             isVendor: Boolean(propConfig.isVendor),
                             vendorName: propConfig.vendorName,
-                            storeInventoryItemIds: Array.isArray(propConfig.storeInventoryItemIds)
-                                ? [...propConfig.storeInventoryItemIds]
-                                : [],
+                            hasConfiguredStoreInventory: Array.isArray(propConfig.storeInventoryItemIds),
+                            storeInventoryItemIds: cloneConfiguredVendorStockEntries(propConfig.storeInventoryItemIds),
                             storeBuyMultiplier: propConfig.storeBuyMultiplier,
                             storeSellMultiplier: propConfig.storeSellMultiplier,
                             hasBeenSearched: false,
