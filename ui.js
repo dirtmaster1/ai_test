@@ -2556,10 +2556,6 @@ window.GridUI = {
             this.sharedLootInventory.items = [];
         }
 
-        if ((normalized.modifiers?.armorClass ?? 0) > 0) {
-            character.armorClass = Math.max(0, character.armorClass - normalized.modifiers.armorClass);
-        }
-
         this.sharedLootInventory.items.unshift(normalized);
         character.equipment[slotKey] = null;
         this.showToast(

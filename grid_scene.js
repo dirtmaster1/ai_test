@@ -4284,11 +4284,17 @@ class GridScene {
             return 0;
         }
 
+        const equipmentArmorClassBonus = this.getCharacterEquipmentBonusSummary(character).armorClass;
+        const effectArmorClassBonus =
+            this.getCharacterEffectBonus(character, 'armorClass')
+            + this.getCharacterEffectBonus(character, 'acBonus')
+            + this.getCharacterEffectBonus(character, 'armorClassBonus');
+
         return Math.max(
             0,
             (character.armorClass ?? 0)
-            + this.getCharacterEffectBonus(character, 'armorClass')
-            + this.getCharacterEffectBonus(character, 'acBonus')
+            + equipmentArmorClassBonus
+            + effectArmorClassBonus
         );
     }
 
@@ -5721,21 +5727,11 @@ class GridScene {
     }
 
     applyCharacterArmorFromEquipmentItem(character, item, direction = 1) {
-        if (!character || !item) {
-            return;
-        }
-
-        const armorClassBonus = Math.max(0, item.modifiers?.armorClass ?? 0);
-        if (armorClassBonus <= 0) {
-            return;
-        }
-
-        if (direction < 0) {
-            character.armorClass = Math.max(0, (character.armorClass ?? 0) - armorClassBonus);
-            return;
-        }
-
-        character.armorClass = (character.armorClass ?? 0) + armorClassBonus;
+        // AC is derived by getCharacterArmorClass from base stats, equipment, and effects.
+        // Retained as a no-op for backward compatibility with older call sites.
+        void character;
+        void item;
+        void direction;
     }
 
     isLootDropEmpty(drop) {
@@ -5833,8 +5829,6 @@ class GridScene {
 
         character.equipment[slotKey] = item;
         this.syncCharacterHandAliases(character);
-
-        this.applyCharacterArmorFromEquipmentItem(character, item, 1);
         this.showToast(
             `${character.name} equips ${this.getEquipmentItemLabel(item)}.`,
             item.accentColor || character.accentColor,
@@ -5870,8 +5864,6 @@ class GridScene {
             this.showToast('Unable to parse equipped item.', '#b8ad96', 2200);
             return false;
         }
-
-        this.applyCharacterArmorFromEquipmentItem(character, unequippedItem, -1);
 
         this.addEquipmentItemToSharedInventory(unequippedItem);
         character.equipment[slotKey] = null;

@@ -23,25 +23,25 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
             id: 'goblin-cave',
             name: 'Goblin Cave',
             size: 21,
-            baseRows: [
+            layoutRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
-                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ dr __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ GCB GB GW1 GA __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ dr __ __ GW GS GA __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ dr __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa __ __ wa wa wa wa wa __ __ wa wa wa wa dr dr wa wa wa wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa GW __ GS __ __ __ __ wa __ __ __ __ __ wa __ __ GA __ __ wa'),
+                createTokenRow('wa __ __ __ GSP __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ GW1 __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ GB __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa'),
                 createTokenRow('wa wa __ __ wa wa wa wa wa __ __ __ __ wa wa wa wa __ __ wa wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ GA wa __ __ __ wa'),
                 createTokenRow('wa __ __ wa wa __ __ wa wa wa wa __ __ wa wa wa wa __ __ wa wa'),
-                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ GB __ wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa'),
                 createTokenRow('wa wa dr dr wa __ __ wa wa __ __ __ wa wa __ __ wa __ __ wa wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa GSP __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa mt mt wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
@@ -66,29 +66,6 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ ch1 __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ chS __'),
                 createTokenRow('__ bd __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
-            ],
-            encounterRows: [
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GCB GB GW1 GA __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GW GS GA __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ GW __ GS __ __ __ __ __ __ __ __ __ __ __ __ __ GA __ __ __'),
-                createTokenRow('__ __ __ __ GSP __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ GW1 __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GB __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GA __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GB __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ GSP __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
             ],
@@ -151,51 +128,29 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
             id: 'forest-path',
             name: 'Forest Path',
             size: 20,
-            baseRows: [
+            layoutRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa m3 m3 wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ wa DW __ __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
                 createTokenRow('wa __ wa __ __ wa __ __ wa __ wa wa __ wa __ __ __ wa __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ wa wa __ __ wa __ __ __ __ wa __ wa __ wa __ wa __ wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ wa __ __ __ __ __ __ wa __ __ __ wa'),
                 createTokenRow('wa __ wa __ __ __ wa __ wa __ __ wa __ __ __ __ wa __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ wa __ __ __ __ __ wa'),
-                createTokenRow('wa __ wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa __ wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ wa DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ DW __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ wa DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ wa __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ wa'),
-                createTokenRow('wa __ wa __ __ __ wa __ wa __ __ wa __ wa __ __ __ wa __ wa'),
-                createTokenRow('wa __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ __ wa __ wa'),
+                createTokenRow('wa __ wa __ __ __ wa __ wa GS GS wa __ wa __ __ __ wa __ wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ GS GS __ __ __ __ __ __ wa __ wa'),
                 createTokenRow('wa __ wa wa wa __ wa __ __ wa __ wa __ wa __ wa __ wa __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
             ],
             propRows: Array.from({ length: 20 }, () => createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')),
-            encounterRows: [
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ DW __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
-            ],
             baseLegend: {
                 wa: { type: 'wall' },
                 mt: { type: 'mapTransition', mapId: 'goblin-cave' },
@@ -207,7 +162,7 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                     kind: 'enemy',
                     archetypeId: 'dire-wolf',
                 },
-                GSP: {
+                GS: {
                     kind: 'enemy',
                     archetypeId: 'giant-spider',
                 },    
@@ -218,7 +173,7 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
             id: 'forest-town',
             name: 'Forest Town',
             size: 20,
-            baseRows: [
+            layoutRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
@@ -227,8 +182,8 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa wa wa wa wa wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa __ PR __ __ wa __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ wa PW PZ PC __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa wa dr dr wa wa __ __ __ __ __ __ wa'),
@@ -259,28 +214,6 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ tr __ __ __ __ __ __ __ __ __ __ __ __ __ bu __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
-            ],
-            encounterRows: [
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ PR __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ PW PZ PC __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
             ],
@@ -507,7 +440,7 @@ window.MapGenerator = {
     },
 
     normalizeConfiguredDungeonLayout(layoutConfig) {
-        const baseRows = (layoutConfig.baseRows || []).map((row) => {
+        const baseRowsFromConfig = (layoutConfig.baseRows || []).map((row) => {
             if (Array.isArray(row)) {
                 return [...row];
             }
@@ -518,9 +451,50 @@ window.MapGenerator = {
 
             return [];
         });
-        const size = layoutConfig.size || baseRows.length;
+
+        const layoutRows = (layoutConfig.layoutRows || []).map((row) => Array.isArray(row) ? [...row] : []);
+        const hasCombinedLayout = layoutRows.length > 0;
+        const baseLegend = layoutConfig.baseLegend || {};
+        const encounterLegend = layoutConfig.encounterLegend || {};
+
+        const splitCombinedToken = (token) => {
+            const normalizedToken = String(token || '__');
+            if (!normalizedToken.includes('|')) {
+                if (
+                    Object.prototype.hasOwnProperty.call(encounterLegend, normalizedToken)
+                    && !Object.prototype.hasOwnProperty.call(baseLegend, normalizedToken)
+                ) {
+                    return {
+                        baseToken: '__',
+                        encounterToken: normalizedToken
+                    };
+                }
+
+                return {
+                    baseToken: normalizedToken,
+                    encounterToken: '__'
+                };
+            }
+
+            const [basePart, encounterPart] = normalizedToken.split('|');
+            return {
+                baseToken: basePart || '__',
+                encounterToken: encounterPart || '__'
+            };
+        };
+
+        const baseRows = hasCombinedLayout
+            ? layoutRows.map((row) => row.map((token) => splitCombinedToken(token).baseToken))
+            : baseRowsFromConfig;
+        const encounterRowsFromCombined = hasCombinedLayout
+            ? layoutRows.map((row) => row.map((token) => splitCombinedToken(token).encounterToken))
+            : [];
+
+        const size = layoutConfig.size || (hasCombinedLayout ? layoutRows.length : baseRows.length);
         const propRows = (layoutConfig.propRows || []).map((row) => Array.isArray(row) ? row : []);
-        const encounterRows = (layoutConfig.encounterRows || []).map((row) => Array.isArray(row) ? row : []);
+        const encounterRows = hasCombinedLayout
+            ? encounterRowsFromCombined
+            : (layoutConfig.encounterRows || []).map((row) => Array.isArray(row) ? row : []);
 
         const hasValidSquareBase =
             baseRows.length === size &&
@@ -664,3 +638,4 @@ window.MapGenerator = {
         return false;
     }
 };
+

@@ -265,7 +265,6 @@ window.CharacterData = {
             maxHitPoints: 6,
             magicPoints: 10,
             maxMagicPoints: 10,
-            armorClass: 0,
             equipment: {
                 body: 'robe',
                 hands: 'staff'
@@ -291,7 +290,6 @@ window.CharacterData = {
             dexterity: 11,
             intelligence: 6,
             wisdom: 6,
-            armorClass: 3,
             equipment: {
                 body: 'chain-mail',
                 hands: 'axe'
@@ -319,7 +317,6 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 8,
             maxMagicPoints: 8,
-            armorClass: 2,
             equipment: {
                 body: 'leather-armor',
                 hands: 'mace'
@@ -350,7 +347,6 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 4,
             maxMagicPoints: 4,
-            armorClass: 1,
             bonusMovement: 2,
             equipment: {
                 body: 'leather-armor',
