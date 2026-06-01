@@ -205,11 +205,16 @@ window.CharacterData = {
     },
 
     getCharacterTilesetPath() {
-        return 'character_tileset_1.png';
+        return 'game_assets/character_tileset_1.png';
+    },
+
+    getUndeadTilesetPath() {
+        return 'game_assets/undead_tileset_1.png';
     },
 
     getCharacterSpriteFrame(frameId) {
         const imagePath = this.getCharacterTilesetPath();
+        const undeadImagePath = this.getUndeadTilesetPath();
         const frames = {
             paladin: { imagePath, x: 0, y: 2, width: 132, height: 148 },
             ranger: { imagePath, x: 160, y: 2, width: 121, height: 148 },
@@ -226,18 +231,18 @@ window.CharacterData = {
             goblinBrute: { imagePath, x: 6, y: 311, width: 133, height: 121 },
             goblinArcher: { imagePath, x: 155, y: 308, width: 113, height: 125 },
             goblinWarrior: { imagePath, x: 285, y: 307, width: 125, height: 125 },
-            skeletonWarrior: { imagePath, x: 419, y: 307, width: 120, height: 125 },
+            skeletonWarrior: { imagePath: undeadImagePath, x: 221, y: 10, width: 100, height: 118 },
             orcGuard: { imagePath, x: 546, y: 306, width: 123, height: 127 },
-            ghoul: { imagePath, x: 673, y: 309, width: 135, height: 124 },
+            ghoul: { imagePath: undeadImagePath, x: 111, y: 10, width: 100, height: 118 },
             giantSpider: { imagePath, x: 5, y: 442, width: 149, height: 95 },
             goblinScout: { imagePath, x: 160, y: 439, width: 112, height: 107 },
             goblinShaman: { imagePath, x: 278, y: 438, width: 132, height: 108 },
-            skeletonAdept: { imagePath, x: 415, y: 434, width: 130, height: 113 },
+            skeletonAdept: { imagePath: undeadImagePath, x: 332, y: 284, width: 100, height: 118 },
             demonImp: { imagePath, x: 553, y: 437, width: 116, height: 109 },
-            specter: { imagePath, x: 674, y: 437, width: 131, height: 111 },
+            specter: { imagePath: undeadImagePath, x: 665, y: 10, width: 95, height: 118 },
             wolf: { imagePath, x: 3, y: 560, width: 143, height: 106 },
             slime: { imagePath, x: 145, y: 561, width: 136, height: 105 },
-            necromancer: { imagePath, x: 284, y: 557, width: 126, height: 119 },
+            necromancer: { imagePath: undeadImagePath, x: 665, y: 147, width: 95, height: 118 },
             goblinChieftain: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             ogre: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             drake: { imagePath, x: 563, y: 555, width: 245, height: 121 }
@@ -535,9 +540,146 @@ window.CharacterData = {
             spells: []
         });
 
+        this.skeletonWarriorEnemy = this.createCharacter({
+            id: 'skeleton-warrior',
+            name: 'Skeleton Warrior',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#cbbca3',
+            pointerColor: 0xe4d3b2,
+            spriteFrame: this.getCharacterSpriteFrame('skeletonWarrior'),
+            race: 'undead',
+            strength: 11,
+            dexterity: 8,
+            intelligence: 3,
+            wisdom: 3,
+            hitPoints: 11,
+            maxHitPoints: 11,
+            armorClass: 2,
+            experiencePoints: 460,
+            abilities: ['skeletal-slash']
+        });
 
-        this.characters = [this.wizard, this.warrior, this.cleric, this.ranger, this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.goblinChieftain, this.giantSpider];
+        this.skeletonAdeptEnemy = this.createCharacter({
+            id: 'skeleton-adept',
+            name: 'Skeleton Adept',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#8a97b8',
+            pointerColor: 0x9db3d6,
+            spriteFrame: this.getCharacterSpriteFrame('skeletonAdept'),
+            race: 'undead',
+            strength: 7,
+            dexterity: 8,
+            intelligence: 12,
+            wisdom: 10,
+            hitPoints: 8,
+            maxHitPoints: 8,
+            magicPoints: 10,
+            maxMagicPoints: 10,
+            armorClass: 1,
+            experiencePoints: 560,
+            abilities: ['skeletal-slash'],
+            spells: ['grave-chill']
+        });
+
+        this.ghoulEnemy = this.createCharacter({
+            id: 'ghoul',
+            name: 'Ghoul',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#7f8f6a',
+            pointerColor: 0x9fb483,
+            spriteFrame: this.getCharacterSpriteFrame('ghoul'),
+            race: 'undead',
+            strength: 10,
+            dexterity: 12,
+            intelligence: 4,
+            wisdom: 5,
+            hitPoints: 9,
+            maxHitPoints: 9,
+            armorClass: 1,
+            bonusMovement: 1,
+            experiencePoints: 520,
+            abilities: ['venomous-bite']
+        });
+
+        this.specterEnemy = this.createCharacter({
+            id: 'specter',
+            name: 'Specter',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#6f88a0',
+            pointerColor: 0x89b7d8,
+            spriteFrame: this.getCharacterSpriteFrame('specter'),
+            race: 'undead',
+            strength: 6,
+            dexterity: 11,
+            intelligence: 11,
+            wisdom: 9,
+            hitPoints: 8,
+            maxHitPoints: 8,
+            magicPoints: 9,
+            maxMagicPoints: 9,
+            armorClass: 1,
+            experiencePoints: 600,
+            abilities: ['venomous-bite'],
+            spells: ['grave-chill']
+        });
+
+        this.necromancerEnemy = this.createCharacter({
+            id: 'necromancer',
+            name: 'Necromancer',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#7e6da6',
+            pointerColor: 0xb49af2,
+            spriteFrame: this.getCharacterSpriteFrame('necromancer'),
+            race: 'undead',
+            strength: 5,
+            dexterity: 8,
+            intelligence: 15,
+            wisdom: 13,
+            hitPoints: 10,
+            maxHitPoints: 10,
+            magicPoints: 16,
+            maxMagicPoints: 16,
+            armorClass: 1,
+            experiencePoints: 1200,
+            spells: ['grave-chill', 'poison-dart', 'mend-flesh']
+        });
+
+
+        this.characters = [
+            this.wizard,
+            this.warrior,
+            this.cleric,
+            this.ranger,
+            this.goblin,
+            this.goblinArcher,
+            this.goblinShaman,
+            this.goblinBrute,
+            this.goblinChieftain,
+            this.giantSpider,
+            this.skeletonWarriorEnemy,
+            this.skeletonAdeptEnemy,
+            this.ghoulEnemy,
+            this.specterEnemy,
+            this.necromancerEnemy
+        ];
         this.playerParty = [this.wizard, this.warrior, this.cleric, this.ranger];
-        this.aiParty = [this.goblin, this.goblinArcher, this.goblinShaman, this.goblinBrute, this.goblinChieftain, this.giantSpider];
+        this.aiParty = [
+            this.goblin,
+            this.goblinArcher,
+            this.goblinShaman,
+            this.goblinBrute,
+            this.goblinChieftain,
+            this.giantSpider,
+            this.skeletonWarriorEnemy,
+            this.skeletonAdeptEnemy,
+            this.ghoulEnemy,
+            this.specterEnemy,
+            this.necromancerEnemy
+        ];
     }
 };

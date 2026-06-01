@@ -174,7 +174,7 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
             name: 'Forest Town',
             size: 20,
             layoutRows: [
-                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa m4 m4 wa wa wa wa wa wa wa wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
@@ -221,6 +221,7 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 wa: { type: 'wall' },
                 dr: { type: 'door' },
                 mt: { type: 'mapTransition', mapId: 'forest-path' },
+                m4: { type: 'mapTransition', mapId: 'graveyard' },
                 __: { type: 'floor' }
             },
             propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
@@ -234,7 +235,7 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                     roomTheme: 'town',
                     // Character tileset row 1, column 5 sprite (adventurer) for friendly NPC look.
                     spriteFrame: {
-                        imagePath: 'character_tileset_1.png',
+                        imagePath: 'game_assets/character_tileset_1.png',
                         x: 550,
                         y: 2,
                         width: 114,
@@ -256,6 +257,75 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 PZ: { kind: 'player', characterId: 'wizard' },
                 PC: { kind: 'player', characterId: 'cleric' },
                 PR: { kind: 'player', characterId: 'ranger' }
+            }
+        },
+
+        graveyard: {
+            id: 'graveyard',
+            name: 'Graveyard',
+            size: 20,
+            layoutRows: [
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ SW __ __ __ __ __ __ __ __ __ __ __ __ __ __ SW __ wa'),
+                createTokenRow('wa __ __ __ __ __ GH __ __ __ __ __ __ GH __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ SA __ __ __ __ __ __ __ __ __ SA __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ GH __ __ __ __ __ __ __ __ __ __ __ __ GH __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ SP SP __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ SW __ __ __ __ __ __ __ NC NC __ __ __ __ __ SA __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ GH __ __ __ __ __ __ __ __ __ GH __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ SA __ __ __ __ __ __ __ __ __ SA __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ GH __ __ __ __ __ __ GH __ __ __ __ __ wa'),
+                createTokenRow('wa __ SW __ __ __ __ __ __ __ __ __ __ __ __ __ __ SW __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
+            ],
+            propRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ sg __ __ tu __ __ __ tu __ __ sg __ __ __ __'),
+                createTokenRow('__ __ su __ __ __ __ __ __ sk __ __ __ __ __ __ __ su __ __'),
+                createTokenRow('__ __ __ __ tu __ __ sg __ __ __ __ sg __ __ tu __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ sg __ __ su __ __ __ tu __ __ __ su __ __ sg __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ sk __ __ __ tu __ __ __ tu __ __ __ sk __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ sa sa __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ sa sa __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ sk __ __ __ tu __ __ __ tu __ __ __ sk __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ sg __ __ su __ __ __ tu __ __ __ su __ __ sg __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ tu __ __ sg __ __ __ __ sg __ __ tu __ __ __ __'),
+                createTokenRow('__ __ su __ __ __ __ __ __ sk __ __ __ __ __ __ __ su __ __'),
+                createTokenRow('__ __ __ __ sg __ __ tu __ __ __ tu __ __ sg __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
+            baseLegend: {
+                wa: { type: 'wall' },
+                mt: { type: 'mapTransition', mapId: 'forest-town' },
+                __: { type: 'floor' }
+            },
+            propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
+                tu: { propId: 'stoneUrn', name: 'Weathered Tombstone', searchable: false, roomTheme: 'graveyard' },
+                su: { propId: 'sarcophagus', name: 'Old Grave', searchable: false, roomTheme: 'graveyard' },
+                sg: { propId: 'stoneDebris2', name: 'Collapsed Grave', searchable: false, roomTheme: 'graveyard' },
+                sk: { propId: 'skullPile', name: 'Bone Pile', searchable: false, roomTheme: 'graveyard' },
+                sa: { propId: 'stoneAltar', name: 'Crypt Altar', searchable: false, roomTheme: 'graveyard' }
+            }) || {},
+            encounterLegend: {
+                SW: { kind: 'enemy', archetypeId: 'skeleton-warrior' },
+                SA: { kind: 'enemy', archetypeId: 'skeleton-adept' },
+                GH: { kind: 'enemy', archetypeId: 'ghoul' },
+                SP: { kind: 'enemy', archetypeId: 'specter' },
+                NC: { kind: 'enemy', archetypeId: 'necromancer', experiencePoints: 1800 }
             }
         }
     };

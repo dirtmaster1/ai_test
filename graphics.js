@@ -23,7 +23,7 @@ window.GridGraphics = {
     },
 
     getDungeonPropsTilesetPath() {
-        return window.GameData?.getDungeonPropsTilesetPath?.() || 'dungeon_props_1.png';
+        return window.GameData?.getDungeonPropsTilesetPath?.() || 'game_assets/dungeon_props_1.png';
     },
 
     getDungeonPropSpriteFrames() {

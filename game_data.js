@@ -138,6 +138,7 @@ window.GameData = {
         melee: { id: 'melee', name: 'Melee Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'wolf-bite': { id: 'wolf-bite', name: 'Bite', type: 'attack', range: 1, mpCost: 0, damage: 5 },
         'venomous-bite': { id: 'venomous-bite', name: 'Venomous Bite', type: 'attack', range: 1, mpCost: 0, damage: 4 },
+        'skeletal-slash': { id: 'skeletal-slash', name: 'Skeletal Slash', type: 'attack', range: 1, mpCost: 0, damage: 6 },
         'staff-strike': { id: 'staff-strike', name: 'Staff Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', mpCost: 0, weaponDriven: true },
@@ -150,6 +151,7 @@ window.GameData = {
     SPELL_DEFS: {
         'call-of-the-wolf': { id: 'call-of-the-wolf', name: 'Call of the Wolf', type: 'spell', range: 0, mpCost: 4, actionCost: 3 },
         'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4, projectileAnimation: 'magic-missile', resolveOnImpact: true },
+        'grave-chill': { id: 'grave-chill', name: 'Grave Chill', type: 'spell', range: 4, mpCost: 4, damage: 5, projectileAnimation: 'magic-missile', resolveOnImpact: true },
         'poison-dart': { id: 'poison-dart', name: 'Poison Dart', type: 'spell', range: 5, mpCost: 5 },
         sleep: { id: 'sleep', name: 'Sleep', type: 'spell', range: 4, mpCost: 7, targetMode: 'cell', duration: 2, radius: 1 },
         'lesser-heal': { id: 'lesser-heal', name: 'Lesser Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
@@ -159,7 +161,7 @@ window.GameData = {
         'cure-poison': { id: 'cure-poison', name: 'Cure Poison', type: 'heal', range: 3, mpCost: 3, curePoison: true },
     },
 
-    DUNGEON_PROPS_TILESET_PATH: 'dungeon_props_1.png',
+    DUNGEON_PROPS_TILESET_PATH: 'game_assets/dungeon_props_1.png',
 
     DUNGEON_PROP_SPRITE_FRAMES: {
         steelCage: { name: 'Steel Cage', x: 1328, y: 278, width: 113, height: 142 },

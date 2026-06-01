@@ -335,7 +335,8 @@ class GridScene {
         const pairFallbackBySource = {
             'goblin-cave': 'forest-path',
             'forest-path': 'goblin-cave',
-            'forest-town': 'forest-path'
+            'forest-town': 'forest-path',
+            graveyard: 'forest-town'
         };
 
         if (normalizedTarget && normalizedTarget !== normalizedSource && this.getConfiguredDungeonLayoutById?.(normalizedTarget)) {
@@ -1076,7 +1077,12 @@ class GridScene {
             this.goblinBrute,
             this.goblinChieftain,
             this.giantSpider,
-            this.direwolf
+            this.direwolf,
+            this.skeletonWarriorEnemy,
+            this.skeletonAdeptEnemy,
+            this.ghoulEnemy,
+            this.specterEnemy,
+            this.necromancerEnemy
         ];
 
         return archetypes.reduce((result, archetype) => {
@@ -1366,7 +1372,12 @@ class GridScene {
             'goblin-brute': this.goblinBrute,
             'goblin-chieftain': this.goblinChieftain,
             'giant-spider': this.giantSpider,
-            'dire-wolf': this.direwolf
+            'dire-wolf': this.direwolf,
+            'skeleton-warrior': this.skeletonWarriorEnemy,
+            'skeleton-adept': this.skeletonAdeptEnemy,
+            ghoul: this.ghoulEnemy,
+            specter: this.specterEnemy,
+            necromancer: this.necromancerEnemy
         };
 
         return this.enemyArchetypeTemplatesById[normalizedArchetypeId]
