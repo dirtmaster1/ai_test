@@ -212,6 +212,54 @@ window.CharacterData = {
         return 'game_assets/undead_tileset_1.png';
     },
 
+    getUndeadSpriteFramesForTesting() {
+        const imagePath = this.getUndeadTilesetPath();
+        const frameDefs = {
+            skeleton: { x: 0, y: 0, width: 157, height: 201 },
+            skeletonWarrior: { x: 157, y: 0, width: 182, height: 201 },
+            skeletonArcher: { x: 338, y: 0, width: 183, height: 201 },
+            skeletonGuard: { x: 510, y: 0, width: 182, height: 201 },
+            skeletonKnight: { x: 694, y: 0, width: 182, height: 201 },
+            ghoul: { x: 876, y: 0, width: 182, height: 201 },
+
+            zombie: { x: 0, y: 201, width: 157, height: 201 },
+            zombieWarrior: { x: 167, y: 201, width: 182, height: 201 },
+            zombieBrute: { x: 332, y: 201, width: 183, height: 201 },
+            zombieStalker: { x: 522, y: 201, width: 182, height: 201 },
+            wight: { x: 704, y: 201, width: 182, height: 201 },
+            wightCaptain: { x: 886, y: 201, width: 182, height: 201 },
+
+            revenant: { x: 0, y: 402, width: 157, height: 201 },
+            revenantKnight: { x: 171, y: 402, width: 182, height: 201 },
+            boneMage: { x: 336, y: 402, width: 183, height: 201 },
+            lichAcolyte: { x: 522, y: 402, width: 182, height: 201 },
+            deathPriest: { x: 714, y: 402, width: 182, height: 201 },
+            banshee: { x: 896, y: 402, width: 182, height: 201 },
+
+            spirit: { x: 0, y: 603, width: 157, height: 201 },
+            shade: { x: 172, y: 603, width: 182, height: 201 },
+            dreadKnight: { x: 339, y: 603, width: 183, height: 201 },
+            tombGuardian: { x: 512, y: 603, width: 182, height: 201 },
+            plagueBearer: { x: 724, y: 603, width: 182, height: 201 },
+            necromancer: { x: 896, y: 603, width: 182, height: 201 }
+        };
+
+        return Object.entries(frameDefs).map(([frameKey, frame], index) => {
+            const id = `undead-grid-${String(index + 1).padStart(2, '0')}`;
+            return {
+                id,
+                name: frameKey,
+                spriteFrame: {
+                    imagePath,
+                    x: frame.x,
+                    y: frame.y,
+                    width: frame.width,
+                    height: frame.height
+                }
+            };
+        });
+    },
+
     getCharacterSpriteFrame(frameId) {
         const imagePath = this.getCharacterTilesetPath();
         const undeadImagePath = this.getUndeadTilesetPath();
@@ -649,6 +697,26 @@ window.CharacterData = {
             spells: ['grave-chill', 'poison-dart', 'mend-flesh']
         });
 
+        this.undeadTestArchetypes = this.getUndeadSpriteFramesForTesting().map((entry, index) => this.createCharacter({
+            id: `undead-test-${String(index + 1).padStart(2, '0')}`,
+            name: entry.name,
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#7f8f6a',
+            pointerColor: 0x9fb483,
+            spriteFrame: entry.spriteFrame,
+            race: 'undead',
+            strength: 9,
+            dexterity: 9,
+            intelligence: 7,
+            wisdom: 6,
+            hitPoints: 8,
+            maxHitPoints: 8,
+            armorClass: 1,
+            experiencePoints: 80,
+            abilities: ['venomous-bite']
+        }));
+
 
         this.characters = [
             this.wizard,
@@ -665,7 +733,8 @@ window.CharacterData = {
             this.skeletonAdeptEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
-            this.necromancerEnemy
+            this.necromancerEnemy,
+            ...this.undeadTestArchetypes
         ];
         this.playerParty = [this.wizard, this.warrior, this.cleric, this.ranger];
         this.aiParty = [
@@ -679,7 +748,8 @@ window.CharacterData = {
             this.skeletonAdeptEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
-            this.necromancerEnemy
+            this.necromancerEnemy,
+            ...this.undeadTestArchetypes
         ];
     }
 };

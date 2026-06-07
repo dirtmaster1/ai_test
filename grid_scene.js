@@ -1082,7 +1082,8 @@ class GridScene {
             this.skeletonAdeptEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
-            this.necromancerEnemy
+            this.necromancerEnemy,
+            ...(Array.isArray(this.undeadTestArchetypes) ? this.undeadTestArchetypes : [])
         ];
 
         return archetypes.reduce((result, archetype) => {

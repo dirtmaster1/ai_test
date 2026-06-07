@@ -9,6 +9,20 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
     })
     : [];
 
+const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: count }, (_, index) => {
+    const id = String(index + 1).padStart(2, '0');
+    return {
+        token: `U${id}`,
+        encounter: {
+            kind: 'enemy',
+            archetypeId: `undead-test-${id}`
+        }
+    };
+}).reduce((legend, entry) => {
+    legend[entry.token] = entry.encounter;
+    return legend;
+}, {});
+
 (() => {
     if (window.CustomDungeonMaps) {
         return;
@@ -187,10 +201,10 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa wa dr dr wa wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ U01 U02 U03 U04 U05 U06 __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ U07 U08 U09 U10 U11 U12 __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ U13 U14 U15 U16 U17 U18 __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ U19 U20 U21 U22 U23 U24 __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
@@ -256,7 +270,8 @@ const cloneConfiguredVendorStockEntries = (entries) => Array.isArray(entries)
                 PW: { kind: 'player', characterId: 'warrior' },
                 PZ: { kind: 'player', characterId: 'wizard' },
                 PC: { kind: 'player', characterId: 'cleric' },
-                PR: { kind: 'player', characterId: 'ranger' }
+                PR: { kind: 'player', characterId: 'ranger' },
+                ...createUndeadTestEncounterLegend(24)
             }
         },
 
