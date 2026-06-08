@@ -215,33 +215,19 @@ window.CharacterData = {
     getUndeadSpriteFramesForTesting() {
         const imagePath = this.getUndeadTilesetPath();
         const frameDefs = {
-            skeleton: { x: 0, y: 0, width: 157, height: 201 },
-            skeletonWarrior: { x: 157, y: 0, width: 182, height: 201 },
-            skeletonArcher: { x: 338, y: 0, width: 183, height: 201 },
-            skeletonGuard: { x: 510, y: 0, width: 182, height: 201 },
-            skeletonKnight: { x: 694, y: 0, width: 182, height: 201 },
-            ghoul: { x: 876, y: 0, width: 182, height: 201 },
-
-            zombie: { x: 0, y: 201, width: 157, height: 201 },
-            zombieWarrior: { x: 167, y: 201, width: 182, height: 201 },
-            zombieBrute: { x: 332, y: 201, width: 183, height: 201 },
-            zombieStalker: { x: 522, y: 201, width: 182, height: 201 },
-            wight: { x: 704, y: 201, width: 182, height: 201 },
-            wightCaptain: { x: 886, y: 201, width: 182, height: 201 },
-
-            revenant: { x: 0, y: 402, width: 157, height: 201 },
-            revenantKnight: { x: 171, y: 402, width: 182, height: 201 },
-            boneMage: { x: 336, y: 402, width: 183, height: 201 },
-            lichAcolyte: { x: 522, y: 402, width: 182, height: 201 },
-            deathPriest: { x: 714, y: 402, width: 182, height: 201 },
-            banshee: { x: 896, y: 402, width: 182, height: 201 },
-
-            spirit: { x: 0, y: 603, width: 157, height: 201 },
-            shade: { x: 172, y: 603, width: 182, height: 201 },
-            dreadKnight: { x: 339, y: 603, width: 183, height: 201 },
-            tombGuardian: { x: 512, y: 603, width: 182, height: 201 },
-            plagueBearer: { x: 724, y: 603, width: 182, height: 201 },
-            necromancer: { x: 896, y: 603, width: 182, height: 201 }
+            // skeleton: { x: 0, y: 0, width: 157, height: 201 },
+            // skeletonWarrior: { x: 157, y: 0, width: 182, height: 201 },
+            // skeletonArcher: { x: 338, y: 0, width: 183, height: 201 },
+            // skeletonMage: { x: 510, y: 0, width: 182, height: 201 },
+            // zombie: { x: 694, y: 0, width: 182, height: 201 },
+            // ghoul: { x: 876, y: 0, width: 182, height: 201 },
+            // zombieGreater: { x: 522, y: 201, width: 182, height: 201 },
+            // zombieWarrior: { x: 704, y: 201, width: 182, height: 201 },
+            // spectre: { x: 886, y: 201, width: 182, height: 201 },
+            // shade: { x: 172, y: 603, width: 182, height: 201 },
+            // zombieMage: { x: 339, y: 603, width: 183, height: 201 },
+            // ghoulGreater: { x: 512, y: 603, width: 182, height: 201 },
+            // necromancer: { x: 896, y: 603, width: 182, height: 201 }
         };
 
         return Object.entries(frameDefs).map(([frameKey, frame], index) => {
@@ -279,18 +265,19 @@ window.CharacterData = {
             goblinBrute: { imagePath, x: 6, y: 311, width: 133, height: 121 },
             goblinArcher: { imagePath, x: 155, y: 308, width: 113, height: 125 },
             goblinWarrior: { imagePath, x: 285, y: 307, width: 125, height: 125 },
-            skeletonWarrior: { imagePath: undeadImagePath, x: 221, y: 10, width: 100, height: 118 },
+            skeletonWarrior: { imagePath: undeadImagePath, x: 157, y: 0, width: 182, height: 201 },
             orcGuard: { imagePath, x: 546, y: 306, width: 123, height: 127 },
-            ghoul: { imagePath: undeadImagePath, x: 111, y: 10, width: 100, height: 118 },
+            ghoul: { imagePath: undeadImagePath, x: 876, y: 0, width: 182, height: 201 },
             giantSpider: { imagePath, x: 5, y: 442, width: 149, height: 95 },
             goblinScout: { imagePath, x: 160, y: 439, width: 112, height: 107 },
             goblinShaman: { imagePath, x: 278, y: 438, width: 132, height: 108 },
-            skeletonAdept: { imagePath: undeadImagePath, x: 332, y: 284, width: 100, height: 118 },
+            skeletonMage: { imagePath: undeadImagePath, x: 510, y: 0, width: 182, height: 201 },
+            skeletonArcher: { imagePath: undeadImagePath, x: 338, y: 0, width: 182, height: 201 },
             demonImp: { imagePath, x: 553, y: 437, width: 116, height: 109 },
-            specter: { imagePath: undeadImagePath, x: 665, y: 10, width: 95, height: 118 },
+            spectre: { imagePath: undeadImagePath, x: 886, y: 201, width: 182, height: 201 },
             wolf: { imagePath, x: 3, y: 560, width: 143, height: 106 },
             slime: { imagePath, x: 145, y: 561, width: 136, height: 105 },
-            necromancer: { imagePath: undeadImagePath, x: 665, y: 147, width: 95, height: 118 },
+            necromancer: { imagePath: undeadImagePath, x: 896, y: 603, width: 182, height: 201 },
             goblinChieftain: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             ogre: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             drake: { imagePath, x: 563, y: 555, width: 245, height: 121 }
@@ -608,14 +595,14 @@ window.CharacterData = {
             abilities: ['skeletal-slash']
         });
 
-        this.skeletonAdeptEnemy = this.createCharacter({
-            id: 'skeleton-adept',
-            name: 'Skeleton Adept',
+        this.skeletonMageEnemy = this.createCharacter({
+            id: 'skeleton-mage',
+            name: 'Skeleton Mage',
             role: 'AI',
             team: 'ai',
             accentColor: '#8a97b8',
             pointerColor: 0x9db3d6,
-            spriteFrame: this.getCharacterSpriteFrame('skeletonAdept'),
+            spriteFrame: this.getCharacterSpriteFrame('skeletonMage'),
             race: 'undead',
             strength: 7,
             dexterity: 8,
@@ -659,7 +646,7 @@ window.CharacterData = {
             team: 'ai',
             accentColor: '#6f88a0',
             pointerColor: 0x89b7d8,
-            spriteFrame: this.getCharacterSpriteFrame('specter'),
+            spriteFrame: this.getCharacterSpriteFrame('spectre'),
             race: 'undead',
             strength: 6,
             dexterity: 11,
@@ -730,7 +717,7 @@ window.CharacterData = {
             this.goblinChieftain,
             this.giantSpider,
             this.skeletonWarriorEnemy,
-            this.skeletonAdeptEnemy,
+            this.skeletonMageEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
             this.necromancerEnemy,
@@ -745,7 +732,7 @@ window.CharacterData = {
             this.goblinChieftain,
             this.giantSpider,
             this.skeletonWarriorEnemy,
-            this.skeletonAdeptEnemy,
+            this.skeletonMageEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
             this.necromancerEnemy,

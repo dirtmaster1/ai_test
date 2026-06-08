@@ -1079,7 +1079,7 @@ class GridScene {
             this.giantSpider,
             this.direwolf,
             this.skeletonWarriorEnemy,
-            this.skeletonAdeptEnemy,
+            this.skeletonMageEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
             this.necromancerEnemy,
@@ -1375,7 +1375,7 @@ class GridScene {
             'giant-spider': this.giantSpider,
             'dire-wolf': this.direwolf,
             'skeleton-warrior': this.skeletonWarriorEnemy,
-            'skeleton-adept': this.skeletonAdeptEnemy,
+            'skeleton-mage': this.skeletonMageEnemy,
             ghoul: this.ghoulEnemy,
             specter: this.specterEnemy,
             necromancer: this.necromancerEnemy
@@ -3189,6 +3189,8 @@ class GridScene {
             didUseAbility = this.castInflictPain(character);
         } else if (ability.id === 'magic-missile') {
             didUseAbility = Boolean(targetCharacter) && this.castMagicMissile(character, targetCharacter);
+        } else if (ability.type === 'spell' && ability.damage !== undefined) {
+            didUseAbility = Boolean(targetCharacter) && this.castDamageSpell(character, targetCharacter, ability);
         } else if (ability.id === 'poison-dart') {
             didUseAbility = Boolean(targetCharacter) && this.castPoisonDart(character, targetCharacter, ability);
         } else if (ability.id === 'sleep') {
@@ -3208,6 +3210,95 @@ class GridScene {
         }
 
         return didUseAbility;
+    }
+
+    castDamageSpell(caster, target, spellAbility = null) {
+        if (!target || target.isDead || caster?.team === target.team) {
+            return false;
+        }
+
+        const context = this.getActionContext(caster, {
+            requiredActionCost: Math.max(0, Math.floor(caster?.attackCost ?? 0))
+        });
+        if (!context) {
+            return false;
+        }
+
+        const ability = spellAbility
+            ? { ...spellAbility }
+            : window.CharacterData?.getCharacterActionById(caster, caster?.selectedAbilityId) || null;
+        if (!ability || ability.type !== 'spell' || ability.damage === undefined) {
+            return false;
+        }
+
+        const mpCost = Math.max(0, Math.floor(ability.mpCost ?? 0));
+        if ((caster.magicPoints ?? 0) < mpCost) {
+            return false;
+        }
+
+        if (!this.isAbilityTargetWithinRangeAndLos(caster, ability, target.gridX, target.gridY)) {
+            return false;
+        }
+
+        this.faceCharacterToward(caster, target);
+        const damage = this.getEffectiveAbilityDamage(caster, ability);
+        this.spendActionAndMagic(caster, context, {
+            actionCost: caster.attackCost,
+            magicCost: mpCost
+        });
+        const projectileAnimation = this.getAbilityProjectileAnimation(ability);
+        const resolvesOnImpact = this.doesAbilityResolveOnImpact(ability);
+
+        if (!resolvesOnImpact) {
+            if (damage > 0) {
+                this.removeSleepEffect(target);
+            }
+            target.hitPoints -= damage;
+        }
+
+        if (!context.isExploration && resolvesOnImpact) {
+            this.beginPendingCombatAction(caster);
+        }
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} on ${target.name} for ${damage} dmg.`,
+            caster.accentColor
+        );
+
+        const lethal = resolvesOnImpact ? (target.hitPoints - damage) <= 0 : target.hitPoints <= 0;
+        if (lethal && !resolvesOnImpact) {
+            target.hitPoints = 0;
+        }
+
+        const casterPos = this.getCharacterWorldPos(caster);
+        const targetPos = this.getCharacterWorldPos(target);
+        if (projectileAnimation === 'magic-missile') {
+            this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
+                if (damage > 0) {
+                    this.removeSleepEffect(target);
+                }
+                target.hitPoints = Math.max(0, target.hitPoints - damage);
+                this.playHitAnimation(target);
+                if (target.hitPoints <= 0) {
+                    target.hitPoints = 0;
+                    this.markCharacterDead(target, caster);
+                }
+                if (!context.isExploration) {
+                    this.finishPendingCombatAction(caster);
+                }
+            });
+        } else {
+            this.playHitAnimation(target);
+            if (lethal) {
+                this.markCharacterDead(target, caster);
+            }
+            if (!context.isExploration && resolvesOnImpact) {
+                this.finishPendingCombatAction(caster);
+            }
+            this.finalizeActionUsage(caster, context);
+        }
+
+        return true;
     }
 
     beginCombatWithEnemyCharacter(character) {

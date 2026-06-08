@@ -883,6 +883,66 @@ window.GridAI = {
         return true;
     },
 
+    moveSkeletonMage(character) {
+        const graveChillAbility = this.getAbilityForCharacter(character, 'grave-chill');
+        const nearestTarget = this.getNearestLivingOpponent(character);
+
+        if (!nearestTarget) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        const canCastGraveChill = Boolean(
+            graveChillAbility
+            && character.actionsRemaining >= character.attackCost
+            && character.magicPoints >= (graveChillAbility.mpCost ?? 0)
+        );
+
+        if (canCastGraveChill) {
+            const immediateSpellTarget = this.getBestImmediateAttackTarget(character, graveChillAbility);
+            character.selectedAbilityId = graveChillAbility.id;
+
+            if (immediateSpellTarget && this.useAbilityOnTarget(character, graveChillAbility, immediateSpellTarget)) {
+                return true;
+            }
+
+            const spellPath = this.findShortestPathToAttackPosition(character, nearestTarget, graveChillAbility);
+            if (spellPath?.length > 0) {
+                return this.moveCharacterToCell(character, spellPath[0]);
+            }
+
+            const spellAdvanceMove = this.chooseBestAdvanceMove(character, nearestTarget, graveChillAbility);
+            if (spellAdvanceMove) {
+                return this.moveCharacterToCell(character, spellAdvanceMove);
+            }
+        }
+
+        const meleeFallback = this.getAbilityForCharacter(character, 'skeletal-slash') || this.getBestOffensiveAbility(character);
+        if (!meleeFallback) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        character.selectedAbilityId = meleeFallback.id;
+        const immediateMeleeTarget = this.getExpectedActionEffect(character, nearestTarget, meleeFallback)?.isValid
+            ? nearestTarget
+            : null;
+
+        if (immediateMeleeTarget && this.characterAttack(character, immediateMeleeTarget, meleeFallback)) {
+            return true;
+        }
+
+        const meleePath = this.findShortestPathToAttackPosition(character, nearestTarget, meleeFallback);
+        if (meleePath?.length > 0) {
+            return this.moveCharacterToCell(character, meleePath[0]);
+        }
+
+        const meleeAdvanceMove = this.chooseBestAdvanceMove(character, nearestTarget, meleeFallback);
+        if (meleeAdvanceMove) {
+            return this.moveCharacterToCell(character, meleeAdvanceMove);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
     moveAIMeleeCharacter(character) {
         const ability = this.getBestOffensiveAbility(character);
         const immediateTarget = this.getBestImmediateAttackTarget(character, ability);
@@ -999,6 +1059,8 @@ window.GridAI = {
 
         if (character.isSummonedWolf) {
             didAct = this.moveWolfCompanion(character);
+        } else if ((character.id || '').includes('skeleton-mage')) {
+            didAct = this.moveSkeletonMage(character);
         } else if (goblinRole === 'warrior' || goblinRole === 'brute') {
             didAct = this.moveGoblinFrontliner(character);
         } else if (goblinRole === 'shaman') {
