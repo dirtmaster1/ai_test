@@ -47,6 +47,19 @@ window.GridUI = {
                 </svg>`;
         }
 
+        if (ability.id === 'raise-undead') {
+            return `
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M5 18h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    <path d="M8.2 18V9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M15.8 18V7.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <circle cx="8.2" cy="7.6" r="1.8" fill="currentColor" opacity="0.9"/>
+                    <circle cx="15.8" cy="5.4" r="1.8" fill="currentColor" opacity="0.9"/>
+                    <path d="M12 4.5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    <path d="M9.5 7h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>`;
+        }
+
         if (ability.id === 'sleep') {
             return `
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -137,6 +150,10 @@ window.GridUI = {
             return 'Effect: Summon wolf ally';
         }
 
+        if (ability.id === 'raise-undead') {
+            return 'Effect: Summon 2 skeletal warriors';
+        }
+
         if (ability.id === 'poison-dart') {
             return 'Effect: Apply poison';
         }
@@ -201,6 +218,10 @@ window.GridUI = {
 
         if (ability.id === 'call-of-the-wolf') {
             return 'Summon a friendly wolf companion that fights on its own and attacks the nearest enemy.';
+        }
+
+        if (ability.id === 'raise-undead') {
+            return 'Raise 2 skeletal warriors near the necromancer. They fight for the enemy side and rush the party.';
         }
 
         if (ability.id === 'poison-dart') {
@@ -668,10 +689,11 @@ window.GridUI = {
             'border-radius:8px',
             'padding:8px 16px',
             'font-size:13px',
+            'line-height:1.35',
             'color:#e8d9b8',
             'pointer-events:none',
             'z-index:9999',
-            'white-space:nowrap',
+            'white-space:pre-line',
             'box-shadow:0 4px 18px rgba(0,0,0,0.55)',
             'transition:opacity 0.35s ease'
         ].join(';');

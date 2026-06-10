@@ -115,6 +115,47 @@ window.GridGraphics = {
         return texture;
     },
 
+    createSignPostTexture() {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        ctx.imageSmoothingEnabled = false;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+        ctx.fillRect(20, 56, 24, 4);
+
+        ctx.fillStyle = '#5d3d22';
+        ctx.fillRect(29, 20, 6, 34);
+        ctx.fillStyle = '#7a5230';
+        ctx.fillRect(30, 20, 2, 34);
+
+        ctx.fillStyle = '#876038';
+        ctx.fillRect(14, 12, 34, 16);
+        ctx.fillStyle = '#a97a48';
+        ctx.fillRect(16, 14, 30, 12);
+        ctx.fillStyle = '#50331c';
+        ctx.fillRect(14, 12, 34, 2);
+        ctx.fillRect(14, 26, 34, 2);
+        ctx.fillRect(14, 12, 2, 16);
+        ctx.fillRect(46, 12, 2, 16);
+
+        ctx.fillStyle = '#5d3d22';
+        ctx.fillRect(22, 17, 18, 2);
+        ctx.fillRect(22, 21, 12, 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        return texture;
+    },
+
     createPortraitCanvas(spriteFrame, accentColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 18;
@@ -315,14 +356,17 @@ window.GridGraphics = {
 
         const props = this.dungeonPropsByCell ? [...this.dungeonPropsByCell.values()] : [];
         props.forEach((prop) => {
+            const usesCustomSignTexture = prop.frameId === 'signPost';
             const spriteFrame = prop.spriteFrame
                 ? { ...prop.spriteFrame }
                 : this.getDungeonPropSpriteFrame(prop.frameId);
-            if (!spriteFrame) {
+            if (!usesCustomSignTexture && !spriteFrame) {
                 return;
             }
 
-            const texture = this.createSpriteTexture(spriteFrame);
+            const texture = usesCustomSignTexture
+                ? this.createSignPostTexture()
+                : this.createSpriteTexture(spriteFrame);
             const geometry = new THREE.PlaneGeometry(this.cellSize - 8, this.cellSize - 8);
             const material = new THREE.MeshBasicMaterial({
                 map: texture,

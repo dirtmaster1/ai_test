@@ -277,6 +277,7 @@ window.CharacterData = {
             spectre: { imagePath: undeadImagePath, x: 886, y: 201, width: 182, height: 201 },
             wolf: { imagePath, x: 3, y: 560, width: 143, height: 106 },
             slime: { imagePath, x: 145, y: 561, width: 136, height: 105 },
+            zombie: { imagePath: undeadImagePath, x: 694, y: 0, width: 182, height: 201 },
             necromancer: { imagePath: undeadImagePath, x: 896, y: 603, width: 182, height: 201 },
             goblinChieftain: { imagePath, x: 410, y: 556, width: 145, height: 120 },
             ogre: { imagePath, x: 410, y: 556, width: 145, height: 120 },
@@ -662,6 +663,26 @@ window.CharacterData = {
             spells: ['grave-chill']
         });
 
+        this.zombieEnemy = this.createCharacter({
+            id: 'zombie',
+            name: 'Zombie',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#8f9d7a',
+            pointerColor: 0xb6c59d,
+            spriteFrame: this.getCharacterSpriteFrame('zombie'),
+            race: 'undead',
+            strength: 12,
+            dexterity: 6,
+            intelligence: 2,
+            wisdom: 3,
+            hitPoints: 10,
+            maxHitPoints: 10,
+            armorClass: 1,
+            experiencePoints: 420,
+            abilities: ['skeletal-slash']
+        });
+
         this.necromancerEnemy = this.createCharacter({
             id: 'necromancer',
             name: 'Necromancer',
@@ -670,18 +691,18 @@ window.CharacterData = {
             accentColor: '#7e6da6',
             pointerColor: 0xb49af2,
             spriteFrame: this.getCharacterSpriteFrame('necromancer'),
-            race: 'undead',
+            race: 'human',
             strength: 5,
             dexterity: 8,
             intelligence: 15,
             wisdom: 13,
-            hitPoints: 10,
+            hitPoints: 15,
             maxHitPoints: 10,
             magicPoints: 16,
             maxMagicPoints: 16,
             armorClass: 1,
             experiencePoints: 1200,
-            spells: ['grave-chill', 'poison-dart', 'mend-flesh']
+            spells: ['raise-undead']
         });
 
         this.undeadTestArchetypes = this.getUndeadSpriteFramesForTesting().map((entry, index) => this.createCharacter({
@@ -720,6 +741,7 @@ window.CharacterData = {
             this.skeletonMageEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
+            this.zombieEnemy,
             this.necromancerEnemy,
             ...this.undeadTestArchetypes
         ];
@@ -735,6 +757,7 @@ window.CharacterData = {
             this.skeletonMageEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
+            this.zombieEnemy,
             this.necromancerEnemy,
             ...this.undeadTestArchetypes
         ];

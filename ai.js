@@ -943,6 +943,50 @@ window.GridAI = {
         return this.forceEndCurrentAITurn(character);
     },
 
+    moveNecromancer(character) {
+        const raiseUndeadAbility = this.getAbilityForCharacter(character, 'raise-undead');
+        const nearestTarget = this.getNearestLivingOpponent(character);
+
+        if (!nearestTarget) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        const canCastRaiseUndead = Boolean(
+            raiseUndeadAbility
+            && character.actionsRemaining >= character.attackCost
+            && character.magicPoints >= (raiseUndeadAbility.mpCost ?? 0)
+        );
+
+        // Necromancer always prioritizes summoning while resources and placement allow it.
+        if (canCastRaiseUndead) {
+            character.selectedAbilityId = raiseUndeadAbility.id;
+            if (this.useAbilityOnTarget(character, raiseUndeadAbility, null)) {
+                return true;
+            }
+        }
+
+        const fallbackMeleeAbility = {
+            id: 'melee',
+            name: 'Melee Strike',
+            type: 'attack',
+            range: 1,
+            mpCost: 0,
+            damage: 0
+        };
+
+        const shortestPath = this.findShortestPathToAttackPosition(character, nearestTarget, fallbackMeleeAbility);
+        if (shortestPath?.length > 0) {
+            return this.moveCharacterToCell(character, shortestPath[0]);
+        }
+
+        const fallbackMove = this.chooseBestAdvanceMove(character, nearestTarget, fallbackMeleeAbility);
+        if (fallbackMove) {
+            return this.moveCharacterToCell(character, fallbackMove);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
     moveAIMeleeCharacter(character) {
         const ability = this.getBestOffensiveAbility(character);
         const immediateTarget = this.getBestImmediateAttackTarget(character, ability);
@@ -1059,6 +1103,8 @@ window.GridAI = {
 
         if (character.isSummonedWolf) {
             didAct = this.moveWolfCompanion(character);
+        } else if ((character.id || '').includes('necromancer')) {
+            didAct = this.moveNecromancer(character);
         } else if ((character.id || '').includes('skeleton-mage')) {
             didAct = this.moveSkeletonMage(character);
         } else if (goblinRole === 'warrior' || goblinRole === 'brute') {

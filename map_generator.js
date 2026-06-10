@@ -211,7 +211,7 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
             ],
             propRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ sg __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ bu __ __ __ __ __ __ __ __ __ __ __ tr __ __ __ __ __'),
@@ -239,6 +239,14 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 __: { type: 'floor' }
             },
             propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
+                sg: {
+                    propId: 'signPost',
+                    name: 'Town Graveyard Sign',
+                    searchable: false,
+                    roomTheme: 'town',
+                    signPostMessage: 'Town Graveyard\nwatch your step!',
+                    signPostMessageColor: '#d6cbb8'
+                },
                 bu: { propId: 'stoneDebris1', name: 'Bush', searchable: false, roomTheme: 'forest' },
                 tr: { propId: 'stoneUrn', name: 'Tree', searchable: false, roomTheme: 'forest' },
                 hs: { propId: 'workbench', name: 'House Furnishing', searchable: false, roomTheme: 'house' },
@@ -290,9 +298,9 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GH __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ SM __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GH __ __ wa'),
-                createTokenRow('wa __ __ __ SM __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ SM GH __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ GH SW __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ GH __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
@@ -304,12 +312,12 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
             propRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ gv __ __ __ __ __ __ gv __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ gv __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ sa sa __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ sa sa __ __ __ __ __ __ __ __ __'),
@@ -317,7 +325,7 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ gv __ __ __ __ __ __ __ __ gv __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
@@ -329,6 +337,15 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 __: { type: 'floor' }
             },
             propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
+                gv: {
+                    propId: 'tombstone',
+                    name: 'Haunted Grave',
+                    searchable: false,
+                    roomTheme: 'graveyard',
+                    graveSpawnArchetypeId: 'zombie',
+                    graveSpawnChance: 0.25,
+                    graveSpawnRange: 5
+                },
                 tu: { propId: 'stoneUrn', name: 'Weathered Tombstone', searchable: false, roomTheme: 'graveyard' },
                 su: { propId: 'sarcophagus', name: 'Old Grave', searchable: false, roomTheme: 'graveyard' },
                 sg: { propId: 'stoneDebris2', name: 'Collapsed Grave', searchable: false, roomTheme: 'graveyard' },
@@ -463,6 +480,11 @@ window.MapGenerator = {
                             searchable: Boolean(propConfig.searchable),
                             isVendor: Boolean(propConfig.isVendor),
                             vendorName: propConfig.vendorName,
+                            graveSpawnArchetypeId: propConfig.graveSpawnArchetypeId || null,
+                            graveSpawnChance: Number.isFinite(propConfig.graveSpawnChance) ? Number(propConfig.graveSpawnChance) : null,
+                            graveSpawnRange: Number.isFinite(propConfig.graveSpawnRange) ? Number(propConfig.graveSpawnRange) : null,
+                            signPostMessage: propConfig.signPostMessage || '',
+                            signPostMessageColor: propConfig.signPostMessageColor || null,
                             hasConfiguredStoreInventory: Array.isArray(propConfig.storeInventoryItemIds),
                             storeInventoryItemIds: cloneConfiguredVendorStockEntries(propConfig.storeInventoryItemIds),
                             storeBuyMultiplier: propConfig.storeBuyMultiplier,

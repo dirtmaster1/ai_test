@@ -150,6 +150,7 @@ window.GameData = {
 
     SPELL_DEFS: {
         'call-of-the-wolf': { id: 'call-of-the-wolf', name: 'Call of the Wolf', type: 'spell', range: 0, mpCost: 4, actionCost: 3 },
+        'raise-undead': { id: 'raise-undead', name: 'Raise Undead', type: 'spell', range: 0, mpCost: 6, actionCost: 3, summonCount: 2 },
         'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4, projectileAnimation: 'magic-missile', resolveOnImpact: true },
         'grave-chill': { id: 'grave-chill', name: 'Grave Chill', type: 'spell', range: 4, mpCost: 4, damage: 5, projectileAnimation: 'magic-missile', resolveOnImpact: true },
         'poison-dart': { id: 'poison-dart', name: 'Poison Dart', type: 'spell', range: 5, mpCost: 5 },
@@ -210,6 +211,7 @@ window.GameData = {
         spikeTrap2: { name: 'Spike Trap', x: 695, y: 302, width: 160, height: 129 },
         stoneDebris2: { name: 'Stone Debris', x: 358, y: 610, width: 154, height: 119 },
         stoneUrn: { name: 'Stone Urn', x: 859, y: 753, width: 149, height: 112 },
+        tombstone: { name: 'Tombstone', x: 859, y: 753, width: 149, height: 112 },
         torch: { name: 'Torch', x: 232, y: 442, width: 79, height: 143 },
         barrels1: { name: 'Barrels', x: 7, y: 617, width: 176, height: 119 },
         treasureStack: { name: 'Treasure Stack', x: 524, y: 761, width: 148, height: 104 },

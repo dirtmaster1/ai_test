@@ -76,7 +76,9 @@ class GridScene {
         this.enemyArchetypeTemplatesById = this.buildEnemyArchetypeTemplateMap();
         this.characterHud = new Map();
         this.summonedAllies = [];
+        this.summonedEnemies = [];
         this.nextSummonedAllyId = 1;
+        this.nextSummonedEnemyId = 1;
 
         // Turn system
         this.turnOrder = this.createInitiativeTurnOrder(this.characters);
@@ -666,6 +668,7 @@ class GridScene {
             this.pendingCombatAction = null;
             this.activeEnemyGroupId = null;
             this.clearSummonedAllies();
+            this.clearSummonedEnemies();
             this.closeVendorStoreMenu?.();
 
             // Build the requested configured map directly to avoid accidental fallback to a different map id.
@@ -1067,6 +1070,10 @@ class GridScene {
             || this.direwolf
             || this.enemyArchetypeTemplatesById?.['dire-wolf']
             || null;
+        this.zombieEnemy = this.aiParty.find((enemy) => enemy.id.includes('zombie'))
+            || this.zombieEnemy
+            || this.enemyArchetypeTemplatesById?.zombie
+            || null;
     }
 
     buildEnemyArchetypeTemplateMap() {
@@ -1082,6 +1089,7 @@ class GridScene {
             this.skeletonMageEnemy,
             this.ghoulEnemy,
             this.specterEnemy,
+            this.zombieEnemy,
             this.necromancerEnemy,
             ...(Array.isArray(this.undeadTestArchetypes) ? this.undeadTestArchetypes : [])
         ];
@@ -1272,6 +1280,11 @@ class GridScene {
                 searchable: Boolean(propPlacement.searchable),
                 isVendor: Boolean(propPlacement.isVendor),
                 vendorName: propPlacement.vendorName,
+                graveSpawnArchetypeId: propPlacement.graveSpawnArchetypeId || null,
+                graveSpawnChance: Number.isFinite(propPlacement.graveSpawnChance) ? Number(propPlacement.graveSpawnChance) : null,
+                graveSpawnRange: Number.isFinite(propPlacement.graveSpawnRange) ? Number(propPlacement.graveSpawnRange) : null,
+                signPostMessage: propPlacement.signPostMessage || '',
+                signPostMessageColor: propPlacement.signPostMessageColor || null,
                 hasConfiguredStoreInventory: Boolean(propPlacement.hasConfiguredStoreInventory),
                 storeInventoryItemIds: this.normalizeVendorStockEntries(propPlacement.storeInventoryItemIds),
                 storeBuyMultiplier: propPlacement.storeBuyMultiplier,
@@ -1378,6 +1391,7 @@ class GridScene {
             'skeleton-mage': this.skeletonMageEnemy,
             ghoul: this.ghoulEnemy,
             specter: this.specterEnemy,
+            zombie: this.zombieEnemy,
             necromancer: this.necromancerEnemy
         };
 
@@ -1839,6 +1853,7 @@ class GridScene {
     enterExplorationMode() {
         this.gameMode = 'exploration';
         this.clearSummonedAllies();
+        this.clearSummonedEnemies();
         const alivePlayers = this.getLivingCharacters(this.playerParty);
 
         if (!this.explorationMarchingOrderIds || this.explorationMarchingOrderIds.length === 0) {
@@ -2198,6 +2213,7 @@ class GridScene {
         if (leadCharacter) {
             this.tryAutoOpenLootFromCharacterCell(leadCharacter);
         }
+        this.triggerHauntedGravesNearParty();
         this.applyExplorationMovementRegen(1);
         this.tryTriggerEnemyAggro();
     }
@@ -3181,6 +3197,8 @@ class GridScene {
         let didUseAbility = false;
         if (ability.id === 'call-of-the-wolf') {
             didUseAbility = this.castCallOfTheWolf(character, ability);
+        } else if (ability.id === 'raise-undead') {
+            didUseAbility = this.castRaiseUndead(character, ability);
         } else if (ability.type === 'heal') {
             didUseAbility = Boolean(targetCharacter) && this.castHeal(character, targetCharacter, ability);
         } else if (ability.id === 'charge') {
@@ -3333,6 +3351,28 @@ class GridScene {
         this.summonedAllies = [];
     }
 
+    clearSummonedEnemies() {
+        if (!Array.isArray(this.summonedEnemies) || this.summonedEnemies.length === 0) {
+            this.summonedEnemies = [];
+            return;
+        }
+
+        const summonedSet = new Set(this.summonedEnemies);
+        this.summonedEnemies.forEach((enemy) => {
+            enemy.removedFromScene = true;
+            if (enemy.mesh?.parent) {
+                enemy.mesh.parent.remove(enemy.mesh);
+            }
+        });
+
+        this.enemyGroups.forEach((group) => {
+            group.members = (group.members || []).filter((member) => !summonedSet.has(member));
+        });
+        this.aiParty = this.aiParty.filter((character) => !summonedSet.has(character));
+        this.characters = this.characters.filter((character) => !summonedSet.has(character));
+        this.summonedEnemies = [];
+    }
+
     findSummonPlacementNearCharacter(character, minDistance = 1, maxDistance = 2) {
         if (!character) {
             return null;
@@ -3345,6 +3385,92 @@ class GridScene {
         );
 
         return this.findNearbyFloorTile(character.gridX, character.gridY, minDistance, maxDistance, occupiedCells);
+    }
+
+    findSummonPlacementsTowardOpponents(character, summonCount = 2, minDistance = 1, maxDistance = 3) {
+        if (!character || summonCount <= 0) {
+            return [];
+        }
+
+        const opponents = this.getLivingCharacters(this.getOpposingGroupForCharacter(character));
+        if (opponents.length === 0) {
+            return [];
+        }
+
+        const primaryTarget = opponents.reduce((closest, candidate) => {
+            if (!closest) {
+                return candidate;
+            }
+
+            const candidateDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, candidate.gridX, candidate.gridY);
+            const closestDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, closest.gridX, closest.gridY);
+            return candidateDistance < closestDistance ? candidate : closest;
+        }, null);
+
+        if (!primaryTarget) {
+            return [];
+        }
+
+        const occupiedCells = new Set(
+            this.characters
+                .filter((candidate) => !candidate.isDead && !candidate.removedFromScene)
+                .map((candidate) => this.getCellKey(candidate.gridX, candidate.gridY))
+        );
+
+        const toTargetX = primaryTarget.gridX - character.gridX;
+        const toTargetY = primaryTarget.gridY - character.gridY;
+        const toTargetLength = Math.hypot(toTargetX, toTargetY) || 1;
+
+        const candidates = [];
+        for (let y = character.gridY - maxDistance; y <= character.gridY + maxDistance; y++) {
+            for (let x = character.gridX - maxDistance; x <= character.gridX + maxDistance; x++) {
+                if (x < 0 || x >= this.gridWidth || y < 0 || y >= this.gridHeight) {
+                    continue;
+                }
+
+                if (this.dungeonMap[y]?.[x] !== this.TILE_FLOOR) {
+                    continue;
+                }
+
+                const cellDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, x, y);
+                if (cellDistance < minDistance || cellDistance > maxDistance) {
+                    continue;
+                }
+
+                const cellKey = this.getCellKey(x, y);
+                if (occupiedCells.has(cellKey)) {
+                    continue;
+                }
+
+                const toCellX = x - character.gridX;
+                const toCellY = y - character.gridY;
+                const toCellLength = Math.hypot(toCellX, toCellY) || 1;
+                const directionDot = (toCellX * toTargetX + toCellY * toTargetY) / (toCellLength * toTargetLength);
+                const forwardBias = Math.max(0, directionDot);
+                const targetDistance = this.getAttackDistanceBetweenPositions(x, y, primaryTarget.gridX, primaryTarget.gridY);
+
+                const score = (forwardBias * 100) - (cellDistance * 6) - (targetDistance * 1.2);
+                candidates.push({ x, y, score, cellDistance, targetDistance });
+            }
+        }
+
+        candidates.sort((left, right) => {
+            if (right.score !== left.score) {
+                return right.score - left.score;
+            }
+            if (left.cellDistance !== right.cellDistance) {
+                return left.cellDistance - right.cellDistance;
+            }
+            if (left.targetDistance !== right.targetDistance) {
+                return left.targetDistance - right.targetDistance;
+            }
+            if (left.y !== right.y) {
+                return left.y - right.y;
+            }
+            return left.x - right.x;
+        });
+
+        return candidates.slice(0, summonCount).map(({ x, y }) => ({ x, y }));
     }
 
     createWolfCompanion(caster) {
@@ -3375,6 +3501,33 @@ class GridScene {
         wolf.isSummonedWolf = true;
         wolf.summonerId = caster?.id || null;
         return wolf;
+    }
+
+    createSummonedSkeletonWarrior(caster) {
+        const skeleton = this.createCharacter({
+            id: `raised-skeleton-warrior-${this.nextSummonedEnemyId++}`,
+            name: 'Raised Skeleton Warrior',
+            role: 'AI',
+            team: 'ai',
+            accentColor: '#cbbca3',
+            pointerColor: 0xe4d3b2,
+            spriteFrame: this.getCharacterSpriteFrame('skeletonWarrior'),
+            race: 'undead',
+            strength: 11,
+            dexterity: 8,
+            intelligence: 3,
+            wisdom: 3,
+            hitPoints: 11,
+            maxHitPoints: 11,
+            armorClass: 2,
+            experiencePoints: 0,
+            abilities: ['skeletal-slash'],
+            spells: []
+        });
+
+        skeleton.isSummonedUndead = true;
+        skeleton.summonerId = caster?.id || null;
+        return skeleton;
     }
 
     getLootInteractionCharacter() {
@@ -3555,6 +3708,26 @@ class GridScene {
             return true;
         }
 
+        if (prop.signPostMessage) {
+            const anchor = screenX !== null && screenY !== null
+                ? { screenX, screenY }
+                : this.getScreenPositionForCell(prop.gridX, prop.gridY);
+
+            if (!canInteract) {
+                this.showToast('Need to be adjacent to read.', '#d6cbb8', 2200, anchor?.screenX ?? null, anchor?.screenY ?? null);
+                return false;
+            }
+
+            this.showToast(
+                prop.signPostMessage,
+                prop.signPostMessageColor || '#d6cbb8',
+                2400,
+                anchor?.screenX ?? null,
+                anchor?.screenY ?? null
+            );
+            return true;
+        }
+
         if (!prop.searchable) {
             return false;
         }
@@ -3658,6 +3831,124 @@ class GridScene {
 
         this.appendCombatLogEntry(
             `The party triggers ${prop.frameId} and takes 3 damage each.`,
+            '#d97d7d'
+        );
+
+        return true;
+    }
+
+    isHauntedGraveProp(prop) {
+        if (!prop || prop.hasBeenTriggered) {
+            return false;
+        }
+
+        const spawnArchetypeId = String(prop.graveSpawnArchetypeId || '').trim();
+        if (spawnArchetypeId) {
+            return true;
+        }
+
+        const frameId = String(prop.frameId || '').toLowerCase();
+        const roomTheme = String(prop.roomTheme || '').toLowerCase();
+        return roomTheme === 'graveyard' && frameId.includes('tomb');
+    }
+
+    triggerHauntedGravesNearParty() {
+        if (this.gameMode !== 'exploration') {
+            return false;
+        }
+
+        const party = this.getLivingCharacters(this.playerParty);
+        if (party.length === 0) {
+            return false;
+        }
+
+        let didSpawn = false;
+        this.dungeonPropsByCell.forEach((prop) => {
+            if (!this.isHauntedGraveProp(prop)) {
+                return;
+            }
+
+            const triggerRange = Math.max(1, Math.floor(prop.graveSpawnRange ?? 5));
+            const isPartyNearby = party.some((member) =>
+                this.getAttackDistanceBetweenPositions(member.gridX, member.gridY, prop.gridX, prop.gridY) <= triggerRange
+            );
+            if (!isPartyNearby) {
+                return;
+            }
+
+            prop.hasBeenTriggered = true;
+
+            const spawnChance = Math.max(0, Math.min(1, Number(prop.graveSpawnChance ?? 0.25)));
+            if (Math.random() > spawnChance) {
+                return;
+            }
+
+            if (this.spawnEnemyFromHauntedGrave(prop, party)) {
+                didSpawn = true;
+            }
+        });
+
+        if (didSpawn) {
+            this.saveCurrentMapPersistentState();
+        }
+
+        return didSpawn;
+    }
+
+    spawnEnemyFromHauntedGrave(prop, partyMembers = []) {
+        const spawnArchetypeId = String(prop?.graveSpawnArchetypeId || 'zombie').trim() || 'zombie';
+        const archetype = this.getEnemyArchetypeById(spawnArchetypeId);
+        if (!archetype) {
+            return false;
+        }
+
+        const occupiedCells = new Set(
+            this.characters
+                .filter((candidate) => !candidate.isDead && !candidate.removedFromScene)
+                .map((candidate) => this.getCellKey(candidate.gridX, candidate.gridY))
+        );
+
+        const spawn = this.findNearbyFloorTile(prop.gridX, prop.gridY, 1, 2, occupiedCells);
+        if (!spawn) {
+            return false;
+        }
+
+        const groupId = `group-grave-${spawnArchetypeId}-${prop.gridX}-${prop.gridY}-${Date.now()}`;
+        const enemy = this.createEnemyFromArchetype(archetype, this.enemyGroups.length + 1, 0);
+        enemy.gridX = spawn.x;
+        enemy.gridY = spawn.y;
+        enemy.encounterGroupId = groupId;
+
+        const nearestPartyMember = partyMembers.reduce((closest, member) => {
+            if (!closest) {
+                return member;
+            }
+
+            const currentDistance = this.getAttackDistanceBetweenPositions(enemy.gridX, enemy.gridY, member.gridX, member.gridY);
+            const closestDistance = this.getAttackDistanceBetweenPositions(enemy.gridX, enemy.gridY, closest.gridX, closest.gridY);
+            return currentDistance < closestDistance ? member : closest;
+        }, null);
+        if (nearestPartyMember) {
+            this.faceCharacterToward(enemy, nearestPartyMember);
+        }
+
+        this.aiParty.push(enemy);
+        this.characters.push(enemy);
+        this.enemyGroups.push({
+            id: groupId,
+            members: [enemy],
+            isAggro: false,
+            isCleared: false
+        });
+
+        this.setupCharacterSprite(
+            enemy,
+            this.createSpriteTexture(enemy.spriteFrame),
+            enemy.pointerColor
+        );
+
+        this.appendCombatLogEntry(
+            `A ${enemy.name} claws its way out of a nearby grave.`,
             '#d97d7d'
         );
 
@@ -5095,6 +5386,73 @@ class GridScene {
 
         this.finalizeActionUsage(caster, context);
 
+        return true;
+    }
+
+    castRaiseUndead(caster, raiseUndeadAbility = null) {
+        const ability = this.resolveAbilityById(caster, 'raise-undead', raiseUndeadAbility);
+        if (!ability) {
+            return false;
+        }
+
+        const actionCost = this.getAbilityActionCost(caster, ability);
+        const context = this.getActionContext(caster, {
+            combatOnly: true,
+            requiredActionCost: actionCost
+        });
+        if (!context) {
+            return false;
+        }
+
+        const mpCost = Math.max(0, Math.floor(ability.mpCost ?? 0));
+        if ((caster.magicPoints ?? 0) < mpCost) {
+            return false;
+        }
+
+        const summonCount = Math.max(1, Math.floor(ability.summonCount ?? 2));
+        const summonCells = this.findSummonPlacementsTowardOpponents(caster, summonCount, 1, 3);
+        if (summonCells.length < summonCount) {
+            return false;
+        }
+
+        const enemyGroup = this.getEnemyGroupById(caster.encounterGroupId);
+        const summoned = summonCells.map((cell) => {
+            const skeleton = this.createSummonedSkeletonWarrior(caster);
+            skeleton.gridX = cell.x;
+            skeleton.gridY = cell.y;
+            skeleton.encounterGroupId = caster.encounterGroupId || null;
+            return skeleton;
+        });
+
+        summoned.forEach((skeleton) => {
+            this.summonedEnemies.push(skeleton);
+            this.characters.push(skeleton);
+            this.aiParty.push(skeleton);
+            if (enemyGroup?.members) {
+                enemyGroup.members.push(skeleton);
+            }
+
+            this.setupCharacterSprite(
+                skeleton,
+                this.createSpriteTexture(skeleton.spriteFrame),
+                skeleton.pointerColor
+            );
+        });
+
+        this.spendActionAndMagic(caster, context, {
+            actionCost,
+            magicCost: mpCost
+        });
+
+        this.refreshCombatTurnOrder(true);
+        this.updateTurnOrderQueue(this.getActiveTurnCharacter());
+
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name} and raises ${summoned.length} skeleton warriors.`,
+            caster.accentColor
+        );
+
+        this.finalizeActionUsage(caster, context);
         return true;
     }
 
