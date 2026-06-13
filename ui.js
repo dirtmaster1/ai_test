@@ -2743,9 +2743,7 @@ window.GridUI = {
         const equipmentBonuses = this.getCharacterEquipmentBonusSummary(character);
         const spellDamageBonus = this.getCharacterSpellDamageBonus(character);
         const healingBonus = this.getCharacterHealingBonus(character);
-        const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
-            ? this.getCharacterArmorClass(character)
-            : character.armorClass;
+        const effectiveArmorClass = this.getEffectiveArmorClassValue(character);
 
         const infoStats = [
             { label: 'Level', value: String(character.level ?? 1) },
@@ -3224,9 +3222,7 @@ window.GridUI = {
         acBadge.style.flexShrink = '0';
         acBadge.style.marginLeft = 'auto';
         acBadge.title = 'Armor Class — reduces physical damage';
-        const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
-            ? this.getCharacterArmorClass(character)
-            : character.armorClass;
+        const effectiveArmorClass = this.getEffectiveArmorClassValue(character);
         acBadge.textContent = `AC ${effectiveArmorClass}`;
 
         const levelUpButton = document.createElement('button');
@@ -3526,9 +3522,7 @@ window.GridUI = {
 
         hud.hpText.textContent = `${character.hitPoints} / ${character.maxHitPoints}`;
         if (hud.acBadge) {
-            const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
-                ? this.getCharacterArmorClass(character)
-                : character.armorClass;
+            const effectiveArmorClass = this.getEffectiveArmorClassValue(character);
             hud.acBadge.textContent = `AC ${effectiveArmorClass}`;
             hud.acBadge.title = typeof this.getCharacterEquipmentSummaryText === 'function'
                 ? `Armor Class and gear bonuses: ${this.getCharacterEquipmentSummaryText(character)}`

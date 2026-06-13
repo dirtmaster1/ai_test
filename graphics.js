@@ -156,6 +156,53 @@ window.GridGraphics = {
         return texture;
     },
 
+    createTombstoneTexture() {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        ctx.imageSmoothingEnabled = false;
+
+        ctx.fillStyle = '#17120f';
+        ctx.fillRect(0, 0, size, size);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.24)';
+        ctx.fillRect(17, 54, 30, 5);
+
+        // Small dirt mound so the procedural gravestone feels grounded in the tile.
+        ctx.fillStyle = '#2f241d';
+        ctx.fillRect(14, 50, 36, 8);
+        ctx.fillStyle = '#3e3027';
+        ctx.fillRect(16, 50, 32, 3);
+
+        ctx.fillStyle = '#4a4c52';
+        ctx.fillRect(22, 22, 20, 30);
+        ctx.fillStyle = '#676b74';
+        ctx.fillRect(24, 24, 16, 4);
+        ctx.fillStyle = '#2f3339';
+        ctx.fillRect(22, 48, 20, 4);
+
+        ctx.fillStyle = '#5a5d65';
+        ctx.fillRect(24, 18, 16, 4);
+        ctx.fillRect(21, 20, 22, 2);
+
+        ctx.fillStyle = '#2b2d32';
+        ctx.fillRect(31, 30, 2, 14);
+        ctx.fillRect(28, 35, 8, 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+
+        return texture;
+    },
+
     createPortraitCanvas(spriteFrame, accentColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 18;
@@ -356,17 +403,23 @@ window.GridGraphics = {
 
         const props = this.dungeonPropsByCell ? [...this.dungeonPropsByCell.values()] : [];
         props.forEach((prop) => {
-            const usesCustomSignTexture = prop.frameId === 'signPost';
+            const customTexture = window.GameData?.getDungeonPropCustomTexture?.(prop.frameId) || null;
+            const usesCustomSignTexture = customTexture === 'signPost' || prop.frameId === 'signPost';
+            const usesCustomTombstoneTexture = customTexture === 'tombstone' || prop.frameId === 'tombstone';
             const spriteFrame = prop.spriteFrame
                 ? { ...prop.spriteFrame }
-                : this.getDungeonPropSpriteFrame(prop.frameId);
-            if (!usesCustomSignTexture && !spriteFrame) {
+                : ((usesCustomSignTexture || usesCustomTombstoneTexture)
+                    ? null
+                    : this.getDungeonPropSpriteFrame(prop.frameId));
+            if (!usesCustomSignTexture && !usesCustomTombstoneTexture && !spriteFrame) {
                 return;
             }
 
             const texture = usesCustomSignTexture
                 ? this.createSignPostTexture()
-                : this.createSpriteTexture(spriteFrame);
+                : (usesCustomTombstoneTexture
+                    ? this.createTombstoneTexture()
+                    : this.createSpriteTexture(spriteFrame));
             const geometry = new THREE.PlaneGeometry(this.cellSize - 8, this.cellSize - 8);
             const material = new THREE.MeshBasicMaterial({
                 map: texture,

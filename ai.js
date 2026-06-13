@@ -310,9 +310,7 @@ window.GridAI = {
 
         const baseDamage = this.getEffectiveAbilityDamage(character, resolvedAbility);
         const isSpell = resolvedAbility.type === 'spell' || resolvedAbility.id === 'magic-missile';
-        const effectiveArmorClass = typeof this.getCharacterArmorClass === 'function'
-            ? this.getCharacterArmorClass(target)
-            : target.armorClass;
+        const effectiveArmorClass = this.getEffectiveArmorClassValue(target);
         const amount = isSpell ? baseDamage : Math.max(0, baseDamage - effectiveArmorClass);
 
         return {
@@ -382,7 +380,7 @@ window.GridAI = {
             weakTargetBonus -
             effect.distance * distanceWeight -
             focusPenalty -
-            (typeof this.getCharacterArmorClass === 'function' ? this.getCharacterArmorClass(target) : target.armorClass) * 1.2
+            this.getEffectiveArmorClassValue(target) * 1.2
         );
     },
 
@@ -432,7 +430,7 @@ window.GridAI = {
                 nearestBonus +
                 this.getTargetRolePriority(character, candidate) * 1.1 -
                 effect.distance * 4.75 -
-                (typeof this.getCharacterArmorClass === 'function' ? this.getCharacterArmorClass(candidate) : candidate.armorClass) * 1.5
+                this.getEffectiveArmorClassValue(candidate) * 1.5
             );
 
             if (score > bestScore) {
@@ -916,7 +914,7 @@ window.GridAI = {
             }
         }
 
-        const meleeFallback = this.getAbilityForCharacter(character, 'skeletal-slash') || this.getBestOffensiveAbility(character);
+        const meleeFallback = this.getAbilityForCharacter(character, 'sword-slash') || this.getBestOffensiveAbility(character);
         if (!meleeFallback) {
             return this.forceEndCurrentAITurn(character);
         }

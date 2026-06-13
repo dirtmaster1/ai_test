@@ -593,7 +593,10 @@ window.CharacterData = {
             maxHitPoints: 11,
             armorClass: 2,
             experiencePoints: 460,
-            abilities: ['skeletal-slash']
+            abilities: ['sword-slash'],
+            equipment: {
+                hands: 'short-sword'
+            }
         });
 
         this.skeletonMageEnemy = this.createCharacter({
@@ -615,7 +618,7 @@ window.CharacterData = {
             maxMagicPoints: 10,
             armorClass: 1,
             experiencePoints: 560,
-            abilities: ['skeletal-slash'],
+            abilities: [],
             spells: ['grave-chill']
         });
 
@@ -676,11 +679,11 @@ window.CharacterData = {
             dexterity: 6,
             intelligence: 2,
             wisdom: 3,
-            hitPoints: 10,
-            maxHitPoints: 10,
+            hitPoints: 7,
+            maxHitPoints: 7,
             armorClass: 1,
             experiencePoints: 420,
-            abilities: ['skeletal-slash']
+            abilities: ['grope']
         });
 
         this.necromancerEnemy = this.createCharacter({
@@ -697,7 +700,7 @@ window.CharacterData = {
             intelligence: 15,
             wisdom: 13,
             hitPoints: 15,
-            maxHitPoints: 10,
+            maxHitPoints: 15,
             magicPoints: 16,
             maxMagicPoints: 16,
             armorClass: 1,

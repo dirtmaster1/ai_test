@@ -1718,7 +1718,10 @@ class GridScene {
             return equipment;
         }, {});
 
-        return this.createCharacter({
+        const archetypeMaxHp = Math.max(1, Math.floor(archetype.maxHitPoints ?? archetype.hitPoints ?? 1));
+        const archetypeCurrentHp = Math.max(0, Math.min(archetypeMaxHp, Math.floor(archetype.hitPoints ?? archetypeMaxHp)));
+
+        const enemy = this.createCharacter({
             id: `${archetype.id}-${idSuffix}`,
             name: archetype.name,
             role: archetype.role,
@@ -1745,6 +1748,11 @@ class GridScene {
             spells: clonedSpells,
             equipment: clonedEquipment
         });
+
+        // Archetype stats are already fully resolved; preserve their HP values as-is.
+        enemy.maxHitPoints = archetypeMaxHp;
+        enemy.hitPoints = archetypeCurrentHp;
+        return enemy;
     }
 
     getEnemyGroupById(groupId) {
@@ -1941,17 +1949,30 @@ class GridScene {
         return nearestEnemy;
     }
 
+    getEnemyGroupDisplayName(group) {
+        if (!group) {
+            return 'Enemy';
+        }
+
+        const livingMembers = this.getLivingCharacters(group.members || []);
+        const fallbackMembers = Array.isArray(group.members) ? group.members : [];
+        const referenceEnemy = livingMembers[0] || fallbackMembers[0] || null;
+
+        return referenceEnemy?.name || 'Enemy';
+    }
+
     beginCombatWithGroup(group) {
         if (!group || group.isCleared || group.isAggro) {
             return;
         }
 
         group.isAggro = true;
+        const enemyName = this.getEnemyGroupDisplayName(group);
 
         if (this.gameMode === 'combat') {
             this.refreshCombatTurnOrder(true);
             this.appendCombatLogEntry(
-                `Enemy group ${group.id} joins the battle.`,
+                `${enemyName} joins the battle.`,
                 '#d34c4c'
             );
             return;
@@ -1965,7 +1986,7 @@ class GridScene {
         this.enemyMoveTimer = 0;
 
         this.appendCombatLogEntry(
-            `Enemy group ${group.id} spots the party. Combat begins.`,
+            `${enemyName} spots the party. Combat begins.`,
             '#d34c4c'
         );
 
@@ -1994,7 +2015,8 @@ class GridScene {
             if (livingMembers.length === 0) {
                 group.isCleared = true;
                 hadGroupDefeated = true;
-                this.appendCombatLogEntry(`Enemy group ${group.id} has been defeated.`, '#d9c47d');
+                const enemyName = this.getEnemyGroupDisplayName(group);
+                this.appendCombatLogEntry(`${enemyName} has been defeated.`, '#d9c47d');
             }
         });
 
@@ -3185,6 +3207,43 @@ class GridScene {
         ) || null;
     }
 
+    getAbilityUsageHandler(ability) {
+        if (!ability) {
+            return null;
+        }
+
+        const handlersById = {
+            'call-of-the-wolf': (character, _target, selectedAbility) => this.castCallOfTheWolf(character, selectedAbility),
+            'raise-undead': (character, _target, selectedAbility) => this.castRaiseUndead(character, selectedAbility),
+            charge: (character, targetCell, selectedAbility) => Boolean(targetCell) && this.castCharge(character, targetCell, selectedAbility),
+            'inflict-pain': (character) => this.castInflictPain(character),
+            'magic-missile': (character, target) => Boolean(target) && this.castMagicMissile(character, target),
+            'poison-dart': (character, target, selectedAbility) => Boolean(target) && this.castPoisonDart(character, target, selectedAbility),
+            sleep: (character, targetCell, selectedAbility) => Boolean(targetCell) && this.castSleep(character, targetCell, selectedAbility),
+            'battle-shout': (character) => this.castBattleShout(character),
+            blessing: (character) => this.castBlessing(character)
+        };
+
+        if (handlersById[ability.id]) {
+            return handlersById[ability.id];
+        }
+
+        const handlersByType = {
+            heal: (character, target, selectedAbility) => Boolean(target) && this.castHeal(character, target, selectedAbility),
+            attack: (character, target, selectedAbility) => Boolean(target) && this.characterAttack(character, target, selectedAbility)
+        };
+
+        if (handlersByType[ability.type]) {
+            return handlersByType[ability.type];
+        }
+
+        if (ability.type === 'spell' && ability.damage !== undefined) {
+            return (character, target, selectedAbility) => Boolean(target) && this.castDamageSpell(character, target, selectedAbility);
+        }
+
+        return (character, target, selectedAbility) => Boolean(target) && this.characterAttack(character, target, selectedAbility);
+    }
+
     useAbilityOnTarget(character, ability, targetCharacter = null) {
         if (!character || character.isDead || !ability) {
             return false;
@@ -3194,34 +3253,8 @@ class GridScene {
             return false;
         }
 
-        let didUseAbility = false;
-        if (ability.id === 'call-of-the-wolf') {
-            didUseAbility = this.castCallOfTheWolf(character, ability);
-        } else if (ability.id === 'raise-undead') {
-            didUseAbility = this.castRaiseUndead(character, ability);
-        } else if (ability.type === 'heal') {
-            didUseAbility = Boolean(targetCharacter) && this.castHeal(character, targetCharacter, ability);
-        } else if (ability.id === 'charge') {
-            didUseAbility = Boolean(targetCharacter) && this.castCharge(character, targetCharacter, ability);
-        } else if (ability.id === 'inflict-pain') {
-            didUseAbility = this.castInflictPain(character);
-        } else if (ability.id === 'magic-missile') {
-            didUseAbility = Boolean(targetCharacter) && this.castMagicMissile(character, targetCharacter);
-        } else if (ability.type === 'spell' && ability.damage !== undefined) {
-            didUseAbility = Boolean(targetCharacter) && this.castDamageSpell(character, targetCharacter, ability);
-        } else if (ability.id === 'poison-dart') {
-            didUseAbility = Boolean(targetCharacter) && this.castPoisonDart(character, targetCharacter, ability);
-        } else if (ability.id === 'sleep') {
-            didUseAbility = Boolean(targetCharacter) && this.castSleep(character, targetCharacter, ability);
-        } else if (ability.type === 'buff') {
-            if (ability.id === 'battle-shout') {
-                didUseAbility = this.castBattleShout(character);
-            } else if (ability.id === 'blessing') {
-                didUseAbility = this.castBlessing(character);
-            }
-        } else {
-            didUseAbility = Boolean(targetCharacter) && this.characterAttack(character, targetCharacter, ability);
-        }
+        const abilityHandler = this.getAbilityUsageHandler(ability);
+        const didUseAbility = Boolean(abilityHandler?.(character, targetCharacter, ability));
 
         if (didUseAbility && this.gameMode === 'exploration' && targetCharacter && targetCharacter.team !== character.team) {
             this.beginCombatWithEnemyCharacter(targetCharacter);
@@ -3521,7 +3554,10 @@ class GridScene {
             maxHitPoints: 11,
             armorClass: 2,
             experiencePoints: 0,
-            abilities: ['skeletal-slash'],
+            abilities: ['sword-slash'],
+            equipment: {
+                hands: 'short-sword'
+            },
             spells: []
         });
 
@@ -4692,6 +4728,16 @@ class GridScene {
         );
     }
 
+    getEffectiveArmorClassValue(character) {
+        if (!character) {
+            return 0;
+        }
+
+        return typeof this.getCharacterArmorClass === 'function'
+            ? this.getCharacterArmorClass(character)
+            : (character.armorClass ?? 0);
+    }
+
     getCharacterEquipmentSummaryText(character) {
         const summary = this.getCharacterEquipmentBonusSummary(character);
         const parts = [];
@@ -5502,90 +5548,12 @@ class GridScene {
     }
 
     castMagicMissile(caster, target) {
-        if (!target || target.isDead || caster?.team === target.team) {
-            return false;
-        }
-
-        const context = this.getActionContext(caster, {
-            requiredActionCost: Math.max(0, Math.floor(caster?.attackCost ?? 0))
-        });
-        if (!context) {
-            return false;
-        }
-
-        const ability = window.CharacterData?.getCharacterActionById(caster, 'magic-missile');
+        const ability = this.resolveAbilityById(caster, 'magic-missile');
         if (!ability) {
             return false;
         }
 
-        const mpCost = Math.max(0, Math.floor(ability.mpCost ?? 0));
-        if ((caster.magicPoints ?? 0) < mpCost) {
-            return false;
-        }
-
-        if (!this.isAbilityTargetWithinRangeAndLos(caster, ability, target.gridX, target.gridY)) {
-            return false;
-        }
-
-        this.faceCharacterToward(caster, target);
-        const damage = this.getEffectiveAbilityDamage(caster, ability);
-        this.spendActionAndMagic(caster, context, {
-            actionCost: caster.attackCost,
-            magicCost: mpCost
-        });
-        const projectileAnimation = this.getAbilityProjectileAnimation(ability);
-        const resolvesOnImpact = this.doesAbilityResolveOnImpact(ability);
-
-        if (!resolvesOnImpact) {
-            if (damage > 0) {
-                this.removeSleepEffect(target);
-            }
-            target.hitPoints -= damage;
-        }
-
-        if (!context.isExploration && resolvesOnImpact) {
-            this.beginPendingCombatAction(caster);
-        }
-
-        this.appendCombatLogEntry(
-            `${caster.name} casts ${ability.name} on ${target.name} for ${damage} dmg.`,
-            caster.accentColor
-        );
-
-        const lethal = resolvesOnImpact ? (target.hitPoints - damage) <= 0 : target.hitPoints <= 0;
-        if (lethal && !resolvesOnImpact) {
-            target.hitPoints = 0;
-        }
-
-        const casterPos = this.getCharacterWorldPos(caster);
-        const targetPos = this.getCharacterWorldPos(target);
-        if (projectileAnimation === 'magic-missile') {
-            this.spawnMagicMissileProjectiles(casterPos, targetPos, () => {
-                if (damage > 0) {
-                    this.removeSleepEffect(target);
-                }
-                target.hitPoints = Math.max(0, target.hitPoints - damage);
-                this.playHitAnimation(target);
-                if (target.hitPoints <= 0) {
-                    target.hitPoints = 0;
-                    this.markCharacterDead(target, caster);
-                }
-                if (!context.isExploration) {
-                    this.finishPendingCombatAction(caster);
-                }
-            });
-        } else {
-            this.playHitAnimation(target);
-            if (lethal) {
-                this.markCharacterDead(target, caster);
-            }
-            if (!context.isExploration && resolvesOnImpact) {
-                this.finishPendingCombatAction(caster);
-            }
-            this.finalizeActionUsage(caster, context);
-        }
-
-        return true;
+        return this.castDamageSpell(caster, target, ability);
     }
 
     castSleep(caster, targetCell, sleepAbility = null) {

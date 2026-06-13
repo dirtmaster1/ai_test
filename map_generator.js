@@ -324,9 +324,9 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ gv __ __ __ __ __ __ __ __ gv __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ gv gv gv gv gv gv gv gv gv gv __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ gv gv gv gv gv gv gv gv gv gv __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ gv gv gv gv gv gv gv gv gv gv __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')

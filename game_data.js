@@ -30,6 +30,16 @@ window.GameData = {
             modifiers: { attackDamage: 5, attackRange: 5 },
             accentColor: '#9bcf86'
         },
+        'short-sword': {
+            id: 'short-sword',
+            name: 'Short Sword',
+            slot: 'hands',
+            handType: '1H',
+            type: 'weapon',
+            appliesToAbilityId: 'sword-slash',
+            modifiers: { attackDamage: 6 },
+            accentColor: '#cfcfcf'
+        },
         staff: {
             id: 'staff',
             name: 'Staff',
@@ -124,6 +134,7 @@ window.GameData = {
         'small shield': 'small-shield',
         'long bow': 'long-bow',
         'short bow': 'short-bow',
+        'short sword': 'short-sword',
         'chieftain club': 'chieftain-club',
         'chain mail': 'chain-mail',
         'leather armor': 'leather-armor',
@@ -137,13 +148,13 @@ window.GameData = {
     ABILITY_DEFS: {
         melee: { id: 'melee', name: 'Melee Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'wolf-bite': { id: 'wolf-bite', name: 'Bite', type: 'attack', range: 1, mpCost: 0, damage: 5 },
+        grope: { id: 'grope', name: 'Grope', type: 'attack', range: 1, mpCost: 0, damage: 4 },
         'venomous-bite': { id: 'venomous-bite', name: 'Venomous Bite', type: 'attack', range: 1, mpCost: 0, damage: 4 },
-        'skeletal-slash': { id: 'skeletal-slash', name: 'Skeletal Slash', type: 'attack', range: 1, mpCost: 0, damage: 6 },
+        'sword-slash': { id: 'sword-slash', name: 'Sword Slash', type: 'attack', range: 1, mpCost: 0, weaponDriven: true },
         'staff-strike': { id: 'staff-strike', name: 'Staff Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', mpCost: 0, weaponDriven: true, projectileAnimation: 'arrow', resolveOnImpact: true },
-        'goblin-bow-shot': { id: 'goblin-bow-shot', name: 'Bow Shot', type: 'attack', range: 4, mpCost: 0, damage: 4, projectileAnimation: 'arrow', resolveOnImpact: true },
         'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2 },
         charge: { id: 'charge', name: 'Charge', type: 'move', range: 5, mpCost: 0, actionCost: 3, targetMode: 'cell' }
     },
@@ -209,9 +220,16 @@ window.GameData = {
         weaponRack1: { name: 'Weapon Rack', x: 840, y: 1, width: 163, height: 127 },
         spikeTrap1: { name: 'Spike Trap', x: 520, y: 292, width: 160, height: 137 },
         spikeTrap2: { name: 'Spike Trap', x: 695, y: 302, width: 160, height: 129 },
+        signPost: {
+            name: 'Sign Post',
+            customTexture: 'signPost'
+        },
         stoneDebris2: { name: 'Stone Debris', x: 358, y: 610, width: 154, height: 119 },
         stoneUrn: { name: 'Stone Urn', x: 859, y: 753, width: 149, height: 112 },
-        tombstone: { name: 'Tombstone', x: 859, y: 753, width: 149, height: 112 },
+        tombstone: {
+            name: 'Tombstone',
+            customTexture: 'tombstone'
+        },
         torch: { name: 'Torch', x: 232, y: 442, width: 79, height: 143 },
         barrels1: { name: 'Barrels', x: 7, y: 617, width: 176, height: 119 },
         treasureStack: { name: 'Treasure Stack', x: 524, y: 761, width: 148, height: 104 },
@@ -257,9 +275,28 @@ window.GameData = {
     getDungeonPropSpriteFrames() {
         const imagePath = this.getDungeonPropsTilesetPath();
         return Object.entries(this.DUNGEON_PROP_SPRITE_FRAMES).reduce((frames, [frameId, frame]) => {
+            const hasAtlasFrame =
+                Number.isFinite(frame?.x) &&
+                Number.isFinite(frame?.y) &&
+                Number.isFinite(frame?.width) &&
+                Number.isFinite(frame?.height);
+
+            if (!hasAtlasFrame) {
+                return frames;
+            }
+
             frames[frameId] = { imagePath, ...frame };
             return frames;
         }, {});
+    },
+
+    getDungeonPropCustomTexture(frameId) {
+        if (!frameId) {
+            return null;
+        }
+
+        const customTexture = this.DUNGEON_PROP_SPRITE_FRAMES?.[frameId]?.customTexture;
+        return typeof customTexture === 'string' ? customTexture : null;
     },
 
     getDungeonPropDisplayName(frameId) {
