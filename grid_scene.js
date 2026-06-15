@@ -46,6 +46,8 @@ class GridScene {
         this.abilityRangeHighlightState = '';
         this.targetHighlightGroup = new THREE.Group();
         this.targetHighlightState = '';
+        this.activeCharacterTurnHighlightGroup = new THREE.Group();
+        this.activeCharacterTurnHighlightState = '';
         this.hoveredCharacter = null;
         this.dungeonPropGroup = new THREE.Group();
         this.dungeonPropsByCell = new Map();
@@ -67,6 +69,7 @@ class GridScene {
         this.scene.add(this.reachableHighlightGroup);
         this.scene.add(this.abilityRangeHighlightGroup);
         this.scene.add(this.targetHighlightGroup);
+        this.scene.add(this.activeCharacterTurnHighlightGroup);
         this.scene.add(this.dungeonPropGroup);
         this.scene.add(this.lootBagGroup);
         this.scene.add(this.doorGroup);
@@ -3944,7 +3947,7 @@ class GridScene {
                 .map((candidate) => this.getCellKey(candidate.gridX, candidate.gridY))
         );
 
-        const spawn = this.findNearbyFloorTile(prop.gridX, prop.gridY, 1, 2, occupiedCells);
+        const spawn = this.findNearbyFloorTile(prop.gridX, prop.gridY, 1, 1, occupiedCells);
         if (!spawn) {
             return false;
         }
@@ -5584,14 +5587,18 @@ class GridScene {
 
         const radius = Math.max(0, Math.floor(ability.radius ?? 1));
         const duration = Math.max(1, Math.floor(ability.duration ?? 2));
-        const affectedEnemies = this.characters.filter((candidate) =>
+        const allNearbyEnemies = this.characters.filter((candidate) =>
             candidate.team !== caster.team &&
             !candidate.isDead &&
             !candidate.removedFromScene &&
             this.getAttackDistanceBetweenPositions(targetCell.gridX, targetCell.gridY, candidate.gridX, candidate.gridY) <= radius
         );
 
-        if (affectedEnemies.length === 0) {
+        // Separate undead (immune) from affected enemies
+        const affectedEnemies = allNearbyEnemies.filter((enemy) => enemy.race !== 'undead');
+        const immuneEnemies = allNearbyEnemies.filter((enemy) => enemy.race === 'undead');
+
+        if (affectedEnemies.length === 0 && immuneEnemies.length === 0) {
             return false;
         }
 
@@ -5609,10 +5616,17 @@ class GridScene {
             this.spawnHealEffect(this.getCharacterWorldPos(caster), this.getCharacterWorldPos(enemy));
         });
 
-        this.appendCombatLogEntry(
-            `${caster.name} casts ${ability.name}, sending ${affectedEnemies.length} ${affectedEnemies.length === 1 ? 'enemy' : 'enemies'} to sleep.`,
-            caster.accentColor
-        );
+        let logMessage = `${caster.name} casts ${ability.name}`;
+        if (affectedEnemies.length > 0) {
+            logMessage += `, sending ${affectedEnemies.length} ${affectedEnemies.length === 1 ? 'enemy' : 'enemies'} to sleep`;
+        }
+        if (immuneEnemies.length > 0) {
+            logMessage += affectedEnemies.length > 0 ? '. ' : ' ';
+            logMessage += `${immuneEnemies.length} ${immuneEnemies.length === 1 ? 'undead is' : 'undead are'} immune to sleep.`;
+        }
+        logMessage += affectedEnemies.length > 0 && immuneEnemies.length === 0 ? '.' : '';
+
+        this.appendCombatLogEntry(logMessage, caster.accentColor);
 
         if (!context.isExploration) {
             this.finalizeActionUsage(caster, context);
@@ -6070,14 +6084,6 @@ class GridScene {
             };
         }
 
-        if (defeatedEnemy.id?.includes('goblin-chieftain')) {
-            const chieftainClubTemplate = window.GameData?.getItemTemplateById('chieftain-club');
-            return {
-                gold: 100,
-                equipmentDrops: chieftainClubTemplate ? [this.createEquipmentItemInstance(chieftainClubTemplate)] : []
-            };
-        }
-
         if (defeatedEnemy.race !== 'goblin') {
             return null;
         }
@@ -6485,6 +6491,7 @@ class GridScene {
         this.updateReachableMovementHighlights(activeCharacter);
         this.updateAbilityRangeHighlights(activeCharacter);
         this.updateTargetHighlights(activeCharacter);
+        this.updateActiveCharacterTurnHighlight(activeCharacter);
         this.updateTargetPreview(activeCharacter);
         this.updateLootBagMarkers();
         this.updateDoorAnimations(nowMs);

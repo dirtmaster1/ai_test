@@ -414,7 +414,7 @@ window.CharacterData = {
             wisdom: 4,
             hitPoints: 8,
             maxHitPoints: 8,
-            experiencePoints: 220,
+            experiencePoints: 200,
             armorClass: 1,
             abilities: [
                 'melee'
@@ -439,7 +439,7 @@ window.CharacterData = {
             wisdom: 6,
             hitPoints: 6,
             maxHitPoints: 6,
-            experiencePoints: 240,
+            experiencePoints: 200,
             magicPoints: 0,
             maxMagicPoints: 0,
             armorClass: 1,
@@ -466,7 +466,7 @@ window.CharacterData = {
             wisdom: 12,
             hitPoints: 5,
             maxHitPoints: 5,
-            experiencePoints: 260,
+            experiencePoints: 240,
             magicPoints: 10,
             maxMagicPoints: 10,
             armorClass: 0,
@@ -492,7 +492,7 @@ window.CharacterData = {
             wisdom: 2,
             hitPoints: 12,
             maxHitPoints: 12,
-            experiencePoints: 320,
+            experiencePoints: 300,
             armorClass: 2,
             abilities: [
                 'melee'
@@ -542,7 +542,7 @@ window.CharacterData = {
             wisdom: 4,
             hitPoints: 5,
             maxHitPoints: 5,
-            experiencePoints: 250,
+            experiencePoints: 200,
             armorClass: 1,
             bonusMovement: 1,
             abilities: [
@@ -570,7 +570,7 @@ window.CharacterData = {
             maxMagicPoints: 0,
             armorClass: 1,
             attackCost: 2,
-            experiencePoints: 250,
+            experiencePoints: 200,
             maxActionsPerTurn: 5,
             abilities: ['wolf-bite'],
             spells: []
@@ -592,7 +592,7 @@ window.CharacterData = {
             hitPoints: 11,
             maxHitPoints: 11,
             armorClass: 2,
-            experiencePoints: 460,
+            experiencePoints: 200,
             abilities: ['sword-slash'],
             equipment: {
                 hands: 'short-sword'
@@ -617,7 +617,7 @@ window.CharacterData = {
             magicPoints: 10,
             maxMagicPoints: 10,
             armorClass: 1,
-            experiencePoints: 560,
+            experiencePoints: 240,
             abilities: [],
             spells: ['grave-chill']
         });
@@ -639,7 +639,7 @@ window.CharacterData = {
             maxHitPoints: 9,
             armorClass: 1,
             bonusMovement: 1,
-            experiencePoints: 520,
+            experiencePoints: 350,
             abilities: ['venomous-bite']
         });
 
@@ -682,7 +682,7 @@ window.CharacterData = {
             hitPoints: 7,
             maxHitPoints: 7,
             armorClass: 1,
-            experiencePoints: 420,
+            experiencePoints: 160,
             abilities: ['grope']
         });
 

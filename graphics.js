@@ -1341,6 +1341,38 @@ window.GridGraphics = {
         this.targetHighlightGroup.add(mesh);
     },
 
+    updateActiveCharacterTurnHighlight(activeCharacter) {
+        // Only show for active turn in combat mode
+        const nextState = activeCharacter && this.gameMode === 'combat' && !activeCharacter.isDead
+            ? `${activeCharacter.id}_${activeCharacter.gridX}_${activeCharacter.gridY}`
+            : '';
+
+        if (this.activeCharacterTurnHighlightState === nextState) {
+            return;
+        }
+
+        this.clearHighlightGroup(this.activeCharacterTurnHighlightGroup);
+        this.activeCharacterTurnHighlightState = nextState;
+
+        if (!activeCharacter || this.gameMode !== 'combat' || activeCharacter.isDead) {
+            return;
+        }
+
+        // Create neon green highlight at active character's cell
+        const geometry = new THREE.PlaneGeometry(this.cellSize - 4, this.cellSize - 4);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x00ff00, // Neon green
+            transparent: true,
+            opacity: 0.4,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        const { x, y } = this.getWorldPositionForCell(activeCharacter.gridX, activeCharacter.gridY);
+        mesh.position.set(x, y, -1.9);
+        this.activeCharacterTurnHighlightGroup.add(mesh);
+    },
+
     spawnBattleShoutEffect(pos) {
         const size = 48;
         const canvas = document.createElement('canvas');

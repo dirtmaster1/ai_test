@@ -134,7 +134,13 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                     archetypeId: 'giant-spider',
                     experiencePoints: 2000
                 },
-                GCB: { kind: 'enemy', archetypeId: 'goblin-chieftain' },
+                GCB: {
+                    kind: 'enemy',
+                    archetypeId: 'goblin-chieftain',
+                    lootMode: 'all',
+                    goldAmount: 100,
+                    lootItemIds: ['chieftain-club']
+                },
             }
         },
 
@@ -289,17 +295,17 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
             size: 20,
             layoutRows: [
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ NC __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ SW SP SW __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa m2 wa __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa m2 wa __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ GH __ __ __ GH __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ SW SP SW __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GH __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ SM __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GH __ __ wa'),
-                createTokenRow('wa __ __ __ SM GH __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ GH SW __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ GH SM __ __ __ __ __ __ __ __ __ __ __ SM GH __ wa'),
+                createTokenRow('wa __ __ GH SW __ __ __ __ __ __ __ __ __ __ __ GH SW __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
@@ -312,28 +318,29 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
             propRows: [
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ gv __ __ __ __ __ __ gv __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ gv __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ sa sa __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ __ __ __ __ __ __ __ __ sa sa __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ gv gv gv gv gv gv gv gv gv gv __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ gv gv gv gv gv gv gv gv gv gv __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ gv gv gv gv gv gv gv gv gv gv __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
             ],
             baseLegend: {
                 wa: { type: 'wall' },
-                mt: { type: 'mapTransition', mapId: 'forest-town' },
+                mt: { type: 'mapTransition', mapId: 'forest-town' }, 
+                m2: { type: 'mapTransition', mapId: 'necromancers-crypt' },
                 __: { type: 'floor' }
             },
             propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
@@ -344,13 +351,82 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                     roomTheme: 'graveyard',
                     graveSpawnArchetypeId: 'zombie',
                     graveSpawnChance: 0.25,
-                    graveSpawnRange: 5
+                    graveSpawnRange: 3
                 },
                 tu: { propId: 'stoneUrn', name: 'Weathered Tombstone', searchable: false, roomTheme: 'graveyard' },
                 su: { propId: 'sarcophagus', name: 'Old Grave', searchable: false, roomTheme: 'graveyard' },
                 sg: { propId: 'stoneDebris2', name: 'Collapsed Grave', searchable: false, roomTheme: 'graveyard' },
                 sk: { propId: 'skullPile', name: 'Bone Pile', searchable: false, roomTheme: 'graveyard' },
                 sa: { propId: 'stoneAltar', name: 'Crypt Altar', searchable: false, roomTheme: 'graveyard' }
+            }) || {},
+            encounterLegend: {
+                SW: { kind: 'enemy', archetypeId: 'skeleton-warrior' },
+                SM: { kind: 'enemy', archetypeId: 'skeleton-mage' },
+                GH: { kind: 'enemy', archetypeId: 'ghoul' },
+                SP: { kind: 'enemy', archetypeId: 'spectre' },
+                NC: { kind: 'enemy', archetypeId: 'necromancer', experiencePoints: 1800 }
+            }
+        },
+
+        necromancersCrypt: {
+            id: 'necromancers-crypt',
+            name: 'Necromancers Crypt',
+            size: 20,
+            layoutRows: [
+                createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ wa wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ wa wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ wa wa wa wa __ __ __ __ __ wa wa wa wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa GH __ wa __ __ __ __ __ wa SM __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa __ __ wa __ __ __ __ __ wa __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa __ __ wa __ __ SW SP SW wa __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ NC __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ wa __ __ wa __ __ SW SP SW wa __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa __ __ wa __ __ __ __ __ wa __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa GH __ wa __ __ __ __ __ wa SM __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa wa wa wa __ __ __ __ __ wa wa wa wa __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ wa wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ wa wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa wa wa wa wa wa wa wa wa m2 m2 wa wa wa wa wa wa wa wa wa')
+            ],
+            propRows: [
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ su __ __ __ __ __ __ __ __ su __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ sa sk sa __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ sk sa sk __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ sa sk sa __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ su __ __ __ __ __ __ __ __ su __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ tu __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ tu __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ tr __ tr __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
+            ],
+            baseLegend: {
+                wa: { type: 'wall' },
+                m2: { type: 'mapTransition', mapId: 'graveyard' },
+                __: { type: 'floor' }
+            },
+            propLegend: window.GameData?.createDungeonPropLegendFromTokens?.({
+                su: { propId: 'sarcophagus', name: 'Ancient Sarcophagus', searchable: false, roomTheme: 'crypt' },
+                sa: { propId: 'stoneAltar', name: 'Ritual Altar', searchable: false, roomTheme: 'crypt' },
+                sk: { propId: 'skullPile', name: 'Bone Pile', searchable: false, roomTheme: 'crypt' },
+                tu: { propId: 'stoneUrn', name: 'Funerary Urn', searchable: false, roomTheme: 'crypt' },
+                tr: { propId: 'torch', name: 'Crypt Torch', searchable: false, roomTheme: 'crypt' }
             }) || {},
             encounterLegend: {
                 SW: { kind: 'enemy', archetypeId: 'skeleton-warrior' },
