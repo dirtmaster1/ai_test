@@ -2600,6 +2600,11 @@ class GridScene {
         }
 
         this.resetCharacterTurnResources(activeCharacter);
+        this.getCharacterActionList(activeCharacter).forEach((action) => {
+            if ((action.cooldownRemaining ?? 0) > 0) {
+                action.cooldownRemaining -= 1;
+            }
+        });
         this.turnTransitionFrames = this.turnTransitionDelay;
         this.enemyMoveTimer = 0;
         this.updateCamera();
@@ -3247,12 +3252,27 @@ class GridScene {
         return (character, target, selectedAbility) => Boolean(target) && this.characterAttack(character, target, selectedAbility);
     }
 
+    isAbilityOnCooldown(ability) {
+        return (ability?.cooldownRemaining ?? 0) > 0;
+    }
+
+    startAbilityCooldown(ability) {
+        const cooldown = ability?.cooldownTurns ?? 0;
+        if (cooldown > 0 && ability) {
+            ability.cooldownRemaining = cooldown;
+        }
+    }
+
     useAbilityOnTarget(character, ability, targetCharacter = null) {
         if (!character || character.isDead || !ability) {
             return false;
         }
 
         if (this.gameMode === 'combat' && this.isCombatActionPending(character)) {
+            return false;
+        }
+
+        if (this.isAbilityOnCooldown(ability)) {
             return false;
         }
 
@@ -5220,6 +5240,7 @@ class GridScene {
             caster.accentColor
         );
 
+        this.startAbilityCooldown(ability);
         return true;
     }
 
@@ -5434,7 +5455,7 @@ class GridScene {
         );
 
         this.finalizeActionUsage(caster, context);
-
+        this.startAbilityCooldown(ability);
         return true;
     }
 
@@ -5502,6 +5523,7 @@ class GridScene {
         );
 
         this.finalizeActionUsage(caster, context);
+        this.startAbilityCooldown(ability);
         return true;
     }
 
@@ -5556,7 +5578,11 @@ class GridScene {
             return false;
         }
 
-        return this.castDamageSpell(caster, target, ability);
+        const didCast = this.castDamageSpell(caster, target, ability);
+        if (didCast) {
+            this.startAbilityCooldown(ability);
+        }
+        return didCast;
     }
 
     castSleep(caster, targetCell, sleepAbility = null) {
@@ -5634,6 +5660,7 @@ class GridScene {
             this.beginCombatWithEnemyCharacter(affectedEnemies[0]);
         }
 
+        this.startAbilityCooldown(ability);
         return true;
     }
 
@@ -5675,7 +5702,7 @@ class GridScene {
 
         this.spendActionAndMagic(caster, context, { actionCost: caster.attackCost });
         this.finalizeActionUsage(caster, context);
-
+        this.startAbilityCooldown(ability);
         return true;
     }
 
@@ -5723,7 +5750,7 @@ class GridScene {
             magicCost: mpCost
         });
         this.finalizeActionUsage(caster, context);
-
+        this.startAbilityCooldown(ability);
         return true;
     }
 

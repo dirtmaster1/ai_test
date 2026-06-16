@@ -388,7 +388,7 @@ window.CharacterData = {
             maxHitPoints: 8,
             magicPoints: 4,
             maxMagicPoints: 4,
-            bonusMovement: 2,
+            bonusMovement: 1,
             equipment: {
                 body: 'leather-armor',
                 hands: 'short-bow'

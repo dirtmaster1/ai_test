@@ -1186,6 +1186,22 @@ window.GridUI = {
             btn.appendChild(costBadge);
         }
 
+        const cooldownOverlay = document.createElement('span');
+        cooldownOverlay.dataset.cooldownOverlay = '1';
+        cooldownOverlay.style.position = 'absolute';
+        cooldownOverlay.style.inset = '0';
+        cooldownOverlay.style.display = 'none';
+        cooldownOverlay.style.alignItems = 'center';
+        cooldownOverlay.style.justifyContent = 'center';
+        cooldownOverlay.style.fontSize = '13px';
+        cooldownOverlay.style.fontWeight = '700';
+        cooldownOverlay.style.color = '#e8d97a';
+        cooldownOverlay.style.textShadow = '0 0 6px rgba(0,0,0,0.9)';
+        cooldownOverlay.style.borderRadius = '7px';
+        cooldownOverlay.style.background = 'rgba(0,0,0,0.62)';
+        cooldownOverlay.style.pointerEvents = 'none';
+        btn.appendChild(cooldownOverlay);
+
         btn.addEventListener('click', () => {
             const activeCharacter = this.getActionBarCharacter();
             if (!activeCharacter || activeCharacter.id !== character.id || activeCharacter.isDead || activeCharacter.team !== 'player') {
@@ -1246,10 +1262,27 @@ window.GridUI = {
             const isSelected = character.selectedAbilityId === abilityId;
             const canAfford = ability && (ability.mpCost === 0 || character.magicPoints >= ability.mpCost);
             const canUseAttack = ability && (ability.type !== 'attack' || this.canCharacterUseAttackAbility(character, ability));
-            const canUseAbility = Boolean(ability && canAfford && canUseAttack);
+            const onCooldown = (ability?.cooldownRemaining ?? 0) > 0;
+            const canUseAbility = Boolean(ability && canAfford && canUseAttack && !onCooldown);
+
+            const cooldownOverlay = btn.querySelector('[data-cooldown-overlay]');
+            if (cooldownOverlay) {
+                if (onCooldown) {
+                    cooldownOverlay.style.display = 'flex';
+                    cooldownOverlay.textContent = String(ability.cooldownRemaining);
+                } else {
+                    cooldownOverlay.style.display = 'none';
+                }
+            }
 
             btn.disabled = !canUseAbility;
-            if (isSelected && canUseAbility) {
+            if (onCooldown) {
+                btn.style.background = 'rgba(0,0,0,0.30)';
+                btn.style.borderColor = 'rgba(232,217,122,0.25)';
+                btn.style.color = '#5a5248';
+                btn.style.opacity = '0.65';
+                btn.style.cursor = 'default';
+            } else if (isSelected && canUseAbility) {
                 btn.style.background = this.hexToRgba(character.accentColor, 0.35);
                 btn.style.borderColor = character.accentColor;
                 btn.style.color = '#f0e8d2';

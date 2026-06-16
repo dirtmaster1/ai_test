@@ -155,21 +155,21 @@ window.GameData = {
         'mace-strike': { id: 'mace-strike', name: 'Mace Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'dagger-strike': { id: 'dagger-strike', name: 'Dagger Strike', type: 'attack', mpCost: 0, weaponDriven: true },
         'bow-shot': { id: 'bow-shot', name: 'Bow Shot', type: 'attack', mpCost: 0, weaponDriven: true, projectileAnimation: 'arrow', resolveOnImpact: true },
-        'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2 },
-        charge: { id: 'charge', name: 'Charge', type: 'move', range: 5, mpCost: 0, actionCost: 3, targetMode: 'cell' }
+        'battle-shout': { id: 'battle-shout', name: 'Battle Shout', type: 'buff', range: 3, mpCost: 0, damageBonus: 1, duration: 2, cooldownTurns: 2 },
+        charge: { id: 'charge', name: 'Charge', type: 'move', range: 5, mpCost: 0, actionCost: 3, targetMode: 'cell', cooldownTurns: 2 }
     },
 
     SPELL_DEFS: {
-        'call-of-the-wolf': { id: 'call-of-the-wolf', name: 'Call of the Wolf', type: 'spell', range: 0, mpCost: 4, actionCost: 3 },
-        'raise-undead': { id: 'raise-undead', name: 'Raise Undead', type: 'spell', range: 0, mpCost: 6, actionCost: 3, summonCount: 2 },
-        'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4, projectileAnimation: 'magic-missile', resolveOnImpact: true },
+        'call-of-the-wolf': { id: 'call-of-the-wolf', name: 'Call of the Wolf', type: 'spell', range: 0, mpCost: 4, actionCost: 3, cooldownTurns: 2 },
+        'raise-undead': { id: 'raise-undead', name: 'Raise Undead', type: 'spell', range: 0, mpCost: 6, actionCost: 3, summonCount: 2, cooldownTurns: 2 },
+        'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4, projectileAnimation: 'magic-missile', resolveOnImpact: true, cooldownTurns: 1 },
         'grave-chill': { id: 'grave-chill', name: 'Grave Chill', type: 'spell', range: 4, mpCost: 4, damage: 5, projectileAnimation: 'magic-missile', resolveOnImpact: true },
         'poison-dart': { id: 'poison-dart', name: 'Poison Dart', type: 'spell', range: 5, mpCost: 5 },
-        sleep: { id: 'sleep', name: 'Sleep', type: 'spell', range: 4, mpCost: 7, targetMode: 'cell', duration: 2, radius: 1 },
+        sleep: { id: 'sleep', name: 'Sleep', type: 'spell', range: 4, mpCost: 7, targetMode: 'cell', duration: 2, radius: 1, cooldownTurns: 2 },
         'lesser-heal': { id: 'lesser-heal', name: 'Lesser Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },
         'mend-flesh': { id: 'mend-flesh', name: 'Mend Flesh', type: 'heal', range: 3, mpCost: 3, healAmount: 4 },
         'inflict-pain': { id: 'inflict-pain', name: 'Inflict Pain', type: 'buff', range: 2, mpCost: 4, damageBonus: 1, duration: 2 },
-        'blessing': { id: 'blessing', name: 'Blessing', type: 'buff', range: 3, mpCost: 5, acBonus: 1, duration: 3 },
+        'blessing': { id: 'blessing', name: 'Blessing', type: 'buff', range: 3, mpCost: 5, acBonus: 1, duration: 3, cooldownTurns: 3 },
         'cure-poison': { id: 'cure-poison', name: 'Cure Poison', type: 'heal', range: 3, mpCost: 3, curePoison: true },
     },
 
