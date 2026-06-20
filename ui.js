@@ -146,6 +146,11 @@ window.GridUI = {
             return `Effect: Sleep ${radius}-cell burst`;
         }
 
+        if (ability.id === 'fireball') {
+            const radius = ability.radius ?? 2;
+            return `Magic: ${ability.damage ?? 12} DMG, ${radius}-cell burst`;
+        }
+
         if (ability.id === 'call-of-the-wolf') {
             return 'Effect: Summon wolf ally';
         }
@@ -214,6 +219,10 @@ window.GridUI = {
 
         if (ability.id === 'sleep') {
             return 'Click a cell to put nearby enemies to sleep for 2 turns, ending early if they take damage.';
+        }
+
+        if (ability.id === 'fireball') {
+            return 'Click a cell to blast every character in the radius, including allies, for 12 damage.';
         }
 
         if (ability.id === 'call-of-the-wolf') {
@@ -1224,6 +1233,18 @@ window.GridUI = {
             return;
         }
 
+        if (character && !character.isDead && character.team !== 'player') {
+            actionBar.root.style.display = 'block';
+            actionBar.title.textContent = `${character.name}`;
+            actionBar.title.style.color = character.accentColor || '#e3d6bb';
+            actionBar.subtitle.textContent = 'Enemy turn...';
+            actionBar.stateKey = `enemy|${character.id}`;
+            actionBar.abilityButtons.innerHTML = '';
+            actionBar.abilityButtonMap.clear();
+            actionBar.endTurnButton.style.display = 'none';
+            return;
+        }
+
         if (!character || character.team !== 'player' || character.isDead) {
             actionBar.root.style.display = 'block';
             actionBar.title.textContent = 'Actions';
@@ -1509,7 +1530,16 @@ window.GridUI = {
             return;
         }
 
-        const { x, y } = this.getWorldPositionForCell(hoveredCharacter.gridX, hoveredCharacter.gridY);
+        this.positionTargetPreviewPanelAtCell(hoveredCharacter.gridX, hoveredCharacter.gridY);
+    },
+
+    positionTargetPreviewPanelAtCell(gridX, gridY) {
+        const preview = this.targetPreviewPanel;
+        if (!preview?.panel || !this.renderer?.domElement || !this.camera) {
+            return;
+        }
+
+        const { x, y } = this.getWorldPositionForCell(gridX, gridY);
         const worldPoint = new THREE.Vector3(x, y, 0);
         worldPoint.project(this.camera);
 
@@ -1553,9 +1583,50 @@ window.GridUI = {
 
         const selectedAbility = activeCharacter ? this.getAbilityForCharacter(activeCharacter) : null;
         const hoveredCharacter = this.hoveredCharacter;
+        const hoveredCell = this.hoveredCell;
+        const cellTargetInfo = activeCharacter && hoveredCell && selectedAbility && this.isCellTargetedAbility?.(selectedAbility)
+            ? this.getExpectedCellActionEffect(activeCharacter, hoveredCell, selectedAbility)
+            : null;
         const targetInfo = activeCharacter && hoveredCharacter && selectedAbility
             ? this.getExpectedActionEffect(activeCharacter, hoveredCharacter, selectedAbility)
             : null;
+
+        if (
+            activeCharacter &&
+            !activeCharacter.isDead &&
+            activeCharacter.team === 'player' &&
+            selectedAbility &&
+            cellTargetInfo
+        ) {
+            preview.panel.style.display = 'block';
+            preview.title.textContent = `${selectedAbility.name} • ${hoveredCell.gridX}, ${hoveredCell.gridY}`;
+            preview.title.style.color = selectedAbility.accentColor || activeCharacter.accentColor;
+            preview.subtitle.textContent = cellTargetInfo.isValid
+                ? `In Range • ${cellTargetInfo.distance} tile${cellTargetInfo.distance === 1 ? '' : 's'}`
+                : !cellTargetInfo.hasLineOfSight
+                    ? 'Blocked By Wall'
+                    : !cellTargetInfo.withinRange
+                    ? `Out of Range • ${cellTargetInfo.distance} tile${cellTargetInfo.distance === 1 ? '' : 's'}`
+                    : !cellTargetInfo.canAfford
+                        ? 'Not Enough MP'
+                        : !cellTargetInfo.canAct
+                            ? 'No Actions Remaining'
+                            : 'No Enemies In Burst';
+            preview.subtitle.style.color = cellTargetInfo.isValid ? '#8ee7a8' : '#ff9f9f';
+
+            const affectedText = `${cellTargetInfo.affectedTargets.length} affected`;
+            const immuneText = `${cellTargetInfo.immuneTargets.length} immune`;
+            preview.effect.textContent = selectedAbility.id === 'sleep'
+                ? `Sleep burst: ${affectedText}, ${immuneText}`
+                : cellTargetInfo.description;
+            preview.effect.style.color = cellTargetInfo.affectedTargets.length > 0 ? '#f0e8d2' : '#ffcc8a';
+
+            const affectedNames = cellTargetInfo.affectedTargets.map((target) => target.name).join(', ') || 'None';
+            const immuneNames = cellTargetInfo.immuneTargets.map((target) => target.name).join(', ') || 'None';
+            preview.detail.textContent = `Radius ${cellTargetInfo.radius} • Targets: ${affectedNames} • Immune: ${immuneNames}`;
+            this.positionTargetPreviewPanelAtCell(hoveredCell.gridX, hoveredCell.gridY);
+            return;
+        }
 
         if (
             !activeCharacter ||
@@ -1789,6 +1860,16 @@ window.GridUI = {
         modal.content.appendChild(list);
 
         items.forEach((item) => {
+            const isSpellScroll = item.type === 'spell-scroll';
+            const scrollSpell = isSpellScroll ? window.GameData?.getSpellTemplateById(item.spellId) || null : null;
+            const activeCharacter = this.activeInventoryCharacter;
+            const canLearnScroll = isSpellScroll && this.canCharacterLearnSpellScroll?.(activeCharacter, item);
+            const alreadyKnowsScroll = Boolean(
+                isSpellScroll &&
+                scrollSpell &&
+                activeCharacter?.spells?.some((spell) => spell.id === scrollSpell.id)
+            );
+
             const row = document.createElement('div');
             row.style.display = 'flex';
             row.style.alignItems = 'center';
@@ -1797,7 +1878,8 @@ window.GridUI = {
             row.style.padding = '10px 12px';
             row.style.border = '1px solid rgba(255,255,255,0.08)';
             row.style.borderRadius = '10px';
-            row.style.background = 'rgba(255,255,255,0.03)';
+            row.style.background = isSpellScroll ? 'rgba(255, 128, 64, 0.06)' : 'rgba(255,255,255,0.03)';
+            row.style.opacity = isSpellScroll && !canLearnScroll ? '0.58' : '1';
 
             const text = document.createElement('div');
             text.style.display = 'flex';
@@ -2666,7 +2748,9 @@ window.GridUI = {
         itemHeader.textContent = 'Shared Items';
         modal.content.appendChild(itemHeader);
 
-        const items = Array.isArray(inventory.items) ? inventory.items : [];
+        const items = typeof this.getSharedLootItems === 'function'
+            ? this.getSharedLootItems()
+            : (Array.isArray(inventory.items) ? inventory.items : []);
         if (items.length === 0) {
             const emptyState = document.createElement('div');
             emptyState.style.padding = '12px';
@@ -2674,7 +2758,7 @@ window.GridUI = {
             emptyState.style.borderRadius = '10px';
             emptyState.style.fontSize = '12px';
             emptyState.style.color = '#8f856f';
-            emptyState.textContent = 'No equipable items in shared loot.';
+            emptyState.textContent = 'No shared items available.';
             modal.content.appendChild(emptyState);
             return;
         }
@@ -2685,6 +2769,16 @@ window.GridUI = {
         modal.content.appendChild(list);
 
         items.forEach((item) => {
+            const isSpellScroll = item.type === 'spell-scroll';
+            const scrollSpell = isSpellScroll ? window.GameData?.getSpellTemplateById(item.spellId) || null : null;
+            const activeCharacter = this.activeInventoryCharacter;
+            const canLearnScroll = isSpellScroll && this.canCharacterLearnSpellScroll?.(activeCharacter, item);
+            const alreadyKnowsScroll = Boolean(
+                isSpellScroll &&
+                scrollSpell &&
+                activeCharacter?.spells?.some((spell) => spell.id === scrollSpell.id)
+            );
+
             const row = document.createElement('div');
             row.style.display = 'flex';
             row.style.alignItems = 'center';
@@ -2693,7 +2787,8 @@ window.GridUI = {
             row.style.padding = '10px 12px';
             row.style.border = '1px solid rgba(255,255,255,0.08)';
             row.style.borderRadius = '10px';
-            row.style.background = 'rgba(255,255,255,0.03)';
+            row.style.background = isSpellScroll ? 'rgba(255, 128, 64, 0.06)' : 'rgba(255,255,255,0.03)';
+            row.style.opacity = isSpellScroll && !canLearnScroll ? '0.58' : '1';
 
             const text = document.createElement('div');
             text.style.display = 'flex';
@@ -2710,7 +2805,9 @@ window.GridUI = {
             slot.style.marginTop = '3px';
             slot.style.fontSize = '11px';
             slot.style.color = '#cfc4ae';
-            slot.textContent = `Slot: ${this.getEquipmentItemSlotLabel(item.slot)}`;
+            slot.textContent = isSpellScroll
+                ? `Teaches: ${scrollSpell?.name || 'Unknown Spell'}`
+                : `Slot: ${this.getEquipmentItemSlotLabel(item.slot)}`;
 
             const stats = document.createElement('div');
             stats.style.marginTop = '3px';
@@ -2719,33 +2816,61 @@ window.GridUI = {
             const itemTypeLabel = typeof this.getEquipmentItemTypeLabel === 'function'
                 ? this.getEquipmentItemTypeLabel(item.type)
                 : (item.type || 'Item');
-            const modifierSummary = this.getEquipmentItemModifierSummary(item) || 'No stat changes';
+            const modifierSummary = isSpellScroll && scrollSpell
+                ? `Range ${scrollSpell.range ?? 0} • Radius ${scrollSpell.radius ?? 0} • Cost ${scrollSpell.mpCost ?? 0} MP • Cooldown ${scrollSpell.cooldownTurns ?? 0}`
+                : this.getEquipmentItemModifierSummary(item) || 'No stat changes';
             stats.textContent = `${itemTypeLabel} • ${modifierSummary}`;
+
+            let learnState = null;
+            if (isSpellScroll) {
+                learnState = document.createElement('div');
+                learnState.style.marginTop = '3px';
+                learnState.style.fontSize = '11px';
+                learnState.style.color = canLearnScroll ? '#bfe6a8' : '#b8ad96';
+                learnState.textContent = alreadyKnowsScroll
+                    ? `${activeCharacter?.name || 'This character'} already knows this spell.`
+                    : canLearnScroll
+                        ? `${activeCharacter?.name || 'This character'} can learn this spell.`
+                        : 'Only the mage can learn this scroll.';
+            }
 
             text.appendChild(name);
             text.appendChild(slot);
             text.appendChild(stats);
+            if (learnState) {
+                text.appendChild(learnState);
+            }
             row.appendChild(text);
 
-            const equipButton = document.createElement('button');
-            equipButton.type = 'button';
-            equipButton.textContent = 'Equip';
-            equipButton.style.padding = '6px 9px';
-            equipButton.style.border = '1px solid rgba(255,255,255,0.2)';
-            equipButton.style.borderRadius = '6px';
-            equipButton.style.background = 'rgba(73, 116, 162, 0.35)';
-            equipButton.style.color = '#d7e7fb';
-            equipButton.style.fontSize = '11px';
-            equipButton.style.cursor = 'pointer';
-            equipButton.style.flexShrink = '0';
-            equipButton.addEventListener('click', () => {
+            const actionButton = document.createElement('button');
+            actionButton.type = 'button';
+            actionButton.textContent = isSpellScroll ? 'Learn' : 'Equip';
+            actionButton.style.padding = '6px 9px';
+            actionButton.style.border = '1px solid rgba(255,255,255,0.2)';
+            actionButton.style.borderRadius = '6px';
+            actionButton.style.background = isSpellScroll ? 'rgba(162, 88, 42, 0.35)' : 'rgba(73, 116, 162, 0.35)';
+            actionButton.style.color = isSpellScroll ? '#ffd7b0' : '#d7e7fb';
+            actionButton.style.fontSize = '11px';
+            actionButton.style.cursor = isSpellScroll && !canLearnScroll ? 'not-allowed' : 'pointer';
+            actionButton.style.flexShrink = '0';
+            actionButton.disabled = isSpellScroll && !canLearnScroll;
+            if (actionButton.disabled) {
+                actionButton.style.opacity = '0.5';
+            }
+            actionButton.addEventListener('click', () => {
                 if (!this.activeInventoryCharacter) {
                     return;
                 }
+
+                if (isSpellScroll) {
+                    this.learnSpellScrollForCharacter(this.activeInventoryCharacter, item.instanceId);
+                    return;
+                }
+
                 this.equipSharedLootItemToCharacter(this.activeInventoryCharacter, item.instanceId);
             });
 
-            row.appendChild(equipButton);
+            row.appendChild(actionButton);
             list.appendChild(row);
         });
     },

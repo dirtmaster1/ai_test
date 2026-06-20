@@ -49,6 +49,7 @@ class GridScene {
         this.activeCharacterTurnHighlightGroup = new THREE.Group();
         this.activeCharacterTurnHighlightState = '';
         this.hoveredCharacter = null;
+        this.hoveredCell = null;
         this.dungeonPropGroup = new THREE.Group();
         this.dungeonPropsByCell = new Map();
         this.lootBagGroup = new THREE.Group();
@@ -2355,7 +2356,11 @@ class GridScene {
     // --- Turn System ---
 
     getLivingCharacters(group) {
-        return group.filter((character) => !character.isDead);
+        if (!Array.isArray(group) || group.length === 0) {
+            return [];
+        }
+
+        return group.filter((character) => character && !character.isDead);
     }
 
     getLivingGoblinAllies() {
@@ -2457,12 +2462,18 @@ class GridScene {
             return;
         }
 
-        if (this.pendingCombatAction.characterId !== character.id) {
+        const characterId = this.getCharacterTurnIdentity(character);
+        if (!characterId || this.pendingCombatAction.characterId !== characterId) {
             return;
         }
 
         this.pendingCombatAction = null;
-        if (this.gameMode !== 'combat' || this.getActiveTurnCharacter() !== character) {
+        if (this.gameMode !== 'combat') {
+            return;
+        }
+
+        const activeCharacterId = this.getCharacterTurnIdentity(this.getActiveTurnCharacter());
+        if (activeCharacterId !== characterId) {
             return;
         }
 
@@ -2544,6 +2555,116 @@ class GridScene {
         }
         const activeCharacter = this.getActiveTurnCharacter();
         return Boolean(activeCharacter && activeCharacter.team === 'player');
+    }
+
+    getCharacterTurnIdentity(character) {
+        if (!character) {
+            return null;
+        }
+
+        return String(character.id || '').trim() || null;
+    }
+
+    stabilizeCombatTurnState() {
+        if (this.gameMode !== 'combat') {
+            return;
+        }
+
+        const combatants = [
+            ...this.getCombatPartyMembers(),
+            ...this.getAggroedEnemyMembers()
+        ].filter((character) => Boolean(character) && !character.isDead);
+
+        if (combatants.length === 0) {
+            this.pendingCombatAction = null;
+            return;
+        }
+
+        const combatantIdSet = new Set(
+            combatants
+                .map((character) => this.getCharacterTurnIdentity(character))
+                .filter(Boolean)
+        );
+
+        if (this.pendingCombatAction) {
+            const pendingCharacterId = String(this.pendingCombatAction.characterId || '').trim() || null;
+            const activeCharacter = this.getActiveTurnCharacter();
+            const activeCharacterId = this.getCharacterTurnIdentity(activeCharacter);
+            if (!pendingCharacterId || !combatantIdSet.has(pendingCharacterId) || activeCharacterId !== pendingCharacterId) {
+                this.pendingCombatAction = null;
+                this.enemyMoveTimer = 0;
+            }
+        }
+
+        const hasTurnOrder = Array.isArray(this.turnOrder) && this.turnOrder.length > 0;
+        const hasValidActiveIndex = hasTurnOrder && this.activeTurnIndex >= 0 && this.activeTurnIndex < this.turnOrder.length;
+        const aliveTurnOrder = hasTurnOrder
+            ? this.turnOrder.filter((character) => {
+                if (!character || character.isDead) {
+                    return false;
+                }
+                const characterId = this.getCharacterTurnIdentity(character);
+                return Boolean(characterId) && combatantIdSet.has(characterId);
+            })
+            : [];
+
+        if (!hasValidActiveIndex || aliveTurnOrder.length === 0) {
+            const beforeRepairActiveId = this.getCharacterTurnIdentity(this.getActiveTurnCharacter());
+            this.refreshCombatTurnOrder(false);
+            const afterRepairActiveId = this.getCharacterTurnIdentity(this.getActiveTurnCharacter());
+            if (afterRepairActiveId && afterRepairActiveId !== beforeRepairActiveId) {
+                this.beginCurrentTurn();
+            }
+            return;
+        }
+
+        const activeCharacter = this.getActiveTurnCharacter();
+        const activeCharacterId = this.getCharacterTurnIdentity(activeCharacter);
+        if (!activeCharacterId || !combatantIdSet.has(activeCharacterId)) {
+            const beforeRepairActiveId = activeCharacterId;
+            this.refreshCombatTurnOrder(false);
+            const afterRepairActiveId = this.getCharacterTurnIdentity(this.getActiveTurnCharacter());
+            if (afterRepairActiveId && afterRepairActiveId !== beforeRepairActiveId) {
+                this.beginCurrentTurn();
+            }
+        }
+    }
+
+    recoverIfEnemyTurnStalled(activeCharacter) {
+        if (this.gameMode !== 'combat' || !activeCharacter || activeCharacter.team === 'player' || activeCharacter.isDead) {
+            this.enemyTurnWatchState = null;
+            return;
+        }
+
+        const watchKey = `${activeCharacter.id}|${this.activeTurnIndex}`;
+        if (!this.enemyTurnWatchState || this.enemyTurnWatchState.key !== watchKey) {
+            this.enemyTurnWatchState = { key: watchKey, frames: 0 };
+            return;
+        }
+
+        this.enemyTurnWatchState.frames += 1;
+        if (this.enemyTurnWatchState.frames < 360) {
+            return;
+        }
+
+        const hasFlyingProjectiles = Array.isArray(this.activeProjectiles) && this.activeProjectiles.length > 0;
+        if (this.pendingCombatAction && !hasFlyingProjectiles) {
+            this.pendingCombatAction = null;
+        }
+
+        this.appendCombatLogEntry(
+            `${activeCharacter.name} hesitates; recovering turn flow.`,
+            '#c6b28f'
+        );
+
+        if (typeof this.forceEndCurrentAITurn === 'function') {
+            this.forceEndCurrentAITurn(activeCharacter);
+        } else {
+            this.endCurrentTurn();
+        }
+
+        this.enemyTurnWatchState = null;
+        this.enemyMoveTimer = 0;
     }
 
     beginCurrentTurn() {
@@ -2866,8 +2987,11 @@ class GridScene {
         const updatePointerTarget = (event) => {
             if (this.isGameOver || this.isDraggingCamera) {
                 this.hoveredCharacter = null;
+                this.hoveredCell = null;
                 return;
             }
+
+            this.hoveredCell = this.getGridCellFromPointerEvent(event);
 
             const rect = this.renderer.domElement.getBoundingClientRect();
             this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2939,6 +3063,7 @@ class GridScene {
 
             panDragState.hasDragged = true;
             this.hoveredCharacter = null;
+            this.hoveredCell = null;
 
             const rect = this.renderer.domElement.getBoundingClientRect();
             const zoom = this.camera.zoom || 1;
@@ -2961,6 +3086,7 @@ class GridScene {
         this.renderer.domElement.addEventListener('mousemove', updatePointerTarget);
         this.renderer.domElement.addEventListener('mouseleave', () => {
             this.hoveredCharacter = null;
+            this.hoveredCell = null;
             this.isDraggingCamera = false;
             panDragState.active = false;
             panDragState.hasDragged = false;
@@ -3224,6 +3350,7 @@ class GridScene {
             'call-of-the-wolf': (character, _target, selectedAbility) => this.castCallOfTheWolf(character, selectedAbility),
             'raise-undead': (character, _target, selectedAbility) => this.castRaiseUndead(character, selectedAbility),
             charge: (character, targetCell, selectedAbility) => Boolean(targetCell) && this.castCharge(character, targetCell, selectedAbility),
+            fireball: (character, targetCell, selectedAbility) => Boolean(targetCell) && this.castAreaDamageSpell(character, targetCell, selectedAbility),
             'inflict-pain': (character) => this.castInflictPain(character),
             'magic-missile': (character, target) => Boolean(target) && this.castMagicMissile(character, target),
             'poison-dart': (character, target, selectedAbility) => Boolean(target) && this.castPoisonDart(character, target, selectedAbility),
@@ -3298,9 +3425,7 @@ class GridScene {
             return false;
         }
 
-        const ability = spellAbility
-            ? { ...spellAbility }
-            : window.CharacterData?.getCharacterActionById(caster, caster?.selectedAbilityId) || null;
+        const ability = spellAbility || window.CharacterData?.getCharacterActionById(caster, caster?.selectedAbilityId) || null;
         if (!ability || ability.type !== 'spell' || ability.damage === undefined) {
             return false;
         }
@@ -3372,6 +3497,84 @@ class GridScene {
             this.finalizeActionUsage(caster, context);
         }
 
+        return true;
+    }
+
+    castAreaDamageSpell(caster, targetCell, spellAbility = null) {
+        if (!targetCell) {
+            return false;
+        }
+
+        const context = this.getActionContext(caster, {
+            requiredActionCost: Math.max(0, Math.floor(caster?.attackCost ?? 0))
+        });
+        if (!context) {
+            return false;
+        }
+
+        const ability = spellAbility
+            ? { ...spellAbility }
+            : window.CharacterData?.getCharacterActionById(caster, caster?.selectedAbilityId) || null;
+        if (!ability || ability.type !== 'spell' || ability.damage === undefined || !this.isCellTargetedAbility(ability)) {
+            return false;
+        }
+
+        const mpCost = Math.max(0, Math.floor(ability.mpCost ?? 0));
+        if ((caster.magicPoints ?? 0) < mpCost) {
+            return false;
+        }
+
+        if (!this.isAbilityTargetWithinRangeAndLos(caster, ability, targetCell.gridX, targetCell.gridY)) {
+            return false;
+        }
+
+        const radius = Math.max(0, Math.floor(ability.radius ?? 0));
+        const targets = this.characters.filter((candidate) =>
+            !candidate.isDead &&
+            !candidate.removedFromScene &&
+            (ability.affectsAllCharacters || candidate.team !== caster.team) &&
+            this.getAttackDistanceBetweenPositions(targetCell.gridX, targetCell.gridY, candidate.gridX, candidate.gridY) <= radius
+        );
+
+        if (targets.length === 0) {
+            return false;
+        }
+
+        this.faceCharacterToward(caster, { gridX: targetCell.gridX, gridY: targetCell.gridY });
+        const damage = Math.max(0, Math.floor(ability.damage ?? 0));
+        this.spendActionAndMagic(caster, context, {
+            actionCost: caster.attackCost,
+            magicCost: mpCost
+        });
+
+        targets.forEach((target) => {
+            if (damage > 0) {
+                this.removeSleepEffect(target);
+            }
+            target.hitPoints = Math.max(0, target.hitPoints - damage);
+            this.playHitAnimation(target);
+            if (target.hitPoints <= 0) {
+                target.hitPoints = 0;
+                this.markCharacterDead(target, caster);
+            }
+        });
+
+        const targetNames = targets.map((target) => target.name).join(', ');
+        this.appendCombatLogEntry(
+            `${caster.name} casts ${ability.name}, dealing ${damage} damage to ${targets.length} ${targets.length === 1 ? 'target' : 'targets'}: ${targetNames}.`,
+            caster.accentColor
+        );
+
+        if (!context.isExploration) {
+            this.finalizeActionUsage(caster, context);
+        } else {
+            const firstEnemyTarget = targets.find((target) => target.team !== caster.team) || null;
+            if (firstEnemyTarget) {
+                this.beginCombatWithEnemyCharacter(firstEnemyTarget);
+            }
+        }
+
+        this.startAbilityCooldown(ability);
         return true;
     }
 
@@ -4257,6 +4460,10 @@ class GridScene {
             return null;
         }
 
+        if (template.type === 'spell-scroll') {
+            return this.createInventoryItemInstance(template);
+        }
+
         return {
             instanceId: `eq-${this.nextLootItemId++}`,
             id: template.id,
@@ -4267,6 +4474,23 @@ class GridScene {
             appliesToAbilityId: template.appliesToAbilityId || null,
             modifiers: { ...(template.modifiers || {}) },
             accentColor: template.accentColor || '#d6cbb8'
+        };
+    }
+
+    createInventoryItemInstance(template) {
+        if (!template) {
+            return null;
+        }
+
+        return {
+            instanceId: `item-${this.nextLootItemId++}`,
+            id: template.id,
+            name: template.name,
+            type: template.type || 'item',
+            spellId: template.spellId || null,
+            allowedClasses: Array.isArray(template.allowedClasses) ? [...template.allowedClasses] : [],
+            accentColor: template.accentColor || '#d6cbb8',
+            modifiers: { ...(template.modifiers || {}) }
         };
     }
 
@@ -4325,7 +4549,26 @@ class GridScene {
             });
         }
 
-        const ensured = { ...item };
+        const template = item.id ? window.GameData?.getItemTemplateById(item.id) || null : null;
+        const ensured = template?.type === 'spell-scroll'
+            ? { ...template, ...item }
+            : { ...item };
+        if (ensured.type === 'spell-scroll') {
+            if (!ensured.instanceId) {
+                ensured.instanceId = `item-${this.nextLootItemId++}`;
+            }
+            if (!ensured.name) {
+                ensured.name = 'Unknown Scroll';
+            }
+            if (!ensured.spellId && template?.spellId) {
+                ensured.spellId = template.spellId;
+            }
+            if (!Array.isArray(ensured.allowedClasses)) {
+                ensured.allowedClasses = Array.isArray(template?.allowedClasses) ? [...template.allowedClasses] : [];
+            }
+            return ensured;
+        }
+
         if (!ensured.instanceId) {
             ensured.instanceId = `eq-${this.nextLootItemId++}`;
         }
@@ -4357,6 +4600,10 @@ class GridScene {
             return 'Unknown Item';
         }
 
+        if (item.type === 'spell-scroll') {
+            return item.name || 'Spell Scroll';
+        }
+
         if (item.handType) {
             return `${item.name} ${item.handType}`;
         }
@@ -4366,7 +4613,16 @@ class GridScene {
 
     getEquipmentItemModifierSummary(item) {
         if (!item?.modifiers) {
+            if (item?.type === 'spell-scroll') {
+                const spell = window.GameData?.getSpellTemplateById(item.spellId) || null;
+                return spell ? `Teaches ${spell.name}` : 'Teaches a spell';
+            }
             return '';
+        }
+
+        if (item.type === 'spell-scroll') {
+            const spell = window.GameData?.getSpellTemplateById(item.spellId) || null;
+            return spell ? `Teaches ${spell.name}` : 'Teaches a spell';
         }
 
         const parts = [];
@@ -4407,12 +4663,19 @@ class GridScene {
     }
 
     getEquipmentItemTypeLabel(type) {
+        if (type === 'spell-scroll') {
+            return 'Spell Scroll';
+        }
         return type === 'weapon' ? 'Weapon' : 'Armor';
     }
 
     getEquipmentItemType(item, slotKey = null) {
         if (!item) {
             return 'armor';
+        }
+
+        if (item.type === 'spell-scroll') {
+            return 'spell-scroll';
         }
 
         if (item.type === 'weapon' || item.type === 'armor') {
@@ -5091,7 +5354,9 @@ class GridScene {
             }
 
             const activeCharacter = this.getActiveTurnCharacter();
-            if (activeCharacter !== character) {
+            const activeCharacterId = this.getCharacterTurnIdentity(activeCharacter);
+            const characterId = this.getCharacterTurnIdentity(character);
+            if (!characterId || activeCharacterId !== characterId) {
                 return null;
             }
 
@@ -5557,6 +5822,78 @@ class GridScene {
         return true;
     }
 
+    getCharacterTraits(character) {
+        const traits = new Set();
+        if (!character) {
+            return traits;
+        }
+
+        const race = String(character.race || '').toLowerCase();
+        const characterId = String(character.id || '').toLowerCase();
+        if (race) {
+            traits.add(race);
+        }
+        if (race === 'undead' || character.isSummonedUndead || characterId.includes('skeleton') || characterId.includes('zombie') || characterId.includes('ghoul') || characterId.includes('specter') || characterId.includes('spectre')) {
+            traits.add('undead');
+        }
+        if (characterId.includes('mage') || characterId.includes('necromancer') || (character.maxMagicPoints ?? 0) > 0) {
+            traits.add('caster');
+        }
+        if (characterId.includes('archer') || this.getAbilityForCharacter?.(character, 'bow-shot')) {
+            traits.add('ranged');
+        }
+        if (characterId.includes('brute') || characterId.includes('warrior') || characterId.includes('zombie')) {
+            traits.add('frontliner');
+        }
+        if (characterId.includes('spider')) {
+            traits.add('spider');
+        }
+        if (race === 'wolf' || character.isSummonedWolf) {
+            traits.add('beast');
+        }
+
+        return traits;
+    }
+
+    hasCharacterTrait(character, trait) {
+        return this.getCharacterTraits(character).has(String(trait || '').toLowerCase());
+    }
+
+    isCharacterImmuneToEffect(character, effectType) {
+        const normalizedEffectType = String(effectType || '').toLowerCase();
+        if (!character || !normalizedEffectType) {
+            return false;
+        }
+
+        return normalizedEffectType === 'sleep' && this.hasCharacterTrait(character, 'undead');
+    }
+
+    applyStatusEffect(target, effectConfig) {
+        if (!target || target.isDead || !effectConfig?.type) {
+            return { applied: false, immune: false };
+        }
+
+        if (this.isCharacterImmuneToEffect(target, effectConfig.type)) {
+            return { applied: false, immune: true };
+        }
+
+        if (!Array.isArray(target.activeEffects)) {
+            target.activeEffects = [];
+        }
+
+        const duration = Math.max(1, Math.floor(effectConfig.roundsRemaining ?? effectConfig.duration ?? 1));
+        const existing = target.activeEffects.find((effect) => effect.type === effectConfig.type);
+        if (existing) {
+            Object.assign(existing, effectConfig, {
+                roundsRemaining: Math.max(existing.roundsRemaining ?? 0, duration)
+            });
+        } else {
+            target.activeEffects.push({ ...effectConfig, roundsRemaining: duration });
+        }
+
+        return { applied: true, immune: false };
+    }
+
     removeSleepEffect(target) {
         if (!target || !Array.isArray(target.activeEffects) || target.activeEffects.length === 0) {
             return false;
@@ -5620,11 +5957,7 @@ class GridScene {
             this.getAttackDistanceBetweenPositions(targetCell.gridX, targetCell.gridY, candidate.gridX, candidate.gridY) <= radius
         );
 
-        // Separate undead (immune) from affected enemies
-        const affectedEnemies = allNearbyEnemies.filter((enemy) => enemy.race !== 'undead');
-        const immuneEnemies = allNearbyEnemies.filter((enemy) => enemy.race === 'undead');
-
-        if (affectedEnemies.length === 0 && immuneEnemies.length === 0) {
+        if (allNearbyEnemies.length === 0) {
             return false;
         }
 
@@ -5632,14 +5965,19 @@ class GridScene {
             actionCost: caster.attackCost,
             magicCost: mpCost
         });
-        affectedEnemies.forEach((enemy) => {
-            const existing = enemy.activeEffects.find((effect) => effect.type === 'sleep');
-            if (existing) {
-                existing.roundsRemaining = Math.max(existing.roundsRemaining ?? 0, duration);
-            } else {
-                enemy.activeEffects.push({ type: 'sleep', roundsRemaining: duration });
+        const affectedEnemies = [];
+        const immuneEnemies = [];
+        allNearbyEnemies.forEach((enemy) => {
+            const result = this.applyStatusEffect(enemy, { type: 'sleep', roundsRemaining: duration });
+            if (result.immune) {
+                immuneEnemies.push(enemy);
+                return;
             }
-            this.spawnHealEffect(this.getCharacterWorldPos(caster), this.getCharacterWorldPos(enemy));
+
+            if (result.applied) {
+                affectedEnemies.push(enemy);
+                this.spawnHealEffect(this.getCharacterWorldPos(caster), this.getCharacterWorldPos(enemy));
+            }
         });
 
         let logMessage = `${caster.name} casts ${ability.name}`;
@@ -5657,7 +5995,7 @@ class GridScene {
         if (!context.isExploration) {
             this.finalizeActionUsage(caster, context);
         } else {
-            this.beginCombatWithEnemyCharacter(affectedEnemies[0]);
+            this.beginCombatWithEnemyCharacter(affectedEnemies[0] || immuneEnemies[0] || allNearbyEnemies[0]);
         }
 
         this.startAbilityCooldown(ability);
@@ -6160,12 +6498,15 @@ class GridScene {
         const equipmentDrops = Array.isArray(drop.equipmentDrops) ? drop.equipmentDrops : [];
         equipmentDrops.forEach((item) => {
             const summary = this.getEquipmentItemModifierSummary(item);
+            const isSpellScroll = item.type === 'spell-scroll';
             items.push({
                 itemKey: `equipment:${item.instanceId}`,
                 label: this.getEquipmentItemLabel(item),
                 quantity: 1,
                 accentColor: item.accentColor || '#d6cbb8',
-                detail: summary
+                detail: isSpellScroll
+                    ? (summary || 'Spell Scroll')
+                    : summary
                     ? `${this.getEquipmentItemSlotLabel(item.slot)} • ${summary}`
                     : this.getEquipmentItemSlotLabel(item.slot)
             });
@@ -6175,9 +6516,17 @@ class GridScene {
     }
 
     getSharedLootItems() {
+        if (!this.sharedLootInventory) {
+            this.sharedLootInventory = { gold: 0, drops: [], items: [] };
+        }
+
         if (!Array.isArray(this.sharedLootInventory?.items)) {
             this.sharedLootInventory.items = [];
         }
+
+        this.sharedLootInventory.items = this.sharedLootInventory.items
+            .map((item) => this.ensureEquipmentItemInstance(item))
+            .filter(Boolean);
 
         return this.sharedLootInventory.items;
     }
@@ -6244,6 +6593,86 @@ class GridScene {
         if (sharedItems.length > 80) {
             sharedItems.length = 80;
         }
+    }
+
+    getCharacterClassKey(character) {
+        const id = String(character?.id || '').toLowerCase();
+        const role = String(character?.role || '').toLowerCase();
+        if (id.includes('wizard') || id.includes('mage') || role.includes('wizard') || role.includes('mage')) {
+            return 'wizard';
+        }
+        if (id.includes('cleric') || role.includes('cleric')) {
+            return 'cleric';
+        }
+        if (id.includes('ranger') || role.includes('ranger')) {
+            return 'ranger';
+        }
+        if (id.includes('warrior') || role.includes('warrior')) {
+            return 'warrior';
+        }
+
+        return id || role || 'unknown';
+    }
+
+    canCharacterLearnSpellScroll(character, item) {
+        if (!character || character.team !== 'player' || !item || item.type !== 'spell-scroll') {
+            return false;
+        }
+
+        const spell = window.GameData?.getSpellTemplateById(item.spellId) || null;
+        if (!spell) {
+            return false;
+        }
+
+        if ((character.spells || []).some((knownSpell) => knownSpell.id === spell.id)) {
+            return false;
+        }
+
+        const allowedClasses = Array.isArray(item.allowedClasses) ? item.allowedClasses : [];
+        if (allowedClasses.length === 0) {
+            return true;
+        }
+
+        return allowedClasses.includes(this.getCharacterClassKey(character));
+    }
+
+    learnSpellScrollForCharacter(character, instanceId) {
+        if (!character || character.team !== 'player' || !instanceId) {
+            return false;
+        }
+
+        const items = this.getSharedLootItems();
+        const itemIndex = items.findIndex((item) => item.instanceId === instanceId);
+        if (itemIndex < 0) {
+            this.showToast('That scroll is no longer in shared loot.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const item = this.ensureEquipmentItemInstance(items[itemIndex]);
+        if (item?.type !== 'spell-scroll') {
+            this.showToast('That item is not a spell scroll.', '#b8ad96', 2200);
+            return false;
+        }
+
+        const spell = window.GameData?.getSpellTemplateById(item.spellId) || null;
+        if (!spell) {
+            this.showToast('This scroll has no readable spell.', '#b8ad96', 2200);
+            return false;
+        }
+
+        if (!this.canCharacterLearnSpellScroll(character, item)) {
+            this.showToast(`${character.name} cannot learn ${spell.name}.`, '#b8ad96', 2200);
+            return false;
+        }
+
+        character.spells ||= [];
+        character.spells.push({ ...spell });
+        items.splice(itemIndex, 1);
+        this.showToast(`${character.name} learns ${spell.name}.`, spell.accentColor || item.accentColor || character.accentColor, 2400);
+        this.appendCombatLogEntry(`${character.name} learns ${spell.name} from a scroll.`, character.accentColor);
+        this.maybeRenderActiveInventoryCharacter(character);
+        this.updateActionBar?.();
+        return true;
     }
 
     getInventoryEquipmentItemById(instanceId) {
@@ -6495,8 +6924,12 @@ class GridScene {
             character.hitPoints = 0;
         }
 
-        if (this.gameMode === 'combat' && this.turnOrder[this.activeTurnIndex] === character) {
-            this.endCurrentTurn();
+        if (this.gameMode === 'combat') {
+            const activeCharacterId = this.getCharacterTurnIdentity(this.getActiveTurnCharacter());
+            const characterId = this.getCharacterTurnIdentity(character);
+            if (characterId && activeCharacterId === characterId) {
+                this.endCurrentTurn();
+            }
         }
 
         this.saveCurrentMapPersistentState();
@@ -6510,7 +6943,9 @@ class GridScene {
 
     update() {
         const nowMs = performance.now();
+        this.stabilizeCombatTurnState();
         const activeCharacter = this.getActiveTurnCharacter();
+        this.recoverIfEnemyTurnStalled(activeCharacter);
         this.updatePartyVisionState();
         this.updateCharacterVisibilityByVision();
 
@@ -6571,10 +7006,27 @@ class GridScene {
             return;
         }
 
-        if (activeCharacter && activeCharacter.team !== 'player' && !this.isCombatActionPending(activeCharacter)) {
+        const turnActor = this.getActiveTurnCharacter();
+        if (turnActor && turnActor.team !== 'player' && !this.isCombatActionPending(turnActor)) {
             this.enemyMoveTimer += 1;
             if (this.enemyMoveTimer >= 24) {
-                this.moveAICharacter(activeCharacter);
+                const turnActorId = this.getCharacterTurnIdentity(turnActor);
+                const didAct = this.moveAICharacter(turnActor);
+
+                if (!didAct) {
+                    const activeAfterAi = this.getActiveTurnCharacter();
+                    const activeAfterAiId = this.getCharacterTurnIdentity(activeAfterAi);
+                    if (turnActorId && activeAfterAiId === turnActorId) {
+                        turnActor.actionsRemaining = 0;
+                        turnActor.bonusMovementRemaining = 0;
+                        this.appendCombatLogEntry(
+                            `${turnActor.name} turn auto-advanced (AI recovery).`,
+                            '#c6b28f'
+                        );
+                        this.endCurrentTurn();
+                    }
+                }
+
                 this.enemyMoveTimer = 0;
             }
         }

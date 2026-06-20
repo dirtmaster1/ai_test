@@ -239,6 +239,10 @@ window.GridAI = {
             return null;
         }
 
+        if (this.isCellTargetedAbility?.(resolvedAbility)) {
+            return null;
+        }
+
         const targetMode = this.getAbilityTargetTeam(resolvedAbility);
         const correctTeam = targetMode === 'ally'
             ? character.team === target.team
@@ -326,6 +330,53 @@ window.GridAI = {
             canAct,
             isValid: correctTeam && withinRange && hasLineOfSight && canAfford && canAct,
             damageKind: isSpell ? 'magic' : (range > 1 ? 'ranged' : 'melee')
+        };
+    },
+
+    getExpectedCellActionEffect(character, targetCell, ability = null, originX = character?.gridX, originY = character?.gridY) {
+        const resolvedAbility = ability || this.getAbilityForCharacter(character) || null;
+        if (!character || !targetCell || !resolvedAbility || !this.isCellTargetedAbility?.(resolvedAbility)) {
+            return null;
+        }
+
+        const range = this.getEffectiveAbilityRange(character, resolvedAbility);
+        const distance = this.getAttackDistanceBetweenPositions(originX, originY, targetCell.gridX, targetCell.gridY);
+        const withinRange = distance <= range;
+        const lineOfSightRequired = this.requiresLineOfSight(resolvedAbility, character);
+        const hasLineOfSight = !lineOfSightRequired || this.hasLineOfSightBetweenCells(originX, originY, targetCell.gridX, targetCell.gridY);
+        const canAfford = (resolvedAbility.mpCost ?? 0) <= (character.magicPoints ?? 0);
+        const actionCost = this.getAbilityActionCost?.(character, resolvedAbility) ?? character.attackCost;
+        const canAct = character.actionsRemaining >= actionCost;
+        const radius = Math.max(0, Math.floor(resolvedAbility.radius ?? 0));
+        const affectsAllCharacters = Boolean(resolvedAbility.affectsAllCharacters);
+        const candidates = this.characters.filter((candidate) =>
+            (affectsAllCharacters || candidate.team !== character.team) &&
+            !candidate.isDead &&
+            !candidate.removedFromScene &&
+            this.getAttackDistanceBetweenPositions(targetCell.gridX, targetCell.gridY, candidate.gridX, candidate.gridY) <= radius
+        );
+        const affectedTargets = candidates.filter((candidate) => !this.isCharacterImmuneToEffect?.(candidate, resolvedAbility.id));
+        const immuneTargets = candidates.filter((candidate) => this.isCharacterImmuneToEffect?.(candidate, resolvedAbility.id));
+        const hasTargets = affectedTargets.length + immuneTargets.length > 0;
+
+        return {
+            ability: resolvedAbility,
+            effectType: resolvedAbility.id,
+            description: resolvedAbility.id === 'sleep'
+                ? `Sleep burst: ${affectedTargets.length} affected, ${immuneTargets.length} immune`
+                : `${resolvedAbility.name} burst`,
+            distance,
+            withinRange,
+            hasLineOfSight,
+            correctTeam: hasTargets,
+            canAfford,
+            canAct,
+            isValid: withinRange && hasLineOfSight && canAfford && canAct && hasTargets,
+            radius,
+            affectsAllCharacters,
+            affectedTargets,
+            immuneTargets,
+            targetCell
         };
     },
 
@@ -462,6 +513,66 @@ window.GridAI = {
         });
 
         return bestTarget;
+    },
+
+    getWeakestOpponentTarget(character, ability = null) {
+        const livingOpponents = this.getLivingCharacters(this.getOpposingGroupForCharacter(character));
+        if (livingOpponents.length === 0) {
+            return null;
+        }
+
+        return livingOpponents.reduce((weakest, candidate) => {
+            if (!weakest) {
+                return candidate;
+            }
+
+            const candidateEffect = this.getExpectedActionEffect(character, candidate, ability);
+            const weakestEffect = this.getExpectedActionEffect(character, weakest, ability);
+            const candidateHpRatio = candidate.hitPoints / Math.max(1, candidate.maxHitPoints);
+            const weakestHpRatio = weakest.hitPoints / Math.max(1, weakest.maxHitPoints);
+            const candidateKill = candidateEffect?.amount >= candidate.hitPoints ? 1 : 0;
+            const weakestKill = weakestEffect?.amount >= weakest.hitPoints ? 1 : 0;
+
+            if (candidateKill !== weakestKill) {
+                return candidateKill > weakestKill ? candidate : weakest;
+            }
+
+            if (candidateHpRatio !== weakestHpRatio) {
+                return candidateHpRatio < weakestHpRatio ? candidate : weakest;
+            }
+
+            const candidateDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, candidate.gridX, candidate.gridY);
+            const weakestDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, weakest.gridX, weakest.gridY);
+            return candidateDistance < weakestDistance ? candidate : weakest;
+        }, null);
+    },
+
+    getBestCasterTarget(character, ability = null) {
+        const livingOpponents = this.getLivingCharacters(this.getOpposingGroupForCharacter(character));
+        if (livingOpponents.length === 0) {
+            return null;
+        }
+
+        return livingOpponents.reduce((bestTarget, candidate) => {
+            const effect = this.getExpectedActionEffect(character, candidate, ability);
+            const bestEffect = bestTarget ? this.getExpectedActionEffect(character, bestTarget, ability) : null;
+            const casterBonus = this.hasCharacterTrait?.(candidate, 'caster') ? 16 : 0;
+            const rangedBonus = this.hasCharacterTrait?.(candidate, 'ranged') ? 8 : 0;
+            const killBonus = effect?.amount >= candidate.hitPoints ? 24 : 0;
+            const distance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, candidate.gridX, candidate.gridY);
+            const score = casterBonus + rangedBonus + killBonus + (candidate.maxHitPoints - candidate.hitPoints) * 1.5 - distance * 2;
+
+            if (!bestTarget) {
+                return candidate;
+            }
+
+            const bestCasterBonus = this.hasCharacterTrait?.(bestTarget, 'caster') ? 16 : 0;
+            const bestRangedBonus = this.hasCharacterTrait?.(bestTarget, 'ranged') ? 8 : 0;
+            const bestKillBonus = bestEffect?.amount >= bestTarget.hitPoints ? 24 : 0;
+            const bestDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, bestTarget.gridX, bestTarget.gridY);
+            const bestScore = bestCasterBonus + bestRangedBonus + bestKillBonus + (bestTarget.maxHitPoints - bestTarget.hitPoints) * 1.5 - bestDistance * 2;
+            return score > bestScore ? candidate : bestTarget;
+        }, null);
     },
 
     getDistanceToNearestOpponentAt(character, gridX, gridY) {
@@ -985,6 +1096,129 @@ window.GridAI = {
         return this.forceEndCurrentAITurn(character);
     },
 
+    moveGhoul(character) {
+        const ability = this.getAbilityForCharacter(character, 'venomous-bite') || this.getBestOffensiveAbility(character);
+        const target = this.getWeakestOpponentTarget(character, ability) || this.getNearestLivingOpponent(character);
+        if (!ability || !target) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        character.selectedAbilityId = ability.id;
+        const immediateTarget = this.getExpectedActionEffect(character, target, ability)?.isValid
+            ? target
+            : this.getBestImmediateAttackTarget(character, ability);
+        if (immediateTarget && this.characterAttack(character, immediateTarget, ability)) {
+            return true;
+        }
+
+        const move = this.chooseBestAdvanceMove(character, target, ability);
+        if (move) {
+            return this.moveCharacterToCell(character, move);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
+    moveSpecter(character) {
+        const graveChillAbility = this.getAbilityForCharacter(character, 'grave-chill');
+        const biteAbility = this.getAbilityForCharacter(character, 'venomous-bite') || this.getBestOffensiveAbility(character);
+        const preferredAbility = graveChillAbility && character.magicPoints >= (graveChillAbility.mpCost ?? 0)
+            ? graveChillAbility
+            : biteAbility;
+        const target = this.getBestCasterTarget(character, preferredAbility) || this.getNearestLivingOpponent(character);
+        if (!preferredAbility || !target) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        character.selectedAbilityId = preferredAbility.id;
+        const immediateTarget = this.getBestImmediateAttackTarget(character, preferredAbility);
+        if (immediateTarget && this.useAbilityOnTarget(character, preferredAbility, immediateTarget)) {
+            return true;
+        }
+
+        const move = this.chooseBestAdvanceMove(character, target, preferredAbility);
+        if (move) {
+            return this.moveCharacterToCell(character, move);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
+    moveSkeletonWarrior(character) {
+        const ability = this.getAbilityForCharacter(character, 'sword-slash') || this.getBestOffensiveAbility(character);
+        const target = this.getBestFrontlineTarget(character, ability) || this.getNearestLivingOpponent(character);
+        if (!ability || !target) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        character.selectedAbilityId = ability.id;
+        const immediateTarget = this.getBestImmediateAttackTarget(character, ability);
+        if (immediateTarget && this.characterAttack(character, immediateTarget, ability)) {
+            return true;
+        }
+
+        const adjacentAllies = this.countAdjacentAlliesAt(character, character.gridX, character.gridY);
+        const currentDistance = this.getAttackDistanceBetweenPositions(character.gridX, character.gridY, target.gridX, target.gridY);
+        if (adjacentAllies >= 2 && currentDistance <= 2) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        const move = this.chooseBestAdvanceMove(character, target, ability);
+        if (move) {
+            return this.moveCharacterToCell(character, move);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
+    moveZombie(character) {
+        const ability = this.getBestOffensiveAbility(character);
+        const target = this.getNearestLivingOpponent(character);
+        if (!ability || !target) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        character.selectedAbilityId = ability.id;
+        const immediateTarget = this.getExpectedActionEffect(character, target, ability)?.isValid
+            ? target
+            : null;
+        if (immediateTarget && this.characterAttack(character, immediateTarget, ability)) {
+            return true;
+        }
+
+        const path = this.findShortestPathToAttackPosition(character, target, ability);
+        if (path?.length > 0) {
+            return this.moveCharacterToCell(character, path[0]);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
+    moveGiantSpider(character) {
+        const ability = this.getAbilityForCharacter(character, 'venomous-bite') || this.getBestOffensiveAbility(character);
+        const target = this.getLivingCharacters(this.getOpposingGroupForCharacter(character))
+            .filter((opponent) => !opponent.activeEffects?.some((effect) => effect.type === 'poison'))
+            .sort((left, right) => this.scoreTargetForCharacter(character, right, ability) - this.scoreTargetForCharacter(character, left, ability))[0]
+            || this.getBestOpponentTarget(character, ability)
+            || this.getNearestLivingOpponent(character);
+        if (!ability || !target) {
+            return this.forceEndCurrentAITurn(character);
+        }
+
+        character.selectedAbilityId = ability.id;
+        const immediateTarget = this.getBestImmediateAttackTarget(character, ability);
+        if (immediateTarget && this.characterAttack(character, immediateTarget, ability)) {
+            return true;
+        }
+
+        const move = this.chooseBestAdvanceMove(character, target, ability);
+        if (move) {
+            return this.moveCharacterToCell(character, move);
+        }
+
+        return this.forceEndCurrentAITurn(character);
+    },
+
     moveAIMeleeCharacter(character) {
         const ability = this.getBestOffensiveAbility(character);
         const immediateTarget = this.getBestImmediateAttackTarget(character, ability);
@@ -1069,7 +1303,10 @@ window.GridAI = {
     },
 
     forceEndCurrentAITurn(character) {
-        if (!character || this.gameMode !== 'combat' || this.getActiveTurnCharacter() !== character) {
+        const activeCharacter = this.getActiveTurnCharacter();
+        const activeCharacterId = this.getCharacterTurnIdentity?.(activeCharacter) || activeCharacter?.id || null;
+        const characterId = this.getCharacterTurnIdentity?.(character) || character?.id || null;
+        if (!character || this.gameMode !== 'combat' || !characterId || activeCharacterId !== characterId) {
             return false;
         }
 
@@ -1080,11 +1317,15 @@ window.GridAI = {
     },
 
     moveAICharacter(character) {
+        const activeCharacter = this.getActiveTurnCharacter();
+        const activeCharacterId = this.getCharacterTurnIdentity?.(activeCharacter) || activeCharacter?.id || null;
+        const characterId = this.getCharacterTurnIdentity?.(character) || character?.id || null;
         if (
             this.isGameOver ||
             !character ||
             character.isDead ||
-            this.getActiveTurnCharacter() !== character
+            !characterId ||
+            activeCharacterId !== characterId
         ) {
             return false;
         }
@@ -1099,20 +1340,41 @@ window.GridAI = {
 
         let didAct = false;
 
-        if (character.isSummonedWolf) {
-            didAct = this.moveWolfCompanion(character);
-        } else if ((character.id || '').includes('necromancer')) {
-            didAct = this.moveNecromancer(character);
-        } else if ((character.id || '').includes('skeleton-mage')) {
-            didAct = this.moveSkeletonMage(character);
-        } else if (goblinRole === 'warrior' || goblinRole === 'brute') {
-            didAct = this.moveGoblinFrontliner(character);
-        } else if (goblinRole === 'shaman') {
-            didAct = this.moveGoblinShaman(character);
-        } else if (canBow) {
-            didAct = this.moveGoblinArcher(character);
-        } else {
-            didAct = this.moveAIMeleeCharacter(character);
+        try {
+            if (character.isSummonedWolf) {
+                didAct = this.moveWolfCompanion(character);
+            } else if ((character.id || '').includes('necromancer')) {
+                didAct = this.moveNecromancer(character);
+            } else if ((character.id || '').includes('specter') || (character.id || '').includes('spectre')) {
+                didAct = this.moveSpecter(character);
+            } else if ((character.id || '').includes('skeleton-mage')) {
+                didAct = this.moveSkeletonMage(character);
+            } else if ((character.id || '').includes('skeleton-warrior')) {
+                didAct = this.moveSkeletonWarrior(character);
+            } else if ((character.id || '').includes('ghoul')) {
+                didAct = this.moveGhoul(character);
+            } else if ((character.id || '').includes('zombie')) {
+                didAct = this.moveZombie(character);
+            } else if ((character.id || '').includes('giant-spider')) {
+                didAct = this.moveGiantSpider(character);
+            } else if (goblinRole === 'warrior' || goblinRole === 'brute') {
+                didAct = this.moveGoblinFrontliner(character);
+            } else if (goblinRole === 'shaman') {
+                didAct = this.moveGoblinShaman(character);
+            } else if (canBow) {
+                didAct = this.moveGoblinArcher(character);
+            } else {
+                didAct = this.moveAIMeleeCharacter(character);
+            }
+        } catch (error) {
+            console.error('AI turn error', character?.id, error);
+            if (typeof this.appendCombatLogEntry === 'function') {
+                this.appendCombatLogEntry(
+                    `${character?.name || 'Enemy'} AI recovered from an error.`,
+                    '#d97d7d'
+                );
+            }
+            return this.forceEndCurrentAITurn(character);
         }
 
         if (didAct) {

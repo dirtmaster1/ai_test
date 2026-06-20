@@ -127,6 +127,14 @@ window.GameData = {
             type: 'armor',
             modifiers: { healingBonus: 2 },
             accentColor: '#ffd2a8'
+        },
+        'fireball-scroll': {
+            id: 'fireball-scroll',
+            name: 'Fireball Scroll',
+            type: 'spell-scroll',
+            spellId: 'fireball',
+            allowedClasses: ['wizard'],
+            accentColor: '#ff9b45'
         }
     },
 
@@ -140,7 +148,8 @@ window.GameData = {
         'leather armor': 'leather-armor',
         'steel helm': 'steel-helm',
         'mages amulet': 'mages-amulet',
-        'healers circlet': 'healers-circlet'
+        'healers circlet': 'healers-circlet',
+        'fireball scroll': 'fireball-scroll'
     },
 
     EQUIPMENT_LOOT_ITEM_IDS: ['small-shield', 'long-bow', 'mages-amulet', 'healers-circlet'],
@@ -164,6 +173,7 @@ window.GameData = {
         'raise-undead': { id: 'raise-undead', name: 'Raise Undead', type: 'spell', range: 0, mpCost: 6, actionCost: 3, summonCount: 2, cooldownTurns: 2 },
         'magic-missile': { id: 'magic-missile', name: 'Magic Missile', type: 'spell', range: 5, mpCost: 5, damage: 4, projectileAnimation: 'magic-missile', resolveOnImpact: true, cooldownTurns: 1 },
         'grave-chill': { id: 'grave-chill', name: 'Grave Chill', type: 'spell', range: 4, mpCost: 4, damage: 5, projectileAnimation: 'magic-missile', resolveOnImpact: true },
+        fireball: { id: 'fireball', name: 'Fireball', type: 'spell', range: 5, mpCost: 10, damage: 12, targetMode: 'cell', radius: 2, cooldownTurns: 3, affectsAllCharacters: true },
         'poison-dart': { id: 'poison-dart', name: 'Poison Dart', type: 'spell', range: 5, mpCost: 5 },
         sleep: { id: 'sleep', name: 'Sleep', type: 'spell', range: 4, mpCost: 7, targetMode: 'cell', duration: 2, radius: 1, cooldownTurns: 2 },
         'lesser-heal': { id: 'lesser-heal', name: 'Lesser Heal', type: 'heal', range: 5, mpCost: 4, healAmount: 5 },

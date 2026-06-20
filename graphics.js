@@ -1300,11 +1300,27 @@ window.GridGraphics = {
     updateTargetHighlights(activeCharacter) {
         const selectedAbility = activeCharacter ? this.getAbilityForCharacter(activeCharacter) : null;
         const hoveredCharacter = this.hoveredCharacter;
+        const hoveredCell = this.hoveredCell;
+        const cellTargetInfo = activeCharacter && hoveredCell && selectedAbility && this.isCellTargetedAbility?.(selectedAbility)
+            ? this.getExpectedCellActionEffect(activeCharacter, hoveredCell, selectedAbility)
+            : null;
         const targetInfo = activeCharacter && hoveredCharacter && selectedAbility
             ? this.getExpectedActionEffect(activeCharacter, hoveredCharacter, selectedAbility)
             : null;
 
-        const nextState = targetInfo
+        const nextState = cellTargetInfo
+            ? [
+                activeCharacter.id,
+                hoveredCell.gridX,
+                hoveredCell.gridY,
+                selectedAbility.id,
+                cellTargetInfo.isValid,
+                cellTargetInfo.withinRange,
+                cellTargetInfo.hasLineOfSight,
+                cellTargetInfo.affectedTargets.length,
+                cellTargetInfo.immuneTargets.length
+            ].join('|')
+            : targetInfo
             ? [
                 activeCharacter.id,
                 hoveredCharacter.id,
@@ -1323,6 +1339,49 @@ window.GridGraphics = {
 
         this.clearTargetHighlights();
         this.targetHighlightState = nextState;
+
+        if (cellTargetInfo) {
+            const radius = Math.max(0, Math.floor(cellTargetInfo.radius ?? 0));
+            for (let gridY = hoveredCell.gridY - radius; gridY <= hoveredCell.gridY + radius; gridY++) {
+                for (let gridX = hoveredCell.gridX - radius; gridX <= hoveredCell.gridX + radius; gridX++) {
+                    if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) {
+                        continue;
+                    }
+
+                    if (this.getAttackDistanceBetweenPositions(hoveredCell.gridX, hoveredCell.gridY, gridX, gridY) > radius) {
+                        continue;
+                    }
+
+                    const geometry = new THREE.PlaneGeometry(this.cellSize - 10, this.cellSize - 10);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: cellTargetInfo.isValid ? 0x7dff9a : 0xff6a6a,
+                        transparent: true,
+                        opacity: cellTargetInfo.isValid ? 0.16 : 0.12,
+                        depthWrite: false
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    const { x, y } = this.getWorldPositionForCell(gridX, gridY);
+                    mesh.position.set(x, y, -0.85);
+                    this.targetHighlightGroup.add(mesh);
+                }
+            }
+
+            [...cellTargetInfo.affectedTargets, ...cellTargetInfo.immuneTargets].forEach((target) => {
+                const isImmune = cellTargetInfo.immuneTargets.includes(target);
+                const geometry = new THREE.PlaneGeometry(this.cellSize - 18, this.cellSize - 18);
+                const material = new THREE.MeshBasicMaterial({
+                    color: isImmune ? 0xffcc66 : 0x7dff9a,
+                    transparent: true,
+                    opacity: isImmune ? 0.28 : 0.3,
+                    depthWrite: false
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                const { x, y } = this.getWorldPositionForCell(target.gridX, target.gridY);
+                mesh.position.set(x, y, -0.7);
+                this.targetHighlightGroup.add(mesh);
+            });
+            return;
+        }
 
         if (!targetInfo || selectedAbility.type === 'buff') {
             return;
