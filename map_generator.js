@@ -44,18 +44,18 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ dr __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa __ __ wa wa wa wa wa __ __ wa wa wa wa dr dr wa wa wa wa'),
-                createTokenRow('wa GW __ GS __ __ __ __ wa __ __ __ __ __ wa __ __ GA __ __ wa'),
-                createTokenRow('wa __ __ __ GSP __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ GW1 __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ GB __ wa'),
+                createTokenRow('wa GW GS GS __ __ __ __ wa __ __ __ __ __ wa __ __ GA GA __ wa'),
+                createTokenRow('wa GW1 SP SP __ __ __ __ wa __ __ __ __ __ __ __ __ GB GW __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ __ __ __ __ GB __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa'),
                 createTokenRow('wa wa __ __ wa wa wa wa wa __ __ __ __ wa wa wa wa __ __ wa wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
-                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ GA wa __ __ __ wa'),
-                createTokenRow('wa __ __ wa wa __ __ wa wa wa wa __ __ wa wa wa wa __ __ wa wa'),
+                createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ __ wa wa __ __ wa wa wa wa __ __ wa wa wa wa GA GW wa wa'),
                 createTokenRow('wa __ __ __ wa __ __ __ __ __ wa __ __ __ __ __ wa __ GB __ wa'),
-                createTokenRow('wa __ __ __ wa __ __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa'),
+                createTokenRow('wa __ SP SP wa __ __ __ __ __ __ __ __ __ __ __ wa __ __ __ wa'),
                 createTokenRow('wa wa dr dr wa __ __ wa wa __ __ __ wa wa __ __ wa __ __ wa wa'),
-                createTokenRow('wa GSP __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa __ __ __ wa __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa mt mt wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa')
@@ -78,8 +78,8 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
-                createTokenRow('__ ch1 __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ chS __'),
-                createTokenRow('__ bd __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ chS __'),
+                createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __'),
                 createTokenRow('__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __')
             ],
@@ -115,25 +115,19 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 st2: 'spikeTrap2'
             }) || {},
             encounterLegend: {
-                PW: { kind: 'player', characterId: 'warrior' },
-                PZ: { kind: 'player', characterId: 'wizard' },
-                PC: { kind: 'player', characterId: 'cleric' },
-                PR: { kind: 'player', characterId: 'ranger' },
                 GW: {
                     kind: 'enemy',
                     archetypeId: 'goblin-warrior',
-                    lootMode: 'all',
-                    lootItemIds: ['small-shield']
                 },
                 GW1: { kind: 'enemy', archetypeId: 'goblin-warrior'},
                 GA: { kind: 'enemy', archetypeId: 'goblin-archer' },
                 GS: { kind: 'enemy', archetypeId: 'goblin-shaman' },
                 GB: { kind: 'enemy', archetypeId: 'goblin-brute' },
-                GSP: {
+                SP: {
                     kind: 'enemy',
                     archetypeId: 'giant-spider',
-                    experiencePoints: 2000
-                },
+                    experiencePoints: 100
+                 },
                 GCB: {
                     kind: 'enemy',
                     archetypeId: 'goblin-chieftain',
@@ -207,10 +201,10 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa __ __ __ __ wa __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ wa wa dr dr wa wa __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ U01 U02 U03 U04 U05 U06 __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ U07 U08 U09 U10 U11 U12 __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ U13 U14 U15 U16 U17 U18 __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ U19 U20 U21 U22 U23 U24 __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa wa wa wa wa wa wa wa mt mt wa wa wa wa wa wa wa wa wa')
@@ -297,13 +291,13 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa m2 wa __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ wa m2 wa __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ SM SM SM __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ SW SW SW __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ GH GH GH __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ SM GH __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ GH SW __ wa'),
+                createTokenRow('wa __ SM GH __ __ __ __ __ __ __ __ __ __ __ __ SM GH __ wa'),
+                createTokenRow('wa __ GH SW __ __ __ __ __ __ __ __ __ __ __ __ GH SW __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
@@ -363,15 +357,6 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 SW: { kind: 'enemy', archetypeId: 'skeleton-warrior' },
                 SM: { kind: 'enemy', archetypeId: 'skeleton-mage' },
                 GH: { kind: 'enemy', archetypeId: 'ghoul' },
-                SP: { kind: 'enemy', archetypeId: 'spectre' },
-                NC: {
-                    kind: 'enemy',
-                    archetypeId: 'necromancer',
-                    experiencePoints: 1800,
-                    lootMode: 'all',
-                    goldAmount: 250,
-                    lootItemIds: ['fireball-scroll']
-                }
             }
         },
 
@@ -398,7 +383,7 @@ const createUndeadTestEncounterLegend = (count = 24) => Array.from({ length: cou
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
-                createTokenRow('wa __ __ __ __ __ __ __ __ __ NC __ __ __ __ __ __ __ __ wa'),
+                createTokenRow('wa __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ wa'),
                 createTokenRow('wa wa wa wa wa wa wa wa wa m2 m2 wa wa wa wa wa wa wa wa wa')
             ],
             propRows: [

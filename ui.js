@@ -1008,7 +1008,7 @@ window.GridUI = {
         const turnQueueSection = this.createTurnOrderQueuePanel();
         hudRoot.appendChild(turnQueueSection.section);
         const sharedActionBar = this.createSharedActionBar();
-    this.container.appendChild(sharedActionBar.root);
+        this.container.appendChild(sharedActionBar.root);
 
         this.characters.forEach((character) => {
             const card = this.createCombatCard(character);
@@ -1057,6 +1057,7 @@ window.GridUI = {
         this.container.appendChild(this.enteringCombatText);
         this.setupTargetPreviewPanel();
         this.setupCharacterInventoryModal();
+        this.setupHelpMenuModal();
         this.setupLootMenuWindow();
         this.setupCombatLogWindow();
         this.updateTurnOrderQueue(this.getActiveTurnCharacter());
@@ -1066,7 +1067,8 @@ window.GridUI = {
         const root = document.createElement('section');
         root.style.position = 'fixed';
         root.style.left = '50%';
-        root.style.bottom = '12px';
+        root.style.top = '12px';
+        root.style.bottom = 'auto';
         root.style.transform = 'translateX(-50%)';
         root.style.width = 'fit-content';
         root.style.minWidth = '220px';
@@ -1084,6 +1086,8 @@ window.GridUI = {
         header.style.alignItems = 'baseline';
         header.style.justifyContent = 'space-between';
         header.style.gap = '12px';
+        header.style.cursor = 'move';
+        header.style.userSelect = 'none';
 
         const title = document.createElement('div');
         title.style.fontSize = '12px';
@@ -1142,6 +1146,65 @@ window.GridUI = {
         });
         controls.appendChild(endTurnButton);
 
+        let isDockedToMap = true;
+
+        const dockBelowMapGrid = () => {
+            if (!isDockedToMap || !this.renderer?.domElement) {
+                return;
+            }
+
+            const mapRect = this.renderer.domElement.getBoundingClientRect();
+            const mapCenterX = mapRect.left + (mapRect.width / 2);
+            const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
+            const desiredTop = Math.round(mapRect.bottom + 8);
+
+            root.style.left = `${Math.round(mapCenterX)}px`;
+            root.style.top = `${Math.min(desiredTop, maxTop)}px`;
+            root.style.bottom = 'auto';
+            root.style.transform = 'translateX(-50%)';
+        };
+
+        const startDrag = (event) => {
+            if (event.target instanceof HTMLElement && event.target.tagName === 'BUTTON') {
+                return;
+            }
+
+            event.preventDefault();
+            isDockedToMap = false;
+
+            const rect = root.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+
+            root.style.left = `${Math.round(rect.left)}px`;
+            root.style.top = `${Math.round(rect.top)}px`;
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+            root.style.transform = 'none';
+
+            const onMove = (moveEvent) => {
+                const maxLeft = Math.max(8, window.innerWidth - root.offsetWidth - 8);
+                const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
+                const nextLeft = Math.min(Math.max(8, moveEvent.clientX - offsetX), maxLeft);
+                const nextTop = Math.min(Math.max(8, moveEvent.clientY - offsetY), maxTop);
+
+                root.style.left = `${Math.round(nextLeft)}px`;
+                root.style.top = `${Math.round(nextTop)}px`;
+            };
+
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+            };
+
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+        };
+
+        header.addEventListener('pointerdown', startDrag);
+        window.addEventListener('resize', dockBelowMapGrid);
+        requestAnimationFrame(dockBelowMapGrid);
+
         this.sharedActionBar = {
             root,
             title,
@@ -1149,7 +1212,8 @@ window.GridUI = {
             abilityButtons,
             abilityButtonMap: new Map(),
             endTurnButton,
-            stateKey: ''
+            stateKey: '',
+            dockBelowMapGrid
         };
 
         return this.sharedActionBar;
@@ -2587,6 +2651,174 @@ window.GridUI = {
 
         this.characterInventoryModal.overlay.style.display = 'none';
         this.activeInventoryCharacter = null;
+    },
+
+    setupHelpMenuModal() {
+        if (this.helpMenuModal?.overlay) {
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.style.position = 'absolute';
+        overlay.style.inset = '0';
+        overlay.style.display = 'none';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.background = 'rgba(4, 5, 8, 0.72)';
+        overlay.style.backdropFilter = 'blur(4px)';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.zIndex = '32';
+
+        const panel = document.createElement('div');
+        panel.style.width = 'min(640px, calc(100% - 32px))';
+        panel.style.maxHeight = 'min(560px, calc(100% - 32px))';
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.borderRadius = '12px';
+        panel.style.border = '1px solid rgba(232, 224, 202, 0.22)';
+        panel.style.background = 'linear-gradient(180deg, rgba(25, 24, 28, 0.98), rgba(12, 12, 14, 0.98))';
+        panel.style.boxShadow = '0 20px 50px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04)';
+        panel.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
+        header.style.padding = '14px 16px 10px';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+
+        const titleWrap = document.createElement('div');
+        const title = document.createElement('div');
+        title.style.fontSize = '18px';
+        title.style.fontWeight = '700';
+        title.style.color = '#f0e8d2';
+        title.textContent = 'Help';
+
+        const subtitle = document.createElement('div');
+        subtitle.style.marginTop = '4px';
+        subtitle.style.fontSize = '11px';
+        subtitle.style.letterSpacing = '0.08em';
+        subtitle.style.textTransform = 'uppercase';
+        subtitle.style.color = '#a89c82';
+        subtitle.textContent = 'Basic gameplay and key bindings';
+
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(subtitle);
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.textContent = 'Close';
+        closeButton.style.padding = '7px 10px';
+        closeButton.style.borderRadius = '6px';
+        closeButton.style.border = '1px solid rgba(255,255,255,0.16)';
+        closeButton.style.background = 'rgba(255,255,255,0.06)';
+        closeButton.style.color = '#f0e8d2';
+        closeButton.style.fontSize = '11px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.addEventListener('click', () => this.closeHelpMenu());
+
+        header.appendChild(titleWrap);
+        header.appendChild(closeButton);
+        panel.appendChild(header);
+
+        const content = document.createElement('div');
+        content.style.padding = '14px 16px 16px';
+        content.style.overflowY = 'auto';
+        content.style.minHeight = '220px';
+        content.style.display = 'flex';
+        content.style.flexDirection = 'column';
+        content.style.gap = '12px';
+
+        const controlsSection = document.createElement('section');
+
+        const controlsTitle = document.createElement('div');
+        controlsTitle.textContent = 'Controls';
+        controlsTitle.style.fontSize = '13px';
+        controlsTitle.style.fontWeight = '700';
+        controlsTitle.style.letterSpacing = '0.04em';
+        controlsTitle.style.color = '#e8dcc2';
+
+        const controlsBody = document.createElement('div');
+        controlsBody.style.marginTop = '6px';
+        controlsBody.style.fontSize = '12px';
+        controlsBody.style.lineHeight = '1.6';
+        controlsBody.style.color = '#c3b79d';
+        controlsBody.innerHTML = [
+            'W - Move Up | A - Move Left | S - Move Down | D - Move Right',
+            'Click a valid target to use the selected attack, spell, or ability | Space - End current turn',
+            'I - Open character menu | H - Toggle this help menu'
+        ].map((line) => `<div>${line}</div>`).join('');
+
+        controlsSection.appendChild(controlsTitle);
+        controlsSection.appendChild(controlsBody);
+
+        const gameplaySection = document.createElement('section');
+
+        const gameplayTitle = document.createElement('div');
+        gameplayTitle.textContent = 'Gameplay Basics';
+        gameplayTitle.style.fontSize = '13px';
+        gameplayTitle.style.fontWeight = '700';
+        gameplayTitle.style.letterSpacing = '0.04em';
+        gameplayTitle.style.color = '#e8dcc2';
+
+        const gameplayBody = document.createElement('div');
+        gameplayBody.style.marginTop = '6px';
+        gameplayBody.style.fontSize = '12px';
+        gameplayBody.style.lineHeight = '1.6';
+        gameplayBody.style.color = '#c3b79d';
+        gameplayBody.textContent = 'Every living character acts individually. Use the left HUD to track your party, then follow the floating combat log for each attack, spell, and buff.';
+
+        gameplaySection.appendChild(gameplayTitle);
+        gameplaySection.appendChild(gameplayBody);
+
+        content.appendChild(controlsSection);
+        content.appendChild(gameplaySection);
+        panel.appendChild(content);
+
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                this.closeHelpMenu();
+            }
+        });
+
+        panel.addEventListener('click', (event) => event.stopPropagation());
+        overlay.appendChild(panel);
+        this.container.appendChild(overlay);
+
+        this.helpMenuModal = {
+            overlay,
+            panel,
+            title,
+            subtitle,
+            content,
+            closeButton
+        };
+    },
+
+    openHelpMenu() {
+        if (!this.helpMenuModal) {
+            this.setupHelpMenuModal();
+        }
+
+        this.helpMenuModal.overlay.style.display = 'flex';
+    },
+
+    closeHelpMenu() {
+        if (!this.helpMenuModal) {
+            return;
+        }
+
+        this.helpMenuModal.overlay.style.display = 'none';
+    },
+
+    toggleHelpMenu() {
+        if (!this.helpMenuModal || this.helpMenuModal.overlay.style.display !== 'flex') {
+            this.openHelpMenu();
+            return;
+        }
+
+        this.closeHelpMenu();
     },
 
     setCharacterInventoryTab(tab) {

@@ -2866,6 +2866,10 @@ class GridScene {
                 return;
             }
 
+            if (this.handleHelpMenuKey(e, key)) {
+                return;
+            }
+
             if (!this.isPlayerTurn()) {
                 return;
             }
@@ -2906,6 +2910,16 @@ class GridScene {
 
         event.preventDefault();
         this.openCharacterInventory(openCharacter);
+        return true;
+    }
+
+    handleHelpMenuKey(event, normalizedKey) {
+        if (normalizedKey !== 'H') {
+            return false;
+        }
+
+        event.preventDefault();
+        this.toggleHelpMenu();
         return true;
     }
 
