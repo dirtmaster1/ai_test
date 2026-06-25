@@ -1,0 +1,9 @@
+.godot/
+
+# .NET build outputs
+bin/
+obj/
+
+# Optional local IDE/editor artifacts
+.vs/
+.vscode/

@@ -1,0 +1,39 @@
+{
+  "abilities": {
+    "melee": {
+      "id": "melee",
+      "name": "Melee Strike",
+      "type": "attack",
+      "range": 1,
+      "damage": 4,
+      "action_cost": 1
+    },
+    "bow-shot": {
+      "id": "bow-shot",
+      "name": "Bow Shot",
+      "type": "attack",
+      "range": 4,
+      "damage": 3,
+      "action_cost": 1
+    }
+  },
+  "spells": {
+    "lesser-heal": {
+      "id": "lesser-heal",
+      "name": "Lesser Heal",
+      "type": "heal",
+      "range": 3,
+      "heal_amount": 4,
+      "mp_cost": 2,
+      "action_cost": 1
+    }
+  },
+  "items": {
+    "small-shield": {
+      "id": "small-shield",
+      "name": "Small Shield",
+      "type": "armor",
+      "slot": "hands"
+    }
+  }
+}

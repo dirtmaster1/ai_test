@@ -708,7 +708,14 @@ window.GridUI = {
         ].join(';');
         document.body.appendChild(toast);
 
+        let dismissed = false;
+
         const fadeOut = () => {
+            if (dismissed) {
+                return;
+            }
+
+            dismissed = true;
             toast.style.opacity = '0';
             toast.addEventListener('transitionend', () => toast.remove(), { once: true });
         };
@@ -716,6 +723,17 @@ window.GridUI = {
 
         // allow early cleanup if needed
         toast._dismiss = () => { clearTimeout(timer); fadeOut(); };
+        toast._dismissImmediate = () => {
+            if (dismissed) {
+                return;
+            }
+
+            dismissed = true;
+            clearTimeout(timer);
+            toast.remove();
+        };
+
+        return toast;
     },
 
     dismissConfirmationToast() {
@@ -1242,9 +1260,45 @@ window.GridUI = {
         btn.style.transition = 'background 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease';
         btn.style.pointerEvents = 'auto';
         const tooltipText = this.getAbilityTooltipText(character, ability);
-        btn.title = tooltipText;
         btn.setAttribute('aria-label', tooltipText.replace(/\n/g, ', '));
         btn.innerHTML = this.getAbilityIconSvg(ability);
+
+        let hoverToast = null;
+
+        const showAbilityHoverToast = (event) => {
+            if (hoverToast?._dismissImmediate) {
+                hoverToast._dismissImmediate();
+            }
+
+            const rect = btn.getBoundingClientRect();
+            const screenX = typeof event?.clientX === 'number'
+                ? event.clientX
+                : Math.round(rect.left + (rect.width / 2));
+            const screenY = typeof event?.clientY === 'number'
+                ? event.clientY
+                : Math.round(rect.top);
+            const toastMessage = tooltipText.replace(/\n/g, ' • ');
+            hoverToast = this.showToast(
+                toastMessage,
+                ability.accentColor || character.accentColor || '#d6cbb8',
+                1800,
+                screenX,
+                screenY
+            );
+        };
+
+        const hideAbilityHoverToast = () => {
+            if (hoverToast?._dismissImmediate) {
+                hoverToast._dismissImmediate();
+            }
+
+            hoverToast = null;
+        };
+
+        btn.addEventListener('mouseenter', showAbilityHoverToast);
+        btn.addEventListener('focus', showAbilityHoverToast);
+        btn.addEventListener('mouseleave', hideAbilityHoverToast);
+        btn.addEventListener('blur', hideAbilityHoverToast);
 
         if (ability.mpCost > 0) {
             const costBadge = document.createElement('span');
