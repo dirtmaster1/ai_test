@@ -2,15 +2,15 @@
   "abilities": {
     "melee": {
       "id": "melee",
-      "name": "Melee Strike",
+      "name": "Melee Attack",
       "type": "attack",
       "range": 1,
       "damage": 4,
       "action_cost": 1
     },
-    "bow-shot": {
-      "id": "bow-shot",
-      "name": "Bow Shot",
+    "ranged": {
+      "id": "ranged",
+      "name": "Ranged Attack",
       "type": "attack",
       "range": 4,
       "damage": 3,
@@ -33,7 +33,8 @@
       "id": "small-shield",
       "name": "Small Shield",
       "type": "armor",
-      "slot": "hands"
+      "slot": "hands",
+      "defense": 2
     }
   }
 }
