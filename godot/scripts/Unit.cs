@@ -11,6 +11,15 @@ public partial class Unit : Node2D
     public Vector2I GridPos { get; private set; } = Vector2I.Zero;
     public int HitPoints { get; private set; } = 10;
     public int MaxHitPoints { get; private set; } = 10;
+    public int BaseAttackDamage { get; private set; } = 3;
+    public int BaseAttackRange { get; private set; } = 1;
+    public int WeaponAttackDamageBonus { get; private set; }
+    public int WeaponAttackRangeBonus { get; private set; }
+    public int BuffAttackDamageBonus { get; private set; }
+    public int BuffAttackRangeBonus { get; private set; }
+
+    public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + BuffAttackDamageBonus);
+    public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + BuffAttackRangeBonus);
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
 
@@ -21,9 +30,25 @@ public partial class Unit : Node2D
         Team = GetString(config, "team", "player");
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
+        BaseAttackDamage = GetInt(config, "base_attack_damage", Team == "player" ? 4 : 3);
+        BaseAttackRange = GetInt(config, "base_attack_range", 1);
+        WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", 0);
+        WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", 0);
+        BuffAttackDamageBonus = GetInt(config, "buff_attack_damage_bonus", 0);
+        BuffAttackRangeBonus = GetInt(config, "buff_attack_range_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
         SyncWorldPosition();
         QueueRedraw();
+    }
+
+    public void SetBuffAttackDamageBonus(int bonus)
+    {
+        BuffAttackDamageBonus = bonus;
+    }
+
+    public void SetBuffAttackRangeBonus(int bonus)
+    {
+        BuffAttackRangeBonus = bonus;
     }
 
     public void SetGridPos(Vector2I nextPos)

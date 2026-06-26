@@ -7,9 +7,6 @@ public partial class BattleController : Node2D
     private const int GridWidth = 15;
     private const int GridHeight = 10;
     private const int CellSize = 64;
-    private const int AttackRange = 1;
-    private const int PlayerAttackDamage = 4;
-    private const int EnemyAttackDamage = 3;
 
     private Node2D _unitsRoot;
     private TurnManager _turnManager;
@@ -200,7 +197,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        if (!TryAttackTarget(active, target, PlayerAttackDamage, AttackRange))
+        if (!TryAttackTarget(active, target, active.AttackDamage, active.AttackRange))
         {
             return;
         }
@@ -252,7 +249,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        if (!TryAttackTarget(active, target, PlayerAttackDamage, AttackRange))
+        if (!TryAttackTarget(active, target, active.AttackDamage, active.AttackRange))
         {
             return;
         }
@@ -317,16 +314,16 @@ public partial class BattleController : Node2D
         return true;
     }
 
-    private bool TryAttackNearestEnemy(Unit attacker, int damage)
+    private bool TryAttackNearestEnemy(Unit attacker)
     {
-        var target = FindNearestEnemyInRange(attacker, AttackRange);
+        var target = FindNearestEnemyInRange(attacker, attacker.AttackRange);
         if (target == null)
         {
-            _hud?.SetStatusText($"{attacker.UnitName} has no target in range ({AttackRange}).");
+            _hud?.SetStatusText($"{attacker.UnitName} has no target in range ({attacker.AttackRange}).");
             return false;
         }
 
-        return TryAttackTarget(attacker, target, damage, AttackRange);
+        return TryAttackTarget(attacker, target, attacker.AttackDamage, attacker.AttackRange);
     }
 
     private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range)
@@ -411,7 +408,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        if (TryAttackNearestEnemy(enemyUnit, EnemyAttackDamage))
+        if (TryAttackNearestEnemy(enemyUnit))
         {
             CleanupDefeatedUnits();
             if (CheckCombatResolved())
@@ -671,7 +668,7 @@ public partial class BattleController : Node2D
 
             var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
             var target = GetLivingEnemyAtCell(active.Team, cell);
-            var valid = target != null && CanAttack(active, target, AttackRange);
+            var valid = target != null && CanAttack(active, target, active.AttackRange);
 
             var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.18f);
             var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.8f);
