@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://scripts/TurnManager.cs" id="2_turn"]
 [ext_resource type="Script" path="res://scripts/AiDirector.cs" id="3_ai"]
 [ext_resource type="PackedScene" path="res://ui/HUD.tscn" id="4_hud"]
+[ext_resource type="Script" path="res://scripts/MapLoader.cs" id="5_map"]
 
 [node name="TestEncounter2v2" type="Node2D"]
 script = ExtResource("1_btl")
@@ -15,5 +16,8 @@ script = ExtResource("2_turn")
 
 [node name="AiDirector" type="Node" parent="."]
 script = ExtResource("3_ai")
+
+[node name="MapLoader" type="Node" parent="."]
+script = ExtResource("5_map")
 
 [node name="HUD" parent="." instance=ExtResource("4_hud")]

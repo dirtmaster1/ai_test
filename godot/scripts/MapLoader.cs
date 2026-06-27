@@ -3,13 +3,199 @@ using Godot.Collections;
 
 public partial class MapLoader : Node
 {
-    public Dictionary LoadMapStub()
+    public Dictionary LoadMapStub(string mapId = "map-a")
     {
+        return mapId switch
+        {
+            "map-b" => BuildMapB(),
+            _ => BuildMapA()
+        };
+    }
+
+    private static Dictionary BuildMapA()
+    {
+        var players = new Array<Dictionary>
+        {
+            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 2) }, { "primary_ability_id", "melee" }, { "initiative", 15 }, { "hit_points", 10 }, { "max_hit_points", 10 } },
+            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 4) }, { "primary_ability_id", "melee" }, { "initiative", 11 }, { "hit_points", 14 }, { "max_hit_points", 14 } }
+        };
+
+        var encounterA = new Dictionary
+        {
+            { "id", "encounter-a" },
+            { "aggro_range", 4 },
+            {
+                "enemies",
+                new Array<Dictionary>
+                {
+                    new Dictionary { { "id", "goblin-warrior-a" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(8, 2) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
+                    new Dictionary { { "id", "goblin-archer-a" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(8, 4) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                }
+            }
+        };
+
+        var encounterB = new Dictionary
+        {
+            { "id", "encounter-b" },
+            { "aggro_range", 4 },
+            {
+                "enemies",
+                new Array<Dictionary>
+                {
+                    new Dictionary { { "id", "goblin-warrior-b" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(12, 2) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
+                    new Dictionary { { "id", "goblin-archer-b" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(12, 4) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                }
+            }
+        };
+
         return new Dictionary
         {
+            { "id", "map-a" },
             { "width", 15 },
             { "height", 10 },
-            { "blocked", new Array() }
+            { "blocked", new Array<Vector2I> { new Vector2I(6, 3), new Vector2I(10, 3) } },
+            { "players", players },
+            { "encounters", new Array<Dictionary> { encounterA, encounterB } },
+            {
+                "transitions",
+                new Array<Dictionary>
+                {
+                    new Dictionary
+                    {
+                        { "from_cell", new Vector2I(14, 3) },
+                        { "to_map", "map-b" },
+                        { "spawn_cell", new Vector2I(1, 3) }
+                    }
+                }
+            }
         };
+    }
+
+    private static Dictionary BuildMapB()
+    {
+        var players = new Array<Dictionary>
+        {
+            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(1, 3) }, { "primary_ability_id", "melee" }, { "initiative", 15 }, { "hit_points", 10 }, { "max_hit_points", 10 } },
+            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(1, 4) }, { "primary_ability_id", "melee" }, { "initiative", 11 }, { "hit_points", 14 }, { "max_hit_points", 14 } }
+        };
+
+        var encounterC = new Dictionary
+        {
+            { "id", "encounter-c" },
+            { "aggro_range", 4 },
+            {
+                "enemies",
+                new Array<Dictionary>
+                {
+                    new Dictionary { { "id", "goblin-warrior-c" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 2) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 9 }, { "max_hit_points", 9 } },
+                    new Dictionary { { "id", "goblin-archer-c" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 5) }, { "primary_ability_id", "ranged" }, { "initiative", 12 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                }
+            }
+        };
+
+        return new Dictionary
+        {
+            { "id", "map-b" },
+            { "width", 15 },
+            { "height", 10 },
+            { "blocked", new Array<Vector2I> { new Vector2I(5, 3), new Vector2I(6, 3), new Vector2I(7, 3), new Vector2I(8, 3) } },
+            { "players", players },
+            { "encounters", new Array<Dictionary> { encounterC } },
+            {
+                "transitions",
+                new Array<Dictionary>
+                {
+                    new Dictionary
+                    {
+                        { "from_cell", new Vector2I(0, 3) },
+                        { "to_map", "map-a" },
+                        { "spawn_cell", new Vector2I(13, 3) }
+                    }
+                }
+            }
+        };
+    }
+
+    public void DrawMapFeaturesOverlay(
+        CanvasItem canvas,
+        Array<Vector2I> blockedCells,
+        Array<Dictionary> mapTransitions,
+        int gridWidth,
+        int gridHeight,
+        int cellSize
+    )
+    {
+        if (canvas == null)
+        {
+            return;
+        }
+
+        foreach (var blocked in blockedCells)
+        {
+            var rect = CellRect(blocked, cellSize);
+            canvas.DrawRect(rect, new Color(0.12f, 0.12f, 0.12f, 0.9f), true);
+            canvas.DrawRect(rect, new Color(0.35f, 0.35f, 0.35f, 0.9f), false, 2.0f);
+            canvas.DrawLine(rect.Position, rect.Position + rect.Size, new Color(0.55f, 0.22f, 0.22f, 0.85f), 2.0f);
+            canvas.DrawLine(
+                new Vector2(rect.Position.X + rect.Size.X, rect.Position.Y),
+                new Vector2(rect.Position.X, rect.Position.Y + rect.Size.Y),
+                new Color(0.55f, 0.22f, 0.22f, 0.85f),
+                2.0f
+            );
+        }
+
+        foreach (var transition in mapTransitions)
+        {
+            var fromCell = GetVector2I(transition, "from_cell", new Vector2I(-9999, -9999));
+            if (!IsInBounds(fromCell, gridWidth, gridHeight))
+            {
+                continue;
+            }
+
+            var rect = CellRect(fromCell, cellSize);
+            canvas.DrawRect(rect, new Color(0.05f, 0.35f, 0.48f, 0.35f), true);
+            canvas.DrawRect(rect, new Color(0.35f, 0.95f, 1.0f, 0.95f), false, 3.0f);
+
+            var center = CellCenter(fromCell, cellSize);
+            canvas.DrawCircle(center, 7.0f, new Color(0.45f, 1.0f, 1.0f, 0.95f));
+
+            var markerLength = 10.0f;
+            if (fromCell.X == 0)
+            {
+                canvas.DrawLine(center + new Vector2(-markerLength, 0), center + new Vector2(markerLength, 0), new Color(0.85f, 1.0f, 1.0f, 0.9f), 2.0f);
+            }
+            else if (fromCell.X == gridWidth - 1)
+            {
+                canvas.DrawLine(center + new Vector2(markerLength, 0), center + new Vector2(-markerLength, 0), new Color(0.85f, 1.0f, 1.0f, 0.9f), 2.0f);
+            }
+            else if (fromCell.Y == 0)
+            {
+                canvas.DrawLine(center + new Vector2(0, -markerLength), center + new Vector2(0, markerLength), new Color(0.85f, 1.0f, 1.0f, 0.9f), 2.0f);
+            }
+            else if (fromCell.Y == gridHeight - 1)
+            {
+                canvas.DrawLine(center + new Vector2(0, markerLength), center + new Vector2(0, -markerLength), new Color(0.85f, 1.0f, 1.0f, 0.9f), 2.0f);
+            }
+        }
+    }
+
+    private static bool IsInBounds(Vector2I cell, int gridWidth, int gridHeight)
+    {
+        return cell.X >= 0 && cell.X < gridWidth && cell.Y >= 0 && cell.Y < gridHeight;
+    }
+
+    private static Rect2 CellRect(Vector2I cell, int cellSize)
+    {
+        return new Rect2(new Vector2(cell.X * cellSize, cell.Y * cellSize), new Vector2(cellSize, cellSize));
+    }
+
+    private static Vector2 CellCenter(Vector2I cell, int cellSize)
+    {
+        return new Vector2(cell.X * cellSize + cellSize / 2.0f, cell.Y * cellSize + cellSize / 2.0f);
+    }
+
+    private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)
+    {
+        return dict.ContainsKey(key) ? (Vector2I)((Variant)dict[key]) : fallback;
     }
 }

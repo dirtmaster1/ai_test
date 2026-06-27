@@ -6,10 +6,19 @@ public partial class BattleController : Node2D
     private const int GridWidth = 15;
     private const int GridHeight = 10;
     private const int CellSize = 64;
+    private const int DefaultAggroTriggerRange = 4;
+
+    private enum BattleFlowState
+    {
+        Exploration,
+        Combat,
+        Defeat
+    }
 
     private Node2D _unitsRoot;
     private TurnManager _turnManager;
     private AiDirector _aiDirector;
+    private MapLoader _mapLoader;
     private HudController _hud;
     private EventBus _eventBus;
     private GameData _gameData;
@@ -18,9 +27,17 @@ public partial class BattleController : Node2D
     private readonly Array<Unit> _allUnits = new();
     private readonly Array<Unit> _playerUnits = new();
     private readonly Array<Unit> _enemyUnits = new();
+    private readonly Array<Vector2I> _blockedCells = new();
+    private readonly Array<Dictionary> _mapTransitions = new();
+    private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
+    private readonly System.Collections.Generic.HashSet<string> _clearedEncounterIds = new();
+    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _clearedEncounterIdsByMap = new();
 
-    private bool _combatResolved;
+    private BattleFlowState _flowState = BattleFlowState.Exploration;
     private bool _awaitingPlayerAttackDirection;
+    private Unit _explorerUnit;
+    private string _activeEncounterId = "";
+    private string _currentMapId = "map-a";
 
     private static readonly Vector2I[] AttackDirections =
     {
@@ -57,15 +74,14 @@ public partial class BattleController : Node2D
         _unitsRoot = GetNode<Node2D>("Units");
         _turnManager = GetNode<TurnManager>("TurnManager");
         _aiDirector = GetNode<AiDirector>("AiDirector");
+        _mapLoader = GetNodeOrNull<MapLoader>("MapLoader");
         _hud = GetNodeOrNull<HudController>("HUD");
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
 
-        SpawnTestEncounter();
-        _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
+        SpawnMapEncounter(_currentMapId);
         _turnManager.TurnChanged += OnTurnChanged;
-        _turnManager.SetupTurnOrder(_allUnits);
-        SetStatusHelp();
+        EnterExplorationMode();
         QueueRedraw();
     }
 
@@ -97,13 +113,14 @@ public partial class BattleController : Node2D
             );
         }
 
+        _mapLoader?.DrawMapFeaturesOverlay(this, _blockedCells, _mapTransitions, GridWidth, GridHeight, CellSize);
         DrawAttackPreviewOverlay();
     }
 
     // Input and player control
     public override void _Input(InputEvent @event)
     {
-        if (_combatResolved)
+        if (_flowState == BattleFlowState.Defeat)
         {
             return;
         }
@@ -116,6 +133,12 @@ public partial class BattleController : Node2D
 
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
         {
+            return;
+        }
+
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            HandleExplorationInput(keyEvent);
             return;
         }
 
@@ -153,6 +176,35 @@ public partial class BattleController : Node2D
 
         var moveResult = ResolveMoveAction(active, active.GridPos + delta, endTurnOnSuccess: false);
         ApplyActionResult(moveResult);
+    }
+
+    private void HandleExplorationInput(InputEventKey keyEvent)
+    {
+        var explorer = GetExplorerUnit();
+        if (explorer == null)
+        {
+            _hud?.SetStatusText("No living player unit available to explore.");
+            return;
+        }
+
+        var delta = KeyToDelta(keyEvent.Keycode);
+        if (delta == Vector2I.Zero)
+        {
+            return;
+        }
+
+        if (!TryMoveExplorationParty(delta))
+        {
+            return;
+        }
+
+        if (TryHandleMapTransition())
+        {
+            return;
+        }
+
+        SetStatusHelp();
+        TryStartCombatFromAggro();
     }
 
     private void HandleMouseAttackInput(InputEventMouseButton mouseEvent)
@@ -219,16 +271,23 @@ public partial class BattleController : Node2D
     // Turn flow and action resolution
     private void OnTurnChanged(Unit activeUnit)
     {
-        if (_combatResolved)
+        if (_flowState != BattleFlowState.Combat)
         {
             return;
         }
+
+        PruneInvalidUnitReferences();
 
         _awaitingPlayerAttackDirection = false;
         QueueRedraw();
 
         foreach (var unit in _allUnits)
         {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
             unit.SetActive(unit == activeUnit);
         }
 
@@ -279,7 +338,7 @@ public partial class BattleController : Node2D
 
     private void RunEnemyTurn(Unit enemyUnit)
     {
-        if (_combatResolved)
+        if (_flowState != BattleFlowState.Combat)
         {
             return;
         }
@@ -317,42 +376,114 @@ public partial class BattleController : Node2D
     }
 
     // Encounter setup
-    private void SpawnTestEncounter()
+    private void SpawnMapEncounter(string mapId, Array<Dictionary> partyOverrideConfigs = null)
     {
+        SaveClearedEncounterStateForCurrentMap();
+        ClearUnitsFromScene();
+
         _allUnits.Clear();
         _playerUnits.Clear();
         _enemyUnits.Clear();
+        _blockedCells.Clear();
+        _mapTransitions.Clear();
+        _encounterAggroRanges.Clear();
+        _activeEncounterId = "";
+        _currentMapId = mapId;
 
-        var configs = new Array<Dictionary>
+        var mapData = _mapLoader?.LoadMapStub(mapId) ?? new MapLoader().LoadMapStub(mapId);
+        _currentMapId = GetString(mapData, "id", mapId);
+        LoadClearedEncounterStateForCurrentMap();
+
+        var blocked = TryGetVector2IArray(mapData, "blocked");
+        foreach (var blockedCell in blocked)
         {
-            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 2) }, { "primary_ability_id", "melee" }, { "initiative", 15 }, { "hit_points", 10 }, { "max_hit_points", 10 } },
-            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 4) }, { "primary_ability_id", "melee" }, { "initiative", 11 }, { "hit_points", 14 }, { "max_hit_points", 14 } },
-            new Dictionary { { "id", "goblin-warrior" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 2) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
-            new Dictionary { { "id", "goblin-archer" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 4) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
-        };
+            _blockedCells.Add(blockedCell);
+        }
 
-        foreach (var config in configs)
+        var transitions = TryGetDictionaryArray(mapData, "transitions");
+        foreach (var transition in transitions)
         {
-            var unit = _unitScene.Instantiate<Unit>();
-            _unitsRoot.AddChild(unit);
-            unit.Setup(config);
-            _allUnits.Add(unit);
+            _mapTransitions.Add(transition);
+        }
 
-            if (unit.Team == "player")
+        if (partyOverrideConfigs != null && partyOverrideConfigs.Count > 0)
+        {
+            foreach (var config in partyOverrideConfigs)
             {
-                _playerUnits.Add(unit);
+                SpawnUnit(config);
             }
-            else
+        }
+        else
+        {
+            SpawnPlayersFromMap(mapData);
+        }
+
+        SpawnEnemiesFromMap(mapData);
+    }
+
+    private void SpawnPlayersFromMap(Dictionary mapData)
+    {
+        var players = TryGetDictionaryArray(mapData, "players");
+        foreach (var config in players)
+        {
+            SpawnUnit(config);
+        }
+    }
+
+    private void SpawnEnemiesFromMap(Dictionary mapData)
+    {
+        var encounters = TryGetDictionaryArray(mapData, "encounters");
+        foreach (var encounter in encounters)
+        {
+            var encounterId = GetString(encounter, "id", "encounter");
+            var aggroRange = GetInt(encounter, "aggro_range", DefaultAggroTriggerRange);
+            _encounterAggroRanges[encounterId] = aggroRange;
+
+            if (_clearedEncounterIds.Contains(encounterId))
             {
-                _enemyUnits.Add(unit);
+                continue;
             }
+
+            var enemies = TryGetDictionaryArray(encounter, "enemies");
+            foreach (var enemyConfig in enemies)
+            {
+                enemyConfig["encounter_id"] = encounterId;
+                SpawnUnit(enemyConfig);
+            }
+        }
+    }
+
+    private void SpawnUnit(Dictionary config)
+    {
+        var unit = _unitScene.Instantiate<Unit>();
+        _unitsRoot.AddChild(unit);
+        unit.Setup(config);
+        _allUnits.Add(unit);
+
+        if (unit.Team == "player")
+        {
+            _playerUnits.Add(unit);
+        }
+        else
+        {
+            _enemyUnits.Add(unit);
         }
     }
 
     // Combat and grid rules
     private bool TryMoveUnit(Unit unit, Vector2I targetCell)
     {
+        if (!IsUsableUnit(unit) || unit.IsDead)
+        {
+            return false;
+        }
+
         if (!IsInBounds(targetCell))
+        {
+            return false;
+        }
+
+        if (IsBlockedCell(targetCell))
         {
             return false;
         }
@@ -436,7 +567,7 @@ public partial class BattleController : Node2D
 
         foreach (var unit in _allUnits)
         {
-            if (unit == null || unit.IsDead || unit.Team == attacker.Team)
+            if (!IsValidAttackTarget(attacker, unit))
             {
                 continue;
             }
@@ -462,7 +593,7 @@ public partial class BattleController : Node2D
     {
         for (var i = units.Count - 1; i >= 0; i--)
         {
-            if (units[i] == null || units[i].IsDead)
+            if (!IsUsableUnit(units[i]) || units[i].IsDead)
             {
                 units.RemoveAt(i);
             }
@@ -473,7 +604,7 @@ public partial class BattleController : Node2D
     {
         if (_playerUnits.Count == 0)
         {
-            _combatResolved = true;
+            _flowState = BattleFlowState.Defeat;
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             _hud?.SetStatusText("Defeat. All player units were defeated.");
             return true;
@@ -481,9 +612,18 @@ public partial class BattleController : Node2D
 
         if (_enemyUnits.Count == 0)
         {
-            _combatResolved = true;
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
-            _hud?.SetStatusText("Victory! All enemies were defeated.");
+            EnterExplorationMode("Encounter cleared. Exploration resumed.");
+            return true;
+        }
+
+        if (!HasLivingEnemiesInEncounter(_activeEncounterId))
+        {
+            _clearedEncounterIds.Add(_activeEncounterId);
+            SaveClearedEncounterStateForCurrentMap();
+            _activeEncounterId = "";
+            _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
+            EnterExplorationMode("Encounter cleared. Exploration resumed.");
             return true;
         }
 
@@ -492,6 +632,11 @@ public partial class BattleController : Node2D
 
     private Unit GetActivePlayerUnit()
     {
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return null;
+        }
+
         var active = _turnManager.GetActiveUnit();
         if (active == null || active.Team != "player" || active.IsDead)
         {
@@ -506,11 +651,24 @@ public partial class BattleController : Node2D
         return cell.X >= 0 && cell.X < GridWidth && cell.Y >= 0 && cell.Y < GridHeight;
     }
 
+    private bool IsBlockedCell(Vector2I cell)
+    {
+        foreach (var blocked in _blockedCells)
+        {
+            if (blocked == cell)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool IsOccupied(Vector2I cell, Unit ignoreUnit = null)
     {
         foreach (var unit in _allUnits)
         {
-            if (unit == ignoreUnit || unit.IsDead)
+            if (!IsUsableUnit(unit) || unit == ignoreUnit || unit.IsDead)
             {
                 continue;
             }
@@ -529,6 +687,11 @@ public partial class BattleController : Node2D
         foreach (var unit in _allUnits)
         {
             if (unit == null || unit.IsDead || unit.Team == attackerTeam)
+            {
+                continue;
+            }
+
+            if (!IsValidAttackTargetByTeam(attackerTeam, unit))
             {
                 continue;
             }
@@ -594,7 +757,7 @@ public partial class BattleController : Node2D
     {
         foreach (var unit in _allUnits)
         {
-            if (unit == null || unit.IsDead || unit == attacker || unit == target)
+            if (!IsUsableUnit(unit) || unit.IsDead || unit == attacker || unit == target)
             {
                 continue;
             }
@@ -700,7 +863,7 @@ public partial class BattleController : Node2D
         }
 
         var active = _turnManager?.GetActiveUnit();
-        if (active == null || active.Team != "player" || active.IsDead)
+        if (!IsUsableUnit(active) || active.Team != "player" || active.IsDead)
         {
             return;
         }
@@ -743,6 +906,25 @@ public partial class BattleController : Node2D
 
     private void SetStatusHelp()
     {
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            var explorer = GetExplorerUnit();
+            if (explorer == null)
+            {
+                _hud?.SetStatusText("Exploration: no living player units.");
+                return;
+            }
+
+            _hud?.SetStatusText($"Map: {_currentMapId} | Exploration: {explorer.UnitName} | Move: WASD / Arrows | Step on edge markers to transition");
+            return;
+        }
+
+        if (_flowState == BattleFlowState.Defeat)
+        {
+            _hud?.SetStatusText("Defeat. All player units were defeated.");
+            return;
+        }
+
         var active = _turnManager.GetActiveUnit();
         if (active == null)
         {
@@ -751,5 +933,479 @@ public partial class BattleController : Node2D
         }
 
         _hud?.SetStatusText($"Turn: {active.UnitName} ({active.Team}) | Move: WASD / Arrows | Attack: F then direction | End turn: Space");
+    }
+
+    private Unit GetExplorerUnit()
+    {
+        PruneInvalidUnitReferences();
+
+        if (IsUsableUnit(_explorerUnit) && !_explorerUnit.IsDead && _explorerUnit.Team == "player")
+        {
+            return _explorerUnit;
+        }
+
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && !unit.IsDead)
+            {
+                _explorerUnit = unit;
+                return unit;
+            }
+        }
+
+        return null;
+    }
+
+    private void EnterExplorationMode(string statusText = null)
+    {
+        _flowState = BattleFlowState.Exploration;
+        _awaitingPlayerAttackDirection = false;
+        PruneInvalidUnitReferences();
+        _explorerUnit = GetExplorerUnit();
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            unit.SetActive(false);
+        }
+
+        if (!string.IsNullOrEmpty(statusText))
+        {
+            _hud?.SetStatusText(statusText);
+        }
+        else
+        {
+            SetStatusHelp();
+        }
+    }
+
+    private void TryStartCombatFromAggro()
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
+        PruneInvalidUnitReferences();
+
+        foreach (var enemy in _enemyUnits)
+        {
+            if (!IsUsableUnit(enemy) || enemy.IsDead)
+            {
+                continue;
+            }
+
+            var encounterId = enemy.EncounterId;
+            if (string.IsNullOrEmpty(encounterId) || _clearedEncounterIds.Contains(encounterId))
+            {
+                continue;
+            }
+
+            var aggroRange = GetEncounterAggroRange(encounterId);
+
+            foreach (var player in _playerUnits)
+            {
+                if (!IsUsableUnit(player) || player.IsDead)
+                {
+                    continue;
+                }
+
+                if (Manhattan(player.GridPos, enemy.GridPos) <= aggroRange)
+                {
+                    StartCombat(encounterId);
+                    return;
+                }
+            }
+        }
+    }
+
+    private void StartCombat(string encounterId)
+    {
+        if (_flowState == BattleFlowState.Combat)
+        {
+            return;
+        }
+
+        PruneInvalidUnitReferences();
+
+        _activeEncounterId = encounterId;
+        _flowState = BattleFlowState.Combat;
+        _awaitingPlayerAttackDirection = false;
+        _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
+
+        var combatUnits = new Array<Unit>();
+        foreach (var player in _playerUnits)
+        {
+            if (IsUsableUnit(player) && !player.IsDead)
+            {
+                combatUnits.Add(player);
+            }
+        }
+
+        foreach (var enemy in _enemyUnits)
+        {
+            if (IsUsableUnit(enemy) && !enemy.IsDead && enemy.EncounterId == encounterId)
+            {
+                combatUnits.Add(enemy);
+            }
+        }
+
+        _turnManager.SetupTurnOrder(combatUnits);
+        SetStatusHelp();
+    }
+
+    private bool TryHandleMapTransition()
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return false;
+        }
+
+        var explorer = GetExplorerUnit();
+        if (explorer == null)
+        {
+            return false;
+        }
+
+        foreach (var transition in _mapTransitions)
+        {
+            var fromCell = GetVector2I(transition, "from_cell", new Vector2I(-9999, -9999));
+            if (explorer.GridPos != fromCell)
+            {
+                continue;
+            }
+
+            var toMap = GetString(transition, "to_map", _currentMapId);
+            var spawnCell = GetVector2I(transition, "spawn_cell", explorer.GridPos);
+            TransitionToMap(toMap, spawnCell);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void TransitionToMap(string toMapId, Vector2I spawnCell)
+    {
+        SaveClearedEncounterStateForCurrentMap();
+        var partyConfigs = BuildPartyCarryOverConfigs(spawnCell);
+        SpawnMapEncounter(toMapId, partyConfigs);
+        EnterExplorationMode($"Transitioned to {toMapId}. Keep exploring.");
+        QueueRedraw();
+    }
+
+    private Array<Dictionary> BuildPartyCarryOverConfigs(Vector2I leadSpawnCell)
+    {
+        var carried = new Array<Dictionary>();
+        var index = 0;
+        foreach (var player in _playerUnits)
+        {
+            if (player == null || player.IsDead)
+            {
+                continue;
+            }
+
+            var spawnCell = leadSpawnCell + GetPartyFormationOffset(index);
+            carried.Add(new Dictionary
+            {
+                { "id", player.UnitId },
+                { "name", player.UnitName },
+                { "team", "player" },
+                { "grid_pos", spawnCell },
+                { "primary_ability_id", player.PrimaryAbilityId },
+                { "initiative", player.Initiative },
+                { "hit_points", player.HitPoints },
+                { "max_hit_points", player.MaxHitPoints },
+                { "base_attack_damage", player.BaseAttackDamage },
+                { "base_attack_range", player.BaseAttackRange },
+                { "weapon_attack_damage_bonus", player.WeaponAttackDamageBonus },
+                { "weapon_attack_range_bonus", player.WeaponAttackRangeBonus },
+                { "buff_attack_damage_bonus", player.BuffAttackDamageBonus },
+                { "buff_attack_range_bonus", player.BuffAttackRangeBonus }
+            });
+
+            index++;
+        }
+
+        return carried;
+    }
+
+    private static Vector2I GetPartyFormationOffset(int index)
+    {
+        return index switch
+        {
+            0 => new Vector2I(0, 0),
+            1 => new Vector2I(0, 1),
+            2 => new Vector2I(0, -1),
+            3 => new Vector2I(1, 0),
+            _ => new Vector2I(index - 3, 0)
+        };
+    }
+
+    private void ClearUnitsFromScene()
+    {
+        foreach (Node child in _unitsRoot.GetChildren())
+        {
+            child.QueueFree();
+        }
+    }
+
+    private int GetEncounterAggroRange(string encounterId)
+    {
+        return _encounterAggroRanges.TryGetValue(encounterId, out var range) ? range : DefaultAggroTriggerRange;
+    }
+
+    private void LoadClearedEncounterStateForCurrentMap()
+    {
+        _clearedEncounterIds.Clear();
+
+        if (!_clearedEncounterIdsByMap.TryGetValue(_currentMapId, out var stored))
+        {
+            return;
+        }
+
+        foreach (var encounterId in stored)
+        {
+            _clearedEncounterIds.Add(encounterId);
+        }
+    }
+
+    private void SaveClearedEncounterStateForCurrentMap()
+    {
+        if (string.IsNullOrEmpty(_currentMapId))
+        {
+            return;
+        }
+
+        var snapshot = new System.Collections.Generic.HashSet<string>();
+        foreach (var encounterId in _clearedEncounterIds)
+        {
+            snapshot.Add(encounterId);
+        }
+
+        _clearedEncounterIdsByMap[_currentMapId] = snapshot;
+    }
+
+    private bool HasLivingEnemiesInEncounter(string encounterId)
+    {
+        foreach (var enemy in _enemyUnits)
+        {
+            if (IsUsableUnit(enemy) && !enemy.IsDead && enemy.EncounterId == encounterId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsValidAttackTarget(Unit attacker, Unit candidate)
+    {
+        if (!IsUsableUnit(attacker) || !IsUsableUnit(candidate) || candidate.IsDead || candidate.Team == attacker.Team)
+        {
+            return false;
+        }
+
+        return IsValidAttackTargetByTeam(attacker.Team, candidate);
+    }
+
+    private bool IsValidAttackTargetByTeam(string attackerTeam, Unit candidate)
+    {
+        if (!IsUsableUnit(candidate) || candidate.IsDead || candidate.Team == attackerTeam)
+        {
+            return false;
+        }
+
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return true;
+        }
+
+        if (candidate.Team != "enemy")
+        {
+            return true;
+        }
+
+        return candidate.EncounterId == _activeEncounterId;
+    }
+
+    private static Array<Dictionary> TryGetDictionaryArray(Dictionary dict, string key)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return new Array<Dictionary>();
+        }
+
+        var raw = (Variant)dict[key];
+        if (raw.VariantType != Variant.Type.Array)
+        {
+            return new Array<Dictionary>();
+        }
+
+        var result = new Array<Dictionary>();
+        foreach (var entry in (Array)raw)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType == Variant.Type.Dictionary)
+            {
+                result.Add((Dictionary)variant);
+            }
+        }
+
+        return result;
+    }
+
+    private static Array<Vector2I> TryGetVector2IArray(Dictionary dict, string key)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return new Array<Vector2I>();
+        }
+
+        var raw = (Variant)dict[key];
+        if (raw.VariantType != Variant.Type.Array)
+        {
+            return new Array<Vector2I>();
+        }
+
+        var result = new Array<Vector2I>();
+        foreach (var entry in (Array)raw)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType == Variant.Type.Vector2I)
+            {
+                result.Add((Vector2I)variant);
+            }
+        }
+
+        return result;
+    }
+
+    private static string GetString(Dictionary dict, string key, string fallback)
+    {
+        return dict.ContainsKey(key) ? ((Variant)dict[key]).AsString() : fallback;
+    }
+
+    private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)
+    {
+        return dict.ContainsKey(key) ? (Vector2I)((Variant)dict[key]) : fallback;
+    }
+
+    private static bool IsUsableUnit(Unit unit)
+    {
+        return unit != null && GodotObject.IsInstanceValid(unit) && !unit.IsQueuedForDeletion();
+    }
+
+    private void PruneInvalidUnitReferences()
+    {
+        for (var i = _allUnits.Count - 1; i >= 0; i--)
+        {
+            if (!IsUsableUnit(_allUnits[i]))
+            {
+                _allUnits.RemoveAt(i);
+            }
+        }
+
+        for (var i = _playerUnits.Count - 1; i >= 0; i--)
+        {
+            if (!IsUsableUnit(_playerUnits[i]))
+            {
+                _playerUnits.RemoveAt(i);
+            }
+        }
+
+        for (var i = _enemyUnits.Count - 1; i >= 0; i--)
+        {
+            if (!IsUsableUnit(_enemyUnits[i]))
+            {
+                _enemyUnits.RemoveAt(i);
+            }
+        }
+
+        if (!IsUsableUnit(_explorerUnit))
+        {
+            _explorerUnit = null;
+        }
+    }
+
+    private bool TryMoveExplorationParty(Vector2I delta)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return false;
+        }
+
+        var leader = GetExplorerUnit();
+        if (!IsUsableUnit(leader) || leader.IsDead)
+        {
+            return false;
+        }
+
+        var orderedParty = new System.Collections.Generic.List<Unit>();
+        var priorPositions = new System.Collections.Generic.Dictionary<Unit, Vector2I>();
+
+        orderedParty.Add(leader);
+        priorPositions[leader] = leader.GridPos;
+
+        foreach (var player in _playerUnits)
+        {
+            if (!IsUsableUnit(player) || player.IsDead || player == leader)
+            {
+                continue;
+            }
+
+            orderedParty.Add(player);
+            priorPositions[player] = player.GridPos;
+        }
+
+        if (!TryMoveUnit(leader, priorPositions[leader] + delta))
+        {
+            return false;
+        }
+
+        var partySet = new System.Collections.Generic.HashSet<Unit>(orderedParty);
+        for (var i = 1; i < orderedParty.Count; i++)
+        {
+            var follower = orderedParty[i];
+            var nextCell = priorPositions[orderedParty[i - 1]];
+
+            if (!IsUsableUnit(follower) || follower.IsDead)
+            {
+                continue;
+            }
+
+            if (CanExplorationFollowerEnterCell(nextCell, partySet))
+            {
+                follower.SetGridPos(nextCell);
+            }
+        }
+
+        return true;
+    }
+
+    private bool CanExplorationFollowerEnterCell(Vector2I cell, System.Collections.Generic.HashSet<Unit> partyMembers)
+    {
+        if (!IsInBounds(cell) || IsBlockedCell(cell))
+        {
+            return false;
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || partyMembers.Contains(unit))
+            {
+                continue;
+            }
+
+            if (unit.GridPos == cell)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
