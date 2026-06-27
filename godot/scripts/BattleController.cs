@@ -1,4 +1,3 @@
-using System;
 using Godot;
 using Godot.Collections;
 
@@ -13,13 +12,16 @@ public partial class BattleController : Node2D
     private AiDirector _aiDirector;
     private HudController _hud;
     private EventBus _eventBus;
+    private GameData _gameData;
 
     private readonly PackedScene _unitScene = GD.Load<PackedScene>("res://scenes/Unit.tscn");
     private readonly Array<Unit> _allUnits = new();
     private readonly Array<Unit> _playerUnits = new();
     private readonly Array<Unit> _enemyUnits = new();
+
     private bool _combatResolved;
     private bool _awaitingPlayerAttackDirection;
+
     private static readonly Vector2I[] AttackDirections =
     {
         new(0, -1),
@@ -28,6 +30,28 @@ public partial class BattleController : Node2D
         new(1, 0)
     };
 
+    private readonly struct CombatActionResult
+    {
+        public bool Success { get; }
+        public bool ShouldEndTurn { get; }
+        public bool CombatEnded { get; }
+
+        private CombatActionResult(bool success, bool shouldEndTurn, bool combatEnded)
+        {
+            Success = success;
+            ShouldEndTurn = shouldEndTurn;
+            CombatEnded = combatEnded;
+        }
+
+        public static CombatActionResult Failed => new(false, false, false);
+        public static CombatActionResult MoveResolved => new(true, false, false);
+        public static CombatActionResult MoveAndEndTurnResolved => new(true, true, false);
+        public static CombatActionResult PassResolved => new(true, true, false);
+        public static CombatActionResult AttackResolved => new(true, true, false);
+        public static CombatActionResult CombatResolvedResult => new(true, false, true);
+    }
+
+    // Lifecycle and rendering
     public override void _Ready()
     {
         _unitsRoot = GetNode<Node2D>("Units");
@@ -35,6 +59,7 @@ public partial class BattleController : Node2D
         _aiDirector = GetNode<AiDirector>("AiDirector");
         _hud = GetNodeOrNull<HudController>("HUD");
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
+        _gameData = GetNodeOrNull<GameData>("/root/GameData");
 
         SpawnTestEncounter();
         _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
@@ -75,6 +100,7 @@ public partial class BattleController : Node2D
         DrawAttackPreviewOverlay();
     }
 
+    // Input and player control
     public override void _Input(InputEvent @event)
     {
         if (_combatResolved)
@@ -101,12 +127,12 @@ public partial class BattleController : Node2D
 
         if (keyEvent.Keycode == Key.Space)
         {
-            _turnManager.EndTurn();
+            ApplyActionResult(CombatActionResult.PassResolved);
             return;
         }
 
-        var active = _turnManager.GetActiveUnit();
-        if (active == null || active.Team != "player" || active.IsDead)
+        var active = GetActivePlayerUnit();
+        if (active == null)
         {
             return;
         }
@@ -119,30 +145,14 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var delta = Vector2I.Zero;
-        switch (keyEvent.Keycode)
+        var delta = KeyToDelta(keyEvent.Keycode);
+        if (delta == Vector2I.Zero)
         {
-            case Key.W:
-            case Key.Up:
-                delta = new Vector2I(0, -1);
-                break;
-            case Key.S:
-            case Key.Down:
-                delta = new Vector2I(0, 1);
-                break;
-            case Key.A:
-            case Key.Left:
-                delta = new Vector2I(-1, 0);
-                break;
-            case Key.D:
-            case Key.Right:
-                delta = new Vector2I(1, 0);
-                break;
-            default:
-                return;
+            return;
         }
 
-        TryMoveUnit(active, active.GridPos + delta);
+        var moveResult = ResolveMoveAction(active, active.GridPos + delta, endTurnOnSuccess: false);
+        ApplyActionResult(moveResult);
     }
 
     private void HandleMouseAttackInput(InputEventMouseButton mouseEvent)
@@ -163,17 +173,14 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var active = _turnManager.GetActiveUnit();
-        if (active == null || active.Team != "player" || active.IsDead)
+        var active = GetActivePlayerUnit();
+        if (active == null)
         {
             CancelAttackMode(false);
             return;
         }
 
         var clickedCell = WorldToCell(GetGlobalMousePosition());
-        var delta = clickedCell - active.GridPos;
-
-        // Only allow the 4-direction adjacent cells for this melee attack mode.
         if (Manhattan(active.GridPos, clickedCell) != 1)
         {
             _hud?.SetStatusText("Click an adjacent target tile.");
@@ -181,34 +188,7 @@ public partial class BattleController : Node2D
         }
 
         CancelAttackMode(false);
-
-        var target = GetLivingEnemyAtCell(active.Team, active.GridPos + delta);
-        if (target == null)
-        {
-            if (TryMoveUnit(active, clickedCell))
-            {
-                _hud?.SetStatusText("Moved. Attack mode canceled.");
-            }
-            else
-            {
-                _hud?.SetStatusText("Cannot move there. Attack mode canceled.");
-            }
-
-            return;
-        }
-
-        if (!TryAttackTarget(active, target, active.AttackDamage, active.AttackRange))
-        {
-            return;
-        }
-
-        CleanupDefeatedUnits();
-        if (CheckCombatResolved())
-        {
-            return;
-        }
-
-        _turnManager.EndTurn();
+        TryResolvePlayerActionAtCell(active, clickedCell);
     }
 
     private void HandlePlayerAttackDirectionInput(InputEventKey keyEvent)
@@ -219,8 +199,8 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var active = _turnManager.GetActiveUnit();
-        if (active == null || active.Team != "player" || active.IsDead)
+        var active = GetActivePlayerUnit();
+        if (active == null)
         {
             CancelAttackMode(false);
             return;
@@ -233,13 +213,51 @@ public partial class BattleController : Node2D
         }
 
         CancelAttackMode(false);
-        var targetCell = active.GridPos + delta;
+        TryResolvePlayerActionAtCell(active, active.GridPos + delta);
+    }
+
+    // Turn flow and action resolution
+    private void OnTurnChanged(Unit activeUnit)
+    {
+        if (_combatResolved)
+        {
+            return;
+        }
+
+        _awaitingPlayerAttackDirection = false;
+        QueueRedraw();
+
+        foreach (var unit in _allUnits)
+        {
+            unit.SetActive(unit == activeUnit);
+        }
+
+        if (activeUnit == null)
+        {
+            _hud?.SetStatusText("No active unit");
+            return;
+        }
+
+        if (activeUnit.Team == "enemy")
+        {
+            RunEnemyTurn(activeUnit);
+        }
+        else
+        {
+            SetStatusHelp();
+        }
+    }
+
+    private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
+    {
         var target = GetLivingEnemyAtCell(active.Team, targetCell);
         if (target == null)
         {
-            if (TryMoveUnit(active, targetCell))
+            var moveResult = ResolveMoveAction(active, targetCell, endTurnOnSuccess: false);
+            if (moveResult.Success)
             {
                 _hud?.SetStatusText("Moved. Attack mode canceled.");
+                ApplyActionResult(moveResult);
             }
             else
             {
@@ -249,20 +267,56 @@ public partial class BattleController : Node2D
             return;
         }
 
-        if (!TryAttackTarget(active, target, active.AttackDamage, active.AttackRange))
+        var attackProfile = ResolveAttackProfile(active);
+        if (!TryAttackTarget(active, target, attackProfile.damage, attackProfile.range, attackProfile.actionId))
         {
             return;
         }
 
-        CleanupDefeatedUnits();
-        if (CheckCombatResolved())
-        {
-            return;
-        }
-
-        _turnManager.EndTurn();
+        var result = ResolveSuccessfulAttack();
+        ApplyActionResult(result);
     }
 
+    private void RunEnemyTurn(Unit enemyUnit)
+    {
+        if (_combatResolved)
+        {
+            return;
+        }
+
+        var attackResult = TryAttackNearestEnemy(enemyUnit);
+        if (attackResult.Success)
+        {
+            ApplyActionResult(attackResult);
+            return;
+        }
+
+        var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
+        if (target == null)
+        {
+            ApplyActionResult(CombatActionResult.PassResolved);
+            return;
+        }
+
+        var step = _aiDirector.ChooseStepTowardTarget(enemyUnit, target);
+        var moveResult = ResolveMoveAction(enemyUnit, step, endTurnOnSuccess: true);
+        ApplyActionResult(moveResult.Success ? moveResult : CombatActionResult.PassResolved);
+    }
+
+    private void ApplyActionResult(CombatActionResult result)
+    {
+        if (!result.Success || result.CombatEnded)
+        {
+            return;
+        }
+
+        if (result.ShouldEndTurn)
+        {
+            _turnManager.EndTurn();
+        }
+    }
+
+    // Encounter setup
     private void SpawnTestEncounter()
     {
         _allUnits.Clear();
@@ -271,10 +325,10 @@ public partial class BattleController : Node2D
 
         var configs = new Array<Dictionary>
         {
-            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 2) }, { "hit_points", 10 }, { "max_hit_points", 10 } },
-            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 4) }, { "hit_points", 14 }, { "max_hit_points", 14 } },
-            new Dictionary { { "id", "goblin-warrior" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 2) }, { "hit_points", 8 }, { "max_hit_points", 8 } },
-            new Dictionary { { "id", "goblin-archer" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 4) }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 2) }, { "primary_ability_id", "melee" }, { "initiative", 15 }, { "hit_points", 10 }, { "max_hit_points", 10 } },
+            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 4) }, { "primary_ability_id", "melee" }, { "initiative", 11 }, { "hit_points", 14 }, { "max_hit_points", 14 } },
+            new Dictionary { { "id", "goblin-warrior" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 2) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
+            new Dictionary { { "id", "goblin-archer" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 4) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
         };
 
         foreach (var config in configs)
@@ -295,6 +349,7 @@ public partial class BattleController : Node2D
         }
     }
 
+    // Combat and grid rules
     private bool TryMoveUnit(Unit unit, Vector2I targetCell)
     {
         if (!IsInBounds(targetCell))
@@ -314,19 +369,46 @@ public partial class BattleController : Node2D
         return true;
     }
 
-    private bool TryAttackNearestEnemy(Unit attacker)
+    private CombatActionResult TryAttackNearestEnemy(Unit attacker)
     {
-        var target = FindNearestEnemyInRange(attacker, attacker.AttackRange);
+        var attackProfile = ResolveAttackProfile(attacker);
+        var target = FindNearestEnemyInRange(attacker, attackProfile.range);
         if (target == null)
         {
-            _hud?.SetStatusText($"{attacker.UnitName} has no target in range ({attacker.AttackRange}).");
-            return false;
+            _hud?.SetStatusText($"{attacker.UnitName} has no target in range ({attackProfile.range}).");
+            return CombatActionResult.Failed;
         }
 
-        return TryAttackTarget(attacker, target, attacker.AttackDamage, attacker.AttackRange);
+        if (!TryAttackTarget(attacker, target, attackProfile.damage, attackProfile.range, attackProfile.actionId))
+        {
+            return CombatActionResult.Failed;
+        }
+
+        return ResolveSuccessfulAttack();
     }
 
-    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range)
+    private CombatActionResult ResolveSuccessfulAttack()
+    {
+        CleanupDefeatedUnits();
+        if (CheckCombatResolved())
+        {
+            return CombatActionResult.CombatResolvedResult;
+        }
+
+        return CombatActionResult.AttackResolved;
+    }
+
+    private CombatActionResult ResolveMoveAction(Unit unit, Vector2I targetCell, bool endTurnOnSuccess)
+    {
+        if (!TryMoveUnit(unit, targetCell))
+        {
+            return CombatActionResult.Failed;
+        }
+
+        return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
+    }
+
+    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack")
     {
         if (!CanAttack(attacker, target, range))
         {
@@ -335,7 +417,7 @@ public partial class BattleController : Node2D
         }
 
         target.ApplyDamage(damage);
-        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, attacker, "attack", target.UnitId);
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, attacker, actionId, target.UnitId);
 
         var resultText = $"{attacker.UnitName} hits {target.UnitName} for {damage}.";
         if (target.IsDead)
@@ -368,80 +450,6 @@ public partial class BattleController : Node2D
         }
 
         return nearest;
-    }
-
-    private void OnTurnChanged(Unit activeUnit)
-    {
-        if (_combatResolved)
-        {
-            return;
-        }
-
-        _awaitingPlayerAttackDirection = false;
-        QueueRedraw();
-
-        foreach (var unit in _allUnits)
-        {
-            unit.SetActive(unit == activeUnit);
-        }
-
-        if (activeUnit == null)
-        {
-            _hud?.SetStatusText("No active unit");
-            return;
-        }
-
-        if (activeUnit.Team == "enemy")
-        {
-            RunEnemyTurn(activeUnit);
-        }
-        else
-        {
-            SetStatusHelp();
-        }
-    }
-
-    private void RunEnemyTurn(Unit enemyUnit)
-    {
-        if (_combatResolved)
-        {
-            return;
-        }
-
-        if (TryAttackNearestEnemy(enemyUnit))
-        {
-            CleanupDefeatedUnits();
-            if (CheckCombatResolved())
-            {
-                return;
-            }
-
-            _turnManager.EndTurn();
-            return;
-        }
-
-        var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
-        if (target == null)
-        {
-            _turnManager.EndTurn();
-            return;
-        }
-
-        var dx = Math.Sign(target.GridPos.X - enemyUnit.GridPos.X);
-        var dy = Math.Sign(target.GridPos.Y - enemyUnit.GridPos.Y);
-        var step = enemyUnit.GridPos;
-
-        if (Mathf.Abs(target.GridPos.X - enemyUnit.GridPos.X) >= Mathf.Abs(target.GridPos.Y - enemyUnit.GridPos.Y))
-        {
-            step += new Vector2I(dx, 0);
-        }
-        else
-        {
-            step += new Vector2I(0, dy);
-        }
-
-        TryMoveUnit(enemyUnit, step);
-        _turnManager.EndTurn();
     }
 
     private void CleanupDefeatedUnits()
@@ -480,6 +488,17 @@ public partial class BattleController : Node2D
         }
 
         return false;
+    }
+
+    private Unit GetActivePlayerUnit()
+    {
+        var active = _turnManager.GetActiveUnit();
+        if (active == null || active.Team != "player" || active.IsDead)
+        {
+            return null;
+        }
+
+        return active;
     }
 
     private static bool IsInBounds(Vector2I cell)
@@ -523,6 +542,7 @@ public partial class BattleController : Node2D
         return null;
     }
 
+    // Math and data helpers
     private static Vector2I KeyToDelta(Key keycode)
     {
         return keycode switch
@@ -632,6 +652,36 @@ public partial class BattleController : Node2D
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
     }
 
+    private (int damage, int range, string actionId) ResolveAttackProfile(Unit attacker)
+    {
+        if (attacker == null)
+        {
+            return (0, 1, "attack");
+        }
+
+        var fallback = (attacker.AttackDamage, attacker.AttackRange, "attack");
+        if (_gameData == null || string.IsNullOrEmpty(attacker.PrimaryAbilityId))
+        {
+            return fallback;
+        }
+
+        var ability = _gameData.GetAbility(attacker.PrimaryAbilityId);
+        if (ability.Count == 0)
+        {
+            return fallback;
+        }
+
+        var damage = Mathf.Max(0, GetInt(ability, "damage", attacker.AttackDamage));
+        var range = Mathf.Max(1, GetInt(ability, "range", attacker.AttackRange));
+        return (damage, range, attacker.PrimaryAbilityId);
+    }
+
+    private static int GetInt(Dictionary dict, string key, int fallback)
+    {
+        return dict.ContainsKey(key) ? (int)((Variant)dict[key]) : fallback;
+    }
+
+    // UI helpers
     private void CancelAttackMode(bool restoreHelpText = true)
     {
         _awaitingPlayerAttackDirection = false;
@@ -655,6 +705,7 @@ public partial class BattleController : Node2D
             return;
         }
 
+        var attackProfile = ResolveAttackProfile(active);
         var center = CellCenter(active.GridPos);
         DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
@@ -668,7 +719,7 @@ public partial class BattleController : Node2D
 
             var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
             var target = GetLivingEnemyAtCell(active.Team, cell);
-            var valid = target != null && CanAttack(active, target, active.AttackRange);
+            var valid = target != null && CanAttack(active, target, attackProfile.range);
 
             var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.18f);
             var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.8f);

@@ -13,6 +13,8 @@ public partial class Unit : Node2D
     public int MaxHitPoints { get; private set; } = 10;
     public int BaseAttackDamage { get; private set; } = 3;
     public int BaseAttackRange { get; private set; } = 1;
+    public string PrimaryAbilityId { get; private set; } = "";
+    public int Initiative { get; private set; } = 10;
     public int WeaponAttackDamageBonus { get; private set; }
     public int WeaponAttackRangeBonus { get; private set; }
     public int BuffAttackDamageBonus { get; private set; }
@@ -30,6 +32,8 @@ public partial class Unit : Node2D
         Team = GetString(config, "team", "player");
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
+        Initiative = GetInt(config, "initiative", 10);
+        PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         BaseAttackDamage = GetInt(config, "base_attack_damage", Team == "player" ? 4 : 3);
         BaseAttackRange = GetInt(config, "base_attack_range", 1);
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", 0);

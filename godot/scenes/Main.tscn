@@ -1,7 +1,7 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="PackedScene" path="res://scenes/BattleScene.tscn" id="1_7ji8r"]
+[ext_resource type="PackedScene" path="res://scenes/TestEncounter2v2.tscn" id="1_7ji8r"]
 
 [node name="Main" type="Node"]
 
-[node name="BattleScene" parent="." instance=ExtResource("1_7ji8r")]
+[node name="TestEncounter2v2" parent="." instance=ExtResource("1_7ji8r")]

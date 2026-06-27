@@ -1,5 +1,6 @@
 using Godot;
 using Godot.Collections;
+using System.Collections.Generic;
 
 public partial class TurnManager : Node
 {
@@ -17,13 +18,30 @@ public partial class TurnManager : Node
 
     public void SetupTurnOrder(Array<Unit> units)
     {
-        _turnOrder.Clear();
+        var ordered = new List<Unit>();
         foreach (var unit in units)
         {
             if (unit != null && !unit.IsDead)
             {
-                _turnOrder.Add(unit);
+                ordered.Add(unit);
             }
+        }
+
+        ordered.Sort((a, b) =>
+        {
+            var byInitiative = b.Initiative.CompareTo(a.Initiative);
+            if (byInitiative != 0)
+            {
+                return byInitiative;
+            }
+
+            return string.CompareOrdinal(a.UnitId, b.UnitId);
+        });
+
+        _turnOrder = new Array<Unit>();
+        foreach (var unit in ordered)
+        {
+            _turnOrder.Add(unit);
         }
 
         _activeIndex = 0;
@@ -47,14 +65,44 @@ public partial class TurnManager : Node
             return;
         }
 
+        var endingUnit = GetActiveUnit();
+        _eventBus?.EmitSignal(EventBus.SignalName.TurnEnded, endingUnit);
+
+        var nextUnit = FindNextLivingAfter(_activeIndex);
         CompactTurnOrder();
-        if (_turnOrder.Count == 0)
+        if (_turnOrder.Count == 0 || nextUnit == null)
         {
             return;
         }
 
-        _activeIndex = (_activeIndex + 1) % _turnOrder.Count;
+        var nextIndex = _turnOrder.IndexOf(nextUnit);
+        if (nextIndex < 0)
+        {
+            nextIndex = 0;
+        }
+
+        _activeIndex = nextIndex;
         EmitActive();
+    }
+
+    private Unit FindNextLivingAfter(int startIndex)
+    {
+        if (_turnOrder.Count == 0)
+        {
+            return null;
+        }
+
+        for (var step = 1; step <= _turnOrder.Count; step++)
+        {
+            var index = (startIndex + step) % _turnOrder.Count;
+            var candidate = _turnOrder[index];
+            if (candidate != null && !candidate.IsDead)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private void CompactTurnOrder()
