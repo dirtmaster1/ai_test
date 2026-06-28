@@ -68,6 +68,24 @@ public partial class BattleController : Node2D
         public static CombatActionResult CombatResolvedResult => new(true, false, true);
     }
 
+    private readonly struct ActionProfile
+    {
+        public string ActionId { get; }
+        public string ActionType { get; }
+        public int Range { get; }
+        public int Damage { get; }
+        public int HealAmount { get; }
+
+        public ActionProfile(string actionId, string actionType, int range, int damage, int healAmount)
+        {
+            ActionId = actionId;
+            ActionType = actionType;
+            Range = range;
+            Damage = damage;
+            HealAmount = healAmount;
+        }
+    }
+
     // Lifecycle and rendering
     public override void _Ready()
     {
@@ -309,31 +327,54 @@ public partial class BattleController : Node2D
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
-        var target = GetLivingEnemyAtCell(active.Team, targetCell);
-        if (target == null)
+        var actionProfile = ResolveActionProfile(active);
+        if (actionProfile.ActionType == "heal")
         {
-            var moveResult = ResolveMoveAction(active, targetCell, endTurnOnSuccess: false);
-            if (moveResult.Success)
+            var allyTarget = GetLivingAllyAtCell(active.Team, targetCell);
+            if (allyTarget != null)
             {
-                _hud?.SetStatusText("Moved. Attack mode canceled.");
-                ApplyActionResult(moveResult);
-            }
-            else
-            {
-                _hud?.SetStatusText("Cannot move there. Attack mode canceled.");
-            }
+                if (!TryHealTarget(active, allyTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId))
+                {
+                    return;
+                }
 
+                var result = ResolveSuccessfulAction(actionProfile.ActionType);
+                ApplyActionResult(result);
+                return;
+            }
+        }
+        else
+        {
+            var attackTarget = GetLivingEnemyAtCell(active.Team, targetCell);
+            if (attackTarget != null)
+            {
+                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId))
+                {
+                    return;
+                }
+
+                var result = ResolveSuccessfulAction(actionProfile.ActionType);
+                ApplyActionResult(result);
+                return;
+            }
+        }
+
+        if (actionProfile.ActionType != "attack")
+        {
+            _hud?.SetStatusText("No valid target for this action.");
             return;
         }
 
-        var attackProfile = ResolveAttackProfile(active);
-        if (!TryAttackTarget(active, target, attackProfile.damage, attackProfile.range, attackProfile.actionId))
+        var moveResult = ResolveMoveAction(active, targetCell, endTurnOnSuccess: false);
+        if (moveResult.Success)
         {
-            return;
+            _hud?.SetStatusText("Moved. Attack mode canceled.");
+            ApplyActionResult(moveResult);
         }
-
-        var result = ResolveSuccessfulAttack();
-        ApplyActionResult(result);
+        else
+        {
+            _hud?.SetStatusText("Cannot move there. Attack mode canceled.");
+        }
     }
 
     private void RunEnemyTurn(Unit enemyUnit)
@@ -343,7 +384,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var attackResult = TryAttackNearestEnemy(enemyUnit);
+        var attackResult = TryUsePrimaryAction(enemyUnit);
         if (attackResult.Success)
         {
             ApplyActionResult(attackResult);
@@ -376,14 +417,22 @@ public partial class BattleController : Node2D
     }
 
     // Encounter setup
-    private void SpawnMapEncounter(string mapId, Array<Dictionary> partyOverrideConfigs = null)
+    private void SpawnMapEncounter(string mapId, bool preserveParty = false, Vector2I leadSpawnCell = default)
     {
         SaveClearedEncounterStateForCurrentMap();
-        ClearUnitsFromScene();
 
-        _allUnits.Clear();
-        _playerUnits.Clear();
-        _enemyUnits.Clear();
+        if (preserveParty)
+        {
+            ClearEnemyUnitsFromScene();
+        }
+        else
+        {
+            ClearUnitsFromScene();
+            _allUnits.Clear();
+            _playerUnits.Clear();
+            _enemyUnits.Clear();
+        }
+
         _blockedCells.Clear();
         _mapTransitions.Clear();
         _encounterAggroRanges.Clear();
@@ -406,12 +455,9 @@ public partial class BattleController : Node2D
             _mapTransitions.Add(transition);
         }
 
-        if (partyOverrideConfigs != null && partyOverrideConfigs.Count > 0)
+        if (preserveParty)
         {
-            foreach (var config in partyOverrideConfigs)
-            {
-                SpawnUnit(config);
-            }
+            PositionPartyForMapTransition(leadSpawnCell);
         }
         else
         {
@@ -500,27 +546,38 @@ public partial class BattleController : Node2D
         return true;
     }
 
-    private CombatActionResult TryAttackNearestEnemy(Unit attacker)
+    private CombatActionResult TryUsePrimaryAction(Unit actor)
     {
-        var attackProfile = ResolveAttackProfile(attacker);
-        var target = FindNearestEnemyInRange(attacker, attackProfile.range);
+        var actionProfile = ResolveActionProfile(actor);
+        Unit target = actionProfile.ActionType == "heal"
+            ? FindMostInjuredAllyInRange(actor, actionProfile.Range)
+            : FindNearestEnemyInRange(actor, actionProfile.Range);
+
         if (target == null)
         {
-            _hud?.SetStatusText($"{attacker.UnitName} has no target in range ({attackProfile.range}).");
+            _hud?.SetStatusText($"{actor.UnitName} has no {actionProfile.ActionType} target in range ({actionProfile.Range}).");
             return CombatActionResult.Failed;
         }
 
-        if (!TryAttackTarget(attacker, target, attackProfile.damage, attackProfile.range, attackProfile.actionId))
+        var actionSuccess = actionProfile.ActionType == "heal"
+            ? TryHealTarget(actor, target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId)
+            : TryAttackTarget(actor, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId);
+
+        if (!actionSuccess)
         {
             return CombatActionResult.Failed;
         }
 
-        return ResolveSuccessfulAttack();
+        return ResolveSuccessfulAction(actionProfile.ActionType);
     }
 
-    private CombatActionResult ResolveSuccessfulAttack()
+    private CombatActionResult ResolveSuccessfulAction(string actionType)
     {
-        CleanupDefeatedUnits();
+        if (actionType == "attack")
+        {
+            CleanupDefeatedUnits();
+        }
+
         if (CheckCombatResolved())
         {
             return CombatActionResult.CombatResolvedResult;
@@ -560,6 +617,26 @@ public partial class BattleController : Node2D
         return true;
     }
 
+    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId)
+    {
+        if (!CanHeal(actor, target, range))
+        {
+            _hud?.SetStatusText($"{actor.UnitName} cannot heal {target.UnitName} from there.");
+            return false;
+        }
+
+        var healed = target.ApplyHealing(healAmount);
+        if (healed <= 0)
+        {
+            _hud?.SetStatusText($"{target.UnitName} is already at full health.");
+            return false;
+        }
+
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionId, target.UnitId);
+        _hud?.SetStatusText($"{actor.UnitName} heals {target.UnitName} for {healed}.");
+        return true;
+    }
+
     private Unit FindNearestEnemyInRange(Unit attacker, int range)
     {
         Unit nearest = null;
@@ -581,6 +658,34 @@ public partial class BattleController : Node2D
         }
 
         return nearest;
+    }
+
+    private Unit FindMostInjuredAllyInRange(Unit actor, int range)
+    {
+        Unit mostInjured = null;
+        var maxMissingHp = 0;
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsValidAllyTarget(actor, unit))
+            {
+                continue;
+            }
+
+            if (!CanUseActionAtRange(actor, unit, range))
+            {
+                continue;
+            }
+
+            var missingHp = unit.MaxHitPoints - unit.HitPoints;
+            if (missingHp > maxMissingHp)
+            {
+                maxMissingHp = missingHp;
+                mostInjured = unit;
+            }
+        }
+
+        return mostInjured;
     }
 
     private void CleanupDefeatedUnits()
@@ -705,6 +810,24 @@ public partial class BattleController : Node2D
         return null;
     }
 
+    private Unit GetLivingAllyAtCell(string actorTeam, Vector2I cell)
+    {
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != actorTeam)
+            {
+                continue;
+            }
+
+            if (unit.GridPos == cell)
+            {
+                return unit;
+            }
+        }
+
+        return null;
+    }
+
     // Math and data helpers
     private static Vector2I KeyToDelta(Key keycode)
     {
@@ -730,7 +853,27 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        return IsWithinRange(attacker.GridPos, target.GridPos, range) && HasLineOfSight(attacker, target);
+        return CanUseActionAtRange(attacker, target, range);
+    }
+
+    private bool CanHeal(Unit actor, Unit target, int range)
+    {
+        if (actor == null || target == null || actor.IsDead || target.IsDead)
+        {
+            return false;
+        }
+
+        if (actor.Team != target.Team)
+        {
+            return false;
+        }
+
+        return CanUseActionAtRange(actor, target, range);
+    }
+
+    private bool CanUseActionAtRange(Unit actor, Unit target, int range)
+    {
+        return IsWithinRange(actor.GridPos, target.GridPos, range) && HasLineOfSight(actor, target);
     }
 
     private static bool IsWithinRange(Vector2I from, Vector2I to, int range)
@@ -815,28 +958,36 @@ public partial class BattleController : Node2D
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
     }
 
-    private (int damage, int range, string actionId) ResolveAttackProfile(Unit attacker)
+    private ActionProfile ResolveActionProfile(Unit actor)
     {
-        if (attacker == null)
+        if (actor == null)
         {
-            return (0, 1, "attack");
+            return new ActionProfile("attack", "attack", 1, 0, 0);
         }
 
-        var fallback = (attacker.AttackDamage, attacker.AttackRange, "attack");
-        if (_gameData == null || string.IsNullOrEmpty(attacker.PrimaryAbilityId))
-        {
-            return fallback;
-        }
-
-        var ability = _gameData.GetAbility(attacker.PrimaryAbilityId);
-        if (ability.Count == 0)
+        var fallback = new ActionProfile("attack", "attack", actor.AttackRange, actor.AttackDamage, 0);
+        if (_gameData == null || string.IsNullOrEmpty(actor.PrimaryAbilityId))
         {
             return fallback;
         }
 
-        var damage = Mathf.Max(0, GetInt(ability, "damage", attacker.AttackDamage));
-        var range = Mathf.Max(1, GetInt(ability, "range", attacker.AttackRange));
-        return (damage, range, attacker.PrimaryAbilityId);
+        var actionData = _gameData.GetAbility(actor.PrimaryAbilityId);
+        if (actionData.Count == 0)
+        {
+            actionData = _gameData.GetSpell(actor.PrimaryAbilityId);
+        }
+
+        if (actionData.Count == 0)
+        {
+            return fallback;
+        }
+
+        var actionType = GetString(actionData, "type", "attack");
+        var range = Mathf.Max(1, GetInt(actionData, "range", actor.AttackRange));
+        var damage = Mathf.Max(0, GetInt(actionData, "damage", actor.AttackDamage));
+        var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
+
+        return new ActionProfile(actor.PrimaryAbilityId, actionType, range, damage, healAmount);
     }
 
     private static int GetInt(Dictionary dict, string key, int fallback)
@@ -868,7 +1019,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var attackProfile = ResolveAttackProfile(active);
+        var actionProfile = ResolveActionProfile(active);
         var center = CellCenter(active.GridPos);
         DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
@@ -881,8 +1032,10 @@ public partial class BattleController : Node2D
             }
 
             var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-            var target = GetLivingEnemyAtCell(active.Team, cell);
-            var valid = target != null && CanAttack(active, target, attackProfile.range);
+            var target = actionProfile.ActionType == "heal"
+                ? GetLivingAllyAtCell(active.Team, cell)
+                : GetLivingEnemyAtCell(active.Team, cell);
+            var valid = target != null && CanUseActionAtRange(active, target, actionProfile.Range);
 
             var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.18f);
             var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.8f);
@@ -1091,46 +1244,30 @@ public partial class BattleController : Node2D
     private void TransitionToMap(string toMapId, Vector2I spawnCell)
     {
         SaveClearedEncounterStateForCurrentMap();
-        var partyConfigs = BuildPartyCarryOverConfigs(spawnCell);
-        SpawnMapEncounter(toMapId, partyConfigs);
+        SpawnMapEncounter(toMapId, preserveParty: true, leadSpawnCell: spawnCell);
         EnterExplorationMode($"Transitioned to {toMapId}. Keep exploring.");
         QueueRedraw();
     }
 
-    private Array<Dictionary> BuildPartyCarryOverConfigs(Vector2I leadSpawnCell)
+    private void PositionPartyForMapTransition(Vector2I leadSpawnCell)
     {
-        var carried = new Array<Dictionary>();
-        var index = 0;
+        var livingIndex = 0;
         foreach (var player in _playerUnits)
         {
-            if (player == null || player.IsDead)
+            if (!IsUsableUnit(player) || player.IsDead)
             {
                 continue;
             }
 
-            var spawnCell = leadSpawnCell + GetPartyFormationOffset(index);
-            carried.Add(new Dictionary
+            var nextCell = leadSpawnCell + GetPartyFormationOffset(livingIndex);
+            if (!IsInBounds(nextCell) || IsBlockedCell(nextCell))
             {
-                { "id", player.UnitId },
-                { "name", player.UnitName },
-                { "team", "player" },
-                { "grid_pos", spawnCell },
-                { "primary_ability_id", player.PrimaryAbilityId },
-                { "initiative", player.Initiative },
-                { "hit_points", player.HitPoints },
-                { "max_hit_points", player.MaxHitPoints },
-                { "base_attack_damage", player.BaseAttackDamage },
-                { "base_attack_range", player.BaseAttackRange },
-                { "weapon_attack_damage_bonus", player.WeaponAttackDamageBonus },
-                { "weapon_attack_range_bonus", player.WeaponAttackRangeBonus },
-                { "buff_attack_damage_bonus", player.BuffAttackDamageBonus },
-                { "buff_attack_range_bonus", player.BuffAttackRangeBonus }
-            });
+                nextCell = leadSpawnCell;
+            }
 
-            index++;
+            player.SetGridPos(nextCell);
+            livingIndex++;
         }
-
-        return carried;
     }
 
     private static Vector2I GetPartyFormationOffset(int index)
@@ -1150,6 +1287,31 @@ public partial class BattleController : Node2D
         foreach (Node child in _unitsRoot.GetChildren())
         {
             child.QueueFree();
+        }
+    }
+
+    private void ClearEnemyUnitsFromScene()
+    {
+        for (var i = _enemyUnits.Count - 1; i >= 0; i--)
+        {
+            var enemy = _enemyUnits[i];
+            if (!IsUsableUnit(enemy))
+            {
+                continue;
+            }
+
+            enemy.QueueFree();
+        }
+
+        _enemyUnits.Clear();
+
+        for (var i = _allUnits.Count - 1; i >= 0; i--)
+        {
+            var unit = _allUnits[i];
+            if (!IsUsableUnit(unit) || unit.Team == "enemy")
+            {
+                _allUnits.RemoveAt(i);
+            }
         }
     }
 
@@ -1210,6 +1372,26 @@ public partial class BattleController : Node2D
         }
 
         return IsValidAttackTargetByTeam(attacker.Team, candidate);
+    }
+
+    private bool IsValidAllyTarget(Unit actor, Unit candidate)
+    {
+        if (!IsUsableUnit(actor) || !IsUsableUnit(candidate) || candidate.IsDead || candidate.Team != actor.Team)
+        {
+            return false;
+        }
+
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return true;
+        }
+
+        if (candidate.Team != "enemy")
+        {
+            return true;
+        }
+
+        return candidate.EncounterId == _activeEncounterId;
     }
 
     private bool IsValidAttackTargetByTeam(string attackerTeam, Unit candidate)

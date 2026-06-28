@@ -85,6 +85,21 @@ public partial class Unit : Node2D
         RefreshVisualState();
     }
 
+    public int ApplyHealing(int amount)
+    {
+        if (IsDead)
+        {
+            return 0;
+        }
+
+        var healAmount = Mathf.Max(0, amount);
+        var nextHp = Mathf.Min(MaxHitPoints, HitPoints + healAmount);
+        var actualHealed = nextHp - HitPoints;
+        HitPoints = nextHp;
+        QueueRedraw();
+        return actualHealed;
+    }
+
     private void RefreshVisualState()
     {
         // Keep living active units on top when multiple units overlap in a cell.

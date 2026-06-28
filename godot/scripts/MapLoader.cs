@@ -3,22 +3,63 @@ using Godot.Collections;
 
 public partial class MapLoader : Node
 {
+    private static readonly Dictionary WizardTemplate = new()
+    {
+        { "id", "wizard" },
+        { "name", "Wizard" },
+        { "team", "player" },
+        { "primary_ability_id", "melee" },
+        { "initiative", 15 },
+        { "hit_points", 10 },
+        { "max_hit_points", 10 }
+    };
+
+    private static readonly Dictionary WarriorTemplate = new()
+    {
+        { "id", "warrior" },
+        { "name", "Warrior" },
+        { "team", "player" },
+        { "primary_ability_id", "melee" },
+        { "initiative", 11 },
+        { "hit_points", 14 },
+        { "max_hit_points", 14 }
+    };
+
+    private static readonly Dictionary ClericTemplate = new()
+    {
+        { "id", "cleric" },
+        { "name", "Cleric" },
+        { "team", "player" },
+        { "primary_ability_id", "lesser-heal" },
+        { "initiative", 12 },
+        { "hit_points", 12 },
+        { "max_hit_points", 12 }
+    };
+
+    private Array<Dictionary> _defaultParty = new();
+
+    public override void _Ready()
+    {
+        _defaultParty = BuildDefaultParty();
+    }
+
     public Dictionary LoadMapStub(string mapId = "map-a")
     {
+        if (_defaultParty.Count == 0)
+        {
+            _defaultParty = BuildDefaultParty();
+        }
+
         return mapId switch
         {
-            "map-b" => BuildMapB(),
-            _ => BuildMapA()
+            "map-b" => BuildMapB(_defaultParty),
+            _ => BuildMapA(_defaultParty)
         };
     }
 
-    private static Dictionary BuildMapA()
+    private static Dictionary BuildMapA(Array<Dictionary> defaultParty)
     {
-        var players = new Array<Dictionary>
-        {
-            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 2) }, { "primary_ability_id", "melee" }, { "initiative", 15 }, { "hit_points", 10 }, { "max_hit_points", 10 } },
-            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(2, 4) }, { "primary_ability_id", "melee" }, { "initiative", 11 }, { "hit_points", 14 }, { "max_hit_points", 14 } }
-        };
+        var players = BuildPartyForLeader(defaultParty, new Vector2I(2, 3));
 
         var encounterA = new Dictionary
         {
@@ -71,13 +112,9 @@ public partial class MapLoader : Node
         };
     }
 
-    private static Dictionary BuildMapB()
+    private static Dictionary BuildMapB(Array<Dictionary> defaultParty)
     {
-        var players = new Array<Dictionary>
-        {
-            new Dictionary { { "id", "wizard" }, { "name", "Wizard" }, { "team", "player" }, { "grid_pos", new Vector2I(1, 3) }, { "primary_ability_id", "melee" }, { "initiative", 15 }, { "hit_points", 10 }, { "max_hit_points", 10 } },
-            new Dictionary { { "id", "warrior" }, { "name", "Warrior" }, { "team", "player" }, { "grid_pos", new Vector2I(1, 4) }, { "primary_ability_id", "melee" }, { "initiative", 11 }, { "hit_points", 14 }, { "max_hit_points", 14 } }
-        };
+        var players = BuildPartyForLeader(defaultParty, new Vector2I(1, 3));
 
         var encounterC = new Dictionary
         {
@@ -197,5 +234,50 @@ public partial class MapLoader : Node
     private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)
     {
         return dict.ContainsKey(key) ? (Vector2I)((Variant)dict[key]) : fallback;
+    }
+
+    private static Array<Dictionary> BuildDefaultParty()
+    {
+        return new Array<Dictionary>
+        {
+            CopyDictionary(WizardTemplate),
+            CopyDictionary(WarriorTemplate),
+            CopyDictionary(ClericTemplate)
+        };
+    }
+
+    private static Array<Dictionary> BuildPartyForLeader(Array<Dictionary> defaultParty, Vector2I leaderCell)
+    {
+        var players = new Array<Dictionary>();
+        for (var i = 0; i < defaultParty.Count; i++)
+        {
+            var player = CopyDictionary(defaultParty[i]);
+            player["grid_pos"] = leaderCell + GetPartyFormationOffset(i);
+            players.Add(player);
+        }
+
+        return players;
+    }
+
+    private static Vector2I GetPartyFormationOffset(int index)
+    {
+        return index switch
+        {
+            0 => new Vector2I(0, -1),
+            1 => new Vector2I(0, 1),
+            2 => new Vector2I(0, 0),
+            _ => new Vector2I(0, index - 2)
+        };
+    }
+
+    private static Dictionary CopyDictionary(Dictionary source)
+    {
+        var player = new Dictionary();
+        foreach (var key in source.Keys)
+        {
+            player[key] = source[key];
+        }
+
+        return player;
     }
 }
