@@ -1146,7 +1146,7 @@ public partial class BattleController : Node2D
     }
 
     private void ClearUnitsFromScene()
-    {
+    { 
         foreach (Node child in _unitsRoot.GetChildren())
         {
             child.QueueFree();

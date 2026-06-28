@@ -44,7 +44,7 @@ public partial class Unit : Node2D
         BuffAttackRangeBonus = GetInt(config, "buff_attack_range_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
         SyncWorldPosition();
-        QueueRedraw();
+        RefreshVisualState();
     }
 
     public void SetBuffAttackDamageBonus(int bonus)
@@ -66,7 +66,7 @@ public partial class Unit : Node2D
     public void SetActive(bool value)
     {
         IsActive = value;
-        QueueRedraw();
+        RefreshVisualState();
     }
 
     public void ApplyDamage(int amount)
@@ -80,6 +80,25 @@ public partial class Unit : Node2D
         if (HitPoints <= 0)
         {
             IsDead = true;
+        }
+
+        RefreshVisualState();
+    }
+
+    private void RefreshVisualState()
+    {
+        // Keep living active units on top when multiple units overlap in a cell.
+        if (IsDead)
+        {
+            ZIndex = 0;
+        }
+        else if (IsActive)
+        {
+            ZIndex = 20;
+        }
+        else
+        {
+            ZIndex = 10;
         }
 
         QueueRedraw();
