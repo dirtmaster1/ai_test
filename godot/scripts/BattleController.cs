@@ -1,12 +1,14 @@
 using Godot;
 using Godot.Collections;
+using System.Collections.Generic;
 
 public partial class BattleController : Node2D
 {
-    private const int GridWidth = 15;
-    private const int GridHeight = 10;
+    private const int GridWidth = 20;
+    private const int GridHeight = 15;
     private const int CellSize = 64;
     private const int DefaultAggroTriggerRange = 4;
+    private const float GridLineThickness = 2.0f;
 
     private enum BattleFlowState
     {
@@ -38,6 +40,7 @@ public partial class BattleController : Node2D
     private Unit _explorerUnit;
     private string _activeEncounterId = "";
     private string _currentMapId = "map-a";
+    private string _lastActionSummary = "";
 
     private static readonly Vector2I[] AttackDirections =
     {
@@ -64,7 +67,7 @@ public partial class BattleController : Node2D
         public static CombatActionResult MoveResolved => new(true, false, false);
         public static CombatActionResult MoveAndEndTurnResolved => new(true, true, false);
         public static CombatActionResult PassResolved => new(true, true, false);
-        public static CombatActionResult AttackResolved => new(true, true, false);
+        public static CombatActionResult AttackResolved => new(true, false, false);
         public static CombatActionResult CombatResolvedResult => new(true, false, true);
     }
 
@@ -100,11 +103,19 @@ public partial class BattleController : Node2D
         SpawnMapEncounter(_currentMapId);
         _turnManager.TurnChanged += OnTurnChanged;
         EnterExplorationMode();
+        RefreshHudPanels();
         QueueRedraw();
     }
 
     public override void _Draw()
     {
+        var viewportSize = GetViewportRect().Size;
+        DrawRect(
+            new Rect2(Vector2.Zero, viewportSize),
+            new Color(0.05f, 0.05f, 0.06f),
+            true
+        );
+
         DrawRect(
             new Rect2(Vector2.Zero, new Vector2(GridWidth * CellSize, GridHeight * CellSize)),
             new Color(0.08f, 0.08f, 0.1f),
@@ -113,21 +124,23 @@ public partial class BattleController : Node2D
 
         for (var x = 0; x <= GridWidth; x++)
         {
+            var lineX = x * CellSize + 0.5f;
             DrawLine(
-                new Vector2(x * CellSize, 0),
-                new Vector2(x * CellSize, GridHeight * CellSize),
+                new Vector2(lineX, 0),
+                new Vector2(lineX, GridHeight * CellSize),
                 new Color(0.2f, 0.2f, 0.24f),
-                1.0f
+                GridLineThickness
             );
         }
 
         for (var y = 0; y <= GridHeight; y++)
         {
+            var lineY = y * CellSize + 0.5f;
             DrawLine(
-                new Vector2(0, y * CellSize),
-                new Vector2(GridWidth * CellSize, y * CellSize),
+                new Vector2(0, lineY),
+                new Vector2(GridWidth * CellSize, lineY),
                 new Color(0.2f, 0.2f, 0.24f),
-                1.0f
+                GridLineThickness
             );
         }
 
@@ -180,6 +193,12 @@ public partial class BattleController : Node2D
 
         if (keyEvent.Keycode == Key.F)
         {
+            if (!active.CanUseAbilityThisTurn())
+            {
+                _hud?.SetStatusText("Ability already used this turn.");
+                return;
+            }
+
             _awaitingPlayerAttackDirection = true;
             _hud?.SetStatusText("Choose attack direction: WASD / Arrows (Esc to cancel)");
             QueueRedraw();
@@ -250,10 +269,11 @@ public partial class BattleController : Node2D
             return;
         }
 
+        var actionProfile = ResolveActionProfile(active);
         var clickedCell = WorldToCell(GetGlobalMousePosition());
-        if (Manhattan(active.GridPos, clickedCell) != 1)
+        if (!IsWithinRange(active.GridPos, clickedCell, actionProfile.Range))
         {
-            _hud?.SetStatusText("Click an adjacent target tile.");
+            _hud?.SetStatusText($"Click a target cell within range ({actionProfile.Range}).");
             return;
         }
 
@@ -282,8 +302,15 @@ public partial class BattleController : Node2D
             return;
         }
 
+        var actionProfile = ResolveActionProfile(active);
+        if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
+        {
+            _hud?.SetStatusText($"No valid {actionProfile.ActionType} target in that direction.");
+            return;
+        }
+
         CancelAttackMode(false);
-        TryResolvePlayerActionAtCell(active, active.GridPos + delta);
+        TryResolvePlayerActionAtCell(active, targetCell);
     }
 
     // Turn flow and action resolution
@@ -315,6 +342,8 @@ public partial class BattleController : Node2D
             return;
         }
 
+        activeUnit.ResetTurnResources();
+
         if (activeUnit.Team == "enemy")
         {
             RunEnemyTurn(activeUnit);
@@ -327,6 +356,12 @@ public partial class BattleController : Node2D
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
+        if (!active.CanUseAbilityThisTurn())
+        {
+            _hud?.SetStatusText("Ability already used this turn.");
+            return;
+        }
+
         var actionProfile = ResolveActionProfile(active);
         if (actionProfile.ActionType == "heal")
         {
@@ -365,6 +400,12 @@ public partial class BattleController : Node2D
             return;
         }
 
+        if (actionProfile.Range > 1)
+        {
+            _hud?.SetStatusText("No valid ranged target on that cell.");
+            return;
+        }
+
         var moveResult = ResolveMoveAction(active, targetCell, endTurnOnSuccess: false);
         if (moveResult.Success)
         {
@@ -384,23 +425,52 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var attackResult = TryUsePrimaryAction(enemyUnit);
-        if (attackResult.Success)
+        var actionBeforeMove = TryUsePrimaryAction(enemyUnit);
+        if (actionBeforeMove.Success)
         {
-            ApplyActionResult(attackResult);
-            return;
+            ApplyActionResult(actionBeforeMove);
+            if (actionBeforeMove.CombatEnded)
+            {
+                return;
+            }
         }
 
-        var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
-        if (target == null)
+        // Enemies can spend up to their movement budget and use one primary ability each turn.
+        while (enemyUnit.CanMoveThisTurn())
         {
-            ApplyActionResult(CombatActionResult.PassResolved);
-            return;
+            var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
+            if (target == null)
+            {
+                break;
+            }
+
+            var step = _aiDirector.ChooseStepTowardTarget(enemyUnit, target);
+            if (step == enemyUnit.GridPos)
+            {
+                break;
+            }
+
+            var moveResult = ResolveMoveAction(enemyUnit, step, endTurnOnSuccess: false);
+            if (!moveResult.Success)
+            {
+                break;
+            }
         }
 
-        var step = _aiDirector.ChooseStepTowardTarget(enemyUnit, target);
-        var moveResult = ResolveMoveAction(enemyUnit, step, endTurnOnSuccess: true);
-        ApplyActionResult(moveResult.Success ? moveResult : CombatActionResult.PassResolved);
+        var actionAfterMove = TryUsePrimaryAction(enemyUnit);
+        if (actionAfterMove.Success)
+        {
+            ApplyActionResult(actionAfterMove);
+            if (actionAfterMove.CombatEnded)
+            {
+                return;
+            }
+        }
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            _turnManager.EndTurn();
+        }
     }
 
     private void ApplyActionResult(CombatActionResult result)
@@ -411,6 +481,23 @@ public partial class BattleController : Node2D
         }
 
         if (result.ShouldEndTurn)
+        {
+            _turnManager.EndTurn();
+            return;
+        }
+
+        var active = _turnManager.GetActiveUnit();
+        EndTurnIfNoActionsRemain(active);
+    }
+
+    private void EndTurnIfNoActionsRemain(Unit unit)
+    {
+        if (_flowState != BattleFlowState.Combat || !IsUsableUnit(unit) || unit.IsDead)
+        {
+            return;
+        }
+
+        if (!unit.CanMoveThisTurn() && !unit.CanUseAbilityThisTurn())
         {
             _turnManager.EndTurn();
         }
@@ -548,6 +635,11 @@ public partial class BattleController : Node2D
 
     private CombatActionResult TryUsePrimaryAction(Unit actor)
     {
+        if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
+        {
+            return CombatActionResult.Failed;
+        }
+
         var actionProfile = ResolveActionProfile(actor);
         Unit target = actionProfile.ActionType == "heal"
             ? FindMostInjuredAllyInRange(actor, actionProfile.Range)
@@ -588,9 +680,21 @@ public partial class BattleController : Node2D
 
     private CombatActionResult ResolveMoveAction(Unit unit, Vector2I targetCell, bool endTurnOnSuccess)
     {
+        if (_flowState == BattleFlowState.Combat && !unit.CanMoveThisTurn())
+        {
+            _hud?.SetStatusText($"{unit.UnitName} has no movement left this turn.");
+            return CombatActionResult.Failed;
+        }
+
         if (!TryMoveUnit(unit, targetCell))
         {
             return CombatActionResult.Failed;
+        }
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            unit.TrySpendMovement();
+            SetStatusHelp();
         }
 
         return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
@@ -598,6 +702,12 @@ public partial class BattleController : Node2D
 
     private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack")
     {
+        if (_flowState == BattleFlowState.Combat && !attacker.CanUseAbilityThisTurn())
+        {
+            _hud?.SetStatusText($"{attacker.UnitName} has already used an ability this turn.");
+            return false;
+        }
+
         if (!CanAttack(attacker, target, range))
         {
             _hud?.SetStatusText($"{attacker.UnitName} has no clear line to {target.UnitName}.");
@@ -605,6 +715,11 @@ public partial class BattleController : Node2D
         }
 
         target.ApplyDamage(damage);
+        if (_flowState == BattleFlowState.Combat)
+        {
+            attacker.MarkAbilityUsed();
+        }
+
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, attacker, actionId, target.UnitId);
 
         var resultText = $"{attacker.UnitName} hits {target.UnitName} for {damage}.";
@@ -613,12 +728,20 @@ public partial class BattleController : Node2D
             resultText += $" {target.UnitName} is defeated.";
         }
 
+        _lastActionSummary = resultText;
         _hud?.SetStatusText(resultText);
+        _hud?.AddCombatLogEntry(resultText);
         return true;
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId)
     {
+        if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
+        {
+            _hud?.SetStatusText($"{actor.UnitName} has already used an ability this turn.");
+            return false;
+        }
+
         if (!CanHeal(actor, target, range))
         {
             _hud?.SetStatusText($"{actor.UnitName} cannot heal {target.UnitName} from there.");
@@ -632,8 +755,16 @@ public partial class BattleController : Node2D
             return false;
         }
 
+        if (_flowState == BattleFlowState.Combat)
+        {
+            actor.MarkAbilityUsed();
+        }
+
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionId, target.UnitId);
-        _hud?.SetStatusText($"{actor.UnitName} heals {target.UnitName} for {healed}.");
+        var resultText = $"{actor.UnitName} heals {target.UnitName} for {healed}.";
+        _lastActionSummary = resultText;
+        _hud?.SetStatusText(resultText);
+        _hud?.AddCombatLogEntry(resultText);
         return true;
     }
 
@@ -815,6 +946,24 @@ public partial class BattleController : Node2D
         foreach (var unit in _allUnits)
         {
             if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != actorTeam)
+            {
+                continue;
+            }
+
+            if (unit.GridPos == cell)
+            {
+                return unit;
+            }
+        }
+
+        return null;
+    }
+
+    private Unit GetLivingUnitAtCell(Vector2I cell)
+    {
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead)
             {
                 continue;
             }
@@ -1025,23 +1174,60 @@ public partial class BattleController : Node2D
 
         foreach (var dir in AttackDirections)
         {
-            var cell = active.GridPos + dir;
+            for (var distance = 1; distance <= actionProfile.Range; distance++)
+            {
+                var cell = active.GridPos + dir * distance;
+                if (!IsInBounds(cell))
+                {
+                    break;
+                }
+
+                var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
+                var target = actionProfile.ActionType == "heal"
+                    ? GetLivingAllyAtCell(active.Team, cell)
+                    : GetLivingEnemyAtCell(active.Team, cell);
+                var valid = target != null && CanUseActionAtRange(active, target, actionProfile.Range);
+
+                var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
+                var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
+                DrawRect(cellRect, fill, true);
+                DrawRect(cellRect, edge, false, 2.0f);
+
+                if (GetLivingUnitAtCell(cell) != null)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private bool TryGetDirectionalActionTargetCell(Unit active, Vector2I direction, ActionProfile actionProfile, out Vector2I targetCell)
+    {
+        targetCell = active.GridPos + direction;
+        for (var distance = 1; distance <= actionProfile.Range; distance++)
+        {
+            var cell = active.GridPos + direction * distance;
             if (!IsInBounds(cell))
             {
-                continue;
+                break;
             }
 
-            var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
             var target = actionProfile.ActionType == "heal"
                 ? GetLivingAllyAtCell(active.Team, cell)
                 : GetLivingEnemyAtCell(active.Team, cell);
-            var valid = target != null && CanUseActionAtRange(active, target, actionProfile.Range);
+            if (target != null && CanUseActionAtRange(active, target, actionProfile.Range))
+            {
+                targetCell = cell;
+                return true;
+            }
 
-            var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.18f);
-            var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.8f);
-            DrawRect(cellRect, fill, true);
-            DrawRect(cellRect, edge, false, 2.0f);
+            if (GetLivingUnitAtCell(cell) != null)
+            {
+                break;
+            }
         }
+
+        return false;
     }
 
     private static Vector2 CellCenter(Vector2I cell)
@@ -1069,12 +1255,16 @@ public partial class BattleController : Node2D
             }
 
             _hud?.SetStatusText($"Map: {_currentMapId} | Exploration: {explorer.UnitName} | Move: WASD / Arrows | Step on edge markers to transition");
+            _hud?.SetActionDetails("Exploration controls: Move with WASD / Arrows. Step on glowing edge cells to transition maps.");
+            RefreshHudPanels();
             return;
         }
 
         if (_flowState == BattleFlowState.Defeat)
         {
             _hud?.SetStatusText("Defeat. All player units were defeated.");
+            _hud?.SetActionDetails("Defeat state. Restart the encounter to continue.");
+            RefreshHudPanels();
             return;
         }
 
@@ -1085,7 +1275,70 @@ public partial class BattleController : Node2D
             return;
         }
 
-        _hud?.SetStatusText($"Turn: {active.UnitName} ({active.Team}) | Move: WASD / Arrows | Attack: F then direction | End turn: Space");
+        var abilityState = active.CanUseAbilityThisTurn() ? "ready" : "used";
+        var combatPrefix = string.IsNullOrEmpty(_lastActionSummary) ? "" : $"Last action: {_lastActionSummary} | ";
+        _hud?.SetStatusText(
+            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState} | Move: WASD / Arrows | Attack: F then direction | End turn: Space"
+        );
+
+        var actionProfile = ResolveActionProfile(active);
+        _hud?.SetActionDetails(
+            $"Active: {active.UnitName} ({active.Team}) | Ability: {actionProfile.ActionId} [{actionProfile.ActionType}] range {actionProfile.Range} | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
+        );
+        RefreshHudPanels();
+    }
+
+    private void RefreshHudPanels()
+    {
+        if (_hud == null)
+        {
+            return;
+        }
+
+        _hud.SetTurnQueue(BuildTurnQueueForHud(), _turnManager?.GetActiveUnit());
+    }
+
+    private Array<Unit> BuildTurnQueueForHud()
+    {
+        var queue = new Array<Unit>();
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return queue;
+        }
+
+        var pool = new List<Unit>();
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead)
+            {
+                continue;
+            }
+
+            if (unit.Team == "enemy" && unit.EncounterId != _activeEncounterId)
+            {
+                continue;
+            }
+
+            pool.Add(unit);
+        }
+
+        pool.Sort((a, b) =>
+        {
+            var byInitiative = b.Initiative.CompareTo(a.Initiative);
+            if (byInitiative != 0)
+            {
+                return byInitiative;
+            }
+
+            return string.CompareOrdinal(a.UnitId, b.UnitId);
+        });
+
+        foreach (var unit in pool)
+        {
+            queue.Add(unit);
+        }
+
+        return queue;
     }
 
     private Unit GetExplorerUnit()
@@ -1292,27 +1545,25 @@ public partial class BattleController : Node2D
 
     private void ClearEnemyUnitsFromScene()
     {
-        for (var i = _enemyUnits.Count - 1; i >= 0; i--)
+        for (var i = _allUnits.Count - 1; i >= 0; i--)
         {
-            var enemy = _enemyUnits[i];
-            if (!IsUsableUnit(enemy))
+            var unit = _allUnits[i];
+            if (!IsUsableUnit(unit))
+            {
+                _allUnits.RemoveAt(i);
+                continue;
+            }
+
+            if (unit.Team != "enemy")
             {
                 continue;
             }
 
-            enemy.QueueFree();
+            unit.QueueFree();
+            _allUnits.RemoveAt(i);
         }
 
         _enemyUnits.Clear();
-
-        for (var i = _allUnits.Count - 1; i >= 0; i--)
-        {
-            var unit = _allUnits[i];
-            if (!IsUsableUnit(unit) || unit.Team == "enemy")
-            {
-                _allUnits.RemoveAt(i);
-            }
-        }
     }
 
     private int GetEncounterAggroRange(string encounterId)

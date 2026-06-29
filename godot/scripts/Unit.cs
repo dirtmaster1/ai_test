@@ -4,6 +4,7 @@ using Godot.Collections;
 public partial class Unit : Node2D
 {
     private const int CellSize = 64;
+    public const int MaxMovementPerTurn = 3;
 
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
@@ -23,6 +24,8 @@ public partial class Unit : Node2D
 
     public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + BuffAttackDamageBonus);
     public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + BuffAttackRangeBonus);
+    public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
+    public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
 
@@ -43,8 +46,42 @@ public partial class Unit : Node2D
         BuffAttackDamageBonus = GetInt(config, "buff_attack_damage_bonus", 0);
         BuffAttackRangeBonus = GetInt(config, "buff_attack_range_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
+        ResetTurnResources();
         SyncWorldPosition();
         RefreshVisualState();
+    }
+
+    public void ResetTurnResources()
+    {
+        RemainingMovement = MaxMovementPerTurn;
+        HasUsedAbilityThisTurn = false;
+    }
+
+    public bool CanMoveThisTurn()
+    {
+        return RemainingMovement > 0;
+    }
+
+    public bool TrySpendMovement(int amount = 1)
+    {
+        var spend = Mathf.Max(0, amount);
+        if (RemainingMovement < spend)
+        {
+            return false;
+        }
+
+        RemainingMovement -= spend;
+        return true;
+    }
+
+    public bool CanUseAbilityThisTurn()
+    {
+        return !HasUsedAbilityThisTurn;
+    }
+
+    public void MarkAbilityUsed()
+    {
+        HasUsedAbilityThisTurn = true;
     }
 
     public void SetBuffAttackDamageBonus(int bonus)

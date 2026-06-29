@@ -13,8 +13,64 @@ script = ExtResource("1_ynpr3")
 
 [node name="StatusLabel" type="Label" parent="."]
 layout_mode = 0
-offset_left = 14.0
-offset_top = 12.0
-offset_right = 1100.0
-offset_bottom = 42.0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -308.0
+offset_top = 10.0
+offset_right = -20.0
+offset_bottom = 84.0
+autowrap_mode = 3
 text = "Booting..."
+
+[node name="ActionPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -72.0
+offset_right = -332.0
+offset_bottom = -12.0
+
+[node name="ActionVBox" type="VBoxContainer" parent="ActionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ActionHeader" type="Label" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+text = "Action Bar"
+
+[node name="ActionDetails" type="Label" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Move: WASD | Ability: F + direction | End Turn: Space"
+
+[node name="TurnQueuePanel" type="PanelContainer" parent="."]
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -308.0
+offset_top = 94.0
+offset_right = -20.0
+offset_bottom = 420.0
+
+[node name="TurnQueueLabel" type="Label" parent="TurnQueuePanel"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Turn Queue"
+
+[node name="CombatLogPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -308.0
+offset_top = 430.0
+offset_right = -20.0
+offset_bottom = -12.0
+
+[node name="CombatLog" type="ItemList" parent="CombatLogPanel"]
+layout_mode = 2
+auto_height = true
+same_column_width = true
+allow_reselect = true

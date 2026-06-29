@@ -59,7 +59,7 @@ public partial class MapLoader : Node
 
     private static Dictionary BuildMapA(Array<Dictionary> defaultParty)
     {
-        var players = BuildPartyForLeader(defaultParty, new Vector2I(2, 3));
+        var players = UpdatePartyGridPosition(defaultParty, new Vector2I(2, 7));
 
         var encounterA = new Dictionary
         {
@@ -69,8 +69,8 @@ public partial class MapLoader : Node
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-a" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(8, 2) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
-                    new Dictionary { { "id", "goblin-archer-a" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(8, 4) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                    new Dictionary { { "id", "goblin-warrior-a" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 6) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
+                    new Dictionary { { "id", "goblin-archer-a" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 8) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
                 }
             }
         };
@@ -83,8 +83,8 @@ public partial class MapLoader : Node
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-b" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(12, 2) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
-                    new Dictionary { { "id", "goblin-archer-b" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(12, 4) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                    new Dictionary { { "id", "goblin-warrior-b" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(16, 5) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
+                    new Dictionary { { "id", "goblin-archer-b" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(17, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
                 }
             }
         };
@@ -92,9 +92,9 @@ public partial class MapLoader : Node
         return new Dictionary
         {
             { "id", "map-a" },
-            { "width", 15 },
-            { "height", 10 },
-            { "blocked", new Array<Vector2I> { new Vector2I(6, 3), new Vector2I(10, 3) } },
+            { "width", 20 },
+            { "height", 15 },
+            { "blocked", new Array<Vector2I> { new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterA, encounterB } },
             {
@@ -103,9 +103,9 @@ public partial class MapLoader : Node
                 {
                     new Dictionary
                     {
-                        { "from_cell", new Vector2I(14, 3) },
+                        { "from_cell", new Vector2I(19, 7) },
                         { "to_map", "map-b" },
-                        { "spawn_cell", new Vector2I(1, 3) }
+                        { "spawn_cell", new Vector2I(1, 7) }
                     }
                 }
             }
@@ -114,7 +114,7 @@ public partial class MapLoader : Node
 
     private static Dictionary BuildMapB(Array<Dictionary> defaultParty)
     {
-        var players = BuildPartyForLeader(defaultParty, new Vector2I(1, 3));
+        var players = UpdatePartyGridPosition(defaultParty, new Vector2I(1, 7));
 
         var encounterC = new Dictionary
         {
@@ -124,8 +124,8 @@ public partial class MapLoader : Node
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-c" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 2) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 9 }, { "max_hit_points", 9 } },
-                    new Dictionary { { "id", "goblin-archer-c" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 5) }, { "primary_ability_id", "ranged" }, { "initiative", 12 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                    new Dictionary { { "id", "goblin-warrior-c" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(13, 6) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 9 }, { "max_hit_points", 9 } },
+                    new Dictionary { { "id", "goblin-archer-c" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(15, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 12 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
                 }
             }
         };
@@ -133,9 +133,9 @@ public partial class MapLoader : Node
         return new Dictionary
         {
             { "id", "map-b" },
-            { "width", 15 },
-            { "height", 10 },
-            { "blocked", new Array<Vector2I> { new Vector2I(5, 3), new Vector2I(6, 3), new Vector2I(7, 3), new Vector2I(8, 3) } },
+            { "width", 20 },
+            { "height", 15 },
+            { "blocked", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterC } },
             {
@@ -144,9 +144,9 @@ public partial class MapLoader : Node
                 {
                     new Dictionary
                     {
-                        { "from_cell", new Vector2I(0, 3) },
+                        { "from_cell", new Vector2I(0, 7) },
                         { "to_map", "map-a" },
-                        { "spawn_cell", new Vector2I(13, 3) }
+                        { "spawn_cell", new Vector2I(18, 7) }
                     }
                 }
             }
@@ -246,7 +246,7 @@ public partial class MapLoader : Node
         };
     }
 
-    private static Array<Dictionary> BuildPartyForLeader(Array<Dictionary> defaultParty, Vector2I leaderCell)
+    private static Array<Dictionary> UpdatePartyGridPosition(Array<Dictionary> defaultParty, Vector2I leaderCell)
     {
         var players = new Array<Dictionary>();
         for (var i = 0; i < defaultParty.Count; i++)
