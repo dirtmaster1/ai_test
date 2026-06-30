@@ -12,6 +12,8 @@ public partial class Unit : Node2D
     public Vector2I GridPos { get; private set; } = Vector2I.Zero;
     public int HitPoints { get; private set; } = 10;
     public int MaxHitPoints { get; private set; } = 10;
+    public int MagicPoints { get; private set; }
+    public int MaxMagicPoints { get; private set; }
     public int BaseAttackDamage { get; private set; } = 3;
     public int BaseAttackRange { get; private set; } = 1;
     public string PrimaryAbilityId { get; private set; } = "";
@@ -20,7 +22,7 @@ public partial class Unit : Node2D
     public int Initiative { get; private set; } = 10;
     public int WeaponAttackDamageBonus { get; private set; }
     public int WeaponAttackRangeBonus { get; private set; }
-    public int ArmorDefenseBonus { get; private set; }
+    public int ArmorClassBonus { get; private set; }
     public int ArmorAttackDamageBonus { get; private set; }
     public int ArmorAttackRangeBonus { get; private set; }
     public int BuffAttackDamageBonus { get; private set; }
@@ -28,7 +30,7 @@ public partial class Unit : Node2D
 
     public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + ArmorAttackDamageBonus + BuffAttackDamageBonus);
     public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + ArmorAttackRangeBonus + BuffAttackRangeBonus);
-    public int Defense => Mathf.Max(0, ArmorDefenseBonus);
+    public int armor_class => Mathf.Max(0, ArmorClassBonus);
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
@@ -43,6 +45,8 @@ public partial class Unit : Node2D
         EncounterId = GetString(config, "encounter_id", "");
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
+        MaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
+        MagicPoints = Mathf.Clamp(GetInt(config, "magic_points", MaxMagicPoints), 0, MaxMagicPoints);
         Initiative = GetInt(config, "initiative", 10);
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
@@ -50,7 +54,7 @@ public partial class Unit : Node2D
         BaseAttackRange = GetInt(config, "base_attack_range", 1);
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", 0);
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", 0);
-        ArmorDefenseBonus = GetInt(config, "armor_defense_bonus", 0);
+        ArmorClassBonus = GetInt(config, "armor_class_bonus", 0);
         ArmorAttackDamageBonus = GetInt(config, "armor_attack_damage_bonus", 0);
         ArmorAttackRangeBonus = GetInt(config, "armor_attack_range_bonus", 0);
         BuffAttackDamageBonus = GetInt(config, "buff_attack_damage_bonus", 0);
@@ -139,6 +143,23 @@ public partial class Unit : Node2D
         return CanUseAbilityThisTurn() && HasAbility(abilityId) && GetAbilityCooldownRemaining(abilityId) <= 0;
     }
 
+    public bool HasEnoughMagicPoints(int amount)
+    {
+        return MagicPoints >= Mathf.Max(0, amount);
+    }
+
+    public bool TrySpendMagicPoints(int amount)
+    {
+        var spend = Mathf.Max(0, amount);
+        if (MagicPoints < spend)
+        {
+            return false;
+        }
+
+        MagicPoints -= spend;
+        return true;
+    }
+
     public void MarkAbilityUsed(string abilityId, int cooldownTurns = 0)
     {
         HasUsedAbilityThisTurn = true;
@@ -164,9 +185,9 @@ public partial class Unit : Node2D
         WeaponAttackRangeBonus = attackRangeBonus;
     }
 
-    public void SetArmorBonuses(int defenseBonus, int attackDamageBonus, int attackRangeBonus)
+    public void SetArmorBonuses(int armorClassBonus, int attackDamageBonus, int attackRangeBonus)
     {
-        ArmorDefenseBonus = defenseBonus;
+        ArmorClassBonus = armorClassBonus;
         ArmorAttackDamageBonus = attackDamageBonus;
         ArmorAttackRangeBonus = attackRangeBonus;
     }

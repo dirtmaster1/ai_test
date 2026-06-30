@@ -40,8 +40,8 @@
       "name": "Small Shield",
       "type": "armor",
       "slot": "1-handed",
-      "base_defense": 1,
-      "bonus_defense": 0
+      "base_armor_class": 1,
+      "bonus_armor_class": 0
     },
     "short-sword": {
       "id": "short-sword",
@@ -57,24 +57,24 @@
       "name": "Leather Armor",
       "type": "armor",
       "slot": "body",
-      "base_defense": 1,
-      "bonus_defense": 0
+      "base_armor_class": 1,
+      "bonus_armor_class": 0
     },
     "cloth-robe": {
       "id": "cloth-robe",
       "name": "Cloth Robe",
       "type": "armor",
       "slot": "body",
-      "base_defense": 0,
-      "bonus_defense": 0
+      "base_armor_class": 0,
+      "bonus_armor_class": 0
     },
     "iron-helmet": {
       "id": "iron-helmet",
       "name": "Iron Helmet",
       "type": "armor",
       "slot": "head",
-      "base_defense": 1,
-      "bonus_defense": 0
+      "base_armor_class": 1,
+      "bonus_armor_class": 0
     },
     "war-axe": {
       "id": "war-axe",

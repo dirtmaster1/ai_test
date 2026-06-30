@@ -1,6 +1,7 @@
 using Godot;
 using Godot.Collections;
 using System.Collections.Generic;
+using System;
 using System.Text;
 
 public partial class HudController : Control
@@ -75,6 +76,17 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private string _lastLogLine = "";
     private const int MaxLogEntries = 12;
+    private const float CombatLogTextPadding = 16.0f;
+    private const float CombatLogMaxWrapWidth = 420.0f;
+
+    private bool _showWorldHoverTooltip;
+    private string _worldHoverTitle = "";
+    private string _worldHoverDetails = "";
+    private Vector2 _worldHoverCursor;
+    private Color _worldHoverBackground = new(0.05f, 0.05f, 0.08f, 0.86f);
+    private Color _worldHoverBorder = new(0.82f, 0.86f, 0.94f, 0.95f);
+    private Color _worldHoverTitleColor = new(1.0f, 0.95f, 0.8f, 1.0f);
+    private Color _worldHoverDetailsColor = new(0.95f, 0.9f, 0.78f, 1.0f);
 
     private readonly System.Collections.Generic.Dictionary<Control, Vector2> _panelOffsets = new();
     private readonly System.Collections.Generic.Dictionary<Control, Rect2> _basePanelRects = new();
@@ -481,6 +493,43 @@ public partial class HudController : Control
         }
     }
 
+    public override void _Draw()
+    {
+        if (!_showWorldHoverTooltip)
+        {
+            return;
+        }
+
+        var viewport = GetViewportRect().Size;
+        var font = ThemeDB.FallbackFont;
+        if (font == null)
+        {
+            return;
+        }
+
+        var titleWidth = font.GetStringSize(_worldHoverTitle, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize).X;
+        var detailsWidth = font.GetStringSize(_worldHoverDetails, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize).X;
+        var contentWidth = Mathf.Max(titleWidth, detailsWidth);
+        var panelSize = new Vector2(Mathf.Max(236.0f, contentWidth + 24.0f), _worldHoverDetails.Contains("\n") ? 92.0f : 62.0f);
+
+        var cursor = _worldHoverCursor + new Vector2(14.0f, 14.0f);
+        if (cursor.X + panelSize.X > viewport.X)
+        {
+            cursor.X = viewport.X - panelSize.X - 8.0f;
+        }
+
+        if (cursor.Y + panelSize.Y > viewport.Y)
+        {
+            cursor.Y = viewport.Y - panelSize.Y - 8.0f;
+        }
+
+        var rect = new Rect2(cursor, panelSize);
+        DrawRect(rect, _worldHoverBackground, true);
+        DrawRect(rect, _worldHoverBorder, false, 2.0f);
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 20.0f), _worldHoverTitle, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, _worldHoverTitleColor);
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 42.0f), _worldHoverDetails, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, _worldHoverDetailsColor);
+    }
+
     private void EnsureFullscreenLayout()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
@@ -745,7 +794,7 @@ public partial class HudController : Control
         }
 
         _activeUnitLabel.Text =
-            $"Turn: {active.UnitName} [{active.Team}] | HP {active.HitPoints}/{active.MaxHitPoints} | Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
+            $"Turn: {active.UnitName} [{active.Team}] | HP {active.HitPoints}/{active.MaxHitPoints} | MP {active.MagicPoints}/{active.MaxMagicPoints} | Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)
@@ -1006,9 +1055,9 @@ public partial class HudController : Control
 
         if (type == "armor")
         {
-            var base_defense = GetInt(item, "base_defense", 0);
-            var bonus_defense = GetInt(item, "bonus_defense", 0);
-            return $"{name} [armor] def+{base_defense} (+{bonus_defense})";
+            var base_armor_class = GetInt(item, "base_armor_class", 0);
+            var bonus_armor_class = GetInt(item, "bonus_armor_class", 0);
+            return $"{name} [armor] armor_class+{base_armor_class} (+{bonus_armor_class})";
         }
 
         return $"{name} [{type}]";
@@ -1031,9 +1080,9 @@ public partial class HudController : Control
 
         if (type == "armor")
         {
-            var base_defense = GetInt(item, "base_defense", 0);
-            var bonus_defense = GetInt(item, "bonus_defense", 0);
-            return $"{prefix}{name} - Armor\nDefense: +{base_defense} (+{bonus_defense})";
+            var base_armor_class = GetInt(item, "base_armor_class", 0);
+            var bonus_armor_class = GetInt(item, "bonus_armor_class", 0);
+            return $"{prefix}{name} - Armor\nArmor Class: +{base_armor_class} (+{bonus_armor_class})";
         }
 
         return $"{prefix}{name} - {type}";
@@ -1062,7 +1111,7 @@ public partial class HudController : Control
             }
 
             var marker = unit == activeUnit ? ">" : " ";
-            builder.AppendLine($"{marker} {unit.UnitName} [{unit.Team}] {unit.HitPoints}/{unit.MaxHitPoints}");
+            builder.AppendLine($"{marker} {unit.UnitName} [{unit.Team}] HP {unit.HitPoints}/{unit.MaxHitPoints} | MP {unit.MagicPoints}/{unit.MaxMagicPoints}");
         }
 
         _turnQueueLabel.Text = builder.ToString().TrimEnd();
@@ -1081,7 +1130,11 @@ public partial class HudController : Control
         }
 
         _lastLogLine = text;
-        _combatLog.AddItem(text);
+        foreach (var wrappedLine in WrapCombatLogText(text))
+        {
+            _combatLog.AddItem(wrappedLine);
+        }
+
         while (_combatLog.ItemCount > MaxLogEntries)
         {
             _combatLog.RemoveItem(0);
@@ -1089,5 +1142,124 @@ public partial class HudController : Control
 
         _combatLog.Select(_combatLog.ItemCount - 1);
         _combatLog.EnsureCurrentIsVisible();
+    }
+
+    public void SetWorldHoverTooltip(
+        Vector2 cursor,
+        string title,
+        string details,
+        Color background,
+        Color border,
+        Color titleColor,
+        Color detailsColor
+    )
+    {
+        _worldHoverCursor = cursor;
+        _worldHoverTitle = string.IsNullOrEmpty(title) ? "Info" : title;
+        _worldHoverDetails = string.IsNullOrEmpty(details) ? "-" : details;
+        _worldHoverBackground = background;
+        _worldHoverBorder = border;
+        _worldHoverTitleColor = titleColor;
+        _worldHoverDetailsColor = detailsColor;
+        _showWorldHoverTooltip = true;
+        QueueRedraw();
+    }
+
+    public void ClearWorldHoverTooltip()
+    {
+        if (!_showWorldHoverTooltip)
+        {
+            return;
+        }
+
+        _showWorldHoverTooltip = false;
+        QueueRedraw();
+    }
+
+    private IEnumerable<string> WrapCombatLogText(string text)
+    {
+        if (_combatLog == null)
+        {
+            yield break;
+        }
+
+        var maxWidth = Mathf.Max(40.0f, Mathf.Min(_combatLog.Size.X - CombatLogTextPadding, CombatLogMaxWrapWidth));
+        var font = ThemeDB.FallbackFont;
+        var fontSize = ThemeDB.FallbackFontSize;
+        if (font == null)
+        {
+            yield return text;
+            yield break;
+        }
+
+        var normalized = text.Replace("\r", "");
+        var sourceLines = normalized.Split('\n');
+        for (var lineIndex = 0; lineIndex < sourceLines.Length; lineIndex++)
+        {
+            var source = sourceLines[lineIndex];
+            if (string.IsNullOrEmpty(source))
+            {
+                yield return "";
+                continue;
+            }
+
+            var words = source.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var current = "";
+            foreach (var word in words)
+            {
+                var candidate = string.IsNullOrEmpty(current) ? word : $"{current} {word}";
+                if (font.GetStringSize(candidate, HorizontalAlignment.Left, -1, fontSize).X <= maxWidth)
+                {
+                    current = candidate;
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(current))
+                {
+                    yield return current;
+                    current = "";
+                }
+
+                if (font.GetStringSize(word, HorizontalAlignment.Left, -1, fontSize).X <= maxWidth)
+                {
+                    current = word;
+                    continue;
+                }
+
+                var chunk = "";
+                for (var i = 0; i < word.Length; i++)
+                {
+                    var c = word[i];
+                    var chunkCandidate = chunk + c;
+                    var hasMoreCharacters = i < word.Length - 1;
+                    var displayCandidate = hasMoreCharacters ? chunkCandidate + "-" : chunkCandidate;
+                    if (font.GetStringSize(displayCandidate, HorizontalAlignment.Left, -1, fontSize).X <= maxWidth)
+                    {
+                        chunk = chunkCandidate;
+                        continue;
+                    }
+
+                    if (!string.IsNullOrEmpty(chunk))
+                    {
+                        yield return chunk + "-";
+                        chunk = c.ToString();
+                        continue;
+                    }
+
+                    // Very narrow layouts can force single-character chunks.
+                    yield return c.ToString();
+                }
+
+                if (!string.IsNullOrEmpty(chunk))
+                {
+                    current = chunk;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(current))
+            {
+                yield return current;
+            }
+        }
     }
 }

@@ -13,6 +13,8 @@ public partial class MapLoader : Node
         { "initiative", 15 },
         { "hit_points", 10 },
         { "max_hit_points", 10 },
+        { "magic_points", 5 },
+        { "max_magic_points", 5 },
         { "starting_equipment", new Array<string> { "cloth-robe" } }
     };
 
@@ -39,6 +41,8 @@ public partial class MapLoader : Node
         { "initiative", 12 },
         { "hit_points", 12 },
         { "max_hit_points", 12 },
+        { "magic_points", 5 },
+        { "max_magic_points", 5 },
         { "starting_equipment", new Array<string> { "small-shield", "short-sword", "leather-armor" } }
     };
 

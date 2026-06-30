@@ -96,20 +96,26 @@ public partial class BattleController : Node2D
     private readonly struct ActionProfile
     {
         public string ActionId { get; }
+        public string ActionName { get; }
         public string ActionType { get; }
         public int Range { get; }
         public int Damage { get; }
         public int HealAmount { get; }
         public int CooldownTurns { get; }
+        public int MagicPointCost { get; }
+        public bool IsMagical { get; }
 
-        public ActionProfile(string actionId, string actionType, int range, int damage, int healAmount, int cooldownTurns)
+        public ActionProfile(string actionId, string actionName, string actionType, int range, int damage, int healAmount, int cooldownTurns, int magicPointCost, bool isMagical)
         {
             ActionId = actionId;
+            ActionName = actionName;
             ActionType = actionType;
             Range = range;
             Damage = damage;
             HealAmount = healAmount;
             CooldownTurns = cooldownTurns;
+            MagicPointCost = magicPointCost;
+            IsMagical = isMagical;
         }
     }
 
@@ -162,6 +168,8 @@ public partial class BattleController : Node2D
 
     public override void _Draw()
     {
+        _hud?.ClearWorldHoverTooltip();
+
         var viewportSize = GetViewportRect().Size;
         DrawRect(
             new Rect2(Vector2.Zero, viewportSize),
@@ -300,6 +308,12 @@ public partial class BattleController : Node2D
             if (cooldownRemaining > 0)
             {
                 _hud?.SetStatusText($"{selectedAbilityId} is on cooldown ({cooldownRemaining} turn{(cooldownRemaining == 1 ? "" : "s")} remaining).");
+                return;
+            }
+
+            var actionProfile = ResolveActionProfile(active, selectedAbilityId);
+            if (!CanCastAction(active, actionProfile, true))
+            {
                 return;
             }
 
@@ -608,10 +622,15 @@ public partial class BattleController : Node2D
             return;
         }
 
+        var actionProfile = ResolveActionProfile(active, abilityId);
+        if (!CanCastAction(active, actionProfile, true))
+        {
+            return;
+        }
+
         _awaitingPlayerAttackDirection = true;
         SetSelectedAbilityId(active, abilityId);
         ClearMovementPreviewPath();
-        var actionProfile = ResolveActionProfile(active, abilityId);
         _hud?.SetSelectedAction($"{actionProfile.ActionId} (targeting)");
         _hud?.SetStatusText("Ability selected. Click target cell or use direction keys. Right-click or Esc to cancel.");
         RefreshHudPanels();
@@ -756,12 +775,17 @@ public partial class BattleController : Node2D
             return;
         }
 
+        if (!CanCastAction(active, actionProfile, true))
+        {
+            return;
+        }
+
         if (actionProfile.ActionType == "heal")
         {
             var allyTarget = GetLivingAllyAtCell(active.Team, targetCell);
             if (allyTarget != null)
             {
-                if (!TryHealTarget(active, allyTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns))
+                if (!TryHealTarget(active, allyTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical))
                 {
                     return;
                 }
@@ -776,7 +800,7 @@ public partial class BattleController : Node2D
             var attackTarget = GetLivingEnemyAtCell(active.Team, targetCell);
             if (attackTarget != null)
             {
-                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns))
+                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical))
                 {
                     return;
                 }
@@ -1169,6 +1193,11 @@ public partial class BattleController : Node2D
             return CombatActionResult.Failed;
         }
 
+        if (!CanCastAction(actor, actionProfile, true))
+        {
+            return CombatActionResult.Failed;
+        }
+
         Unit target = actionProfile.ActionType == "heal"
             ? FindMostInjuredAllyInRange(actor, actionProfile.Range)
             : FindNearestEnemyInRange(actor, actionProfile.Range);
@@ -1180,8 +1209,8 @@ public partial class BattleController : Node2D
         }
 
         var actionSuccess = actionProfile.ActionType == "heal"
-            ? TryHealTarget(actor, target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns)
-            : TryAttackTarget(actor, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns);
+            ? TryHealTarget(actor, target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical)
+            : TryAttackTarget(actor, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical);
 
         if (!actionSuccess)
         {
@@ -1228,7 +1257,7 @@ public partial class BattleController : Node2D
         return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
     }
 
-    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack", int cooldownTurns = 0)
+    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack", string actionName = "Attack", int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false)
     {
         if (_flowState == BattleFlowState.Combat && !attacker.CanUseAbilityThisTurn())
         {
@@ -1242,7 +1271,19 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        target.ApplyDamage(damage);
+        if (!CanCastAction(attacker, new ActionProfile(actionId, actionName, "attack", range, damage, 0, cooldownTurns, magicPointCost, isMagical), true))
+        {
+            return false;
+        }
+
+        if (!attacker.TrySpendMagicPoints(magicPointCost))
+        {
+            _hud?.SetStatusText($"{attacker.UnitName} does not have enough MP to cast {actionName}.");
+            return false;
+        }
+
+        var mitigatedDamage = isMagical ? damage : Mathf.Max(0, damage - target.armor_class);
+        target.ApplyDamage(mitigatedDamage);
         if (_flowState == BattleFlowState.Combat)
         {
             attacker.MarkAbilityUsed(actionId, cooldownTurns);
@@ -1250,7 +1291,23 @@ public partial class BattleController : Node2D
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, attacker, actionId, target.UnitId);
 
-        var resultText = $"{attacker.UnitName} hits {target.UnitName} for {damage}.";
+        var resultText = isMagical
+            ? $"{attacker.UnitName} casts {actionName} on {target.UnitName}, dealing {mitigatedDamage} damage."
+            : $"{attacker.UnitName} hits {target.UnitName} for {mitigatedDamage}.";
+        if (!isMagical && target.armor_class > 0)
+        {
+            var reducedBy = Mathf.Max(0, damage - mitigatedDamage);
+            if (reducedBy > 0)
+            {
+                resultText += $" ({reducedBy} blocked by armor_class)";
+            }
+        }
+
+        if (magicPointCost > 0)
+        {
+            resultText += $" (MP -{magicPointCost})";
+        }
+
         if (target.IsDead)
         {
             resultText += $" {target.UnitName} is defeated.";
@@ -1262,7 +1319,7 @@ public partial class BattleController : Node2D
         return true;
     }
 
-    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, int cooldownTurns = 0)
+    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false)
     {
         if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
         {
@@ -1276,10 +1333,21 @@ public partial class BattleController : Node2D
             return false;
         }
 
+        if (!CanCastAction(actor, new ActionProfile(actionId, actionName, "heal", range, 0, healAmount, cooldownTurns, magicPointCost, isMagical), true))
+        {
+            return false;
+        }
+
         var healed = target.ApplyHealing(healAmount);
         if (healed <= 0)
         {
             _hud?.SetStatusText($"{target.UnitName} is already at full health.");
+            return false;
+        }
+
+        if (!actor.TrySpendMagicPoints(magicPointCost))
+        {
+            _hud?.SetStatusText($"{actor.UnitName} does not have enough MP to cast {actionName}.");
             return false;
         }
 
@@ -1289,7 +1357,13 @@ public partial class BattleController : Node2D
         }
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionId, target.UnitId);
-        var resultText = $"{actor.UnitName} heals {target.UnitName} for {healed}.";
+        var resultText = isMagical
+            ? $"{actor.UnitName} casts {actionName} on {target.UnitName}, restoring {healed} HP."
+            : $"{actor.UnitName} heals {target.UnitName} for {healed}.";
+        if (magicPointCost > 0)
+        {
+            resultText += $" (MP -{magicPointCost})";
+        }
         _lastActionSummary = resultText;
         _hud?.SetStatusText(resultText);
         _hud?.AddCombatLogEntry(resultText);
@@ -1712,7 +1786,7 @@ public partial class BattleController : Node2D
     {
         if (actor == null)
         {
-            return new ActionProfile("attack", "attack", 1, 0, 0, 0);
+            return new ActionProfile("attack", "Attack", "attack", 1, 0, 0, 0, 0, false);
         }
 
         abilityId = string.IsNullOrEmpty(abilityId) ? GetSelectedAbilityId(actor) : abilityId;
@@ -1721,16 +1795,18 @@ public partial class BattleController : Node2D
             abilityId = actor.PrimaryAbilityId;
         }
 
-        var fallback = new ActionProfile(abilityId, "attack", actor.AttackRange, actor.AttackDamage, 0, 0);
+        var fallback = new ActionProfile(abilityId, abilityId, "attack", actor.AttackRange, actor.AttackDamage, 0, 0, 0, false);
         if (_gameData == null || string.IsNullOrEmpty(abilityId))
         {
             return fallback;
         }
 
         var actionData = _gameData.GetAbility(abilityId);
+        var isMagical = false;
         if (actionData.Count == 0)
         {
             actionData = _gameData.GetSpell(abilityId);
+            isMagical = actionData.Count > 0;
         }
 
         if (actionData.Count == 0)
@@ -1738,13 +1814,42 @@ public partial class BattleController : Node2D
             return fallback;
         }
 
+        var actionName = GetString(actionData, "name", abilityId);
         var actionType = GetString(actionData, "type", "attack");
         var range = Mathf.Max(1, GetInt(actionData, "range", actor.AttackRange));
         var damage = Mathf.Max(0, GetInt(actionData, "damage", actor.AttackDamage));
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
         var cooldownTurns = Mathf.Max(0, GetInt(actionData, "cooldown", 0));
+        var mpCost = Mathf.Max(0, GetInt(actionData, "mp_cost", 0));
 
-        return new ActionProfile(abilityId, actionType, range, damage, healAmount, cooldownTurns);
+        return new ActionProfile(abilityId, actionName, actionType, range, damage, healAmount, cooldownTurns, mpCost, isMagical);
+    }
+
+    private bool CanCastAction(Unit actor, ActionProfile actionProfile, bool reportStatus)
+    {
+        if (actor == null)
+        {
+            return false;
+        }
+
+        if (actionProfile.MagicPointCost <= 0)
+        {
+            return true;
+        }
+
+        if (actor.HasEnoughMagicPoints(actionProfile.MagicPointCost))
+        {
+            return true;
+        }
+
+        if (reportStatus)
+        {
+            _hud?.SetStatusText(
+                $"{actor.UnitName} does not have enough MP to cast {actionProfile.ActionName} ({actor.MagicPoints}/{actionProfile.MagicPointCost})."
+            );
+        }
+
+        return false;
     }
 
     private string GetSelectedAbilityId(Unit unit)
@@ -1793,7 +1898,7 @@ public partial class BattleController : Node2D
 
         foreach (var abilityId in unit.AbilityIds)
         {
-            if (unit.CanUseAbility(abilityId))
+            if (unit.CanUseAbility(abilityId) && CanCastAction(unit, ResolveActionProfile(unit, abilityId), false))
             {
                 return true;
             }
@@ -1814,22 +1919,27 @@ public partial class BattleController : Node2D
         foreach (var abilityId in unit.AbilityIds)
         {
             var profile = ResolveActionProfile(unit, abilityId);
-            var actionName = GetActionDisplayName(abilityId);
+            var actionName = string.IsNullOrEmpty(profile.ActionName) ? GetActionDisplayName(abilityId) : profile.ActionName;
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
             var valueText = profile.ActionType == "heal"
                 ? $"Heal: {profile.HealAmount}"
                 : $"Damage: {profile.Damage}";
+            var mpCostLabel = profile.MagicPointCost <= 0
+                ? "MP Cost: none"
+                : $"MP Cost: {profile.MagicPointCost}";
             var cooldownLabel = profile.CooldownTurns <= 0
                 ? "Cooldown: none"
                 : $"Cooldown: {profile.CooldownTurns} turn{(profile.CooldownTurns == 1 ? "" : "s")}";
             var stateLabel = cooldownRemaining > 0
                 ? $"Status: on cooldown ({cooldownRemaining} remaining)"
+                : !CanCastAction(unit, profile, false)
+                    ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
                 : "Status: ready";
             entries.Add(new Dictionary
             {
                 { "id", abilityId },
                 { "label", actionName },
-                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\n{valueText}\n{cooldownLabel}\n{stateLabel}" },
+                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\n{valueText}\n{mpCostLabel}\n{cooldownLabel}\n{stateLabel}" },
                 { "cooldown_remaining", cooldownRemaining },
                 { "is_selected", abilityId == selectedId ? 1 : 0 }
             });
@@ -2050,29 +2160,18 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var cursor = GetGlobalMousePosition() + new Vector2(14.0f, 14.0f);
-        var panelSize = new Vector2(224.0f, 74.0f);
-        var viewport = GetViewportRect().Size;
-        if (cursor.X + panelSize.X > viewport.X)
-        {
-            cursor.X = viewport.X - panelSize.X - 8.0f;
-        }
-
-        if (cursor.Y + panelSize.Y > viewport.Y)
-        {
-            cursor.Y = viewport.Y - panelSize.Y - 8.0f;
-        }
-
-        var rect = new Rect2(cursor, panelSize);
-        DrawRect(rect, new Color(0.05f, 0.05f, 0.08f, 0.86f), true);
-        DrawRect(rect, new Color(0.82f, 0.86f, 0.94f, 0.95f), false, 2.0f);
-
         var titleColor = unit.Team == "enemy"
             ? new Color(1.0f, 0.78f, 0.78f, 1.0f)
             : new Color(0.78f, 0.95f, 1.0f, 1.0f);
-        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 20.0f), $"{unit.UnitName} [{unit.Team}]", HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, titleColor);
-        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 40.0f), $"HP: {unit.HitPoints}/{unit.MaxHitPoints}", HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(0.95f, 0.98f, 1.0f, 1.0f));
-        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 60.0f), $"Defense: {unit.Defense} | Atk: {unit.AttackDamage} | Range: {unit.AttackRange}", HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(0.88f, 0.9f, 0.95f, 1.0f));
+        _hud?.SetWorldHoverTooltip(
+            GetGlobalMousePosition(),
+            $"{unit.UnitName} [{unit.Team}]",
+            $"HP: {unit.HitPoints}/{unit.MaxHitPoints}\nMP: {unit.MagicPoints}/{unit.MaxMagicPoints}\nArmor Class: {unit.armor_class} | Atk: {unit.AttackDamage} | Range: {unit.AttackRange}",
+            new Color(0.05f, 0.05f, 0.08f, 0.86f),
+            new Color(0.82f, 0.86f, 0.94f, 0.95f),
+            titleColor,
+            new Color(0.95f, 0.98f, 1.0f, 1.0f)
+        );
     }
 
     private void DrawHoveredInteractableTooltip()
@@ -2144,24 +2243,15 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var cursor = GetGlobalMousePosition() + new Vector2(14.0f, 14.0f);
-        var panelSize = new Vector2(236.0f, 62.0f);
-        var viewport = GetViewportRect().Size;
-        if (cursor.X + panelSize.X > viewport.X)
-        {
-            cursor.X = viewport.X - panelSize.X - 8.0f;
-        }
-
-        if (cursor.Y + panelSize.Y > viewport.Y)
-        {
-            cursor.Y = viewport.Y - panelSize.Y - 8.0f;
-        }
-
-        var rect = new Rect2(cursor, panelSize);
-        DrawRect(rect, new Color(0.09f, 0.08f, 0.06f, 0.9f), true);
-        DrawRect(rect, new Color(0.95f, 0.86f, 0.6f, 0.92f), false, 2.0f);
-        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 20.0f), title, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(1.0f, 0.95f, 0.8f, 1.0f));
-        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 42.0f), details, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(0.95f, 0.9f, 0.78f, 1.0f));
+        _hud?.SetWorldHoverTooltip(
+            GetGlobalMousePosition(),
+            title,
+            details,
+            new Color(0.09f, 0.08f, 0.06f, 0.9f),
+            new Color(0.95f, 0.86f, 0.6f, 0.92f),
+            new Color(1.0f, 0.95f, 0.8f, 1.0f),
+            new Color(0.95f, 0.9f, 0.78f, 1.0f)
+        );
     }
 
     private bool TryHandleExplorationClickInteraction(Vector2I clickedCell)
@@ -2589,7 +2679,7 @@ public partial class BattleController : Node2D
                 : "ready";
         var combatPrefix = string.IsNullOrEmpty(_lastActionSummary) ? "" : $"Last action: {_lastActionSummary} | ";
         _hud?.SetStatusText(
-            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | Move: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
+            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | HP: {active.HitPoints}/{active.MaxHitPoints} | MP: {active.MagicPoints}/{active.MaxMagicPoints} | Move: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
         );
 
         
@@ -2946,7 +3036,7 @@ public partial class BattleController : Node2D
 
         var totalWeaponDamage = 0;
         var bestWeaponRange = 0;
-        var totalDefense = 0;
+        var total_armor_class = 0;
         foreach (var entry in equippedBySlot)
         {
             var itemData = _gameData.GetItem(entry.Value);
@@ -2966,14 +3056,14 @@ public partial class BattleController : Node2D
             }
             else if (itemType == "armor")
             {
-                var base_defense = GetInt(itemData, "base_defense", 0);
-                var bonus_defense = GetInt(itemData, "bonus_defense", 0);
-                totalDefense += base_defense + bonus_defense;
+                var base_armor_class = GetInt(itemData, "base_armor_class", 0);
+                var bonus_armor_class = GetInt(itemData, "bonus_armor_class", 0);
+                total_armor_class += base_armor_class + bonus_armor_class;
             }
         }
 
         unit.SetWeaponBonuses(totalWeaponDamage, bestWeaponRange);
-        unit.SetArmorBonuses(totalDefense, 0, 0);
+        unit.SetArmorBonuses(total_armor_class, 0, 0);
     }
 
     private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config)
