@@ -58,6 +58,29 @@ public partial class TurnManager : Node
         return _turnOrder[_activeIndex];
     }
 
+    public Array<Unit> GetTurnOrderFromActive()
+    {
+        var result = new Array<Unit>();
+        if (_turnOrder.Count == 0)
+        {
+            return result;
+        }
+
+        for (var step = 0; step < _turnOrder.Count; step++)
+        {
+            var index = (_activeIndex + step) % _turnOrder.Count;
+            var unit = _turnOrder[index];
+            if (unit == null || unit.IsDead)
+            {
+                continue;
+            }
+
+            result.Add(unit);
+        }
+
+        return result;
+    }
+
     public void EndTurn()
     {
         if (_turnOrder.Count == 0)

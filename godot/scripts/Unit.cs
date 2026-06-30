@@ -15,6 +15,7 @@ public partial class Unit : Node2D
     public int BaseAttackDamage { get; private set; } = 3;
     public int BaseAttackRange { get; private set; } = 1;
     public string PrimaryAbilityId { get; private set; } = "";
+    public Array<string> AbilityIds { get; private set; } = new();
     public string EncounterId { get; private set; } = "";
     public int Initiative { get; private set; } = 10;
     public int WeaponAttackDamageBonus { get; private set; }
@@ -32,6 +33,7 @@ public partial class Unit : Node2D
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
+    private readonly Dictionary<string, int> _abilityCooldownRemaining = new();
 
     public void Setup(Dictionary config)
     {
@@ -43,6 +45,7 @@ public partial class Unit : Node2D
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
         Initiative = GetInt(config, "initiative", 10);
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
+        AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
         BaseAttackDamage = GetInt(config, "base_attack_damage", Team == "player" ? 4 : 3);
         BaseAttackRange = GetInt(config, "base_attack_range", 1);
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", 0);
@@ -62,6 +65,23 @@ public partial class Unit : Node2D
     {
         RemainingMovement = MaxMovementPerTurn;
         HasUsedAbilityThisTurn = false;
+
+        var keys = new Array<string>();
+        foreach (var pair in _abilityCooldownRemaining)
+        {
+            keys.Add(pair.Key);
+        }
+
+        foreach (var key in keys)
+        {
+            var value = _abilityCooldownRemaining[key];
+            if (value <= 0)
+            {
+                continue;
+            }
+
+            _abilityCooldownRemaining[key] = value - 1;
+        }
     }
 
     public bool CanMoveThisTurn()
@@ -86,9 +106,46 @@ public partial class Unit : Node2D
         return !HasUsedAbilityThisTurn;
     }
 
-    public void MarkAbilityUsed()
+    public bool HasAbility(string abilityId)
+    {
+        if (string.IsNullOrEmpty(abilityId))
+        {
+            return false;
+        }
+
+        foreach (var id in AbilityIds)
+        {
+            if (id == abilityId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public int GetAbilityCooldownRemaining(string abilityId)
+    {
+        if (string.IsNullOrEmpty(abilityId))
+        {
+            return 0;
+        }
+
+        return _abilityCooldownRemaining.TryGetValue(abilityId, out var turns) ? Mathf.Max(0, turns) : 0;
+    }
+
+    public bool CanUseAbility(string abilityId)
+    {
+        return CanUseAbilityThisTurn() && HasAbility(abilityId) && GetAbilityCooldownRemaining(abilityId) <= 0;
+    }
+
+    public void MarkAbilityUsed(string abilityId, int cooldownTurns = 0)
     {
         HasUsedAbilityThisTurn = true;
+        if (!string.IsNullOrEmpty(abilityId))
+        {
+            _abilityCooldownRemaining[abilityId] = Mathf.Max(0, cooldownTurns);
+        }
     }
 
     public void SetBuffAttackDamageBonus(int bonus)
@@ -218,5 +275,66 @@ public partial class Unit : Node2D
     private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)
     {
         return dict.ContainsKey(key) ? (Vector2I)((Variant)dict[key]) : fallback;
+    }
+
+    private static Array<string> BuildAbilityIds(Dictionary config, string fallbackPrimary)
+    {
+        var ids = TryGetStringArray(config, "ability_ids");
+        if (ids.Count == 0)
+        {
+            ids.Add(fallbackPrimary);
+        }
+
+        var unique = new Array<string>();
+        foreach (var id in ids)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                continue;
+            }
+
+            var exists = false;
+            foreach (var existing in unique)
+            {
+                if (existing == id)
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists)
+            {
+                unique.Add(id);
+            }
+        }
+
+        return unique;
+    }
+
+    private static Array<string> TryGetStringArray(Dictionary dict, string key)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return new Array<string>();
+        }
+
+        var raw = (Variant)dict[key];
+        if (raw.VariantType != Variant.Type.Array)
+        {
+            return new Array<string>();
+        }
+
+        var result = new Array<string>();
+        foreach (var entry in (Array)raw)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType == Variant.Type.String)
+            {
+                result.Add(variant.AsString());
+            }
+        }
+
+        return result;
     }
 }

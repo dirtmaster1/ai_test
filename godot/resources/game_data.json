@@ -22,7 +22,16 @@
       "range": 3,
       "heal_amount": 4,
       "mp_cost": 2,
-      "action_cost": 1
+      "cooldown": 1
+    },
+    "magic-missile": {
+      "id": "magic-missile",
+      "name": "Magic Missile",
+      "type": "attack",
+      "range": 3,
+      "damage": 4,
+      "mp_cost": 3,
+      "cooldown": 1
     }
   },
   "items": {

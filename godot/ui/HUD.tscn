@@ -100,21 +100,31 @@ theme_override_constants/separation = 4
 
 [node name="ActionHeader" type="Label" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
-text = "Action Bar"
+text = "Actions"
 
 [node name="ActiveUnitLabel" type="Label" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Active: -"
+text = "Turn: -"
 
 [node name="ActionButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="AbilityButton" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
+[node name="AbilityButton1" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Use Ability"
+text = "Ability 1"
+
+[node name="AbilityButton2" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ability 2"
+
+[node name="AbilityButton3" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ability 3"
 
 [node name="EndTurnButton" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
 layout_mode = 2
@@ -123,12 +133,12 @@ text = "End Turn"
 
 [node name="SelectedActionLabel" type="Label" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
-text = "Selected: None"
+text = "Selected Ability: None"
 
 [node name="ActionDetails" type="Label" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Move: WASD | Ability: F + direction | End Turn: Space"
+text = "Choose an ability button, then target using click or WASD/Arrows."
 
 [node name="TurnQueuePanel" type="PanelContainer" parent="."]
 layout_mode = 0

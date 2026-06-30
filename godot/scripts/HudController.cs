@@ -6,7 +6,7 @@ using System.Text;
 public partial class HudController : Control
 {
     [Signal]
-    public delegate void AbilityPressedEventHandler();
+    public delegate void AbilityPressedEventHandler(string abilityId);
 
     [Signal]
     public delegate void EndTurnPressedEventHandler();
@@ -39,7 +39,9 @@ public partial class HudController : Control
     private PanelContainer _turnQueuePanel;
     private PanelContainer _combatLogPanel;
     private Label _activeUnitLabel;
-    private Button _abilityButton;
+    private Button _abilityButton1;
+    private Button _abilityButton2;
+    private Button _abilityButton3;
     private Button _endTurnButton;
     private Button _inventoryButton;
     private Label _selectedActionLabel;
@@ -70,6 +72,7 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryEquippedEntriesBySlot = new();
     private readonly System.Collections.Generic.HashSet<string> _equippedItemIds = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
+    private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private string _lastLogLine = "";
     private const int MaxLogEntries = 12;
 
@@ -97,7 +100,9 @@ public partial class HudController : Control
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _activeUnitLabel = GetNode<Label>("ActionPanel/ActionVBox/ActiveUnitLabel");
         var actionHeader = GetNode<Label>("ActionPanel/ActionVBox/ActionHeader");
-        _abilityButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton");
+        _abilityButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton1");
+        _abilityButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton2");
+        _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton3");
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _selectedActionLabel = GetNode<Label>("ActionPanel/ActionVBox/SelectedActionLabel");
@@ -127,7 +132,9 @@ public partial class HudController : Control
 
         _inventoryPanel.MouseFilter = MouseFilterEnum.Stop;
 
-        _abilityButton.Pressed += OnAbilityButtonPressed;
+        _abilityButton1.Pressed += OnAbilityButton1Pressed;
+        _abilityButton2.Pressed += OnAbilityButton2Pressed;
+        _abilityButton3.Pressed += OnAbilityButton3Pressed;
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
@@ -165,9 +172,19 @@ public partial class HudController : Control
             viewport.SizeChanged -= OnViewportSizeChanged;
         }
 
-        if (_abilityButton != null)
+        if (_abilityButton1 != null)
         {
-            _abilityButton.Pressed -= OnAbilityButtonPressed;
+            _abilityButton1.Pressed -= OnAbilityButton1Pressed;
+        }
+
+        if (_abilityButton2 != null)
+        {
+            _abilityButton2.Pressed -= OnAbilityButton2Pressed;
+        }
+
+        if (_abilityButton3 != null)
+        {
+            _abilityButton3.Pressed -= OnAbilityButton3Pressed;
         }
 
         if (_endTurnButton != null)
@@ -241,9 +258,34 @@ public partial class HudController : Control
         }
     }
 
-    private void OnAbilityButtonPressed()
+    private void OnAbilityButton1Pressed()
     {
-        EmitSignal(SignalName.AbilityPressed);
+        EmitAbilityPressed(_abilityButton1);
+    }
+
+    private void OnAbilityButton2Pressed()
+    {
+        EmitAbilityPressed(_abilityButton2);
+    }
+
+    private void OnAbilityButton3Pressed()
+    {
+        EmitAbilityPressed(_abilityButton3);
+    }
+
+    private void EmitAbilityPressed(Button button)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        if (!_abilityIdsByButton.TryGetValue(button, out var abilityId) || string.IsNullOrEmpty(abilityId))
+        {
+            return;
+        }
+
+        EmitSignal(SignalName.AbilityPressed, abilityId);
     }
 
     private void OnEndTurnButtonPressed()
@@ -613,15 +655,25 @@ public partial class HudController : Control
     {
         if (_selectedActionLabel != null)
         {
-            _selectedActionLabel.Text = $"Selected: {actionText}";
+            _selectedActionLabel.Text = $"Selected Ability: {actionText}";
         }
     }
 
     public void SetActionButtonsEnabled(bool abilityEnabled, bool endTurnEnabled)
     {
-        if (_abilityButton != null)
+        if (_abilityButton1 != null)
         {
-            _abilityButton.Disabled = !abilityEnabled;
+            _abilityButton1.Disabled = !abilityEnabled;
+        }
+
+        if (_abilityButton2 != null)
+        {
+            _abilityButton2.Disabled = !abilityEnabled;
+        }
+
+        if (_abilityButton3 != null)
+        {
+            _abilityButton3.Disabled = !abilityEnabled;
         }
 
         if (_endTurnButton != null)
@@ -635,6 +687,50 @@ public partial class HudController : Control
         }
     }
 
+    public void SetAbilityButtons(Array<Dictionary> abilities, bool canUseAnyAbility)
+    {
+        _abilityIdsByButton.Clear();
+
+        var buttons = new Button[] { _abilityButton1, _abilityButton2, _abilityButton3 };
+        for (var i = 0; i < buttons.Length; i++)
+        {
+            var button = buttons[i];
+            if (button == null)
+            {
+                continue;
+            }
+
+            if (abilities == null || i >= abilities.Count)
+            {
+                button.Visible = false;
+                button.Disabled = true;
+                button.Text = "";
+                button.TooltipText = "";
+                continue;
+            }
+
+            var entry = abilities[i];
+            var abilityId = GetString(entry, "id", "");
+            var label = GetString(entry, "label", abilityId);
+            var detail = GetString(entry, "detail", label);
+            var cooldownRemaining = GetInt(entry, "cooldown_remaining", 0);
+            var isSelected = GetInt(entry, "is_selected", 0) == 1;
+
+            button.Visible = true;
+            button.Text = cooldownRemaining > 0
+                ? $"{label} (CD {cooldownRemaining})"
+                : label;
+            button.TooltipText = detail;
+            button.Disabled = !canUseAnyAbility || cooldownRemaining > 0;
+            _abilityIdsByButton[button] = abilityId;
+
+            if (isSelected)
+            {
+                button.Text = $"> {button.Text}";
+            }
+        }
+    }
+
     public void SetActiveUnit(Unit active)
     {
         if (_activeUnitLabel == null)
@@ -644,12 +740,12 @@ public partial class HudController : Control
 
         if (active == null)
         {
-            _activeUnitLabel.Text = "Active: -";
+            _activeUnitLabel.Text = "Turn: -";
             return;
         }
 
         _activeUnitLabel.Text =
-            $"Active: {active.UnitName} [{active.Team}] HP {active.HitPoints}/{active.MaxHitPoints} | Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
+            $"Turn: {active.UnitName} [{active.Team}] | HP {active.HitPoints}/{active.MaxHitPoints} | Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)

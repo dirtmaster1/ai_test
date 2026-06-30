@@ -9,6 +9,8 @@ public partial class BattleController : Node2D
     private const int CellSize = 64;
     private const int DefaultAggroTriggerRange = 4;
     private const float GridLineThickness = 2.0f;
+    private const ulong ManualEndTurnDebounceMs = 220;
+    private const float EnemyActionDelaySeconds = 0.24f;
 
     private enum BattleFlowState
     {
@@ -51,12 +53,16 @@ public partial class BattleController : Node2D
     private string _activeEncounterId = "";
     private string _currentMapId = "map-a";
     private string _selectedInventoryUnitId = "";
+    private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
     private string _lastActionSummary = "";
     private readonly Array<Vector2I> _movementPreviewPath = new();
     private bool _hasMovementHoverCell;
     private Vector2I _movementHoverCell = new(-1, -1);
     private bool _movementHoverReachable;
     private int _movementHoverCost = -1;
+    private ulong _lastManualEndTurnAtMs;
+    private bool _isEndingTurn;
+    private bool _isEnemyTurnProcessing;
 
     private static readonly Vector2I[] AttackDirections =
     {
@@ -94,14 +100,16 @@ public partial class BattleController : Node2D
         public int Range { get; }
         public int Damage { get; }
         public int HealAmount { get; }
+        public int CooldownTurns { get; }
 
-        public ActionProfile(string actionId, string actionType, int range, int damage, int healAmount)
+        public ActionProfile(string actionId, string actionType, int range, int damage, int healAmount, int cooldownTurns)
         {
             ActionId = actionId;
             ActionType = actionType;
             Range = range;
             Damage = damage;
             HealAmount = healAmount;
+            CooldownTurns = cooldownTurns;
         }
     }
 
@@ -256,7 +264,14 @@ public partial class BattleController : Node2D
 
         if (keyEvent.Keycode == Key.Space)
         {
-            ApplyActionResult(CombatActionResult.PassResolved);
+            var activePlayer = GetActivePlayerUnit();
+            if (TryRequestEndTurn(activePlayer, manualInput: true))
+            {
+                _awaitingPlayerAttackDirection = false;
+                ClearMovementPreviewPath();
+                _hud?.SetSelectedAction("None");
+                QueueRedraw();
+            }
             return;
         }
 
@@ -274,7 +289,22 @@ public partial class BattleController : Node2D
                 return;
             }
 
+            var selectedAbilityId = GetSelectedAbilityId(active);
+            if (string.IsNullOrEmpty(selectedAbilityId) || !active.HasAbility(selectedAbilityId))
+            {
+                _hud?.SetStatusText("No ability selected for this unit.");
+                return;
+            }
+
+            var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedAbilityId);
+            if (cooldownRemaining > 0)
+            {
+                _hud?.SetStatusText($"{selectedAbilityId} is on cooldown ({cooldownRemaining} turn{(cooldownRemaining == 1 ? "" : "s")} remaining).");
+                return;
+            }
+
             _awaitingPlayerAttackDirection = true;
+            SetSelectedAbilityId(active, selectedAbilityId);
             _hud?.SetStatusText("Choose attack direction: WASD / Arrows (Esc to cancel)");
             QueueRedraw();
             return;
@@ -457,7 +487,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var actionProfile = ResolveActionProfile(active);
+        var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         var clickedCell = WorldToCell(GetGlobalMousePosition());
         if (!IsWithinRange(active.GridPos, clickedCell, actionProfile.Range))
         {
@@ -490,7 +520,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var actionProfile = ResolveActionProfile(active);
+        var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
         {
             _hud?.SetStatusText($"No valid {actionProfile.ActionType} target in that direction.");
@@ -543,7 +573,7 @@ public partial class BattleController : Node2D
         }
     }
 
-    private void OnHudAbilityPressed()
+    private void OnHudAbilityPressed(string abilityId)
     {
         if (_flowState != BattleFlowState.Combat)
         {
@@ -563,9 +593,25 @@ public partial class BattleController : Node2D
             return;
         }
 
+        if (string.IsNullOrEmpty(abilityId) || !active.HasAbility(abilityId))
+        {
+            _hud?.SetStatusText("That ability is not available for this unit.");
+            SetStatusHelp();
+            return;
+        }
+
+        var cooldownRemaining = active.GetAbilityCooldownRemaining(abilityId);
+        if (cooldownRemaining > 0)
+        {
+            _hud?.SetStatusText($"{abilityId} is on cooldown ({cooldownRemaining} turn{(cooldownRemaining == 1 ? "" : "s")} remaining).");
+            SetStatusHelp();
+            return;
+        }
+
         _awaitingPlayerAttackDirection = true;
+        SetSelectedAbilityId(active, abilityId);
         ClearMovementPreviewPath();
-        var actionProfile = ResolveActionProfile(active);
+        var actionProfile = ResolveActionProfile(active, abilityId);
         _hud?.SetSelectedAction($"{actionProfile.ActionId} (targeting)");
         _hud?.SetStatusText("Ability selected. Click target cell or use direction keys. Right-click or Esc to cancel.");
         RefreshHudPanels();
@@ -584,11 +630,14 @@ public partial class BattleController : Node2D
             return;
         }
 
-        _awaitingPlayerAttackDirection = false;
-        ClearMovementPreviewPath();
-        _hud?.SetSelectedAction("None");
-        ApplyActionResult(CombatActionResult.PassResolved);
-        QueueRedraw();
+        var activePlayer = GetActivePlayerUnit();
+        if (TryRequestEndTurn(activePlayer, manualInput: true))
+        {
+            _awaitingPlayerAttackDirection = false;
+            ClearMovementPreviewPath();
+            _hud?.SetSelectedAction("None");
+            QueueRedraw();
+        }
     }
 
     private void OnHudEquipItemRequested(string itemId)
@@ -699,13 +748,20 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var actionProfile = ResolveActionProfile(active);
+        var selectedAbilityId = GetSelectedAbilityId(active);
+        var actionProfile = ResolveActionProfile(active, selectedAbilityId);
+        if (active.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
+        {
+            _hud?.SetStatusText($"{actionProfile.ActionId} is on cooldown.");
+            return;
+        }
+
         if (actionProfile.ActionType == "heal")
         {
             var allyTarget = GetLivingAllyAtCell(active.Team, targetCell);
             if (allyTarget != null)
             {
-                if (!TryHealTarget(active, allyTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId))
+                if (!TryHealTarget(active, allyTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns))
                 {
                     return;
                 }
@@ -720,7 +776,7 @@ public partial class BattleController : Node2D
             var attackTarget = GetLivingEnemyAtCell(active.Team, targetCell);
             if (attackTarget != null)
             {
-                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId))
+                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns))
                 {
                     return;
                 }
@@ -755,58 +811,105 @@ public partial class BattleController : Node2D
         }
     }
 
-    private void RunEnemyTurn(Unit enemyUnit)
+    private async void RunEnemyTurn(Unit enemyUnit)
     {
-        if (_flowState != BattleFlowState.Combat)
+        if (_flowState != BattleFlowState.Combat || _isEnemyTurnProcessing)
         {
             return;
         }
 
-        var actionBeforeMove = TryUsePrimaryAction(enemyUnit);
-        if (actionBeforeMove.Success)
+        _isEnemyTurnProcessing = true;
+        try
         {
-            ApplyActionResult(actionBeforeMove);
-            if (actionBeforeMove.CombatEnded)
+            await DelayEnemyActionStep();
+            if (!IsCurrentActiveUnit(enemyUnit))
             {
                 return;
             }
-        }
 
-        // Enemies can spend up to their movement budget and use one primary ability each turn.
-        while (enemyUnit.CanMoveThisTurn())
-        {
-            var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
-            if (target == null)
+            var actionBeforeMove = TryUsePrimaryAction(enemyUnit);
+            if (actionBeforeMove.Success)
             {
-                break;
+                ApplyActionResult(actionBeforeMove);
+                if (actionBeforeMove.CombatEnded)
+                {
+                    return;
+                }
+
+                await DelayEnemyActionStep();
+                if (!IsCurrentActiveUnit(enemyUnit))
+                {
+                    return;
+                }
             }
 
-            var step = _aiDirector.ChooseStepTowardTarget(enemyUnit, target);
-            if (step == enemyUnit.GridPos)
+            // Enemies can spend up to their movement budget and use one primary ability each turn.
+            while (_flowState == BattleFlowState.Combat && IsCurrentActiveUnit(enemyUnit) && enemyUnit.CanMoveThisTurn())
             {
-                break;
+                var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
+                if (target == null)
+                {
+                    break;
+                }
+
+                var step = _aiDirector.ChooseStepTowardTarget(enemyUnit, target);
+                if (step == enemyUnit.GridPos)
+                {
+                    break;
+                }
+
+                var moveResult = ResolveMoveAction(enemyUnit, step, endTurnOnSuccess: false);
+                if (!moveResult.Success)
+                {
+                    break;
+                }
+
+                await DelayEnemyActionStep();
+                if (!IsCurrentActiveUnit(enemyUnit))
+                {
+                    return;
+                }
             }
 
-            var moveResult = ResolveMoveAction(enemyUnit, step, endTurnOnSuccess: false);
-            if (!moveResult.Success)
-            {
-                break;
-            }
-        }
-
-        var actionAfterMove = TryUsePrimaryAction(enemyUnit);
-        if (actionAfterMove.Success)
-        {
-            ApplyActionResult(actionAfterMove);
-            if (actionAfterMove.CombatEnded)
+            if (!IsCurrentActiveUnit(enemyUnit))
             {
                 return;
             }
-        }
 
-        if (_flowState == BattleFlowState.Combat)
+            var actionAfterMove = TryUsePrimaryAction(enemyUnit);
+            if (actionAfterMove.Success)
+            {
+                ApplyActionResult(actionAfterMove);
+                if (actionAfterMove.CombatEnded)
+                {
+                    return;
+                }
+
+                await DelayEnemyActionStep();
+                if (!IsCurrentActiveUnit(enemyUnit))
+                {
+                    return;
+                }
+            }
+
+            if (_flowState == BattleFlowState.Combat && IsCurrentActiveUnit(enemyUnit))
+            {
+                TryRequestEndTurn(enemyUnit, manualInput: false);
+            }
+        }
+        finally
         {
-            _turnManager.EndTurn();
+            _isEnemyTurnProcessing = false;
+
+            // If another enemy became active while this async turn was unwinding, immediately hand off.
+            if (_flowState == BattleFlowState.Combat)
+            {
+                var activeAfter = _turnManager?.GetActiveUnit();
+                if (activeAfter != null && activeAfter.Team == "enemy")
+                {
+                    RunEnemyTurn(activeAfter);
+                }
+            }
         }
     }
 
@@ -819,7 +922,8 @@ public partial class BattleController : Node2D
 
         if (result.ShouldEndTurn)
         {
-            _turnManager.EndTurn();
+            var activeBeforeEnd = _turnManager.GetActiveUnit();
+            TryRequestEndTurn(activeBeforeEnd, manualInput: false);
             return;
         }
 
@@ -834,10 +938,82 @@ public partial class BattleController : Node2D
             return;
         }
 
-        if (!unit.CanMoveThisTurn() && !unit.CanUseAbilityThisTurn())
+        if (unit.Team != "enemy")
+        {
+            return;
+        }
+
+        if (!unit.CanMoveThisTurn() && !CanUnitUseAnyAbilityNow(unit))
+        {
+            TryRequestEndTurn(unit, manualInput: false);
+        }
+    }
+
+    private bool TryRequestEndTurn(Unit expectedActiveUnit, bool manualInput)
+    {
+        if (_flowState != BattleFlowState.Combat || _turnManager == null)
+        {
+            return false;
+        }
+
+        if (expectedActiveUnit == null)
+        {
+            return false;
+        }
+
+        if (_isEndingTurn)
+        {
+            return false;
+        }
+
+        var currentActive = _turnManager.GetActiveUnit();
+        if (currentActive != expectedActiveUnit)
+        {
+            return false;
+        }
+
+        if (manualInput)
+        {
+            var now = Time.GetTicksMsec();
+            if (now - _lastManualEndTurnAtMs < ManualEndTurnDebounceMs)
+            {
+                return false;
+            }
+
+            _lastManualEndTurnAtMs = now;
+        }
+
+        _isEndingTurn = true;
+        try
         {
             _turnManager.EndTurn();
+            return true;
         }
+        finally
+        {
+            _isEndingTurn = false;
+        }
+    }
+
+    private bool IsCurrentActiveUnit(Unit unit)
+    {
+        if (_flowState != BattleFlowState.Combat || _turnManager == null || unit == null)
+        {
+            return false;
+        }
+
+        return _turnManager.GetActiveUnit() == unit;
+    }
+
+    private async System.Threading.Tasks.Task DelayEnemyActionStep()
+    {
+        var tree = GetTree();
+        if (tree == null)
+        {
+            return;
+        }
+
+        await ToSignal(tree.CreateTimer(EnemyActionDelaySeconds), SceneTreeTimer.SignalName.Timeout);
     }
 
     // Encounter setup
@@ -987,7 +1163,12 @@ public partial class BattleController : Node2D
             return CombatActionResult.Failed;
         }
 
-        var actionProfile = ResolveActionProfile(actor);
+        var actionProfile = ResolveActionProfile(actor, GetSelectedAbilityId(actor));
+        if (actor.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
+        {
+            return CombatActionResult.Failed;
+        }
+
         Unit target = actionProfile.ActionType == "heal"
             ? FindMostInjuredAllyInRange(actor, actionProfile.Range)
             : FindNearestEnemyInRange(actor, actionProfile.Range);
@@ -999,8 +1180,8 @@ public partial class BattleController : Node2D
         }
 
         var actionSuccess = actionProfile.ActionType == "heal"
-            ? TryHealTarget(actor, target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId)
-            : TryAttackTarget(actor, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId);
+            ? TryHealTarget(actor, target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns)
+            : TryAttackTarget(actor, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.CooldownTurns);
 
         if (!actionSuccess)
         {
@@ -1047,7 +1228,7 @@ public partial class BattleController : Node2D
         return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
     }
 
-    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack")
+    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack", int cooldownTurns = 0)
     {
         if (_flowState == BattleFlowState.Combat && !attacker.CanUseAbilityThisTurn())
         {
@@ -1064,7 +1245,7 @@ public partial class BattleController : Node2D
         target.ApplyDamage(damage);
         if (_flowState == BattleFlowState.Combat)
         {
-            attacker.MarkAbilityUsed();
+            attacker.MarkAbilityUsed(actionId, cooldownTurns);
         }
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, attacker, actionId, target.UnitId);
@@ -1081,7 +1262,7 @@ public partial class BattleController : Node2D
         return true;
     }
 
-    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId)
+    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, int cooldownTurns = 0)
     {
         if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
         {
@@ -1104,7 +1285,7 @@ public partial class BattleController : Node2D
 
         if (_flowState == BattleFlowState.Combat)
         {
-            actor.MarkAbilityUsed();
+            actor.MarkAbilityUsed(actionId, cooldownTurns);
         }
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionId, target.UnitId);
@@ -1527,23 +1708,29 @@ public partial class BattleController : Node2D
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
     }
 
-    private ActionProfile ResolveActionProfile(Unit actor)
+    private ActionProfile ResolveActionProfile(Unit actor, string abilityId = null)
     {
         if (actor == null)
         {
-            return new ActionProfile("attack", "attack", 1, 0, 0);
+            return new ActionProfile("attack", "attack", 1, 0, 0, 0);
         }
 
-        var fallback = new ActionProfile("attack", "attack", actor.AttackRange, actor.AttackDamage, 0);
-        if (_gameData == null || string.IsNullOrEmpty(actor.PrimaryAbilityId))
+        abilityId = string.IsNullOrEmpty(abilityId) ? GetSelectedAbilityId(actor) : abilityId;
+        if (!actor.HasAbility(abilityId))
+        {
+            abilityId = actor.PrimaryAbilityId;
+        }
+
+        var fallback = new ActionProfile(abilityId, "attack", actor.AttackRange, actor.AttackDamage, 0, 0);
+        if (_gameData == null || string.IsNullOrEmpty(abilityId))
         {
             return fallback;
         }
 
-        var actionData = _gameData.GetAbility(actor.PrimaryAbilityId);
+        var actionData = _gameData.GetAbility(abilityId);
         if (actionData.Count == 0)
         {
-            actionData = _gameData.GetSpell(actor.PrimaryAbilityId);
+            actionData = _gameData.GetSpell(abilityId);
         }
 
         if (actionData.Count == 0)
@@ -1555,8 +1742,118 @@ public partial class BattleController : Node2D
         var range = Mathf.Max(1, GetInt(actionData, "range", actor.AttackRange));
         var damage = Mathf.Max(0, GetInt(actionData, "damage", actor.AttackDamage));
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
+        var cooldownTurns = Mathf.Max(0, GetInt(actionData, "cooldown", 0));
 
-        return new ActionProfile(actor.PrimaryAbilityId, actionType, range, damage, healAmount);
+        return new ActionProfile(abilityId, actionType, range, damage, healAmount, cooldownTurns);
+    }
+
+    private string GetSelectedAbilityId(Unit unit)
+    {
+        if (unit == null)
+        {
+            return "";
+        }
+
+        if (_selectedAbilityIdByUnitId.TryGetValue(unit.UnitId, out var selectedId) && unit.HasAbility(selectedId))
+        {
+            return selectedId;
+        }
+
+        if (!string.IsNullOrEmpty(unit.PrimaryAbilityId) && unit.HasAbility(unit.PrimaryAbilityId))
+        {
+            _selectedAbilityIdByUnitId[unit.UnitId] = unit.PrimaryAbilityId;
+            return unit.PrimaryAbilityId;
+        }
+
+        if (unit.AbilityIds != null && unit.AbilityIds.Count > 0)
+        {
+            _selectedAbilityIdByUnitId[unit.UnitId] = unit.AbilityIds[0];
+            return unit.AbilityIds[0];
+        }
+
+        return "";
+    }
+
+    private void SetSelectedAbilityId(Unit unit, string abilityId)
+    {
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || string.IsNullOrEmpty(abilityId) || !unit.HasAbility(abilityId))
+        {
+            return;
+        }
+
+        _selectedAbilityIdByUnitId[unit.UnitId] = abilityId;
+    }
+
+    private bool CanUnitUseAnyAbilityNow(Unit unit)
+    {
+        if (unit == null || unit.IsDead || !unit.CanUseAbilityThisTurn() || unit.AbilityIds == null)
+        {
+            return false;
+        }
+
+        foreach (var abilityId in unit.AbilityIds)
+        {
+            if (unit.CanUseAbility(abilityId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Array<Dictionary> BuildAbilityEntriesForHud(Unit unit)
+    {
+        var entries = new Array<Dictionary>();
+        if (unit == null || unit.AbilityIds == null)
+        {
+            return entries;
+        }
+
+        var selectedId = GetSelectedAbilityId(unit);
+        foreach (var abilityId in unit.AbilityIds)
+        {
+            var profile = ResolveActionProfile(unit, abilityId);
+            var actionName = GetActionDisplayName(abilityId);
+            var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
+            var valueText = profile.ActionType == "heal"
+                ? $"Heal: {profile.HealAmount}"
+                : $"Damage: {profile.Damage}";
+            var cooldownLabel = profile.CooldownTurns <= 0
+                ? "Cooldown: none"
+                : $"Cooldown: {profile.CooldownTurns} turn{(profile.CooldownTurns == 1 ? "" : "s")}";
+            var stateLabel = cooldownRemaining > 0
+                ? $"Status: on cooldown ({cooldownRemaining} remaining)"
+                : "Status: ready";
+            entries.Add(new Dictionary
+            {
+                { "id", abilityId },
+                { "label", actionName },
+                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\n{valueText}\n{cooldownLabel}\n{stateLabel}" },
+                { "cooldown_remaining", cooldownRemaining },
+                { "is_selected", abilityId == selectedId ? 1 : 0 }
+            });
+        }
+
+        return entries;
+    }
+
+    private string GetActionDisplayName(string actionId)
+    {
+        if (string.IsNullOrEmpty(actionId) || _gameData == null)
+        {
+            return actionId;
+        }
+
+        var actionData = _gameData.GetAbility(actionId);
+        if (actionData.Count == 0)
+        {
+            actionData = _gameData.GetSpell(actionId);
+        }
+
+        return actionData.Count == 0
+            ? actionId
+            : GetString(actionData, "name", actionId);
     }
 
     private static int GetInt(Dictionary dict, string key, int fallback)
@@ -1590,7 +1887,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var actionProfile = ResolveActionProfile(active);
+        var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         var center = CellCenter(active.GridPos);
         DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
@@ -1694,10 +1991,23 @@ public partial class BattleController : Node2D
                 continue;
             }
 
+            var propId = GetString(prop, "id", "prop");
+            var isOpened = _openedPropIds.Contains(propId);
             var rect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-            DrawRect(rect, new Color(0.5f, 0.34f, 0.14f, 0.38f), true);
-            DrawRect(rect, new Color(0.85f, 0.62f, 0.32f, 0.95f), false, 2.0f);
-            DrawCircle(rect.GetCenter(), 6.0f, new Color(1.0f, 0.86f, 0.45f, 0.95f));
+            if (isOpened)
+            {
+                DrawRect(rect, new Color(0.34f, 0.3f, 0.24f, 0.24f), true);
+                DrawRect(rect, new Color(0.62f, 0.56f, 0.46f, 0.75f), false, 2.0f);
+                DrawCircle(rect.GetCenter(), 5.0f, new Color(0.78f, 0.74f, 0.66f, 0.72f));
+                DrawLine(rect.Position + new Vector2(12.0f, 12.0f), rect.End - new Vector2(12.0f, 12.0f), new Color(0.88f, 0.84f, 0.74f, 0.8f), 2.0f);
+                DrawLine(new Vector2(rect.End.X - 12.0f, rect.Position.Y + 12.0f), new Vector2(rect.Position.X + 12.0f, rect.End.Y - 12.0f), new Color(0.88f, 0.84f, 0.74f, 0.8f), 2.0f);
+            }
+            else
+            {
+                DrawRect(rect, new Color(0.5f, 0.34f, 0.14f, 0.38f), true);
+                DrawRect(rect, new Color(0.85f, 0.62f, 0.32f, 0.95f), false, 2.0f);
+                DrawCircle(rect.GetCenter(), 6.0f, new Color(1.0f, 0.86f, 0.45f, 0.95f));
+            }
         }
 
         foreach (var bag in _lootBags)
@@ -1708,10 +2018,21 @@ public partial class BattleController : Node2D
                 continue;
             }
 
+            var isEmpty = GetBagItemIds(bag).Count == 0;
             var rect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-            DrawRect(rect, new Color(0.6f, 0.46f, 0.2f, 0.28f), true);
-            DrawCircle(rect.GetCenter(), 9.0f, new Color(0.97f, 0.78f, 0.25f, 0.95f));
-            DrawArc(rect.GetCenter(), 11.0f, 0.0f, Mathf.Tau, 24, new Color(1.0f, 0.94f, 0.65f, 0.95f), 2.0f);
+            if (isEmpty)
+            {
+                DrawRect(rect, new Color(0.32f, 0.29f, 0.24f, 0.2f), true);
+                DrawCircle(rect.GetCenter(), 8.0f, new Color(0.72f, 0.68f, 0.6f, 0.72f));
+                DrawArc(rect.GetCenter(), 10.0f, 0.0f, Mathf.Tau, 24, new Color(0.84f, 0.8f, 0.7f, 0.78f), 2.0f);
+                DrawLine(rect.Position + new Vector2(14.0f, 14.0f), rect.End - new Vector2(14.0f, 14.0f), new Color(0.88f, 0.84f, 0.74f, 0.78f), 2.0f);
+            }
+            else
+            {
+                DrawRect(rect, new Color(0.6f, 0.46f, 0.2f, 0.28f), true);
+                DrawCircle(rect.GetCenter(), 9.0f, new Color(0.97f, 0.78f, 0.25f, 0.95f));
+                DrawArc(rect.GetCenter(), 11.0f, 0.0f, Mathf.Tau, 24, new Color(1.0f, 0.94f, 0.65f, 0.95f), 2.0f);
+            }
         }
     }
 
@@ -2258,18 +2579,21 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var abilityState = active.CanUseAbilityThisTurn() ? "ready" : "used";
+        var selectedAbilityId = GetSelectedAbilityId(active);
+        var selectedProfile = ResolveActionProfile(active, selectedAbilityId);
+        var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedProfile.ActionId);
+        var abilityState = !active.CanUseAbilityThisTurn()
+            ? "used"
+            : cooldownRemaining > 0
+                ? $"cooldown ({cooldownRemaining})"
+                : "ready";
         var combatPrefix = string.IsNullOrEmpty(_lastActionSummary) ? "" : $"Last action: {_lastActionSummary} | ";
         _hud?.SetStatusText(
-            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState} | Move: WASD/Arrows or click reachable cell | Attack: F or Use Ability | End turn: Space"
+            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | Move: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
         );
 
-        var actionProfile = ResolveActionProfile(active);
-        var equippedItemName = GetEquippedItemSummary(active);
-        _hud?.SetActionDetails(
-            $"Active: {active.UnitName} ({active.Team}) | Equipped: {equippedItemName} | Ability: {actionProfile.ActionId} [{actionProfile.ActionType}] range {actionProfile.Range} | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn}"
-        );
-        _hud?.SetSelectedAction(_awaitingPlayerAttackDirection ? $"{actionProfile.ActionId} (targeting)" : "None");
+        
+        _hud?.SetSelectedAction(_awaitingPlayerAttackDirection ? $"{selectedProfile.ActionId} (targeting)" : selectedProfile.ActionId);
         RefreshHudPanels();
     }
 
@@ -2286,11 +2610,14 @@ public partial class BattleController : Node2D
         _hud.SetTurnQueue(BuildTurnQueueForHud(), active);
         _hud.SetActiveUnit(_flowState == BattleFlowState.Combat ? active : null);
 
+        var activePlayer = GetActivePlayerUnit();
+        var abilityEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
+        _hud.SetActionButtonsEnabled(abilityEnabled, _flowState == BattleFlowState.Combat);
+        _hud.SetAbilityButtons(BuildAbilityEntriesForHud(activePlayer), abilityEnabled);
+
         var inventoryTarget = GetInventoryTargetUnit();
         if (inventoryTarget != null)
         {
-            var abilityEnabled = _flowState == BattleFlowState.Combat && inventoryTarget == GetActivePlayerUnit() && inventoryTarget.CanUseAbilityThisTurn();
-            _hud.SetActionButtonsEnabled(abilityEnabled, _flowState == BattleFlowState.Combat);
             _hud.SetInventoryUnitName(inventoryTarget.UnitName);
             _hud.SetInventoryEquippedSummary(BuildInventoryEquippedSummary(inventoryTarget));
             _hud.SetInventoryEquippedItems(BuildInventoryEquippedEntries(inventoryTarget));
@@ -2298,7 +2625,6 @@ public partial class BattleController : Node2D
         }
         else
         {
-            _hud.SetActionButtonsEnabled(false, false);
             _hud.SetInventoryEquippedSummary("Equipped: none");
             _hud.SetInventoryEquippedItems(new Array<Dictionary>());
         }
@@ -2785,45 +3111,17 @@ public partial class BattleController : Node2D
 
     private Array<Unit> BuildTurnQueueForHud()
     {
-        var queue = new Array<Unit>();
         if (_flowState != BattleFlowState.Combat)
         {
-            return queue;
+            return new Array<Unit>();
         }
 
-        var pool = new List<Unit>();
-        foreach (var unit in _allUnits)
+        if (_turnManager == null)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead)
-            {
-                continue;
-            }
-
-            if (unit.Team == "enemy" && unit.EncounterId != _activeEncounterId)
-            {
-                continue;
-            }
-
-            pool.Add(unit);
+            return new Array<Unit>();
         }
 
-        pool.Sort((a, b) =>
-        {
-            var byInitiative = b.Initiative.CompareTo(a.Initiative);
-            if (byInitiative != 0)
-            {
-                return byInitiative;
-            }
-
-            return string.CompareOrdinal(a.UnitId, b.UnitId);
-        });
-
-        foreach (var unit in pool)
-        {
-            queue.Add(unit);
-        }
-
-        return queue;
+        return _turnManager.GetTurnOrderFromActive();
     }
 
     private Unit GetExplorerUnit()
