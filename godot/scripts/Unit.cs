@@ -19,11 +19,15 @@ public partial class Unit : Node2D
     public int Initiative { get; private set; } = 10;
     public int WeaponAttackDamageBonus { get; private set; }
     public int WeaponAttackRangeBonus { get; private set; }
+    public int ArmorDefenseBonus { get; private set; }
+    public int ArmorAttackDamageBonus { get; private set; }
+    public int ArmorAttackRangeBonus { get; private set; }
     public int BuffAttackDamageBonus { get; private set; }
     public int BuffAttackRangeBonus { get; private set; }
 
-    public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + BuffAttackDamageBonus);
-    public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + BuffAttackRangeBonus);
+    public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + ArmorAttackDamageBonus + BuffAttackDamageBonus);
+    public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + ArmorAttackRangeBonus + BuffAttackRangeBonus);
+    public int Defense => Mathf.Max(0, ArmorDefenseBonus);
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
@@ -43,6 +47,9 @@ public partial class Unit : Node2D
         BaseAttackRange = GetInt(config, "base_attack_range", 1);
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", 0);
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", 0);
+        ArmorDefenseBonus = GetInt(config, "armor_defense_bonus", 0);
+        ArmorAttackDamageBonus = GetInt(config, "armor_attack_damage_bonus", 0);
+        ArmorAttackRangeBonus = GetInt(config, "armor_attack_range_bonus", 0);
         BuffAttackDamageBonus = GetInt(config, "buff_attack_damage_bonus", 0);
         BuffAttackRangeBonus = GetInt(config, "buff_attack_range_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
@@ -92,6 +99,19 @@ public partial class Unit : Node2D
     public void SetBuffAttackRangeBonus(int bonus)
     {
         BuffAttackRangeBonus = bonus;
+    }
+
+    public void SetWeaponBonuses(int attackDamageBonus, int attackRangeBonus)
+    {
+        WeaponAttackDamageBonus = attackDamageBonus;
+        WeaponAttackRangeBonus = attackRangeBonus;
+    }
+
+    public void SetArmorBonuses(int defenseBonus, int attackDamageBonus, int attackRangeBonus)
+    {
+        ArmorDefenseBonus = defenseBonus;
+        ArmorAttackDamageBonus = attackDamageBonus;
+        ArmorAttackRangeBonus = attackRangeBonus;
     }
 
     public void SetGridPos(Vector2I nextPos)

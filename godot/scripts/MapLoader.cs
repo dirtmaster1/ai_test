@@ -11,7 +11,8 @@ public partial class MapLoader : Node
         { "primary_ability_id", "melee" },
         { "initiative", 15 },
         { "hit_points", 10 },
-        { "max_hit_points", 10 }
+        { "max_hit_points", 10 },
+        { "starting_equipment", new Array<string> { "cloth-robe" } }
     };
 
     private static readonly Dictionary WarriorTemplate = new()
@@ -22,7 +23,8 @@ public partial class MapLoader : Node
         { "primary_ability_id", "melee" },
         { "initiative", 11 },
         { "hit_points", 14 },
-        { "max_hit_points", 14 }
+        { "max_hit_points", 14 },
+        { "starting_equipment", new Array<string> { "war-axe", "iron-helmet", "leather-armor" } }
     };
 
     private static readonly Dictionary ClericTemplate = new()
@@ -33,7 +35,8 @@ public partial class MapLoader : Node
         { "primary_ability_id", "lesser-heal" },
         { "initiative", 12 },
         { "hit_points", 12 },
-        { "max_hit_points", 12 }
+        { "max_hit_points", 12 },
+        { "starting_equipment", new Array<string> { "small-shield", "short-sword", "leather-armor" } }
     };
 
     private Array<Dictionary> _defaultParty = new();
@@ -98,6 +101,30 @@ public partial class MapLoader : Node
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterA, encounterB } },
             {
+                "props",
+                new Array<Dictionary>
+                {
+                    new Dictionary
+                    {
+                        { "id", "map-a-chest-1" },
+                        { "name", "Old Chest" },
+                        { "grid_pos", new Vector2I(5, 11) },
+                        { "loot_item_ids", new Array<string> { "short-sword", "small-shield" } },
+                        { "loot_rolls_min", 1 },
+                        { "loot_rolls_max", 2 }
+                    },
+                    new Dictionary
+                    {
+                        { "id", "map-a-crate-1" },
+                        { "name", "Supply Crate" },
+                        { "grid_pos", new Vector2I(10, 3) },
+                        { "loot_item_ids", new Array<string> { "small-shield" } },
+                        { "loot_rolls_min", 1 },
+                        { "loot_rolls_max", 1 }
+                    }
+                }
+            },
+            {
                 "transitions",
                 new Array<Dictionary>
                 {
@@ -138,6 +165,30 @@ public partial class MapLoader : Node
             { "blocked", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterC } },
+            {
+                "props",
+                new Array<Dictionary>
+                {
+                    new Dictionary
+                    {
+                        { "id", "map-b-chest-1" },
+                        { "name", "Worn Chest" },
+                        { "grid_pos", new Vector2I(14, 4) },
+                        { "loot_item_ids", new Array<string> { "short-sword", "small-shield" } },
+                        { "loot_rolls_min", 1 },
+                        { "loot_rolls_max", 2 }
+                    },
+                    new Dictionary
+                    {
+                        { "id", "map-b-crate-1" },
+                        { "name", "Broken Crate" },
+                        { "grid_pos", new Vector2I(3, 10) },
+                        { "loot_item_ids", new Array<string> { "short-sword" } },
+                        { "loot_rolls_min", 1 },
+                        { "loot_rolls_max", 1 }
+                    }
+                }
+            },
             {
                 "transitions",
                 new Array<Dictionary>

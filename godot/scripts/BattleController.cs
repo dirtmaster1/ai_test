@@ -31,16 +31,32 @@ public partial class BattleController : Node2D
     private readonly Array<Unit> _enemyUnits = new();
     private readonly Array<Vector2I> _blockedCells = new();
     private readonly Array<Dictionary> _mapTransitions = new();
+    private readonly Array<Dictionary> _mapProps = new();
+    private readonly Array<Dictionary> _lootBags = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
+    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> _equippedItemsByUnitId = new();
+    private readonly System.Collections.Generic.List<string> _partyInventoryItemIds = new();
     private readonly System.Collections.Generic.HashSet<string> _clearedEncounterIds = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _clearedEncounterIdsByMap = new();
+    private readonly System.Collections.Generic.HashSet<string> _openedPropIds = new();
+    private readonly System.Collections.Generic.HashSet<string> _lootedBagIds = new();
+    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _openedPropIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _lootedBagIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
+    private readonly RandomNumberGenerator _lootRng = new();
 
     private BattleFlowState _flowState = BattleFlowState.Exploration;
     private bool _awaitingPlayerAttackDirection;
     private Unit _explorerUnit;
     private string _activeEncounterId = "";
     private string _currentMapId = "map-a";
+    private string _selectedInventoryUnitId = "";
     private string _lastActionSummary = "";
+    private readonly Array<Vector2I> _movementPreviewPath = new();
+    private bool _hasMovementHoverCell;
+    private Vector2I _movementHoverCell = new(-1, -1);
+    private bool _movementHoverReachable;
+    private int _movementHoverCost = -1;
 
     private static readonly Vector2I[] AttackDirections =
     {
@@ -99,12 +115,41 @@ public partial class BattleController : Node2D
         _hud = GetNodeOrNull<HudController>("HUD");
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
+        _lootRng.Randomize();
 
         SpawnMapEncounter(_currentMapId);
         _turnManager.TurnChanged += OnTurnChanged;
+        if (_hud != null)
+        {
+            _hud.AbilityPressed += OnHudAbilityPressed;
+            _hud.EndTurnPressed += OnHudEndTurnPressed;
+            _hud.EquipItemRequested += OnHudEquipItemRequested;
+            _hud.UnequipItemRequested += OnHudUnequipItemRequested;
+            _hud.InventoryCycleRequested += OnHudInventoryCycleRequested;
+            _hud.LootConfirmRequested += OnHudLootConfirmRequested;
+        }
+
         EnterExplorationMode();
         RefreshHudPanels();
         QueueRedraw();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_turnManager != null)
+        {
+            _turnManager.TurnChanged -= OnTurnChanged;
+        }
+
+        if (_hud != null)
+        {
+            _hud.AbilityPressed -= OnHudAbilityPressed;
+            _hud.EndTurnPressed -= OnHudEndTurnPressed;
+            _hud.EquipItemRequested -= OnHudEquipItemRequested;
+            _hud.UnequipItemRequested -= OnHudUnequipItemRequested;
+            _hud.InventoryCycleRequested -= OnHudInventoryCycleRequested;
+            _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
+        }
     }
 
     public override void _Draw()
@@ -145,7 +190,11 @@ public partial class BattleController : Node2D
         }
 
         _mapLoader?.DrawMapFeaturesOverlay(this, _blockedCells, _mapTransitions, GridWidth, GridHeight, CellSize);
+        DrawMapInteractablesOverlay();
+        DrawMovementPreviewOverlay();
         DrawAttackPreviewOverlay();
+        DrawHoveredUnitTooltip();
+        DrawHoveredInteractableTooltip();
     }
 
     // Input and player control
@@ -158,12 +207,38 @@ public partial class BattleController : Node2D
 
         if (@event is InputEventMouseButton mouseEvent)
         {
-            HandleMouseAttackInput(mouseEvent);
+            HandleMouseInput(mouseEvent);
+            return;
+        }
+
+        if (@event is InputEventMouseMotion mouseMotion)
+        {
+            HandleMouseHoverInput(mouseMotion);
             return;
         }
 
         if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
         {
+            return;
+        }
+
+        if (keyEvent.Keycode == Key.I)
+        {
+            _hud?.ToggleInventoryVisible();
+            RefreshHudPanels();
+            return;
+        }
+
+        if (keyEvent.Keycode == Key.H)
+        {
+            _hud?.ToggleHelpVisible();
+            return;
+        }
+
+        if (keyEvent.Keycode == Key.Tab && _hud != null && _hud.IsInventoryVisible())
+        {
+            CycleInventoryTarget(keyEvent.ShiftPressed ? -1 : 1);
+            RefreshHudPanels();
             return;
         }
 
@@ -213,6 +288,119 @@ public partial class BattleController : Node2D
 
         var moveResult = ResolveMoveAction(active, active.GridPos + delta, endTurnOnSuccess: false);
         ApplyActionResult(moveResult);
+    }
+
+    private void HandleMouseInput(InputEventMouseButton mouseEvent)
+    {
+        if (_awaitingPlayerAttackDirection)
+        {
+            HandleMouseAttackInput(mouseEvent);
+            return;
+        }
+
+        if (mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
+        {
+            var clickedCell = WorldToCell(GetGlobalMousePosition());
+            if (_flowState == BattleFlowState.Exploration && TryHandleExplorationClickInteraction(clickedCell))
+            {
+                return;
+            }
+
+            if (TrySelectPartyMemberAtCell(clickedCell))
+            {
+                return;
+            }
+        }
+
+        HandleMouseMoveInput(mouseEvent);
+    }
+
+    private void HandleMouseHoverInput(InputEventMouseMotion _mouseMotion)
+    {
+        QueueRedraw();
+
+        if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection)
+        {
+            ClearMovementPreviewPath();
+            return;
+        }
+
+        var active = GetActivePlayerUnit();
+        if (active == null || !active.CanMoveThisTurn())
+        {
+            ClearMovementPreviewPath();
+            return;
+        }
+
+        var hoveredCell = WorldToCell(GetGlobalMousePosition());
+        if (!IsInBounds(hoveredCell) || hoveredCell == active.GridPos)
+        {
+            ClearMovementPreviewPath();
+            return;
+        }
+
+        var previewPath = FindPath(active, active.GridPos, hoveredCell, active.RemainingMovement);
+        if (previewPath.Count == 0)
+        {
+            SetMovementHoverState(hoveredCell, reachable: false, pathCost: -1);
+            ClearMovementPreviewPath();
+            return;
+        }
+
+        SetMovementHoverState(hoveredCell, reachable: true, pathCost: previewPath.Count);
+        SetMovementPreviewPath(previewPath);
+    }
+
+    private void HandleMouseMoveInput(InputEventMouseButton mouseEvent)
+    {
+        if (_flowState != BattleFlowState.Combat || !mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left)
+        {
+            return;
+        }
+
+        var active = GetActivePlayerUnit();
+        if (active == null)
+        {
+            return;
+        }
+
+        var clickedCell = WorldToCell(GetGlobalMousePosition());
+        if (!IsInBounds(clickedCell))
+        {
+            return;
+        }
+
+        if (clickedCell == active.GridPos)
+        {
+            return;
+        }
+
+        if (!active.CanMoveThisTurn())
+        {
+            _hud?.SetStatusText("No movement left this turn.");
+            return;
+        }
+
+        var path = FindPath(active, active.GridPos, clickedCell, active.RemainingMovement);
+        if (path.Count == 0)
+        {
+            _hud?.SetStatusText($"Cannot path to that cell within {active.RemainingMovement} move.");
+            return;
+        }
+
+        foreach (var step in path)
+        {
+            var moveResult = ResolveMoveAction(active, step, endTurnOnSuccess: false);
+            if (!moveResult.Success)
+            {
+                break;
+            }
+
+            ApplyActionResult(moveResult);
+        }
+
+        ClearMovementPreviewPath();
+        SetStatusHelp();
     }
 
     private void HandleExplorationInput(InputEventKey keyEvent)
@@ -324,6 +512,7 @@ public partial class BattleController : Node2D
         PruneInvalidUnitReferences();
 
         _awaitingPlayerAttackDirection = false;
+        ClearMovementPreviewPath();
         QueueRedraw();
 
         foreach (var unit in _allUnits)
@@ -352,6 +541,154 @@ public partial class BattleController : Node2D
         {
             SetStatusHelp();
         }
+    }
+
+    private void OnHudAbilityPressed()
+    {
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return;
+        }
+
+        var active = GetActivePlayerUnit();
+        if (active == null)
+        {
+            return;
+        }
+
+        if (!active.CanUseAbilityThisTurn())
+        {
+            _hud?.SetStatusText("Ability already used this turn.");
+            SetStatusHelp();
+            return;
+        }
+
+        _awaitingPlayerAttackDirection = true;
+        ClearMovementPreviewPath();
+        var actionProfile = ResolveActionProfile(active);
+        _hud?.SetSelectedAction($"{actionProfile.ActionId} (targeting)");
+        _hud?.SetStatusText("Ability selected. Click target cell or use direction keys. Right-click or Esc to cancel.");
+        RefreshHudPanels();
+        QueueRedraw();
+    }
+
+    private void OnHudEndTurnPressed()
+    {
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return;
+        }
+
+        if (GetActivePlayerUnit() == null)
+        {
+            return;
+        }
+
+        _awaitingPlayerAttackDirection = false;
+        ClearMovementPreviewPath();
+        _hud?.SetSelectedAction("None");
+        ApplyActionResult(CombatActionResult.PassResolved);
+        QueueRedraw();
+    }
+
+    private void OnHudEquipItemRequested(string itemId)
+    {
+        var target = GetInventoryTargetUnit();
+        if (target == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(itemId) || _gameData == null)
+        {
+            return;
+        }
+
+        var itemData = _gameData.GetItem(itemId);
+        if (itemData.Count == 0)
+        {
+            _hud?.SetStatusText("Cannot equip unknown item.");
+            return;
+        }
+
+        EquipItemToUnit(target, itemData, itemId);
+        ApplyEquippedItemBonuses(target);
+
+        var itemName = GetString(itemData, "name", itemId);
+        _hud?.SetStatusText($"{target.UnitName} equipped {itemName}.");
+        _hud?.AddCombatLogEntry($"{target.UnitName} equipped {itemName}.");
+        SetStatusHelp();
+    }
+
+    private void OnHudUnequipItemRequested(string equippedSlotKey)
+    {
+        var target = GetInventoryTargetUnit();
+        if (target == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(equippedSlotKey))
+        {
+            return;
+        }
+
+        if (!TryGetEquippedItemAtSlot(target, equippedSlotKey, out var itemId))
+        {
+            _hud?.SetStatusText($"{target.UnitName} has nothing equipped in that slot.");
+            return;
+        }
+
+        if (!UnequipSlotForUnit(target, equippedSlotKey))
+        {
+            _hud?.SetStatusText($"{target.UnitName} does not have that item equipped.");
+            return;
+        }
+
+        ApplyEquippedItemBonuses(target);
+        var itemName = _gameData == null
+            ? itemId
+            : GetString(_gameData.GetItem(itemId), "name", itemId);
+        _hud?.SetStatusText($"{target.UnitName} unequipped {itemName}.");
+        _hud?.AddCombatLogEntry($"{target.UnitName} unequipped {itemName}.");
+        SetStatusHelp();
+    }
+
+    private void OnHudInventoryCycleRequested(int delta)
+    {
+        if (delta == 0)
+        {
+            return;
+        }
+
+        CycleInventoryTarget(delta);
+        RefreshHudPanels();
+    }
+
+    private void OnHudLootConfirmRequested(string interactionId)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            _hud?.SetLootPanelVisible(false);
+            return;
+        }
+
+        var explorer = GetExplorerUnit();
+        if (explorer == null)
+        {
+            _hud?.SetStatusText("No living player unit available to interact.");
+            return;
+        }
+
+        if (!TryResolveExplorationInteractionById(explorer, interactionId))
+        {
+            _hud?.SetStatusText("That interaction is no longer available.");
+        }
+
+        var nearbyEntries = BuildNearbyLootEntries(explorer);
+        _hud?.SetLootEntries(nearbyEntries);
+        _hud?.SetLootPanelVisible(nearbyEntries.Count > 0);
+        SetStatusHelp();
     }
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
@@ -518,10 +855,14 @@ public partial class BattleController : Node2D
             _allUnits.Clear();
             _playerUnits.Clear();
             _enemyUnits.Clear();
+            _equippedItemsByUnitId.Clear();
+            _partyInventoryItemIds.Clear();
         }
 
         _blockedCells.Clear();
         _mapTransitions.Clear();
+        _mapProps.Clear();
+        _lootBags.Clear();
         _encounterAggroRanges.Clear();
         _activeEncounterId = "";
         _currentMapId = mapId;
@@ -529,6 +870,7 @@ public partial class BattleController : Node2D
         var mapData = _mapLoader?.LoadMapStub(mapId) ?? new MapLoader().LoadMapStub(mapId);
         _currentMapId = GetString(mapData, "id", mapId);
         LoadClearedEncounterStateForCurrentMap();
+        LoadMapInteractionStateForCurrentMap();
 
         var blocked = TryGetVector2IArray(mapData, "blocked");
         foreach (var blockedCell in blocked)
@@ -541,6 +883,8 @@ public partial class BattleController : Node2D
         {
             _mapTransitions.Add(transition);
         }
+
+        LoadPropsFromMap(mapData);
 
         if (preserveParty)
         {
@@ -596,11 +940,14 @@ public partial class BattleController : Node2D
         if (unit.Team == "player")
         {
             _playerUnits.Add(unit);
+            ApplyStartingEquipmentFromConfig(unit, config);
         }
         else
         {
             _enemyUnits.Add(unit);
         }
+
+        ApplyEquippedItemBonuses(unit);
     }
 
     // Combat and grid rules
@@ -780,7 +1127,7 @@ public partial class BattleController : Node2D
                 continue;
             }
 
-            var distance = Manhattan(attacker.GridPos, unit.GridPos);
+            var distance = RangeDistance(attacker.GridPos, unit.GridPos);
             if (distance <= range && distance < nearestDistance && CanAttack(attacker, unit, range))
             {
                 nearest = unit;
@@ -978,6 +1325,74 @@ public partial class BattleController : Node2D
     }
 
     // Math and data helpers
+    private Array<Vector2I> FindPath(Unit mover, Vector2I start, Vector2I goal, int maxSteps)
+    {
+        var path = new Array<Vector2I>();
+        if (maxSteps <= 0 || start == goal)
+        {
+            return path;
+        }
+
+        if (!IsInBounds(goal) || IsBlockedCell(goal) || IsOccupied(goal, mover))
+        {
+            return path;
+        }
+
+        var frontier = new Queue<Vector2I>();
+        var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
+        var distance = new System.Collections.Generic.Dictionary<Vector2I, int>();
+
+        frontier.Enqueue(start);
+        distance[start] = 0;
+
+        while (frontier.Count > 0)
+        {
+            var current = frontier.Dequeue();
+            var currentDistance = distance[current];
+            if (current == goal)
+            {
+                break;
+            }
+
+            if (currentDistance >= maxSteps)
+            {
+                continue;
+            }
+
+            foreach (var dir in AttackDirections)
+            {
+                var next = current + dir;
+                if (!IsInBounds(next) || IsBlockedCell(next) || IsOccupied(next, mover))
+                {
+                    continue;
+                }
+
+                if (distance.ContainsKey(next))
+                {
+                    continue;
+                }
+
+                distance[next] = currentDistance + 1;
+                cameFrom[next] = current;
+                frontier.Enqueue(next);
+            }
+        }
+
+        if (!distance.ContainsKey(goal))
+        {
+            return path;
+        }
+
+        var cursor = goal;
+        while (cursor != start)
+        {
+            path.Insert(0, cursor);
+            cursor = cameFrom[cursor];
+        }
+
+        return path;
+    }
+
     private static Vector2I KeyToDelta(Key keycode)
     {
         return keycode switch
@@ -1027,7 +1442,12 @@ public partial class BattleController : Node2D
 
     private static bool IsWithinRange(Vector2I from, Vector2I to, int range)
     {
-        return Manhattan(from, to) <= range;
+        return RangeDistance(from, to) <= range;
+    }
+
+    private static int RangeDistance(Vector2I a, Vector2I b)
+    {
+        return Mathf.Max(Mathf.Abs(a.X - b.X), Mathf.Abs(a.Y - b.Y));
     }
 
     private bool HasLineOfSight(Unit attacker, Unit target)
@@ -1148,6 +1568,8 @@ public partial class BattleController : Node2D
     private void CancelAttackMode(bool restoreHelpText = true)
     {
         _awaitingPlayerAttackDirection = false;
+        _hud?.SetSelectedAction("None");
+        ClearMovementPreviewPath();
         QueueRedraw();
         if (restoreHelpText)
         {
@@ -1172,14 +1594,19 @@ public partial class BattleController : Node2D
         var center = CellCenter(active.GridPos);
         DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
-        foreach (var dir in AttackDirections)
+        for (var dx = -actionProfile.Range; dx <= actionProfile.Range; dx++)
         {
-            for (var distance = 1; distance <= actionProfile.Range; distance++)
+            for (var dy = -actionProfile.Range; dy <= actionProfile.Range; dy++)
             {
-                var cell = active.GridPos + dir * distance;
-                if (!IsInBounds(cell))
+                if (dx == 0 && dy == 0)
                 {
-                    break;
+                    continue;
+                }
+
+                var cell = active.GridPos + new Vector2I(dx, dy);
+                if (!IsInBounds(cell) || !IsWithinRange(active.GridPos, cell, actionProfile.Range))
+                {
+                    continue;
                 }
 
                 var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
@@ -1192,13 +1619,567 @@ public partial class BattleController : Node2D
                 var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
                 DrawRect(cellRect, fill, true);
                 DrawRect(cellRect, edge, false, 2.0f);
-
-                if (GetLivingUnitAtCell(cell) != null)
-                {
-                    break;
-                }
             }
         }
+    }
+
+    private void DrawMovementPreviewOverlay()
+    {
+        if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection)
+        {
+            return;
+        }
+
+        var active = GetActivePlayerUnit();
+        if (active == null)
+        {
+            return;
+        }
+
+        if (_hasMovementHoverCell && _movementHoverCell != active.GridPos)
+        {
+            var hoverRect = new Rect2(new Vector2(_movementHoverCell.X * CellSize, _movementHoverCell.Y * CellSize), new Vector2(CellSize, CellSize));
+            if (_movementHoverReachable)
+            {
+                DrawRect(hoverRect, new Color(0.2f, 0.85f, 0.35f, 0.12f), true);
+                DrawRect(hoverRect, new Color(0.3f, 1.0f, 0.45f, 0.9f), false, 2.0f);
+            }
+            else
+            {
+                DrawRect(hoverRect, new Color(0.9f, 0.2f, 0.2f, 0.12f), true);
+                DrawRect(hoverRect, new Color(1.0f, 0.35f, 0.35f, 0.9f), false, 2.0f);
+            }
+
+            var label = _movementHoverReachable
+                ? $"{_movementHoverCost}/{active.RemainingMovement}"
+                : $"X/{active.RemainingMovement}";
+            var labelColor = _movementHoverReachable
+                ? new Color(0.78f, 1.0f, 0.86f, 1.0f)
+                : new Color(1.0f, 0.72f, 0.72f, 1.0f);
+            var labelPos = new Vector2(_movementHoverCell.X * CellSize + CellSize / 2.0f, _movementHoverCell.Y * CellSize + CellSize - 10.0f);
+            DrawString(ThemeDB.FallbackFont, labelPos, label, HorizontalAlignment.Center, CellSize - 8.0f, ThemeDB.FallbackFontSize, labelColor);
+        }
+
+        if (_movementPreviewPath.Count == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < _movementPreviewPath.Count; i++)
+        {
+            var cell = _movementPreviewPath[i];
+            var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
+            var alpha = 0.12f + (0.06f * i);
+            var clampedAlpha = Mathf.Clamp(alpha, 0.12f, 0.28f);
+            DrawRect(cellRect, new Color(0.22f, 0.72f, 1.0f, clampedAlpha), true);
+            DrawRect(cellRect, new Color(0.35f, 0.85f, 1.0f, 0.92f), false, 2.0f);
+        }
+
+        var startCenter = CellCenter(active.GridPos);
+        foreach (var cell in _movementPreviewPath)
+        {
+            var nextCenter = CellCenter(cell);
+            DrawLine(startCenter, nextCenter, new Color(0.45f, 0.9f, 1.0f, 0.9f), 2.0f);
+            startCenter = nextCenter;
+        }
+    }
+
+    private void DrawMapInteractablesOverlay()
+    {
+        foreach (var prop in _mapProps)
+        {
+            var cell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            if (!IsInBounds(cell))
+            {
+                continue;
+            }
+
+            var rect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
+            DrawRect(rect, new Color(0.5f, 0.34f, 0.14f, 0.38f), true);
+            DrawRect(rect, new Color(0.85f, 0.62f, 0.32f, 0.95f), false, 2.0f);
+            DrawCircle(rect.GetCenter(), 6.0f, new Color(1.0f, 0.86f, 0.45f, 0.95f));
+        }
+
+        foreach (var bag in _lootBags)
+        {
+            var cell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+            if (!IsInBounds(cell))
+            {
+                continue;
+            }
+
+            var rect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
+            DrawRect(rect, new Color(0.6f, 0.46f, 0.2f, 0.28f), true);
+            DrawCircle(rect.GetCenter(), 9.0f, new Color(0.97f, 0.78f, 0.25f, 0.95f));
+            DrawArc(rect.GetCenter(), 11.0f, 0.0f, Mathf.Tau, 24, new Color(1.0f, 0.94f, 0.65f, 0.95f), 2.0f);
+        }
+    }
+
+    private void DrawHoveredUnitTooltip()
+    {
+        var cell = WorldToCell(GetGlobalMousePosition());
+        if (!IsInBounds(cell))
+        {
+            return;
+        }
+
+        var unit = GetLivingUnitAtCell(cell);
+        if (!IsUsableUnit(unit) || unit.IsDead)
+        {
+            return;
+        }
+
+        var cursor = GetGlobalMousePosition() + new Vector2(14.0f, 14.0f);
+        var panelSize = new Vector2(224.0f, 74.0f);
+        var viewport = GetViewportRect().Size;
+        if (cursor.X + panelSize.X > viewport.X)
+        {
+            cursor.X = viewport.X - panelSize.X - 8.0f;
+        }
+
+        if (cursor.Y + panelSize.Y > viewport.Y)
+        {
+            cursor.Y = viewport.Y - panelSize.Y - 8.0f;
+        }
+
+        var rect = new Rect2(cursor, panelSize);
+        DrawRect(rect, new Color(0.05f, 0.05f, 0.08f, 0.86f), true);
+        DrawRect(rect, new Color(0.82f, 0.86f, 0.94f, 0.95f), false, 2.0f);
+
+        var titleColor = unit.Team == "enemy"
+            ? new Color(1.0f, 0.78f, 0.78f, 1.0f)
+            : new Color(0.78f, 0.95f, 1.0f, 1.0f);
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 20.0f), $"{unit.UnitName} [{unit.Team}]", HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, titleColor);
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 40.0f), $"HP: {unit.HitPoints}/{unit.MaxHitPoints}", HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(0.95f, 0.98f, 1.0f, 1.0f));
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 60.0f), $"Defense: {unit.Defense} | Atk: {unit.AttackDamage} | Range: {unit.AttackRange}", HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(0.88f, 0.9f, 0.95f, 1.0f));
+    }
+
+    private void DrawHoveredInteractableTooltip()
+    {
+        var cell = WorldToCell(GetGlobalMousePosition());
+        if (!IsInBounds(cell) || GetLivingUnitAtCell(cell) != null)
+        {
+            return;
+        }
+
+        var title = "";
+        var details = "";
+
+        foreach (var prop in _mapProps)
+        {
+            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            if (propCell != cell)
+            {
+                continue;
+            }
+
+            var propId = GetString(prop, "id", "prop");
+            var propName = GetString(prop, "name", "Chest");
+            title = propName;
+            details = _openedPropIds.Contains(propId)
+                ? "Lootable object\nEmpty"
+                : "Lootable object\nClosed";
+            break;
+        }
+
+        if (string.IsNullOrEmpty(title))
+        {
+            foreach (var bag in _lootBags)
+            {
+                var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+                if (bagCell != cell)
+                {
+                    continue;
+                }
+
+                var itemIds = GetBagItemIds(bag);
+                title = itemIds.Count > 0 ? "Loot Bag" : "Loot Bag (Empty)";
+                details = itemIds.Count > 0
+                    ? $"Pickup container\nContains: {JoinItemNames(itemIds)}"
+                    : "Pickup container\nEmpty";
+                break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(title))
+        {
+            foreach (var transition in _mapTransitions)
+            {
+                var fromCell = GetVector2I(transition, "from_cell", new Vector2I(-9999, -9999));
+                if (fromCell != cell)
+                {
+                    continue;
+                }
+
+                var toMap = GetString(transition, "to_map", "unknown");
+                title = "Map Transition";
+                details = $"Exit cell\nLeads to: {toMap}";
+                break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(title))
+        {
+            return;
+        }
+
+        var cursor = GetGlobalMousePosition() + new Vector2(14.0f, 14.0f);
+        var panelSize = new Vector2(236.0f, 62.0f);
+        var viewport = GetViewportRect().Size;
+        if (cursor.X + panelSize.X > viewport.X)
+        {
+            cursor.X = viewport.X - panelSize.X - 8.0f;
+        }
+
+        if (cursor.Y + panelSize.Y > viewport.Y)
+        {
+            cursor.Y = viewport.Y - panelSize.Y - 8.0f;
+        }
+
+        var rect = new Rect2(cursor, panelSize);
+        DrawRect(rect, new Color(0.09f, 0.08f, 0.06f, 0.9f), true);
+        DrawRect(rect, new Color(0.95f, 0.86f, 0.6f, 0.92f), false, 2.0f);
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 20.0f), title, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(1.0f, 0.95f, 0.8f, 1.0f));
+        DrawString(ThemeDB.FallbackFont, cursor + new Vector2(10.0f, 42.0f), details, HorizontalAlignment.Left, -1, ThemeDB.FallbackFontSize, new Color(0.95f, 0.9f, 0.78f, 1.0f));
+    }
+
+    private bool TryHandleExplorationClickInteraction(Vector2I clickedCell)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return false;
+        }
+
+        var explorer = GetExplorerUnit();
+        if (explorer == null || !IsInBounds(clickedCell))
+        {
+            return false;
+        }
+
+        Dictionary clickedEntry = null;
+        var clickedInteractable = false;
+
+        foreach (var prop in _mapProps)
+        {
+            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            if (propCell != clickedCell)
+            {
+                continue;
+            }
+
+            clickedInteractable = true;
+            if (Manhattan(explorer.GridPos, propCell) > 1)
+            {
+                _hud?.SetStatusText("Move adjacent to interact with that object.");
+                return true;
+            }
+
+            var propId = GetString(prop, "id", "prop");
+            var propName = GetString(prop, "name", "Prop");
+            if (_openedPropIds.Contains(propId))
+            {
+                _hud?.SetStatusText($"{propName} is empty.");
+                return true;
+            }
+
+            clickedEntry = new Dictionary
+            {
+                { "id", $"prop:{propId}" },
+                { "label", $"Open {propName}" },
+                { "detail", $"Open {propName} at ({propCell.X}, {propCell.Y})." }
+            };
+            break;
+        }
+
+        if (clickedEntry == null)
+        {
+            foreach (var bag in _lootBags)
+            {
+                var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+                if (bagCell != clickedCell)
+                {
+                    continue;
+                }
+
+                clickedInteractable = true;
+                if (Manhattan(explorer.GridPos, bagCell) > 1)
+                {
+                    _hud?.SetStatusText("Move adjacent to pick up that loot bag.");
+                    return true;
+                }
+
+                var bagId = GetString(bag, "id", "bag");
+                var itemIds = GetBagItemIds(bag);
+                if (itemIds.Count == 0)
+                {
+                    _hud?.SetStatusText("This loot bag is empty.");
+                    return true;
+                }
+
+                clickedEntry = new Dictionary
+                {
+                    { "id", $"bag:{bagId}" },
+                    { "label", $"Pick up loot bag ({itemIds.Count} item{(itemIds.Count == 1 ? "" : "s")})" },
+                    { "detail", $"Pick up bag at ({bagCell.X}, {bagCell.Y}). Contains: {JoinItemNames(itemIds)}." }
+                };
+                break;
+            }
+        }
+
+        if (!clickedInteractable || clickedEntry == null)
+        {
+            return false;
+        }
+
+        _hud?.SetLootEntries(new Array<Dictionary> { clickedEntry });
+        _hud?.SetLootPanelVisible(true);
+        _hud?.SetStatusText("Loot interaction opened. Confirm to proceed.");
+        return true;
+    }
+
+    private Array<Dictionary> BuildNearbyLootEntries(Unit explorer)
+    {
+        var entries = new Array<Dictionary>();
+        if (explorer == null)
+        {
+            return entries;
+        }
+
+        foreach (var prop in _mapProps)
+        {
+            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            if (Manhattan(explorer.GridPos, propCell) > 1)
+            {
+                continue;
+            }
+
+            var propId = GetString(prop, "id", "prop");
+            if (_openedPropIds.Contains(propId))
+            {
+                continue;
+            }
+
+            var propName = GetString(prop, "name", "Prop");
+            entries.Add(new Dictionary
+            {
+                { "id", $"prop:{propId}" },
+                { "label", $"Open {propName}" },
+                { "detail", $"Open {propName} at ({propCell.X}, {propCell.Y})." }
+            });
+        }
+
+        foreach (var bag in _lootBags)
+        {
+            var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            {
+                continue;
+            }
+
+            var bagId = GetString(bag, "id", "bag");
+            var itemIds = GetBagItemIds(bag);
+            if (itemIds.Count == 0)
+            {
+                continue;
+            }
+
+            entries.Add(new Dictionary
+            {
+                { "id", $"bag:{bagId}" },
+                { "label", $"Pick up loot bag ({itemIds.Count} item{(itemIds.Count == 1 ? "" : "s")})" },
+                { "detail", $"Pick up bag at ({bagCell.X}, {bagCell.Y}). Contains: {JoinItemNames(itemIds)}." }
+            });
+        }
+
+        return entries;
+    }
+
+    private bool TryResolveExplorationInteractionById(Unit explorer, string interactionId)
+    {
+        if (string.IsNullOrEmpty(interactionId))
+        {
+            return false;
+        }
+
+        if (interactionId.StartsWith("prop:"))
+        {
+            return TryOpenPropById(explorer, interactionId.Substring(5));
+        }
+
+        if (interactionId.StartsWith("bag:"))
+        {
+            return TryPickupBagById(explorer, interactionId.Substring(4));
+        }
+
+        return false;
+    }
+
+    private bool TryOpenPropById(Unit explorer, string propId)
+    {
+        for (var i = _mapProps.Count - 1; i >= 0; i--)
+        {
+            var prop = _mapProps[i];
+            if (GetString(prop, "id", "") != propId)
+            {
+                continue;
+            }
+
+            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            if (Manhattan(explorer.GridPos, propCell) > 1)
+            {
+                return false;
+            }
+
+            if (_openedPropIds.Contains(propId))
+            {
+                _hud?.SetStatusText($"{GetString(prop, "name", "prop")} is empty.");
+                return true;
+            }
+
+            _openedPropIds.Add(propId);
+
+            var drops = BuildPropLootDrops(prop);
+            if (drops.Count > 0)
+            {
+                var bag = new Dictionary
+                {
+                    { "id", $"bag-{propId}" },
+                    { "grid_pos", propCell },
+                    { "item_ids", drops },
+                    { "source_prop_id", propId }
+                };
+                _lootBags.Add(bag);
+                _hud?.SetStatusText($"{explorer.UnitName} opened {GetString(prop, "name", "prop")} and revealed loot.");
+                _hud?.AddCombatLogEntry($"Opened {GetString(prop, "name", "prop")}: found {JoinItemNames(drops)}.");
+            }
+            else
+            {
+                _hud?.SetStatusText($"{explorer.UnitName} opened {GetString(prop, "name", "prop")}. It was empty.");
+            }
+
+            RefreshHudPanels();
+            SaveMapInteractionStateForCurrentMap();
+            QueueRedraw();
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryPickupBagById(Unit explorer, string bagId)
+    {
+        for (var i = _lootBags.Count - 1; i >= 0; i--)
+        {
+            var bag = _lootBags[i];
+            if (GetString(bag, "id", "") != bagId)
+            {
+                continue;
+            }
+
+            var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            {
+                return false;
+            }
+
+            var itemIds = GetBagItemIds(bag);
+            if (itemIds.Count == 0)
+            {
+                _hud?.SetStatusText("This loot bag is empty.");
+                return true;
+            }
+
+            _lootedBagIds.Add(bagId);
+            bag["item_ids"] = new Array<string>();
+            bag["item_id"] = "";
+
+            if (itemIds.Count > 0)
+            {
+                foreach (var itemId in itemIds)
+                {
+                    _partyInventoryItemIds.Add(itemId);
+                }
+
+                var pickupSummary = JoinItemNames(itemIds);
+                _hud?.SetStatusText($"{explorer.UnitName} picked up {pickupSummary}.");
+                _hud?.AddCombatLogEntry($"Loot acquired: {pickupSummary}.");
+            }
+
+            RefreshHudPanels();
+            SaveMapInteractionStateForCurrentMap();
+            QueueRedraw();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void SetMovementPreviewPath(Array<Vector2I> path)
+    {
+        if (ArePathsEqual(_movementPreviewPath, path))
+        {
+            return;
+        }
+
+        _movementPreviewPath.Clear();
+        foreach (var step in path)
+        {
+            _movementPreviewPath.Add(step);
+        }
+
+        QueueRedraw();
+    }
+
+    private void SetMovementHoverState(Vector2I cell, bool reachable, int pathCost)
+    {
+        if (_hasMovementHoverCell && _movementHoverCell == cell && _movementHoverReachable == reachable && _movementHoverCost == pathCost)
+        {
+            return;
+        }
+
+        _hasMovementHoverCell = true;
+        _movementHoverCell = cell;
+        _movementHoverReachable = reachable;
+        _movementHoverCost = pathCost;
+        QueueRedraw();
+    }
+
+    private void ClearMovementPreviewPath()
+    {
+        if (_movementPreviewPath.Count == 0 && !_hasMovementHoverCell)
+        {
+            return;
+        }
+
+        _movementPreviewPath.Clear();
+        _hasMovementHoverCell = false;
+        _movementHoverCell = new Vector2I(-1, -1);
+        _movementHoverReachable = false;
+        _movementHoverCost = -1;
+        QueueRedraw();
+    }
+
+    private static bool ArePathsEqual(Array<Vector2I> left, Array<Vector2I> right)
+    {
+        if (left == null || right == null)
+        {
+            return false;
+        }
+
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (left[i] != right[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool TryGetDirectionalActionTargetCell(Unit active, Vector2I direction, ActionProfile actionProfile, out Vector2I targetCell)
@@ -1254,8 +2235,9 @@ public partial class BattleController : Node2D
                 return;
             }
 
-            _hud?.SetStatusText($"Map: {_currentMapId} | Exploration: {explorer.UnitName} | Move: WASD / Arrows | Step on edge markers to transition");
-            _hud?.SetActionDetails("Exploration controls: Move with WASD / Arrows. Step on glowing edge cells to transition maps.");
+            _hud?.SetStatusText($"Map: {_currentMapId} | Exploration: {explorer.UnitName}");
+            _hud?.SetActionDetails($"Exploration party leader: {explorer.UnitName}");
+            _hud?.SetSelectedAction("None");
             RefreshHudPanels();
             return;
         }
@@ -1264,6 +2246,7 @@ public partial class BattleController : Node2D
         {
             _hud?.SetStatusText("Defeat. All player units were defeated.");
             _hud?.SetActionDetails("Defeat state. Restart the encounter to continue.");
+            _hud?.SetSelectedAction("None");
             RefreshHudPanels();
             return;
         }
@@ -1278,13 +2261,15 @@ public partial class BattleController : Node2D
         var abilityState = active.CanUseAbilityThisTurn() ? "ready" : "used";
         var combatPrefix = string.IsNullOrEmpty(_lastActionSummary) ? "" : $"Last action: {_lastActionSummary} | ";
         _hud?.SetStatusText(
-            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState} | Move: WASD / Arrows | Attack: F then direction | End turn: Space"
+            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState} | Move: WASD/Arrows or click reachable cell | Attack: F or Use Ability | End turn: Space"
         );
 
         var actionProfile = ResolveActionProfile(active);
+        var equippedItemName = GetEquippedItemSummary(active);
         _hud?.SetActionDetails(
-            $"Active: {active.UnitName} ({active.Team}) | Ability: {actionProfile.ActionId} [{actionProfile.ActionType}] range {actionProfile.Range} | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
+            $"Active: {active.UnitName} ({active.Team}) | Equipped: {equippedItemName} | Ability: {actionProfile.ActionId} [{actionProfile.ActionType}] range {actionProfile.Range} | Move left: {active.RemainingMovement}/{Unit.MaxMovementPerTurn}"
         );
+        _hud?.SetSelectedAction(_awaitingPlayerAttackDirection ? $"{actionProfile.ActionId} (targeting)" : "None");
         RefreshHudPanels();
     }
 
@@ -1295,7 +2280,507 @@ public partial class BattleController : Node2D
             return;
         }
 
-        _hud.SetTurnQueue(BuildTurnQueueForHud(), _turnManager?.GetActiveUnit());
+        _hud.SetHelpText(BuildHelpText());
+
+        var active = _turnManager?.GetActiveUnit();
+        _hud.SetTurnQueue(BuildTurnQueueForHud(), active);
+        _hud.SetActiveUnit(_flowState == BattleFlowState.Combat ? active : null);
+
+        var inventoryTarget = GetInventoryTargetUnit();
+        if (inventoryTarget != null)
+        {
+            var abilityEnabled = _flowState == BattleFlowState.Combat && inventoryTarget == GetActivePlayerUnit() && inventoryTarget.CanUseAbilityThisTurn();
+            _hud.SetActionButtonsEnabled(abilityEnabled, _flowState == BattleFlowState.Combat);
+            _hud.SetInventoryUnitName(inventoryTarget.UnitName);
+            _hud.SetInventoryEquippedSummary(BuildInventoryEquippedSummary(inventoryTarget));
+            _hud.SetInventoryEquippedItems(BuildInventoryEquippedEntries(inventoryTarget));
+            _hud.SetInventoryItems(BuildInventoryItemsForHud(), GetEquippedItemIds(inventoryTarget));
+        }
+        else
+        {
+            _hud.SetActionButtonsEnabled(false, false);
+            _hud.SetInventoryEquippedSummary("Equipped: none");
+            _hud.SetInventoryEquippedItems(new Array<Dictionary>());
+        }
+
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            var explorer = GetExplorerUnit();
+            _hud.SetLootEntries(BuildNearbyLootEntries(explorer));
+        }
+        else
+        {
+            _hud.SetLootPanelVisible(false);
+        }
+    }
+
+    private string BuildHelpText()
+    {
+        var common =
+            "CONTROLS\n" +
+            "- Inventory: I\n" +
+            "- Help: H\n" +
+            "- Inspect: hover units and interactables\n" +
+            "- Inventory target: click party member portrait\n" +
+            "- Cycle target: Tab / Shift+Tab or Prev/Next Member\n";
+
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            return common +
+                "\nEXPLORATION\n" +
+                "- Move party: WASD or Arrow keys\n" +
+                "- Interact: left-click chest/loot while adjacent (range 1)\n" +
+                "- Confirm pickups in Nearby Loot\n" +
+                "- Map transitions: step on glowing edge cells\n" +
+                "- Combat starts when enemies engage your party";
+        }
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            return common +
+                "\nCOMBAT\n" +
+                "- Move: WASD/Arrow keys or click reachable cells\n" +
+                "- Ability: F, then choose direction/cell\n" +
+                "- End turn: Space or End Turn button\n" +
+                "- Limits: one ability use and limited movement each turn\n" +
+                "- Win encounter to return to exploration";
+        }
+
+        return common +
+            "\nDEFEAT\n" +
+            "- All party members are down\n" +
+            "- Restart encounter or reload to continue";
+    }
+
+    private Array<Dictionary> BuildInventoryItemsForHud()
+    {
+        var items = new Array<Dictionary>();
+        if (_gameData == null)
+        {
+            return items;
+        }
+
+        var equippedUsage = new System.Collections.Generic.Dictionary<string, int>();
+        foreach (var equippedBySlot in _equippedItemsByUnitId.Values)
+        {
+            foreach (var entry in equippedBySlot)
+            {
+                var equippedId = entry.Value;
+                equippedUsage[equippedId] = equippedUsage.TryGetValue(equippedId, out var count) ? count + 1 : 1;
+            }
+        }
+
+        foreach (var itemId in _partyInventoryItemIds)
+        {
+            if (equippedUsage.TryGetValue(itemId, out var equippedCount) && equippedCount > 0)
+            {
+                equippedUsage[itemId] = equippedCount - 1;
+                continue;
+            }
+
+            var itemData = _gameData.GetItem(itemId);
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            items.Add(itemData);
+        }
+
+        return items;
+    }
+
+    private Unit GetInventoryTargetUnit()
+    {
+        var selected = GetSelectedInventoryUnit();
+        if (selected != null)
+        {
+            return selected;
+        }
+
+        var fallback = _flowState == BattleFlowState.Combat
+            ? GetActivePlayerUnit()
+            : GetExplorerUnit();
+
+        if (fallback != null)
+        {
+            _selectedInventoryUnitId = fallback.UnitId;
+        }
+
+        return fallback;
+    }
+
+    private Array<string> GetEquippedItemIds(Unit unit)
+    {
+        var result = new Array<string>();
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return result;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot))
+        {
+            return result;
+        }
+
+        foreach (var entry in equippedBySlot)
+        {
+            result.Add(entry.Value);
+        }
+
+        return result;
+    }
+
+    private string GetEquippedItemSummary(Unit unit)
+    {
+        if (_gameData == null)
+        {
+            return "None";
+        }
+
+        var equippedIds = GetEquippedItemIds(unit);
+        if (equippedIds.Count == 0)
+        {
+            return "None";
+        }
+
+        var names = new List<string>();
+        foreach (var itemId in equippedIds)
+        {
+            var item = _gameData.GetItem(itemId);
+            names.Add(item.Count == 0 ? itemId : GetString(item, "name", itemId));
+        }
+
+        return string.Join(", ", names);
+    }
+
+    private string BuildInventoryEquippedSummary(Unit unit)
+    {
+        if (unit == null || _gameData == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return "Equipped: none";
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
+        {
+            return "Equipped: none";
+        }
+
+        var orderedSlots = new List<string>(equippedBySlot.Keys);
+        orderedSlots.Sort();
+
+        var parts = new List<string>();
+        foreach (var slot in orderedSlots)
+        {
+            var itemId = equippedBySlot[slot];
+            var itemData = _gameData.GetItem(itemId);
+            var itemName = itemData.Count == 0 ? itemId : GetString(itemData, "name", itemId);
+            var slotLabel = slot.Replace("-a", " A").Replace("-b", " B");
+            parts.Add($"{slotLabel}: {itemName}");
+        }
+
+        return $"Equipped: {string.Join(" | ", parts)}";
+    }
+
+    private Array<Dictionary> BuildInventoryEquippedEntries(Unit unit)
+    {
+        var entries = new Array<Dictionary>();
+        if (unit == null || _gameData == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return entries;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
+        {
+            return entries;
+        }
+
+        var orderedSlots = new List<string>(equippedBySlot.Keys);
+        orderedSlots.Sort();
+
+        foreach (var slot in orderedSlots)
+        {
+            var itemId = equippedBySlot[slot];
+            var itemData = _gameData.GetItem(itemId);
+            var itemName = itemData.Count == 0 ? itemId : GetString(itemData, "name", itemId);
+            var slotLabel = slot.Replace("-a", " A").Replace("-b", " B");
+            entries.Add(new Dictionary
+            {
+                { "slot_key", slot },
+                { "label", $"{slotLabel}: {itemName}" },
+                { "detail", $"Equipped in {slotLabel}. Select Unequip to return it to shared inventory." }
+            });
+        }
+
+        return entries;
+    }
+
+    private Unit GetSelectedInventoryUnit()
+    {
+        if (string.IsNullOrEmpty(_selectedInventoryUnitId))
+        {
+            return null;
+        }
+
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && !unit.IsDead && unit.UnitId == _selectedInventoryUnitId)
+            {
+                return unit;
+            }
+        }
+
+        return null;
+    }
+
+    private bool TrySelectPartyMemberAtCell(Vector2I cell)
+    {
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead)
+            {
+                continue;
+            }
+
+            if (unit.GridPos != cell)
+            {
+                continue;
+            }
+
+            _selectedInventoryUnitId = unit.UnitId;
+            _hud?.SetStatusText($"Selected {unit.UnitName} for inventory management.");
+            RefreshHudPanels();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void CycleInventoryTarget(int delta)
+    {
+        var party = new List<Unit>();
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && !unit.IsDead)
+            {
+                party.Add(unit);
+            }
+        }
+
+        if (party.Count == 0)
+        {
+            _selectedInventoryUnitId = "";
+            return;
+        }
+
+        var currentIndex = -1;
+        for (var i = 0; i < party.Count; i++)
+        {
+            if (party[i].UnitId == _selectedInventoryUnitId)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        if (currentIndex < 0)
+        {
+            _selectedInventoryUnitId = party[0].UnitId;
+            return;
+        }
+
+        var next = (currentIndex + delta) % party.Count;
+        if (next < 0)
+        {
+            next += party.Count;
+        }
+
+        _selectedInventoryUnitId = party[next].UnitId;
+    }
+
+    private void ApplyEquippedItemBonuses(Unit unit)
+    {
+        if (unit == null)
+        {
+            return;
+        }
+
+        unit.SetWeaponBonuses(0, 0);
+        unit.SetArmorBonuses(0, 0, 0);
+
+        if (_gameData == null || unit == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
+        {
+            return;
+        }
+
+        var totalWeaponDamage = 0;
+        var bestWeaponRange = 0;
+        var totalDefense = 0;
+        foreach (var entry in equippedBySlot)
+        {
+            var itemData = _gameData.GetItem(entry.Value);
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            var itemType = GetString(itemData, "type", "item");
+            if (itemType == "weapon")
+            {
+                var base_dmg = GetInt(itemData, "base_damage", 0);
+                var bonus_dmg = GetInt(itemData, "bonus_damage", 0);
+                var range = GetInt(itemData, "range", 0);
+                totalWeaponDamage += base_dmg + bonus_dmg;
+                bestWeaponRange = Mathf.Max(bestWeaponRange, range);
+            }
+            else if (itemType == "armor")
+            {
+                var base_defense = GetInt(itemData, "base_defense", 0);
+                var bonus_defense = GetInt(itemData, "bonus_defense", 0);
+                totalDefense += base_defense + bonus_defense;
+            }
+        }
+
+        unit.SetWeaponBonuses(totalWeaponDamage, bestWeaponRange);
+        unit.SetArmorBonuses(totalDefense, 0, 0);
+    }
+
+    private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config)
+    {
+        if (unit == null || config == null)
+        {
+            return;
+        }
+
+        var startingItems = TryGetStringArray(config, "starting_equipment");
+        foreach (var itemId in startingItems)
+        {
+            if (string.IsNullOrEmpty(itemId))
+            {
+                continue;
+            }
+
+            _partyInventoryItemIds.Add(itemId);
+            if (_gameData == null)
+            {
+                continue;
+            }
+
+            var itemData = _gameData.GetItem(itemId);
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            EquipItemToUnit(unit, itemData, itemId);
+        }
+    }
+
+    private void UnequipAllItemsForUnit(Unit unit)
+    {
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return;
+        }
+
+        _equippedItemsByUnitId.Remove(unit.UnitId);
+    }
+
+    private bool UnequipSlotForUnit(Unit unit, string slotKey)
+    {
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || string.IsNullOrEmpty(slotKey))
+        {
+            return false;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
+        {
+            return false;
+        }
+
+        var removed = equippedBySlot.Remove(slotKey);
+        if (!removed)
+        {
+            return false;
+        }
+
+        if (equippedBySlot.Count == 0)
+        {
+            _equippedItemsByUnitId.Remove(unit.UnitId);
+        }
+
+        return removed;
+    }
+
+    private bool TryGetEquippedItemAtSlot(Unit unit, string slotKey, out string itemId)
+    {
+        itemId = "";
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || string.IsNullOrEmpty(slotKey))
+        {
+            return false;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || !equippedBySlot.TryGetValue(slotKey, out var value))
+        {
+            return false;
+        }
+
+        itemId = value;
+        return !string.IsNullOrEmpty(itemId);
+    }
+
+    private void EquipItemToUnit(Unit unit, Dictionary itemData, string itemId)
+    {
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || itemData == null)
+        {
+            return;
+        }
+
+        var slot = GetString(itemData, "slot", "");
+        if (string.IsNullOrEmpty(slot))
+        {
+            return;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot))
+        {
+            equippedBySlot = new System.Collections.Generic.Dictionary<string, string>();
+            _equippedItemsByUnitId[unit.UnitId] = equippedBySlot;
+        }
+
+        if (slot == "2-handed")
+        {
+            equippedBySlot.Remove("1-handed-a");
+            equippedBySlot.Remove("1-handed-b");
+            equippedBySlot["2-handed"] = itemId;
+            return;
+        }
+
+        if (slot == "1-handed")
+        {
+            equippedBySlot.Remove("2-handed");
+            if (!equippedBySlot.ContainsKey("1-handed-a"))
+            {
+                equippedBySlot["1-handed-a"] = itemId;
+                return;
+            }
+
+            if (!equippedBySlot.ContainsKey("1-handed-b"))
+            {
+                equippedBySlot["1-handed-b"] = itemId;
+                return;
+            }
+
+            equippedBySlot["1-handed-a"] = itemId;
+            return;
+        }
+
+        equippedBySlot[slot] = itemId;
     }
 
     private Array<Unit> BuildTurnQueueForHud()
@@ -1366,6 +2851,7 @@ public partial class BattleController : Node2D
     {
         _flowState = BattleFlowState.Exploration;
         _awaitingPlayerAttackDirection = false;
+        ClearMovementPreviewPath();
         PruneInvalidUnitReferences();
         _explorerUnit = GetExplorerUnit();
 
@@ -1571,6 +3057,26 @@ public partial class BattleController : Node2D
         return _encounterAggroRanges.TryGetValue(encounterId, out var range) ? range : DefaultAggroTriggerRange;
     }
 
+    private void LoadPropsFromMap(Dictionary mapData)
+    {
+        _mapProps.Clear();
+        _lootBags.Clear();
+
+        if (_lootBagsByMap.TryGetValue(_currentMapId, out var storedBags))
+        {
+            foreach (var bag in storedBags)
+            {
+                _lootBags.Add(CopyDictionary(bag));
+            }
+        }
+
+        var props = TryGetDictionaryArray(mapData, "props");
+        foreach (var prop in props)
+        {
+            _mapProps.Add(CopyDictionary(prop));
+        }
+    }
+
     private void LoadClearedEncounterStateForCurrentMap()
     {
         _clearedEncounterIds.Clear();
@@ -1583,6 +3089,28 @@ public partial class BattleController : Node2D
         foreach (var encounterId in stored)
         {
             _clearedEncounterIds.Add(encounterId);
+        }
+    }
+
+    private void LoadMapInteractionStateForCurrentMap()
+    {
+        _openedPropIds.Clear();
+        _lootedBagIds.Clear();
+
+        if (_openedPropIdsByMap.TryGetValue(_currentMapId, out var opened))
+        {
+            foreach (var propId in opened)
+            {
+                _openedPropIds.Add(propId);
+            }
+        }
+
+        if (_lootedBagIdsByMap.TryGetValue(_currentMapId, out var looted))
+        {
+            foreach (var bagId in looted)
+            {
+                _lootedBagIds.Add(bagId);
+            }
         }
     }
 
@@ -1600,6 +3128,37 @@ public partial class BattleController : Node2D
         }
 
         _clearedEncounterIdsByMap[_currentMapId] = snapshot;
+        SaveMapInteractionStateForCurrentMap();
+    }
+
+    private void SaveMapInteractionStateForCurrentMap()
+    {
+        if (string.IsNullOrEmpty(_currentMapId))
+        {
+            return;
+        }
+
+        var openedSnapshot = new System.Collections.Generic.HashSet<string>();
+        foreach (var propId in _openedPropIds)
+        {
+            openedSnapshot.Add(propId);
+        }
+
+        var lootedSnapshot = new System.Collections.Generic.HashSet<string>();
+        foreach (var bagId in _lootedBagIds)
+        {
+            lootedSnapshot.Add(bagId);
+        }
+
+        var lootBagSnapshot = new Array<Dictionary>();
+        foreach (var bag in _lootBags)
+        {
+            lootBagSnapshot.Add(CopyDictionary(bag));
+        }
+
+        _openedPropIdsByMap[_currentMapId] = openedSnapshot;
+        _lootedBagIdsByMap[_currentMapId] = lootedSnapshot;
+        _lootBagsByMap[_currentMapId] = lootBagSnapshot;
     }
 
     private bool HasLivingEnemiesInEncounter(string encounterId)
@@ -1717,6 +3276,118 @@ public partial class BattleController : Node2D
         return result;
     }
 
+    private static Array<string> TryGetStringArray(Dictionary dict, string key)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return new Array<string>();
+        }
+
+        var raw = (Variant)dict[key];
+        if (raw.VariantType != Variant.Type.Array)
+        {
+            return new Array<string>();
+        }
+
+        var result = new Array<string>();
+        foreach (var entry in (Array)raw)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType == Variant.Type.String)
+            {
+                result.Add(variant.AsString());
+            }
+        }
+
+        return result;
+    }
+
+    private Array<string> BuildPropLootDrops(Dictionary prop)
+    {
+        var pool = TryGetStringArray(prop, "loot_item_ids");
+        var legacySingle = GetString(prop, "loot_item_id", "");
+        if (pool.Count == 0 && !string.IsNullOrEmpty(legacySingle))
+        {
+            pool.Add(legacySingle);
+        }
+
+        if (pool.Count == 0)
+        {
+            return new Array<string>();
+        }
+
+        var minRolls = Mathf.Max(1, GetInt(prop, "loot_rolls_min", 1));
+        var maxRolls = Mathf.Max(minRolls, GetInt(prop, "loot_rolls_max", minRolls));
+        var desiredRolls = _lootRng.RandiRange(minRolls, maxRolls);
+        var rolls = Mathf.Clamp(desiredRolls, 1, pool.Count);
+
+        var indices = new System.Collections.Generic.List<int>();
+        for (var i = 0; i < pool.Count; i++)
+        {
+            indices.Add(i);
+        }
+
+        for (var i = indices.Count - 1; i > 0; i--)
+        {
+            var swap = _lootRng.RandiRange(0, i);
+            (indices[i], indices[swap]) = (indices[swap], indices[i]);
+        }
+
+        var drops = new Array<string>();
+        for (var i = 0; i < rolls; i++)
+        {
+            drops.Add(pool[indices[i]]);
+        }
+
+        return drops;
+    }
+
+    private Array<string> BuildPropLootDropsPreview(Dictionary prop)
+    {
+        var pool = TryGetStringArray(prop, "loot_item_ids");
+        var legacySingle = GetString(prop, "loot_item_id", "");
+        if (pool.Count == 0 && !string.IsNullOrEmpty(legacySingle))
+        {
+            pool.Add(legacySingle);
+        }
+
+        return pool;
+    }
+
+    private static Array<string> GetBagItemIds(Dictionary bag)
+    {
+        var itemIds = TryGetStringArray(bag, "item_ids");
+        if (itemIds.Count > 0)
+        {
+            return itemIds;
+        }
+
+        var fallbackItem = GetString(bag, "item_id", "");
+        if (!string.IsNullOrEmpty(fallbackItem))
+        {
+            itemIds.Add(fallbackItem);
+        }
+
+        return itemIds;
+    }
+
+    private string JoinItemNames(Array<string> itemIds)
+    {
+        if (itemIds.Count == 0)
+        {
+            return "nothing";
+        }
+
+        var names = new System.Collections.Generic.List<string>();
+        foreach (var itemId in itemIds)
+        {
+            var itemData = _gameData?.GetItem(itemId) ?? new Dictionary();
+            names.Add(GetString(itemData, "name", itemId));
+        }
+
+        return string.Join(", ", names);
+    }
+
     private static string GetString(Dictionary dict, string key, string fallback)
     {
         return dict.ContainsKey(key) ? ((Variant)dict[key]).AsString() : fallback;
@@ -1725,6 +3396,17 @@ public partial class BattleController : Node2D
     private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)
     {
         return dict.ContainsKey(key) ? (Vector2I)((Variant)dict[key]) : fallback;
+    }
+
+    private static Dictionary CopyDictionary(Dictionary source)
+    {
+        var copy = new Dictionary();
+        foreach (var key in source.Keys)
+        {
+            copy[key] = source[key];
+        }
+
+        return copy;
     }
 
     private static bool IsUsableUnit(Unit unit)

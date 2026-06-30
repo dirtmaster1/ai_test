@@ -22,6 +22,68 @@ offset_bottom = 84.0
 autowrap_mode = 3
 text = "Booting..."
 
+[node name="UtilityPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -138.0
+offset_right = -332.0
+offset_bottom = -84.0
+
+[node name="UtilityVBox" type="VBoxContainer" parent="UtilityPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="UtilityHeader" type="Label" parent="UtilityPanel/UtilityVBox"]
+layout_mode = 2
+text = "Utility"
+
+[node name="UtilityButtons" type="HBoxContainer" parent="UtilityPanel/UtilityVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="InventoryButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Inventory (I)"
+
+[node name="HelpButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Help (H)"
+
+[node name="HelpPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 920.0
+offset_top = 160.0
+offset_right = 1260.0
+offset_bottom = 380.0
+
+[node name="HelpVBox" type="VBoxContainer" parent="HelpPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="HelpHeader" type="Label" parent="HelpPanel/HelpVBox"]
+layout_mode = 2
+text = "Help"
+
+[node name="HelpBody" type="Label" parent="HelpPanel/HelpVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+autowrap_mode = 3
+text = "Use H to toggle this panel."
+
+[node name="HelpButtons" type="HBoxContainer" parent="HelpPanel/HelpVBox"]
+layout_mode = 2
+
+[node name="CloseHelpButton" type="Button" parent="HelpPanel/HelpVBox/HelpButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
+
 [node name="ActionPanel" type="PanelContainer" parent="."]
 layout_mode = 0
 anchor_top = 1.0
@@ -40,6 +102,29 @@ theme_override_constants/separation = 4
 layout_mode = 2
 text = "Action Bar"
 
+[node name="ActiveUnitLabel" type="Label" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Active: -"
+
+[node name="ActionButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AbilityButton" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Use Ability"
+
+[node name="EndTurnButton" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "End Turn"
+
+[node name="SelectedActionLabel" type="Label" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+text = "Selected: None"
+
 [node name="ActionDetails" type="Label" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
 autowrap_mode = 3
@@ -54,10 +139,17 @@ offset_top = 94.0
 offset_right = -20.0
 offset_bottom = 420.0
 
-[node name="TurnQueueLabel" type="Label" parent="TurnQueuePanel"]
+[node name="TurnQueueVBox" type="VBoxContainer" parent="TurnQueuePanel"]
+layout_mode = 2
+
+[node name="TurnQueueHeader" type="Label" parent="TurnQueuePanel/TurnQueueVBox"]
+layout_mode = 2
+text = "Turn Queue"
+
+[node name="TurnQueueLabel" type="Label" parent="TurnQueuePanel/TurnQueueVBox"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Turn Queue"
+text = "-"
 
 [node name="CombatLogPanel" type="PanelContainer" parent="."]
 layout_mode = 0
@@ -69,8 +161,128 @@ offset_top = 430.0
 offset_right = -20.0
 offset_bottom = -12.0
 
-[node name="CombatLog" type="ItemList" parent="CombatLogPanel"]
+[node name="CombatLogVBox" type="VBoxContainer" parent="CombatLogPanel"]
+layout_mode = 2
+
+[node name="CombatLogHeader" type="Label" parent="CombatLogPanel/CombatLogVBox"]
+layout_mode = 2
+text = "Combat Log"
+
+[node name="CombatLog" type="ItemList" parent="CombatLogPanel/CombatLogVBox"]
 layout_mode = 2
 auto_height = true
 same_column_width = true
 allow_reselect = true
+
+[node name="InventoryPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 420.0
+offset_top = 120.0
+offset_right = 900.0
+offset_bottom = 620.0
+
+[node name="InventoryVBox" type="VBoxContainer" parent="InventoryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="InventoryHeader" type="Label" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+text = "Inventory"
+
+[node name="InventoryUnitLabel" type="Label" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+text = "Unit: -"
+
+[node name="InventoryEquippedSummaryLabel" type="Label" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Equipped: none"
+
+[node name="InventoryEquippedItemList" type="ItemList" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 110)
+allow_reselect = true
+
+[node name="InventoryCycleButtons" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PrevUnitButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryCycleButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Prev Member"
+
+[node name="NextUnitButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryCycleButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Next Member"
+
+[node name="InventoryItemList" type="ItemList" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+
+[node name="InventoryItemDetails" type="Label" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Select an item to view details."
+
+[node name="InventoryButtons" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EquipButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Equip"
+
+[node name="UnequipButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Unequip"
+
+[node name="CloseInventoryButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
+
+[node name="LootPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 12.0
+offset_top = 768.0
+offset_right = 432.0
+offset_bottom = 1042.0
+
+[node name="LootVBox" type="VBoxContainer" parent="LootPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="LootHeader" type="Label" parent="LootPanel/LootVBox"]
+layout_mode = 2
+text = "Nearby Loot"
+
+[node name="LootItemList" type="ItemList" parent="LootPanel/LootVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+
+[node name="LootDetailsLabel" type="Label" parent="LootPanel/LootVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Press E near chests or loot bags to scan nearby interactions."
+
+[node name="LootButtons" type="HBoxContainer" parent="LootPanel/LootVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ConfirmLootButton" type="Button" parent="LootPanel/LootVBox/LootButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Confirm Pickup"
+
+[node name="CloseLootButton" type="Button" parent="LootPanel/LootVBox/LootButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
