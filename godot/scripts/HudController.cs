@@ -37,6 +37,9 @@ public partial class HudController : Control
     private Label _helpBody;
     private Button _closeHelpButton;
     private PanelContainer _actionPanel;
+    private PanelContainer _characterPanel;
+    private Label _characterHeader;
+    private Label _characterSummaryLabel;
     private PanelContainer _turnQueuePanel;
     private PanelContainer _combatLogPanel;
     private Label _activeUnitLabel;
@@ -45,6 +48,7 @@ public partial class HudController : Control
     private Button _abilityButton3;
     private Button _endTurnButton;
     private Button _inventoryButton;
+    private Button _characterButton;
     private Label _selectedActionLabel;
     private Label _actionDetailsLabel;
     private Label _turnQueueHeader;
@@ -108,6 +112,9 @@ public partial class HudController : Control
         _helpBody = GetNode<Label>("HelpPanel/HelpVBox/HelpBody");
         _closeHelpButton = GetNode<Button>("HelpPanel/HelpVBox/HelpButtons/CloseHelpButton");
         _actionPanel = GetNode<PanelContainer>("ActionPanel");
+        _characterPanel = GetNode<PanelContainer>("CharacterPanel");
+        _characterHeader = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterHeader");
+        _characterSummaryLabel = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterSummaryLabel");
         _turnQueuePanel = GetNode<PanelContainer>("TurnQueuePanel");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _activeUnitLabel = GetNode<Label>("ActionPanel/ActionVBox/ActiveUnitLabel");
@@ -117,6 +124,7 @@ public partial class HudController : Control
         _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton3");
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
+        _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
         _selectedActionLabel = GetNode<Label>("ActionPanel/ActionVBox/SelectedActionLabel");
         _actionDetailsLabel = GetNode<Label>("ActionPanel/ActionVBox/ActionDetails");
         _turnQueueHeader = GetNode<Label>("TurnQueuePanel/TurnQueueVBox/TurnQueueHeader");
@@ -149,6 +157,7 @@ public partial class HudController : Control
         _abilityButton3.Pressed += OnAbilityButton3Pressed;
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
+        _characterButton.Pressed += OnCharacterButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
         _inventoryPrevUnitButton.Pressed += OnInventoryPrevUnitButtonPressed;
@@ -165,6 +174,7 @@ public partial class HudController : Control
         RegisterDraggable(_statusLabel, _statusLabel);
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
+        RegisterDraggable(_characterHeader, _characterPanel);
         RegisterDraggable(actionHeader, _actionPanel);
         RegisterDraggable(_turnQueueHeader, _turnQueuePanel);
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
@@ -207,6 +217,11 @@ public partial class HudController : Control
         if (_inventoryButton != null)
         {
             _inventoryButton.Pressed -= OnInventoryButtonPressed;
+        }
+
+        if (_characterButton != null)
+        {
+            _characterButton.Pressed -= OnCharacterButtonPressed;
         }
 
         if (_helpButton != null)
@@ -308,6 +323,11 @@ public partial class HudController : Control
     private void OnInventoryButtonPressed()
     {
         SetInventoryVisible(!_inventoryPanel.Visible);
+    }
+
+    private void OnCharacterButtonPressed()
+    {
+        ToggleCharacterVisible();
     }
 
     private void OnHelpButtonPressed()
@@ -560,9 +580,10 @@ public partial class HudController : Control
 
         ApplyPanelRect(_statusLabel, new Rect2(new Vector2(sidebarLeft, Margin), new Vector2(sidebarRight - sidebarLeft, 80.0f)), size);
         ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, 98.0f), new Vector2(sidebarRight - sidebarLeft, 58.0f)), size);
+        ApplyPanelRect(_characterPanel, new Rect2(new Vector2(sidebarLeft, 166.0f), new Vector2(sidebarRight - sidebarLeft, 168.0f)), size);
         ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, 166.0f), new Vector2(sidebarRight - sidebarLeft, 220.0f)), size);
-        ApplyPanelRect(_turnQueuePanel, new Rect2(new Vector2(sidebarLeft, 166.0f), new Vector2(sidebarRight - sidebarLeft, 264.0f)), size);
-        ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, 440.0f), new Vector2(sidebarRight - sidebarLeft, Mathf.Max(100.0f, size.Y - 528.0f))), size);
+        ApplyPanelRect(_turnQueuePanel, new Rect2(new Vector2(sidebarLeft, 344.0f), new Vector2(sidebarRight - sidebarLeft, 198.0f)), size);
+        ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, 552.0f), new Vector2(sidebarRight - sidebarLeft, Mathf.Max(100.0f, size.Y - 640.0f))), size);
         ApplyPanelRect(_actionPanel, new Rect2(new Vector2(sidebarLeft, size.Y - 80.0f), new Vector2(sidebarRight - sidebarLeft, 68.0f)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
     }
@@ -698,6 +719,75 @@ public partial class HudController : Control
         {
             _actionDetailsLabel.Text = text;
         }
+    }
+
+    public void SetCharacterSummary(string text)
+    {
+        if (_characterSummaryLabel != null)
+        {
+            _characterSummaryLabel.Text = text;
+        }
+    }
+
+    public string BuildCharacterSummary(Unit unit, string selectedAbilityName, string primaryAbilityName)
+    {
+        if (unit == null)
+        {
+            return "No active character.";
+        }
+
+        var status = unit.IsDead ? "Defeated" : "Ready";
+        var encounterLabel = string.IsNullOrEmpty(unit.EncounterId) ? "Party" : unit.EncounterId;
+
+        return
+            $"Name: {unit.UnitName}\n" +
+            $"Team: {unit.Team} | Status: {status}\n" +
+            $"HP: {unit.HitPoints}/{unit.MaxHitPoints} | MP: {unit.MagicPoints}/{unit.MaxMagicPoints}\n" +
+            $"Armor Class: {unit.ArmorClass}\n" +
+            $"Stats - STR {unit.Strength} | DEX {unit.Dexterity} | CON {unit.Constitution} | INT {unit.Intelligence} | WIS {unit.Wisdom}\n" +
+            $"Attack: {unit.AttackDamage} dmg | Range: {unit.AttackRange}\n" +
+            $"Initiative: {unit.Initiative}\n" +
+            $"Primary Ability: {primaryAbilityName}\n" +
+            $"Selected Ability: {selectedAbilityName}\n" +
+            $"Group: {encounterLabel}";
+    }
+
+    public string BuildHelpText(string flowState)
+    {
+        var common =
+            "CONTROLS\n" +
+            "- Inventory: I\n" +
+            "- Help: H\n" +
+            "- Inspect: hover units and interactables\n" +
+            "- Inventory target: click party member portrait\n" +
+            "- Cycle target: Tab / Shift+Tab or Prev/Next Member\n";
+
+        if (flowState == "Exploration")
+        {
+            return common +
+                "\nEXPLORATION\n" +
+                "- Move party: WASD or Arrow keys\n" +
+                "- Interact: left-click chest/loot while adjacent (range 1)\n" +
+                "- Confirm pickups in Nearby Loot\n" +
+                "- Map transitions: step on glowing edge cells\n" +
+                "- Combat starts when enemies engage your party";
+        }
+
+        if (flowState == "Combat")
+        {
+            return common +
+                "\nCOMBAT\n" +
+                "- Move: WASD/Arrow keys or click reachable cells\n" +
+                "- Ability: F, then choose direction/cell\n" +
+                "- End turn: Space or End Turn button\n" +
+                "- Limits: one ability use and limited movement each turn\n" +
+                "- Win encounter to return to exploration";
+        }
+
+        return common +
+            "\nDEFEAT\n" +
+            "- All party members are down\n" +
+            "- Restart encounter or reload to continue";
     }
 
     public void SetSelectedAction(string actionText)
@@ -917,6 +1007,26 @@ public partial class HudController : Control
             {
                 _inventoryPanel.MoveToFront();
             }
+        }
+    }
+
+    public void SetCharacterVisible(bool visible)
+    {
+        if (_characterPanel != null)
+        {
+            _characterPanel.Visible = visible;
+            if (visible)
+            {
+                _characterPanel.MoveToFront();
+            }
+        }
+    }
+
+    public void ToggleCharacterVisible()
+    {
+        if (_characterPanel != null)
+        {
+            SetCharacterVisible(!_characterPanel.Visible);
         }
     }
 

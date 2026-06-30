@@ -58,6 +58,11 @@ public partial class TurnManager : Node
         return _turnOrder[_activeIndex];
     }
 
+    public bool IsActiveUnit(Unit unit)
+    {
+        return unit != null && GetActiveUnit() == unit;
+    }
+
     public Array<Unit> GetTurnOrderFromActive()
     {
         var result = new Array<Unit>();
@@ -106,6 +111,17 @@ public partial class TurnManager : Node
 
         _activeIndex = nextIndex;
         EmitActive();
+    }
+
+    public bool EndTurnIfActive(Unit expectedActive)
+    {
+        if (!IsActiveUnit(expectedActive))
+        {
+            return false;
+        }
+
+        EndTurn();
+        return true;
     }
 
     private Unit FindNextLivingAfter(int startIndex)

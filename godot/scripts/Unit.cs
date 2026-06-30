@@ -14,6 +14,11 @@ public partial class Unit : Node2D
     public int MaxHitPoints { get; private set; } = 10;
     public int MagicPoints { get; private set; }
     public int MaxMagicPoints { get; private set; }
+    public int Intelligence { get; private set; } = 5;
+    public int Strength { get; private set; } = 5;
+    public int Wisdom { get; private set; } = 5;
+    public int Dexterity { get; private set; } = 5;
+    public int Constitution { get; private set; } = 5;
     public int BaseAttackDamage { get; private set; } = 3;
     public int BaseAttackRange { get; private set; } = 1;
     public string PrimaryAbilityId { get; private set; } = "";
@@ -30,7 +35,7 @@ public partial class Unit : Node2D
 
     public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + ArmorAttackDamageBonus + BuffAttackDamageBonus);
     public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + ArmorAttackRangeBonus + BuffAttackRangeBonus);
-    public int armor_class => Mathf.Max(0, ArmorClassBonus);
+    public int ArmorClass => Mathf.Max(0, ArmorClassBonus);
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
@@ -47,6 +52,11 @@ public partial class Unit : Node2D
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
         MaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
         MagicPoints = Mathf.Clamp(GetInt(config, "magic_points", MaxMagicPoints), 0, MaxMagicPoints);
+        Intelligence = GetInt(config, "intelligence", 5);
+        Strength = GetInt(config, "strength", 5);
+        Wisdom = GetInt(config, "wisdom", 5);
+        Dexterity = GetInt(config, "dexterity", 5);
+        Constitution = GetInt(config, "constitution", 5);
         Initiative = GetInt(config, "initiative", 10);
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
@@ -141,6 +151,75 @@ public partial class Unit : Node2D
     public bool CanUseAbility(string abilityId)
     {
         return CanUseAbilityThisTurn() && HasAbility(abilityId) && GetAbilityCooldownRemaining(abilityId) <= 0;
+    }
+
+    public bool CanAttackTarget(Unit target, int range, Array<Unit> allUnits)
+    {
+        if (!IsUsableUnit(this) || !IsUsableUnit(target) || IsDead || target.IsDead)
+        {
+            return false;
+        }
+
+        if (Team == target.Team)
+        {
+            return false;
+        }
+
+        return CanUseActionAtRange(target, range, allUnits);
+    }
+
+    public bool CanHealTarget(Unit target, int range, Array<Unit> allUnits)
+    {
+        if (!IsUsableUnit(this) || !IsUsableUnit(target) || IsDead || target.IsDead)
+        {
+            return false;
+        }
+
+        if (Team != target.Team)
+        {
+            return false;
+        }
+
+        return CanUseActionAtRange(target, range, allUnits);
+    }
+
+    public bool CanUseActionAtRange(Unit target, int range, Array<Unit> allUnits)
+    {
+        if (!IsUsableUnit(this) || !IsUsableUnit(target))
+        {
+            return false;
+        }
+
+        return IsWithinRange(GridPos, target.GridPos, range) && HasLineOfSightTo(target, allUnits);
+    }
+
+    public bool HasLineOfSightTo(Unit target, Array<Unit> allUnits)
+    {
+        if (!IsUsableUnit(this) || !IsUsableUnit(target))
+        {
+            return false;
+        }
+
+        var points = GetLinePoints(GridPos, target.GridPos);
+        for (var i = 1; i < points.Count - 1; i++)
+        {
+            if (IsCellBlockingLineOfSight(points[i], target, allUnits))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static bool IsWithinRange(Vector2I from, Vector2I to, int range)
+    {
+        return RangeDistance(from, to) <= range;
+    }
+
+    public static int RangeDistance(Vector2I a, Vector2I b)
+    {
+        return Mathf.Max(Mathf.Abs(a.X - b.X), Mathf.Abs(a.Y - b.Y));
     }
 
     public bool HasEnoughMagicPoints(int amount)
@@ -291,6 +370,73 @@ public partial class Unit : Node2D
     private static int GetInt(Dictionary dict, string key, int fallback)
     {
         return dict.ContainsKey(key) ? (int)((Variant)dict[key]) : fallback;
+    }
+
+    private bool IsCellBlockingLineOfSight(Vector2I cell, Unit target, Array<Unit> allUnits)
+    {
+        if (allUnits == null)
+        {
+            return false;
+        }
+
+        foreach (var unit in allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || unit == this || unit == target)
+            {
+                continue;
+            }
+
+            if (unit.GridPos == cell)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Array<Vector2I> GetLinePoints(Vector2I start, Vector2I end)
+    {
+        var points = new Array<Vector2I>();
+
+        var x0 = start.X;
+        var y0 = start.Y;
+        var x1 = end.X;
+        var y1 = end.Y;
+        var dx = Mathf.Abs(x1 - x0);
+        var dy = Mathf.Abs(y1 - y0);
+        var sx = x0 < x1 ? 1 : -1;
+        var sy = y0 < y1 ? 1 : -1;
+        var err = dx - dy;
+
+        while (true)
+        {
+            points.Add(new Vector2I(x0, y0));
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+
+            var e2 = err * 2;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x0 += sx;
+            }
+
+            if (e2 < dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+
+        return points;
+    }
+
+    private static bool IsUsableUnit(Unit unit)
+    {
+        return unit != null && GodotObject.IsInstanceValid(unit) && !unit.IsQueuedForDeletion();
     }
 
     private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)

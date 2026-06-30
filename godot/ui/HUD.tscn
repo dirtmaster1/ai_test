@@ -54,6 +54,11 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Help (H)"
 
+[node name="CharacterButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Character"
+
 [node name="HelpPanel" type="PanelContainer" parent="."]
 visible = false
 layout_mode = 0
@@ -83,6 +88,30 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"
+
+[node name="CharacterPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -308.0
+offset_top = 166.0
+offset_right = -20.0
+offset_bottom = 334.0
+
+[node name="CharacterVBox" type="VBoxContainer" parent="CharacterPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="CharacterHeader" type="Label" parent="CharacterPanel/CharacterVBox"]
+layout_mode = 2
+text = "Character"
+
+[node name="CharacterSummaryLabel" type="Label" parent="CharacterPanel/CharacterVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+autowrap_mode = 3
+text = "No unit selected."
 
 [node name="ActionPanel" type="PanelContainer" parent="."]
 layout_mode = 0

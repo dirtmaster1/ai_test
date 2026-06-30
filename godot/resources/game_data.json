@@ -85,5 +85,82 @@
       "bonus_damage": 0,
       "range": 1
     }
+  },
+  "characters": {
+    "default_party": [
+      "wizard",
+      "warrior",
+      "cleric"
+    ],
+    "templates": {
+      "wizard": {
+        "id": "wizard",
+        "name": "Wizard",
+        "team": "player",
+        "primary_ability_id": "melee",
+        "ability_ids": [
+          "melee",
+          "magic-missile"
+        ],
+        "initiative": 15,
+        "hit_points": 10,
+        "max_hit_points": 10,
+        "magic_points": 5,
+        "max_magic_points": 5,
+        "intelligence": 10,
+        "strength": 5,
+        "wisdom": 5,
+        "dexterity": 5,
+        "starting_equipment": [
+          "cloth-robe"
+        ]
+      },
+      "warrior": {
+        "id": "warrior",
+        "name": "Warrior",
+        "team": "player",
+        "primary_ability_id": "melee",
+        "ability_ids": [
+          "melee"
+        ],
+        "initiative": 11,
+        "hit_points": 14,
+        "max_hit_points": 14,
+        "intelligence": 5,
+        "strength": 10,
+        "wisdom": 5,
+        "dexterity": 5,
+        "constitution": 10,
+        "starting_equipment": [
+          "war-axe",
+          "iron-helmet",
+          "leather-armor"
+        ]
+      },
+      "cleric": {
+        "id": "cleric",
+        "name": "Cleric",
+        "team": "player",
+        "primary_ability_id": "lesser-heal",
+        "ability_ids": [
+          "lesser-heal",
+          "melee"
+        ],
+        "initiative": 12,
+        "hit_points": 12,
+        "max_hit_points": 12,
+        "magic_points": 5,
+        "max_magic_points": 5,
+        "intelligence": 5,
+        "strength": 5,
+        "wisdom": 10,
+        "dexterity": 5,
+        "starting_equipment": [
+          "small-shield",
+          "short-sword",
+          "leather-armor"
+        ]
+      }
+    }
   }
 }

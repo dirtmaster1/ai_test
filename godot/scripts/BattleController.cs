@@ -4,6 +4,7 @@ using System.Collections.Generic;
 
 public partial class BattleController : Node2D
 {
+    // Architecture: Core orchestration state and cross-system coordination.
     private const int GridWidth = 20;
     private const int GridHeight = 15;
     private const int CellSize = 64;
@@ -41,7 +42,7 @@ public partial class BattleController : Node2D
     private readonly System.Collections.Generic.HashSet<string> _clearedEncounterIds = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _clearedEncounterIdsByMap = new();
     private readonly System.Collections.Generic.HashSet<string> _openedPropIds = new();
-    private readonly System.Collections.Generic.HashSet<string> _lootedBagIds = new();
+    private readonly HashSet<string> _lootedBagIds = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _openedPropIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
@@ -52,7 +53,7 @@ public partial class BattleController : Node2D
     private Unit _explorerUnit;
     private string _activeEncounterId = "";
     private string _currentMapId = "map-a";
-    private string _selectedInventoryUnitId = "";
+    private string _selectedCharacterUnitId = "";
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
     private string _lastActionSummary = "";
     private readonly Array<Vector2I> _movementPreviewPath = new();
@@ -119,7 +120,7 @@ public partial class BattleController : Node2D
         }
     }
 
-    // Lifecycle and rendering
+    // Architecture: Lifecycle, rendering, and combat-resolution orchestration.
     public override void _Ready()
     {
         _unitsRoot = GetNode<Node2D>("Units");
@@ -144,7 +145,7 @@ public partial class BattleController : Node2D
         }
 
         EnterExplorationMode();
-        RefreshHudPanels();
+        SyncHudFromGameState();
         QueueRedraw();
     }
 
@@ -213,339 +214,7 @@ public partial class BattleController : Node2D
         DrawHoveredInteractableTooltip();
     }
 
-    // Input and player control
-    public override void _Input(InputEvent @event)
-    {
-        if (_flowState == BattleFlowState.Defeat)
-        {
-            return;
-        }
-
-        if (@event is InputEventMouseButton mouseEvent)
-        {
-            HandleMouseInput(mouseEvent);
-            return;
-        }
-
-        if (@event is InputEventMouseMotion mouseMotion)
-        {
-            HandleMouseHoverInput(mouseMotion);
-            return;
-        }
-
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
-        {
-            return;
-        }
-
-        if (keyEvent.Keycode == Key.I)
-        {
-            _hud?.ToggleInventoryVisible();
-            RefreshHudPanels();
-            return;
-        }
-
-        if (keyEvent.Keycode == Key.H)
-        {
-            _hud?.ToggleHelpVisible();
-            return;
-        }
-
-        if (keyEvent.Keycode == Key.Tab && _hud != null && _hud.IsInventoryVisible())
-        {
-            CycleInventoryTarget(keyEvent.ShiftPressed ? -1 : 1);
-            RefreshHudPanels();
-            return;
-        }
-
-        if (_flowState == BattleFlowState.Exploration)
-        {
-            HandleExplorationInput(keyEvent);
-            return;
-        }
-
-        if (_awaitingPlayerAttackDirection)
-        {
-            HandlePlayerAttackDirectionInput(keyEvent);
-            return;
-        }
-
-        if (keyEvent.Keycode == Key.Space)
-        {
-            var activePlayer = GetActivePlayerUnit();
-            if (TryRequestEndTurn(activePlayer, manualInput: true))
-            {
-                _awaitingPlayerAttackDirection = false;
-                ClearMovementPreviewPath();
-                _hud?.SetSelectedAction("None");
-                QueueRedraw();
-            }
-            return;
-        }
-
-        var active = GetActivePlayerUnit();
-        if (active == null)
-        {
-            return;
-        }
-
-        if (keyEvent.Keycode == Key.F)
-        {
-            if (!active.CanUseAbilityThisTurn())
-            {
-                _hud?.SetStatusText("Ability already used this turn.");
-                return;
-            }
-
-            var selectedAbilityId = GetSelectedAbilityId(active);
-            if (string.IsNullOrEmpty(selectedAbilityId) || !active.HasAbility(selectedAbilityId))
-            {
-                _hud?.SetStatusText("No ability selected for this unit.");
-                return;
-            }
-
-            var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedAbilityId);
-            if (cooldownRemaining > 0)
-            {
-                _hud?.SetStatusText($"{selectedAbilityId} is on cooldown ({cooldownRemaining} turn{(cooldownRemaining == 1 ? "" : "s")} remaining).");
-                return;
-            }
-
-            var actionProfile = ResolveActionProfile(active, selectedAbilityId);
-            if (!CanCastAction(active, actionProfile, true))
-            {
-                return;
-            }
-
-            _awaitingPlayerAttackDirection = true;
-            SetSelectedAbilityId(active, selectedAbilityId);
-            _hud?.SetStatusText("Choose attack direction: WASD / Arrows (Esc to cancel)");
-            QueueRedraw();
-            return;
-        }
-
-        var delta = KeyToDelta(keyEvent.Keycode);
-        if (delta == Vector2I.Zero)
-        {
-            return;
-        }
-
-        var moveResult = ResolveMoveAction(active, active.GridPos + delta, endTurnOnSuccess: false);
-        ApplyActionResult(moveResult);
-    }
-
-    private void HandleMouseInput(InputEventMouseButton mouseEvent)
-    {
-        if (_awaitingPlayerAttackDirection)
-        {
-            HandleMouseAttackInput(mouseEvent);
-            return;
-        }
-
-        if (mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
-        {
-            var clickedCell = WorldToCell(GetGlobalMousePosition());
-            if (_flowState == BattleFlowState.Exploration && TryHandleExplorationClickInteraction(clickedCell))
-            {
-                return;
-            }
-
-            if (TrySelectPartyMemberAtCell(clickedCell))
-            {
-                return;
-            }
-        }
-
-        HandleMouseMoveInput(mouseEvent);
-    }
-
-    private void HandleMouseHoverInput(InputEventMouseMotion _mouseMotion)
-    {
-        QueueRedraw();
-
-        if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection)
-        {
-            ClearMovementPreviewPath();
-            return;
-        }
-
-        var active = GetActivePlayerUnit();
-        if (active == null || !active.CanMoveThisTurn())
-        {
-            ClearMovementPreviewPath();
-            return;
-        }
-
-        var hoveredCell = WorldToCell(GetGlobalMousePosition());
-        if (!IsInBounds(hoveredCell) || hoveredCell == active.GridPos)
-        {
-            ClearMovementPreviewPath();
-            return;
-        }
-
-        var previewPath = FindPath(active, active.GridPos, hoveredCell, active.RemainingMovement);
-        if (previewPath.Count == 0)
-        {
-            SetMovementHoverState(hoveredCell, reachable: false, pathCost: -1);
-            ClearMovementPreviewPath();
-            return;
-        }
-
-        SetMovementHoverState(hoveredCell, reachable: true, pathCost: previewPath.Count);
-        SetMovementPreviewPath(previewPath);
-    }
-
-    private void HandleMouseMoveInput(InputEventMouseButton mouseEvent)
-    {
-        if (_flowState != BattleFlowState.Combat || !mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left)
-        {
-            return;
-        }
-
-        var active = GetActivePlayerUnit();
-        if (active == null)
-        {
-            return;
-        }
-
-        var clickedCell = WorldToCell(GetGlobalMousePosition());
-        if (!IsInBounds(clickedCell))
-        {
-            return;
-        }
-
-        if (clickedCell == active.GridPos)
-        {
-            return;
-        }
-
-        if (!active.CanMoveThisTurn())
-        {
-            _hud?.SetStatusText("No movement left this turn.");
-            return;
-        }
-
-        var path = FindPath(active, active.GridPos, clickedCell, active.RemainingMovement);
-        if (path.Count == 0)
-        {
-            _hud?.SetStatusText($"Cannot path to that cell within {active.RemainingMovement} move.");
-            return;
-        }
-
-        foreach (var step in path)
-        {
-            var moveResult = ResolveMoveAction(active, step, endTurnOnSuccess: false);
-            if (!moveResult.Success)
-            {
-                break;
-            }
-
-            ApplyActionResult(moveResult);
-        }
-
-        ClearMovementPreviewPath();
-        SetStatusHelp();
-    }
-
-    private void HandleExplorationInput(InputEventKey keyEvent)
-    {
-        var explorer = GetExplorerUnit();
-        if (explorer == null)
-        {
-            _hud?.SetStatusText("No living player unit available to explore.");
-            return;
-        }
-
-        var delta = KeyToDelta(keyEvent.Keycode);
-        if (delta == Vector2I.Zero)
-        {
-            return;
-        }
-
-        if (!TryMoveExplorationParty(delta))
-        {
-            return;
-        }
-
-        if (TryHandleMapTransition())
-        {
-            return;
-        }
-
-        SetStatusHelp();
-        TryStartCombatFromAggro();
-    }
-
-    private void HandleMouseAttackInput(InputEventMouseButton mouseEvent)
-    {
-        if (!_awaitingPlayerAttackDirection || !mouseEvent.Pressed)
-        {
-            return;
-        }
-
-        if (mouseEvent.ButtonIndex == MouseButton.Right)
-        {
-            CancelAttackMode();
-            return;
-        }
-
-        if (mouseEvent.ButtonIndex != MouseButton.Left)
-        {
-            return;
-        }
-
-        var active = GetActivePlayerUnit();
-        if (active == null)
-        {
-            CancelAttackMode(false);
-            return;
-        }
-
-        var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
-        var clickedCell = WorldToCell(GetGlobalMousePosition());
-        if (!IsWithinRange(active.GridPos, clickedCell, actionProfile.Range))
-        {
-            _hud?.SetStatusText($"Click a target cell within range ({actionProfile.Range}).");
-            return;
-        }
-
-        CancelAttackMode(false);
-        TryResolvePlayerActionAtCell(active, clickedCell);
-    }
-
-    private void HandlePlayerAttackDirectionInput(InputEventKey keyEvent)
-    {
-        if (keyEvent.Keycode == Key.Escape)
-        {
-            CancelAttackMode();
-            return;
-        }
-
-        var active = GetActivePlayerUnit();
-        if (active == null)
-        {
-            CancelAttackMode(false);
-            return;
-        }
-
-        var delta = KeyToDelta(keyEvent.Keycode);
-        if (delta == Vector2I.Zero)
-        {
-            return;
-        }
-
-        var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
-        if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
-        {
-            _hud?.SetStatusText($"No valid {actionProfile.ActionType} target in that direction.");
-            return;
-        }
-
-        CancelAttackMode(false);
-        TryResolvePlayerActionAtCell(active, targetCell);
-    }
-
-    // Turn flow and action resolution
+    // Architecture: Turn flow and action resolution orchestration.
     private void OnTurnChanged(Unit activeUnit)
     {
         if (_flowState != BattleFlowState.Combat)
@@ -633,7 +302,7 @@ public partial class BattleController : Node2D
         ClearMovementPreviewPath();
         _hud?.SetSelectedAction($"{actionProfile.ActionId} (targeting)");
         _hud?.SetStatusText("Ability selected. Click target cell or use direction keys. Right-click or Esc to cancel.");
-        RefreshHudPanels();
+        SyncHudFromGameState();
         QueueRedraw();
     }
 
@@ -730,7 +399,7 @@ public partial class BattleController : Node2D
         }
 
         CycleInventoryTarget(delta);
-        RefreshHudPanels();
+        SyncHudFromGameState();
     }
 
     private void OnHudLootConfirmRequested(string interactionId)
@@ -748,7 +417,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        if (!TryResolveExplorationInteractionById(explorer, interactionId))
+        if (!TryExecuteExplorationInteractionById(explorer, interactionId))
         {
             _hud?.SetStatusText("That interaction is no longer available.");
         }
@@ -990,8 +659,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        var currentActive = _turnManager.GetActiveUnit();
-        if (currentActive != expectedActiveUnit)
+        if (!_turnManager.IsActiveUnit(expectedActiveUnit))
         {
             return false;
         }
@@ -1010,8 +678,7 @@ public partial class BattleController : Node2D
         _isEndingTurn = true;
         try
         {
-            _turnManager.EndTurn();
-            return true;
+            return _turnManager.EndTurnIfActive(expectedActiveUnit);
         }
         finally
         {
@@ -1026,7 +693,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        return _turnManager.GetActiveUnit() == unit;
+        return _turnManager.IsActiveUnit(unit);
     }
 
     private async System.Threading.Tasks.Task DelayEnemyActionStep()
@@ -1265,7 +932,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        if (!CanAttack(attacker, target, range))
+        if (!attacker.CanAttackTarget(target, range, _allUnits))
         {
             _hud?.SetStatusText($"{attacker.UnitName} has no clear line to {target.UnitName}.");
             return false;
@@ -1282,7 +949,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        var mitigatedDamage = isMagical ? damage : Mathf.Max(0, damage - target.armor_class);
+        var mitigatedDamage = isMagical ? damage : Mathf.Max(0, damage - target.ArmorClass);
         target.ApplyDamage(mitigatedDamage);
         if (_flowState == BattleFlowState.Combat)
         {
@@ -1294,7 +961,7 @@ public partial class BattleController : Node2D
         var resultText = isMagical
             ? $"{attacker.UnitName} casts {actionName} on {target.UnitName}, dealing {mitigatedDamage} damage."
             : $"{attacker.UnitName} hits {target.UnitName} for {mitigatedDamage}.";
-        if (!isMagical && target.armor_class > 0)
+        if (!isMagical && target.ArmorClass > 0)
         {
             var reducedBy = Mathf.Max(0, damage - mitigatedDamage);
             if (reducedBy > 0)
@@ -1327,7 +994,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        if (!CanHeal(actor, target, range))
+        if (!actor.CanHealTarget(target, range, _allUnits))
         {
             _hud?.SetStatusText($"{actor.UnitName} cannot heal {target.UnitName} from there.");
             return false;
@@ -1382,8 +1049,8 @@ public partial class BattleController : Node2D
                 continue;
             }
 
-            var distance = RangeDistance(attacker.GridPos, unit.GridPos);
-            if (distance <= range && distance < nearestDistance && CanAttack(attacker, unit, range))
+            var distance = Unit.RangeDistance(attacker.GridPos, unit.GridPos);
+            if (distance <= range && distance < nearestDistance && attacker.CanAttackTarget(unit, range, _allUnits))
             {
                 nearest = unit;
                 nearestDistance = distance;
@@ -1405,7 +1072,7 @@ public partial class BattleController : Node2D
                 continue;
             }
 
-            if (!CanUseActionAtRange(actor, unit, range))
+            if (!actor.CanUseActionAtRange(unit, range, _allUnits))
             {
                 continue;
             }
@@ -1660,123 +1327,6 @@ public partial class BattleController : Node2D
         };
     }
 
-    private bool CanAttack(Unit attacker, Unit target, int range)
-    {
-        if (attacker == null || target == null || attacker.IsDead || target.IsDead)
-        {
-            return false;
-        }
-
-        if (attacker.Team == target.Team)
-        {
-            return false;
-        }
-
-        return CanUseActionAtRange(attacker, target, range);
-    }
-
-    private bool CanHeal(Unit actor, Unit target, int range)
-    {
-        if (actor == null || target == null || actor.IsDead || target.IsDead)
-        {
-            return false;
-        }
-
-        if (actor.Team != target.Team)
-        {
-            return false;
-        }
-
-        return CanUseActionAtRange(actor, target, range);
-    }
-
-    private bool CanUseActionAtRange(Unit actor, Unit target, int range)
-    {
-        return IsWithinRange(actor.GridPos, target.GridPos, range) && HasLineOfSight(actor, target);
-    }
-
-    private static bool IsWithinRange(Vector2I from, Vector2I to, int range)
-    {
-        return RangeDistance(from, to) <= range;
-    }
-
-    private static int RangeDistance(Vector2I a, Vector2I b)
-    {
-        return Mathf.Max(Mathf.Abs(a.X - b.X), Mathf.Abs(a.Y - b.Y));
-    }
-
-    private bool HasLineOfSight(Unit attacker, Unit target)
-    {
-        var points = GetLinePoints(attacker.GridPos, target.GridPos);
-        for (var i = 1; i < points.Count - 1; i++)
-        {
-            var point = points[i];
-            if (IsCellBlockingLineOfSight(point, attacker, target))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private bool IsCellBlockingLineOfSight(Vector2I cell, Unit attacker, Unit target)
-    {
-        foreach (var unit in _allUnits)
-        {
-            if (!IsUsableUnit(unit) || unit.IsDead || unit == attacker || unit == target)
-            {
-                continue;
-            }
-
-            if (unit.GridPos == cell)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static Array<Vector2I> GetLinePoints(Vector2I start, Vector2I end)
-    {
-        var points = new Array<Vector2I>();
-
-        var x0 = start.X;
-        var y0 = start.Y;
-        var x1 = end.X;
-        var y1 = end.Y;
-        var dx = Mathf.Abs(x1 - x0);
-        var dy = Mathf.Abs(y1 - y0);
-        var sx = x0 < x1 ? 1 : -1;
-        var sy = y0 < y1 ? 1 : -1;
-        var err = dx - dy;
-
-        while (true)
-        {
-            points.Add(new Vector2I(x0, y0));
-            if (x0 == x1 && y0 == y1)
-            {
-                break;
-            }
-
-            var e2 = err * 2;
-            if (e2 > -dy)
-            {
-                err -= dy;
-                x0 += sx;
-            }
-
-            if (e2 < dx)
-            {
-                err += dx;
-                y0 += sy;
-            }
-        }
-
-        return points;
-    }
-
     private static int Manhattan(Vector2I a, Vector2I b)
     {
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
@@ -2011,7 +1561,7 @@ public partial class BattleController : Node2D
                 }
 
                 var cell = active.GridPos + new Vector2I(dx, dy);
-                if (!IsInBounds(cell) || !IsWithinRange(active.GridPos, cell, actionProfile.Range))
+                if (!IsInBounds(cell) || !Unit.IsWithinRange(active.GridPos, cell, actionProfile.Range))
                 {
                     continue;
                 }
@@ -2020,7 +1570,7 @@ public partial class BattleController : Node2D
                 var target = actionProfile.ActionType == "heal"
                     ? GetLivingAllyAtCell(active.Team, cell)
                     : GetLivingEnemyAtCell(active.Team, cell);
-                var valid = target != null && CanUseActionAtRange(active, target, actionProfile.Range);
+                var valid = target != null && active.CanUseActionAtRange(target, actionProfile.Range, _allUnits);
 
                 var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
                 var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
@@ -2093,57 +1643,7 @@ public partial class BattleController : Node2D
 
     private void DrawMapInteractablesOverlay()
     {
-        foreach (var prop in _mapProps)
-        {
-            var cell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
-            if (!IsInBounds(cell))
-            {
-                continue;
-            }
-
-            var propId = GetString(prop, "id", "prop");
-            var isOpened = _openedPropIds.Contains(propId);
-            var rect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-            if (isOpened)
-            {
-                DrawRect(rect, new Color(0.34f, 0.3f, 0.24f, 0.24f), true);
-                DrawRect(rect, new Color(0.62f, 0.56f, 0.46f, 0.75f), false, 2.0f);
-                DrawCircle(rect.GetCenter(), 5.0f, new Color(0.78f, 0.74f, 0.66f, 0.72f));
-                DrawLine(rect.Position + new Vector2(12.0f, 12.0f), rect.End - new Vector2(12.0f, 12.0f), new Color(0.88f, 0.84f, 0.74f, 0.8f), 2.0f);
-                DrawLine(new Vector2(rect.End.X - 12.0f, rect.Position.Y + 12.0f), new Vector2(rect.Position.X + 12.0f, rect.End.Y - 12.0f), new Color(0.88f, 0.84f, 0.74f, 0.8f), 2.0f);
-            }
-            else
-            {
-                DrawRect(rect, new Color(0.5f, 0.34f, 0.14f, 0.38f), true);
-                DrawRect(rect, new Color(0.85f, 0.62f, 0.32f, 0.95f), false, 2.0f);
-                DrawCircle(rect.GetCenter(), 6.0f, new Color(1.0f, 0.86f, 0.45f, 0.95f));
-            }
-        }
-
-        foreach (var bag in _lootBags)
-        {
-            var cell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (!IsInBounds(cell))
-            {
-                continue;
-            }
-
-            var isEmpty = GetBagItemIds(bag).Count == 0;
-            var rect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-            if (isEmpty)
-            {
-                DrawRect(rect, new Color(0.32f, 0.29f, 0.24f, 0.2f), true);
-                DrawCircle(rect.GetCenter(), 8.0f, new Color(0.72f, 0.68f, 0.6f, 0.72f));
-                DrawArc(rect.GetCenter(), 10.0f, 0.0f, Mathf.Tau, 24, new Color(0.84f, 0.8f, 0.7f, 0.78f), 2.0f);
-                DrawLine(rect.Position + new Vector2(14.0f, 14.0f), rect.End - new Vector2(14.0f, 14.0f), new Color(0.88f, 0.84f, 0.74f, 0.78f), 2.0f);
-            }
-            else
-            {
-                DrawRect(rect, new Color(0.6f, 0.46f, 0.2f, 0.28f), true);
-                DrawCircle(rect.GetCenter(), 9.0f, new Color(0.97f, 0.78f, 0.25f, 0.95f));
-                DrawArc(rect.GetCenter(), 11.0f, 0.0f, Mathf.Tau, 24, new Color(1.0f, 0.94f, 0.65f, 0.95f), 2.0f);
-            }
-        }
+        _mapLoader?.DrawMapInteractablesOverlay(this, _mapProps, _lootBags, _openedPropIds, CellSize);
     }
 
     private void DrawHoveredUnitTooltip()
@@ -2166,7 +1666,7 @@ public partial class BattleController : Node2D
         _hud?.SetWorldHoverTooltip(
             GetGlobalMousePosition(),
             $"{unit.UnitName} [{unit.Team}]",
-            $"HP: {unit.HitPoints}/{unit.MaxHitPoints}\nMP: {unit.MagicPoints}/{unit.MaxMagicPoints}\nArmor Class: {unit.armor_class} | Atk: {unit.AttackDamage} | Range: {unit.AttackRange}",
+            $"HP: {unit.HitPoints}/{unit.MaxHitPoints}\nMP: {unit.MagicPoints}/{unit.MaxMagicPoints}\nArmor Class: {unit.ArmorClass} | Atk: {unit.AttackDamage} | Range: {unit.AttackRange}",
             new Color(0.05f, 0.05f, 0.08f, 0.86f),
             new Color(0.82f, 0.86f, 0.94f, 0.95f),
             titleColor,
@@ -2212,10 +1712,10 @@ public partial class BattleController : Node2D
                     continue;
                 }
 
-                var itemIds = GetBagItemIds(bag);
+                var itemIds = _mapLoader?.GetBagItemIds(bag) ?? new Array<string>();
                 title = itemIds.Count > 0 ? "Loot Bag" : "Loot Bag (Empty)";
                 details = itemIds.Count > 0
-                    ? $"Pickup container\nContains: {JoinItemNames(itemIds)}"
+                    ? $"Pickup container\nContains: {_mapLoader?.JoinItemNames(itemIds, _gameData) ?? "nothing"}"
                     : "Pickup container\nEmpty";
                 break;
             }
@@ -2254,7 +1754,7 @@ public partial class BattleController : Node2D
         );
     }
 
-    private bool TryHandleExplorationClickInteraction(Vector2I clickedCell)
+    private bool TryOpenExplorationInteractionAtCell(Vector2I clickedCell)
     {
         if (_flowState != BattleFlowState.Exploration)
         {
@@ -2267,262 +1767,65 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        Dictionary clickedEntry = null;
-        var clickedInteractable = false;
-
-        foreach (var prop in _mapProps)
-        {
-            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
-            if (propCell != clickedCell)
-            {
-                continue;
-            }
-
-            clickedInteractable = true;
-            if (Manhattan(explorer.GridPos, propCell) > 1)
-            {
-                _hud?.SetStatusText("Move adjacent to interact with that object.");
-                return true;
-            }
-
-            var propId = GetString(prop, "id", "prop");
-            var propName = GetString(prop, "name", "Prop");
-            if (_openedPropIds.Contains(propId))
-            {
-                _hud?.SetStatusText($"{propName} is empty.");
-                return true;
-            }
-
-            clickedEntry = new Dictionary
-            {
-                { "id", $"prop:{propId}" },
-                { "label", $"Open {propName}" },
-                { "detail", $"Open {propName} at ({propCell.X}, {propCell.Y})." }
-            };
-            break;
-        }
-
-        if (clickedEntry == null)
-        {
-            foreach (var bag in _lootBags)
-            {
-                var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-                if (bagCell != clickedCell)
-                {
-                    continue;
-                }
-
-                clickedInteractable = true;
-                if (Manhattan(explorer.GridPos, bagCell) > 1)
-                {
-                    _hud?.SetStatusText("Move adjacent to pick up that loot bag.");
-                    return true;
-                }
-
-                var bagId = GetString(bag, "id", "bag");
-                var itemIds = GetBagItemIds(bag);
-                if (itemIds.Count == 0)
-                {
-                    _hud?.SetStatusText("This loot bag is empty.");
-                    return true;
-                }
-
-                clickedEntry = new Dictionary
-                {
-                    { "id", $"bag:{bagId}" },
-                    { "label", $"Pick up loot bag ({itemIds.Count} item{(itemIds.Count == 1 ? "" : "s")})" },
-                    { "detail", $"Pick up bag at ({bagCell.X}, {bagCell.Y}). Contains: {JoinItemNames(itemIds)}." }
-                };
-                break;
-            }
-        }
-
-        if (!clickedInteractable || clickedEntry == null)
+        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, _mapProps, _lootBags, _openedPropIds, _gameData, out var entries, out var statusText))
         {
             return false;
         }
 
-        _hud?.SetLootEntries(new Array<Dictionary> { clickedEntry });
-        _hud?.SetLootPanelVisible(true);
-        _hud?.SetStatusText("Loot interaction opened. Confirm to proceed.");
+        if (!string.IsNullOrEmpty(statusText))
+        {
+            _hud?.SetStatusText(statusText);
+        }
+
+        if (entries.Count > 0)
+        {
+            _hud?.SetLootEntries(entries);
+            _hud?.SetLootPanelVisible(true);
+        }
+
         return true;
     }
 
     private Array<Dictionary> BuildNearbyLootEntries(Unit explorer)
     {
-        var entries = new Array<Dictionary>();
-        if (explorer == null)
+        if (_mapLoader == null)
         {
-            return entries;
+            return new Array<Dictionary>();
         }
 
-        foreach (var prop in _mapProps)
-        {
-            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, propCell) > 1)
-            {
-                continue;
-            }
-
-            var propId = GetString(prop, "id", "prop");
-            if (_openedPropIds.Contains(propId))
-            {
-                continue;
-            }
-
-            var propName = GetString(prop, "name", "Prop");
-            entries.Add(new Dictionary
-            {
-                { "id", $"prop:{propId}" },
-                { "label", $"Open {propName}" },
-                { "detail", $"Open {propName} at ({propCell.X}, {propCell.Y})." }
-            });
-        }
-
-        foreach (var bag in _lootBags)
-        {
-            var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, bagCell) > 1)
-            {
-                continue;
-            }
-
-            var bagId = GetString(bag, "id", "bag");
-            var itemIds = GetBagItemIds(bag);
-            if (itemIds.Count == 0)
-            {
-                continue;
-            }
-
-            entries.Add(new Dictionary
-            {
-                { "id", $"bag:{bagId}" },
-                { "label", $"Pick up loot bag ({itemIds.Count} item{(itemIds.Count == 1 ? "" : "s")})" },
-                { "detail", $"Pick up bag at ({bagCell.X}, {bagCell.Y}). Contains: {JoinItemNames(itemIds)}." }
-            });
-        }
-
-        return entries;
+        return _mapLoader.BuildNearbyLootEntries(explorer, _mapProps, _lootBags, _openedPropIds, _gameData);
     }
 
-    private bool TryResolveExplorationInteractionById(Unit explorer, string interactionId)
+    private bool TryExecuteExplorationInteractionById(Unit explorer, string interactionId)
     {
-        if (string.IsNullOrEmpty(interactionId))
+        if (_mapLoader == null)
         {
             return false;
         }
 
-        if (interactionId.StartsWith("prop:"))
+        if (!_mapLoader.TryResolveExplorationInteractionById(explorer, interactionId, _mapProps, _lootBags, _openedPropIds, _lootedBagIds, _partyInventoryItemIds, _gameData, _lootRng, out var statusText, out var logText, out var changedState))
         {
-            return TryOpenPropById(explorer, interactionId.Substring(5));
+            return false;
         }
 
-        if (interactionId.StartsWith("bag:"))
+        if (!string.IsNullOrEmpty(statusText))
         {
-            return TryPickupBagById(explorer, interactionId.Substring(4));
+            _hud?.SetStatusText(statusText);
         }
 
-        return false;
-    }
-
-    private bool TryOpenPropById(Unit explorer, string propId)
-    {
-        for (var i = _mapProps.Count - 1; i >= 0; i--)
+        if (!string.IsNullOrEmpty(logText))
         {
-            var prop = _mapProps[i];
-            if (GetString(prop, "id", "") != propId)
-            {
-                continue;
-            }
+            _hud?.AddCombatLogEntry(logText);
+        }
 
-            var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, propCell) > 1)
-            {
-                return false;
-            }
-
-            if (_openedPropIds.Contains(propId))
-            {
-                _hud?.SetStatusText($"{GetString(prop, "name", "prop")} is empty.");
-                return true;
-            }
-
-            _openedPropIds.Add(propId);
-
-            var drops = BuildPropLootDrops(prop);
-            if (drops.Count > 0)
-            {
-                var bag = new Dictionary
-                {
-                    { "id", $"bag-{propId}" },
-                    { "grid_pos", propCell },
-                    { "item_ids", drops },
-                    { "source_prop_id", propId }
-                };
-                _lootBags.Add(bag);
-                _hud?.SetStatusText($"{explorer.UnitName} opened {GetString(prop, "name", "prop")} and revealed loot.");
-                _hud?.AddCombatLogEntry($"Opened {GetString(prop, "name", "prop")}: found {JoinItemNames(drops)}.");
-            }
-            else
-            {
-                _hud?.SetStatusText($"{explorer.UnitName} opened {GetString(prop, "name", "prop")}. It was empty.");
-            }
-
-            RefreshHudPanels();
+        if (changedState)
+        {
+            SyncHudFromGameState();
             SaveMapInteractionStateForCurrentMap();
             QueueRedraw();
-            return true;
         }
 
-        return false;
-    }
-
-    private bool TryPickupBagById(Unit explorer, string bagId)
-    {
-        for (var i = _lootBags.Count - 1; i >= 0; i--)
-        {
-            var bag = _lootBags[i];
-            if (GetString(bag, "id", "") != bagId)
-            {
-                continue;
-            }
-
-            var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, bagCell) > 1)
-            {
-                return false;
-            }
-
-            var itemIds = GetBagItemIds(bag);
-            if (itemIds.Count == 0)
-            {
-                _hud?.SetStatusText("This loot bag is empty.");
-                return true;
-            }
-
-            _lootedBagIds.Add(bagId);
-            bag["item_ids"] = new Array<string>();
-            bag["item_id"] = "";
-
-            if (itemIds.Count > 0)
-            {
-                foreach (var itemId in itemIds)
-                {
-                    _partyInventoryItemIds.Add(itemId);
-                }
-
-                var pickupSummary = JoinItemNames(itemIds);
-                _hud?.SetStatusText($"{explorer.UnitName} picked up {pickupSummary}.");
-                _hud?.AddCombatLogEntry($"Loot acquired: {pickupSummary}.");
-            }
-
-            RefreshHudPanels();
-            SaveMapInteractionStateForCurrentMap();
-            QueueRedraw();
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
     private void SetMovementPreviewPath(Array<Vector2I> path)
@@ -2607,7 +1910,7 @@ public partial class BattleController : Node2D
             var target = actionProfile.ActionType == "heal"
                 ? GetLivingAllyAtCell(active.Team, cell)
                 : GetLivingEnemyAtCell(active.Team, cell);
-            if (target != null && CanUseActionAtRange(active, target, actionProfile.Range))
+            if (target != null && active.CanUseActionAtRange(target, actionProfile.Range, _allUnits))
             {
                 targetCell = cell;
                 return true;
@@ -2633,139 +1936,6 @@ public partial class BattleController : Node2D
             Mathf.FloorToInt(world.X / CellSize),
             Mathf.FloorToInt(world.Y / CellSize)
         );
-    }
-
-    private void SetStatusHelp()
-    {
-        if (_flowState == BattleFlowState.Exploration)
-        {
-            var explorer = GetExplorerUnit();
-            if (explorer == null)
-            {
-                _hud?.SetStatusText("Exploration: no living player units.");
-                return;
-            }
-
-            _hud?.SetStatusText($"Map: {_currentMapId} | Exploration: {explorer.UnitName}");
-            _hud?.SetActionDetails($"Exploration party leader: {explorer.UnitName}");
-            _hud?.SetSelectedAction("None");
-            RefreshHudPanels();
-            return;
-        }
-
-        if (_flowState == BattleFlowState.Defeat)
-        {
-            _hud?.SetStatusText("Defeat. All player units were defeated.");
-            _hud?.SetActionDetails("Defeat state. Restart the encounter to continue.");
-            _hud?.SetSelectedAction("None");
-            RefreshHudPanels();
-            return;
-        }
-
-        var active = _turnManager.GetActiveUnit();
-        if (active == null)
-        {
-            _hud?.SetStatusText("No active unit");
-            return;
-        }
-
-        var selectedAbilityId = GetSelectedAbilityId(active);
-        var selectedProfile = ResolveActionProfile(active, selectedAbilityId);
-        var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedProfile.ActionId);
-        var abilityState = !active.CanUseAbilityThisTurn()
-            ? "used"
-            : cooldownRemaining > 0
-                ? $"cooldown ({cooldownRemaining})"
-                : "ready";
-        var combatPrefix = string.IsNullOrEmpty(_lastActionSummary) ? "" : $"Last action: {_lastActionSummary} | ";
-        _hud?.SetStatusText(
-            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | HP: {active.HitPoints}/{active.MaxHitPoints} | MP: {active.MagicPoints}/{active.MaxMagicPoints} | Move: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
-        );
-
-        
-        _hud?.SetSelectedAction(_awaitingPlayerAttackDirection ? $"{selectedProfile.ActionId} (targeting)" : selectedProfile.ActionId);
-        RefreshHudPanels();
-    }
-
-    private void RefreshHudPanels()
-    {
-        if (_hud == null)
-        {
-            return;
-        }
-
-        _hud.SetHelpText(BuildHelpText());
-
-        var active = _turnManager?.GetActiveUnit();
-        _hud.SetTurnQueue(BuildTurnQueueForHud(), active);
-        _hud.SetActiveUnit(_flowState == BattleFlowState.Combat ? active : null);
-
-        var activePlayer = GetActivePlayerUnit();
-        var abilityEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
-        _hud.SetActionButtonsEnabled(abilityEnabled, _flowState == BattleFlowState.Combat);
-        _hud.SetAbilityButtons(BuildAbilityEntriesForHud(activePlayer), abilityEnabled);
-
-        var inventoryTarget = GetInventoryTargetUnit();
-        if (inventoryTarget != null)
-        {
-            _hud.SetInventoryUnitName(inventoryTarget.UnitName);
-            _hud.SetInventoryEquippedSummary(BuildInventoryEquippedSummary(inventoryTarget));
-            _hud.SetInventoryEquippedItems(BuildInventoryEquippedEntries(inventoryTarget));
-            _hud.SetInventoryItems(BuildInventoryItemsForHud(), GetEquippedItemIds(inventoryTarget));
-        }
-        else
-        {
-            _hud.SetInventoryEquippedSummary("Equipped: none");
-            _hud.SetInventoryEquippedItems(new Array<Dictionary>());
-        }
-
-        if (_flowState == BattleFlowState.Exploration)
-        {
-            var explorer = GetExplorerUnit();
-            _hud.SetLootEntries(BuildNearbyLootEntries(explorer));
-        }
-        else
-        {
-            _hud.SetLootPanelVisible(false);
-        }
-    }
-
-    private string BuildHelpText()
-    {
-        var common =
-            "CONTROLS\n" +
-            "- Inventory: I\n" +
-            "- Help: H\n" +
-            "- Inspect: hover units and interactables\n" +
-            "- Inventory target: click party member portrait\n" +
-            "- Cycle target: Tab / Shift+Tab or Prev/Next Member\n";
-
-        if (_flowState == BattleFlowState.Exploration)
-        {
-            return common +
-                "\nEXPLORATION\n" +
-                "- Move party: WASD or Arrow keys\n" +
-                "- Interact: left-click chest/loot while adjacent (range 1)\n" +
-                "- Confirm pickups in Nearby Loot\n" +
-                "- Map transitions: step on glowing edge cells\n" +
-                "- Combat starts when enemies engage your party";
-        }
-
-        if (_flowState == BattleFlowState.Combat)
-        {
-            return common +
-                "\nCOMBAT\n" +
-                "- Move: WASD/Arrow keys or click reachable cells\n" +
-                "- Ability: F, then choose direction/cell\n" +
-                "- End turn: Space or End Turn button\n" +
-                "- Limits: one ability use and limited movement each turn\n" +
-                "- Win encounter to return to exploration";
-        }
-
-        return common +
-            "\nDEFEAT\n" +
-            "- All party members are down\n" +
-            "- Restart encounter or reload to continue";
     }
 
     private Array<Dictionary> BuildInventoryItemsForHud()
@@ -2808,7 +1978,7 @@ public partial class BattleController : Node2D
 
     private Unit GetInventoryTargetUnit()
     {
-        var selected = GetSelectedInventoryUnit();
+        var selected = GetSelectedCharacterPartyUnit();
         if (selected != null)
         {
             return selected;
@@ -2820,7 +1990,7 @@ public partial class BattleController : Node2D
 
         if (fallback != null)
         {
-            _selectedInventoryUnitId = fallback.UnitId;
+            _selectedCharacterUnitId = fallback.UnitId;
         }
 
         return fallback;
@@ -2845,29 +2015,6 @@ public partial class BattleController : Node2D
         }
 
         return result;
-    }
-
-    private string GetEquippedItemSummary(Unit unit)
-    {
-        if (_gameData == null)
-        {
-            return "None";
-        }
-
-        var equippedIds = GetEquippedItemIds(unit);
-        if (equippedIds.Count == 0)
-        {
-            return "None";
-        }
-
-        var names = new List<string>();
-        foreach (var itemId in equippedIds)
-        {
-            var item = _gameData.GetItem(itemId);
-            names.Add(item.Count == 0 ? itemId : GetString(item, "name", itemId));
-        }
-
-        return string.Join(", ", names);
     }
 
     private string BuildInventoryEquippedSummary(Unit unit)
@@ -2931,16 +2078,16 @@ public partial class BattleController : Node2D
         return entries;
     }
 
-    private Unit GetSelectedInventoryUnit()
+    private Unit GetSelectedCharacterPartyUnit()
     {
-        if (string.IsNullOrEmpty(_selectedInventoryUnitId))
+        if (string.IsNullOrEmpty(_selectedCharacterUnitId))
         {
             return null;
         }
 
         foreach (var unit in _playerUnits)
         {
-            if (IsUsableUnit(unit) && !unit.IsDead && unit.UnitId == _selectedInventoryUnitId)
+            if (IsUsableUnit(unit) && !unit.IsDead && unit.UnitId == _selectedCharacterUnitId)
             {
                 return unit;
             }
@@ -2949,23 +2096,36 @@ public partial class BattleController : Node2D
         return null;
     }
 
-    private bool TrySelectPartyMemberAtCell(Vector2I cell)
+    private Unit GetSelectedCharacterUnit()
     {
-        foreach (var unit in _playerUnits)
+        if (string.IsNullOrEmpty(_selectedCharacterUnitId))
         {
-            if (!IsUsableUnit(unit) || unit.IsDead)
+            return null;
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (IsUsableUnit(unit) && !unit.IsDead && unit.UnitId == _selectedCharacterUnitId)
+            {
+                return unit;
+            }
+        }
+
+        return null;
+    }
+
+    private bool TrySelectCharacterAtCell(Vector2I cell)
+    {
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.GridPos != cell)
             {
                 continue;
             }
 
-            if (unit.GridPos != cell)
-            {
-                continue;
-            }
-
-            _selectedInventoryUnitId = unit.UnitId;
-            _hud?.SetStatusText($"Selected {unit.UnitName} for inventory management.");
-            RefreshHudPanels();
+            _selectedCharacterUnitId = unit.UnitId;
+            _hud?.SetStatusText($"Selected {unit.UnitName} for character details.");
+            SyncHudFromGameState();
             return true;
         }
 
@@ -2985,14 +2145,14 @@ public partial class BattleController : Node2D
 
         if (party.Count == 0)
         {
-            _selectedInventoryUnitId = "";
+            _selectedCharacterUnitId = "";
             return;
         }
 
         var currentIndex = -1;
         for (var i = 0; i < party.Count; i++)
         {
-            if (party[i].UnitId == _selectedInventoryUnitId)
+            if (party[i].UnitId == _selectedCharacterUnitId)
             {
                 currentIndex = i;
                 break;
@@ -3001,7 +2161,7 @@ public partial class BattleController : Node2D
 
         if (currentIndex < 0)
         {
-            _selectedInventoryUnitId = party[0].UnitId;
+            _selectedCharacterUnitId = party[0].UnitId;
             return;
         }
 
@@ -3011,7 +2171,7 @@ public partial class BattleController : Node2D
             next += party.Count;
         }
 
-        _selectedInventoryUnitId = party[next].UnitId;
+        _selectedCharacterUnitId = party[next].UnitId;
     }
 
     private void ApplyEquippedItemBonuses(Unit unit)
@@ -3212,168 +2372,6 @@ public partial class BattleController : Node2D
         }
 
         return _turnManager.GetTurnOrderFromActive();
-    }
-
-    private Unit GetExplorerUnit()
-    {
-        PruneInvalidUnitReferences();
-
-        if (IsUsableUnit(_explorerUnit) && !_explorerUnit.IsDead && _explorerUnit.Team == "player")
-        {
-            return _explorerUnit;
-        }
-
-        foreach (var unit in _playerUnits)
-        {
-            if (IsUsableUnit(unit) && !unit.IsDead)
-            {
-                _explorerUnit = unit;
-                return unit;
-            }
-        }
-
-        return null;
-    }
-
-    private void EnterExplorationMode(string statusText = null)
-    {
-        _flowState = BattleFlowState.Exploration;
-        _awaitingPlayerAttackDirection = false;
-        ClearMovementPreviewPath();
-        PruneInvalidUnitReferences();
-        _explorerUnit = GetExplorerUnit();
-
-        foreach (var unit in _allUnits)
-        {
-            if (!IsUsableUnit(unit))
-            {
-                continue;
-            }
-
-            unit.SetActive(false);
-        }
-
-        if (!string.IsNullOrEmpty(statusText))
-        {
-            _hud?.SetStatusText(statusText);
-        }
-        else
-        {
-            SetStatusHelp();
-        }
-    }
-
-    private void TryStartCombatFromAggro()
-    {
-        if (_flowState != BattleFlowState.Exploration)
-        {
-            return;
-        }
-
-        PruneInvalidUnitReferences();
-
-        foreach (var enemy in _enemyUnits)
-        {
-            if (!IsUsableUnit(enemy) || enemy.IsDead)
-            {
-                continue;
-            }
-
-            var encounterId = enemy.EncounterId;
-            if (string.IsNullOrEmpty(encounterId) || _clearedEncounterIds.Contains(encounterId))
-            {
-                continue;
-            }
-
-            var aggroRange = GetEncounterAggroRange(encounterId);
-
-            foreach (var player in _playerUnits)
-            {
-                if (!IsUsableUnit(player) || player.IsDead)
-                {
-                    continue;
-                }
-
-                if (Manhattan(player.GridPos, enemy.GridPos) <= aggroRange)
-                {
-                    StartCombat(encounterId);
-                    return;
-                }
-            }
-        }
-    }
-
-    private void StartCombat(string encounterId)
-    {
-        if (_flowState == BattleFlowState.Combat)
-        {
-            return;
-        }
-
-        PruneInvalidUnitReferences();
-
-        _activeEncounterId = encounterId;
-        _flowState = BattleFlowState.Combat;
-        _awaitingPlayerAttackDirection = false;
-        _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
-
-        var combatUnits = new Array<Unit>();
-        foreach (var player in _playerUnits)
-        {
-            if (IsUsableUnit(player) && !player.IsDead)
-            {
-                combatUnits.Add(player);
-            }
-        }
-
-        foreach (var enemy in _enemyUnits)
-        {
-            if (IsUsableUnit(enemy) && !enemy.IsDead && enemy.EncounterId == encounterId)
-            {
-                combatUnits.Add(enemy);
-            }
-        }
-
-        _turnManager.SetupTurnOrder(combatUnits);
-        SetStatusHelp();
-    }
-
-    private bool TryHandleMapTransition()
-    {
-        if (_flowState != BattleFlowState.Exploration)
-        {
-            return false;
-        }
-
-        var explorer = GetExplorerUnit();
-        if (explorer == null)
-        {
-            return false;
-        }
-
-        foreach (var transition in _mapTransitions)
-        {
-            var fromCell = GetVector2I(transition, "from_cell", new Vector2I(-9999, -9999));
-            if (explorer.GridPos != fromCell)
-            {
-                continue;
-            }
-
-            var toMap = GetString(transition, "to_map", _currentMapId);
-            var spawnCell = GetVector2I(transition, "spawn_cell", explorer.GridPos);
-            TransitionToMap(toMap, spawnCell);
-            return true;
-        }
-
-        return false;
-    }
-
-    private void TransitionToMap(string toMapId, Vector2I spawnCell)
-    {
-        SaveClearedEncounterStateForCurrentMap();
-        SpawnMapEncounter(toMapId, preserveParty: true, leadSpawnCell: spawnCell);
-        EnterExplorationMode($"Transitioned to {toMapId}. Keep exploring.");
-        QueueRedraw();
     }
 
     private void PositionPartyForMapTransition(Vector2I leadSpawnCell)
@@ -3690,92 +2688,6 @@ public partial class BattleController : Node2D
         return result;
     }
 
-    private Array<string> BuildPropLootDrops(Dictionary prop)
-    {
-        var pool = TryGetStringArray(prop, "loot_item_ids");
-        var legacySingle = GetString(prop, "loot_item_id", "");
-        if (pool.Count == 0 && !string.IsNullOrEmpty(legacySingle))
-        {
-            pool.Add(legacySingle);
-        }
-
-        if (pool.Count == 0)
-        {
-            return new Array<string>();
-        }
-
-        var minRolls = Mathf.Max(1, GetInt(prop, "loot_rolls_min", 1));
-        var maxRolls = Mathf.Max(minRolls, GetInt(prop, "loot_rolls_max", minRolls));
-        var desiredRolls = _lootRng.RandiRange(minRolls, maxRolls);
-        var rolls = Mathf.Clamp(desiredRolls, 1, pool.Count);
-
-        var indices = new System.Collections.Generic.List<int>();
-        for (var i = 0; i < pool.Count; i++)
-        {
-            indices.Add(i);
-        }
-
-        for (var i = indices.Count - 1; i > 0; i--)
-        {
-            var swap = _lootRng.RandiRange(0, i);
-            (indices[i], indices[swap]) = (indices[swap], indices[i]);
-        }
-
-        var drops = new Array<string>();
-        for (var i = 0; i < rolls; i++)
-        {
-            drops.Add(pool[indices[i]]);
-        }
-
-        return drops;
-    }
-
-    private Array<string> BuildPropLootDropsPreview(Dictionary prop)
-    {
-        var pool = TryGetStringArray(prop, "loot_item_ids");
-        var legacySingle = GetString(prop, "loot_item_id", "");
-        if (pool.Count == 0 && !string.IsNullOrEmpty(legacySingle))
-        {
-            pool.Add(legacySingle);
-        }
-
-        return pool;
-    }
-
-    private static Array<string> GetBagItemIds(Dictionary bag)
-    {
-        var itemIds = TryGetStringArray(bag, "item_ids");
-        if (itemIds.Count > 0)
-        {
-            return itemIds;
-        }
-
-        var fallbackItem = GetString(bag, "item_id", "");
-        if (!string.IsNullOrEmpty(fallbackItem))
-        {
-            itemIds.Add(fallbackItem);
-        }
-
-        return itemIds;
-    }
-
-    private string JoinItemNames(Array<string> itemIds)
-    {
-        if (itemIds.Count == 0)
-        {
-            return "nothing";
-        }
-
-        var names = new System.Collections.Generic.List<string>();
-        foreach (var itemId in itemIds)
-        {
-            var itemData = _gameData?.GetItem(itemId) ?? new Dictionary();
-            names.Add(GetString(itemData, "name", itemId));
-        }
-
-        return string.Join(", ", names);
-    }
-
     private static string GetString(Dictionary dict, string key, string fallback)
     {
         return dict.ContainsKey(key) ? ((Variant)dict[key]).AsString() : fallback;
@@ -3831,6 +2743,11 @@ public partial class BattleController : Node2D
         if (!IsUsableUnit(_explorerUnit))
         {
             _explorerUnit = null;
+        }
+
+        if (!string.IsNullOrEmpty(_selectedCharacterUnitId) && GetSelectedCharacterUnit() == null)
+        {
+            _selectedCharacterUnitId = "";
         }
     }
 
