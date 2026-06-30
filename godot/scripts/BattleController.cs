@@ -2,7 +2,7 @@ using Godot;
 using Godot.Collections;
 using System.Collections.Generic;
 
-public partial class BattleController : Node2D
+public partial class BattleController : Node2D, IGamePersistenceHost
 {
     // Architecture: Core orchestration state and cross-system coordination.
     private const int GridWidth = 20;
@@ -12,6 +12,7 @@ public partial class BattleController : Node2D
     private const float GridLineThickness = 2.0f;
     private const ulong ManualEndTurnDebounceMs = 220;
     private const float EnemyActionDelaySeconds = 0.24f;
+    private const string SaveFilePath = "user://dark_dungeon_tactics_save.json";
 
     private enum BattleFlowState
     {
@@ -27,6 +28,7 @@ public partial class BattleController : Node2D
     private HudController _hud;
     private EventBus _eventBus;
     private GameData _gameData;
+    private GamePersistence _persistence;
 
     private readonly PackedScene _unitScene = GD.Load<PackedScene>("res://scenes/Unit.tscn");
     private readonly Array<Unit> _allUnits = new();
@@ -38,13 +40,13 @@ public partial class BattleController : Node2D
     private readonly Array<Dictionary> _lootBags = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> _equippedItemsByUnitId = new();
-    private readonly System.Collections.Generic.List<string> _partyInventoryItemIds = new();
-    private readonly System.Collections.Generic.HashSet<string> _clearedEncounterIds = new();
-    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _clearedEncounterIdsByMap = new();
-    private readonly System.Collections.Generic.HashSet<string> _openedPropIds = new();
+    private readonly List<string> _partyInventoryItemIds = new();
+    private readonly HashSet<string> _clearedEncounterIds = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _clearedEncounterIdsByMap = new();
+    private readonly HashSet<string> _openedPropIds = new();
     private readonly HashSet<string> _lootedBagIds = new();
-    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _openedPropIdsByMap = new();
-    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _lootedBagIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedPropIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
     private readonly RandomNumberGenerator _lootRng = new();
 
@@ -130,9 +132,9 @@ public partial class BattleController : Node2D
         _hud = GetNodeOrNull<HudController>("HUD");
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
+        _persistence = new GamePersistence(this, SaveFilePath);
         _lootRng.Randomize();
 
-        SpawnMapEncounter(_currentMapId);
         _turnManager.TurnChanged += OnTurnChanged;
         if (_hud != null)
         {
@@ -144,7 +146,12 @@ public partial class BattleController : Node2D
             _hud.LootConfirmRequested += OnHudLootConfirmRequested;
         }
 
-        EnterExplorationMode();
+        if (!_persistence.TryLoadSaveGame(false))
+        {
+            SpawnMapEncounter(_currentMapId);
+            EnterExplorationMode();
+        }
+
         SyncHudFromGameState();
         QueueRedraw();
     }
@@ -165,6 +172,8 @@ public partial class BattleController : Node2D
             _hud.InventoryCycleRequested -= OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
         }
+
+        _persistence.PersistSaveGame(false);
     }
 
     public override void _Draw()
@@ -355,6 +364,7 @@ public partial class BattleController : Node2D
         _hud?.SetStatusText($"{target.UnitName} equipped {itemName}.");
         _hud?.AddCombatLogEntry($"{target.UnitName} equipped {itemName}.");
         SetStatusHelp();
+        _persistence.PersistSaveGame(false);
     }
 
     private void OnHudUnequipItemRequested(string equippedSlotKey)
@@ -389,6 +399,7 @@ public partial class BattleController : Node2D
         _hud?.SetStatusText($"{target.UnitName} unequipped {itemName}.");
         _hud?.AddCombatLogEntry($"{target.UnitName} unequipped {itemName}.");
         SetStatusHelp();
+        _persistence.PersistSaveGame(false);
     }
 
     private void OnHudInventoryCycleRequested(int delta)
@@ -426,6 +437,7 @@ public partial class BattleController : Node2D
         _hud?.SetLootEntries(nearbyEntries);
         _hud?.SetLootPanelVisible(nearbyEntries.Count > 0);
         SetStatusHelp();
+        _persistence.PersistSaveGame(false);
     }
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
@@ -708,9 +720,12 @@ public partial class BattleController : Node2D
     }
 
     // Encounter setup
-    private void SpawnMapEncounter(string mapId, bool preserveParty = false, Vector2I leadSpawnCell = default)
+    private void SpawnMapEncounter(string mapId, bool preserveParty = false, Vector2I leadSpawnCell = default, bool preserveCurrentMapState = true)
     {
-        SaveClearedEncounterStateForCurrentMap();
+        if (preserveCurrentMapState)
+        {
+            SaveClearedEncounterStateForCurrentMap();
+        }
 
         if (preserveParty)
         {
@@ -807,11 +822,12 @@ public partial class BattleController : Node2D
         if (unit.Team == "player")
         {
             _playerUnits.Add(unit);
-            ApplyStartingEquipmentFromConfig(unit, config);
+            ApplyStartingEquipmentFromConfig(unit, config, addToPartyInventory: true);
         }
         else
         {
             _enemyUnits.Add(unit);
+            ApplyStartingEquipmentFromConfig(unit, config, addToPartyInventory: false);
         }
 
         ApplyEquippedItemBonuses(unit);
@@ -978,12 +994,39 @@ public partial class BattleController : Node2D
         if (target.IsDead)
         {
             resultText += $" {target.UnitName} is defeated.";
+            var xpSummary = AwardExperienceForDefeat(attacker, target);
+            if (!string.IsNullOrEmpty(xpSummary))
+            {
+                resultText += $" {xpSummary}";
+            }
         }
 
         _lastActionSummary = resultText;
         _hud?.SetStatusText(resultText);
         _hud?.AddCombatLogEntry(resultText);
         return true;
+    }
+
+    private string AwardExperienceForDefeat(Unit attacker, Unit defeatedTarget)
+    {
+        if (!IsUsableUnit(attacker) || !IsUsableUnit(defeatedTarget))
+        {
+            return "";
+        }
+
+        if (attacker.Team != "player" || defeatedTarget.Team != "enemy")
+        {
+            return "";
+        }
+
+        var xpReward = Mathf.Max(5, defeatedTarget.Initiative * 2);
+        var levelsGained = attacker.GrantExperience(xpReward);
+        if (levelsGained > 0)
+        {
+            return $"+{xpReward} XP. Level up to {attacker.Level}!";
+        }
+
+        return $"+{xpReward} XP.";
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false)
@@ -1112,6 +1155,7 @@ public partial class BattleController : Node2D
             _flowState = BattleFlowState.Defeat;
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             _hud?.SetStatusText("Defeat. All player units were defeated.");
+            _persistence.PersistSaveGame(false);
             return true;
         }
 
@@ -1119,6 +1163,7 @@ public partial class BattleController : Node2D
         {
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             EnterExplorationMode("Encounter cleared. Exploration resumed.");
+            _persistence.PersistSaveGame(false);
             return true;
         }
 
@@ -1129,6 +1174,7 @@ public partial class BattleController : Node2D
             _activeEncounterId = "";
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             EnterExplorationMode("Encounter cleared. Exploration resumed.");
+            _persistence.PersistSaveGame(false);
             return true;
         }
 
@@ -1366,8 +1412,21 @@ public partial class BattleController : Node2D
 
         var actionName = GetString(actionData, "name", abilityId);
         var actionType = GetString(actionData, "type", "attack");
-        var range = Mathf.Max(1, GetInt(actionData, "range", actor.AttackRange));
-        var damage = Mathf.Max(0, GetInt(actionData, "damage", actor.AttackDamage));
+
+        var configuredRange = GetInt(actionData, "range", actor.AttackRange);
+        var configuredDamage = GetInt(actionData, "damage", actor.AttackDamage);
+
+        // Physical attacks commonly use 0 in data as a placeholder for "use unit stats".
+        var shouldUseActorCombatStats = actionType == "attack" && !isMagical;
+        var range = shouldUseActorCombatStats && configuredRange <= 0
+            ? actor.AttackRange
+            : configuredRange;
+        var damage = shouldUseActorCombatStats && configuredDamage <= 0
+            ? actor.AttackDamage
+            : configuredDamage;
+
+        range = Mathf.Max(1, range);
+        damage = Mathf.Max(0, damage);
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
         var cooldownTurns = Mathf.Max(0, GetInt(actionData, "cooldown", 0));
         var mpCost = Mathf.Max(0, GetInt(actionData, "mp_cost", 0));
@@ -1822,6 +1881,7 @@ public partial class BattleController : Node2D
         {
             SyncHudFromGameState();
             SaveMapInteractionStateForCurrentMap();
+            _persistence.PersistSaveGame(false);
             QueueRedraw();
         }
 
@@ -2182,7 +2242,7 @@ public partial class BattleController : Node2D
         }
 
         unit.SetWeaponBonuses(0, 0);
-        unit.SetArmorBonuses(0, 0, 0);
+        unit.SetArmorBonuses(0);
 
         if (_gameData == null || unit == null || string.IsNullOrEmpty(unit.UnitId))
         {
@@ -2196,6 +2256,7 @@ public partial class BattleController : Node2D
 
         var totalWeaponDamage = 0;
         var bestWeaponRange = 0;
+        var hasEquippedWeapon = false;
         var total_armor_class = 0;
         foreach (var entry in equippedBySlot)
         {
@@ -2213,6 +2274,7 @@ public partial class BattleController : Node2D
                 var range = GetInt(itemData, "range", 0);
                 totalWeaponDamage += base_dmg + bonus_dmg;
                 bestWeaponRange = Mathf.Max(bestWeaponRange, range);
+                hasEquippedWeapon = true;
             }
             else if (itemType == "armor")
             {
@@ -2222,11 +2284,18 @@ public partial class BattleController : Node2D
             }
         }
 
-        unit.SetWeaponBonuses(totalWeaponDamage, bestWeaponRange);
-        unit.SetArmorBonuses(total_armor_class, 0, 0);
+        var weaponDamageBonus = hasEquippedWeapon
+            ? totalWeaponDamage
+            : 0;
+        var weaponRangeBonus = hasEquippedWeapon
+            ? bestWeaponRange
+            : 0;
+
+        unit.SetWeaponBonuses(weaponDamageBonus, weaponRangeBonus);
+        unit.SetArmorBonuses(total_armor_class);
     }
 
-    private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config)
+    private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config, bool addToPartyInventory)
     {
         if (unit == null || config == null)
         {
@@ -2241,7 +2310,10 @@ public partial class BattleController : Node2D
                 continue;
             }
 
-            _partyInventoryItemIds.Add(itemId);
+            if (addToPartyInventory)
+            {
+                _partyInventoryItemIds.Add(itemId);
+            }
             if (_gameData == null)
             {
                 continue;
@@ -2507,7 +2579,7 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var snapshot = new System.Collections.Generic.HashSet<string>();
+        var snapshot = new HashSet<string>();
         foreach (var encounterId in _clearedEncounterIds)
         {
             snapshot.Add(encounterId);
@@ -2524,13 +2596,13 @@ public partial class BattleController : Node2D
             return;
         }
 
-        var openedSnapshot = new System.Collections.Generic.HashSet<string>();
+        var openedSnapshot = new HashSet<string>();
         foreach (var propId in _openedPropIds)
         {
             openedSnapshot.Add(propId);
         }
 
-        var lootedSnapshot = new System.Collections.Generic.HashSet<string>();
+        var lootedSnapshot = new HashSet<string>();
         foreach (var bagId in _lootedBagIds)
         {
             lootedSnapshot.Add(bagId);
@@ -2545,6 +2617,24 @@ public partial class BattleController : Node2D
         _openedPropIdsByMap[_currentMapId] = openedSnapshot;
         _lootedBagIdsByMap[_currentMapId] = lootedSnapshot;
         _lootBagsByMap[_currentMapId] = lootBagSnapshot;
+    }
+
+    private Unit FindUnitById(string unitId)
+    {
+        if (string.IsNullOrEmpty(unitId))
+        {
+            return null;
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (IsUsableUnit(unit) && unit.UnitId == unitId)
+            {
+                return unit;
+            }
+        }
+
+        return null;
     }
 
     private bool HasLivingEnemiesInEncounter(string encounterId)
@@ -2764,7 +2854,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        var orderedParty = new System.Collections.Generic.List<Unit>();
+        var orderedParty = new List<Unit>();
         var priorPositions = new System.Collections.Generic.Dictionary<Unit, Vector2I>();
 
         orderedParty.Add(leader);
@@ -2786,7 +2876,7 @@ public partial class BattleController : Node2D
             return false;
         }
 
-        var partySet = new System.Collections.Generic.HashSet<Unit>(orderedParty);
+        var partySet = new HashSet<Unit>(orderedParty);
         for (var i = 1; i < orderedParty.Count; i++)
         {
             var follower = orderedParty[i];
@@ -2806,7 +2896,7 @@ public partial class BattleController : Node2D
         return true;
     }
 
-    private bool CanExplorationFollowerEnterCell(Vector2I cell, System.Collections.Generic.HashSet<Unit> partyMembers)
+    private bool CanExplorationFollowerEnterCell(Vector2I cell, HashSet<Unit> partyMembers)
     {
         if (!IsInBounds(cell) || IsBlockedCell(cell))
         {
@@ -2828,4 +2918,102 @@ public partial class BattleController : Node2D
 
         return true;
     }
+
+    string IGamePersistenceHost.CurrentMapId
+    {
+        get => _currentMapId;
+        set => _currentMapId = value;
+    }
+
+    string IGamePersistenceHost.ActiveEncounterId
+    {
+        get => _activeEncounterId;
+        set => _activeEncounterId = value;
+    }
+
+    string IGamePersistenceHost.SelectedCharacterUnitId
+    {
+        get => _selectedCharacterUnitId;
+        set => _selectedCharacterUnitId = value;
+    }
+
+    System.Collections.Generic.Dictionary<string, string> IGamePersistenceHost.SelectedAbilityIdByUnitId => _selectedAbilityIdByUnitId;
+    System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> IGamePersistenceHost.EquippedItemsByUnitId => _equippedItemsByUnitId;
+    List<string> IGamePersistenceHost.PartyInventoryItemIds => _partyInventoryItemIds;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.ClearedEncounterIdsByMap => _clearedEncounterIdsByMap;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedPropIdsByMap => _openedPropIdsByMap;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;
+    System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;
+
+    string IGamePersistenceHost.GetFlowStateToken() => _flowState == BattleFlowState.Combat ? "combat" : (_flowState == BattleFlowState.Defeat ? "defeat" : "exploration");
+    string IGamePersistenceHost.GetExplorerUnitId() => _explorerUnit?.UnitId ?? "";
+    void IGamePersistenceHost.SetExplorerUnitById(string unitId) => _explorerUnit = FindUnitById(unitId);
+    void IGamePersistenceHost.SaveClearedEncounterStateForCurrentMap() => SaveClearedEncounterStateForCurrentMap();
+    void IGamePersistenceHost.SpawnMapEncounter(string mapId) => SpawnMapEncounter(mapId, preserveParty: false, leadSpawnCell: default, preserveCurrentMapState: false);
+
+    Array<Dictionary> IGamePersistenceHost.BuildUnitSnapshots()
+    {
+        var unitSnapshots = new Array<Dictionary>();
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            unitSnapshots.Add(unit.BuildRuntimeSnapshot());
+        }
+
+        return unitSnapshots;
+    }
+
+    void IGamePersistenceHost.ApplyUnitSnapshots(Array<Dictionary> snapshots)
+    {
+        var byId = new System.Collections.Generic.Dictionary<string, Dictionary>();
+        foreach (var snapshot in snapshots)
+        {
+            var unitId = GetString(snapshot, "unit_id", "");
+            if (!string.IsNullOrEmpty(unitId))
+            {
+                byId[unitId] = snapshot;
+            }
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || string.IsNullOrEmpty(unit.UnitId))
+            {
+                continue;
+            }
+
+            if (byId.TryGetValue(unit.UnitId, out var snapshot))
+            {
+                unit.ApplyRuntimeSnapshot(snapshot);
+            }
+
+            ApplyEquippedItemBonuses(unit);
+        }
+
+        CleanupDefeatedUnits();
+        PruneInvalidUnitReferences();
+    }
+
+    void IGamePersistenceHost.RestoreFlowState(string flowStateToken)
+    {
+        _isEndingTurn = false;
+        _isEnemyTurnProcessing = false;
+
+        if (flowStateToken == "combat" && !string.IsNullOrEmpty(_activeEncounterId) && HasLivingEnemiesInEncounter(_activeEncounterId))
+        {
+            _flowState = BattleFlowState.Exploration;
+            StartCombat(_activeEncounterId);
+            return;
+        }
+
+        EnterExplorationMode("Loaded save.");
+    }
+
+    void IGamePersistenceHost.SyncHudFromGameState() => SyncHudFromGameState();
+    void IGamePersistenceHost.RequestRedraw() => QueueRedraw();
+    void IGamePersistenceHost.SetStatusText(string text) => _hud?.SetStatusText(text);
 }

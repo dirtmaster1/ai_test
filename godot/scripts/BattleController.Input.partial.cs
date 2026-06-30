@@ -34,6 +34,13 @@ public partial class BattleController
             return;
         }
 
+        if (keyEvent.Keycode == Key.C)
+        {
+            _hud?.ToggleCharacterVisible();
+            SyncHudFromGameState();
+            return;
+        }
+
         if (keyEvent.Keycode == Key.H)
         {
             _hud?.ToggleHelpVisible();

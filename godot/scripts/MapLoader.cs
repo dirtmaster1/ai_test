@@ -39,8 +39,8 @@ public partial class MapLoader : Node
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-a" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 6) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
-                    new Dictionary { { "id", "goblin-archer-a" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 8) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                    new Dictionary { { "id", "goblin-warrior-a" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 6) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "starting_equipment", new Array<string> { "short-sword" } } },
+                    new Dictionary { { "id", "goblin-archer-a" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 8) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 }, { "starting_equipment", new Array<string> { "short-bow" } } }
                 }
             }
         };
@@ -53,8 +53,8 @@ public partial class MapLoader : Node
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-b" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(16, 5) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 } },
-                    new Dictionary { { "id", "goblin-archer-b" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(17, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                    new Dictionary { { "id", "goblin-warrior-b" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(16, 5) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "starting_equipment", new Array<string> { "short-sword" } } },
+                    new Dictionary { { "id", "goblin-archer-b" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(17, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 }, { "starting_equipment", new Array<string> { "short-bow" } } }
                 }
             }
         };
@@ -118,8 +118,8 @@ public partial class MapLoader : Node
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-c" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(13, 6) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 9 }, { "max_hit_points", 9 } },
-                    new Dictionary { { "id", "goblin-archer-c" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(15, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 12 }, { "hit_points", 7 }, { "max_hit_points", 7 } }
+                    new Dictionary { { "id", "goblin-warrior-c" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(13, 6) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 9 }, { "max_hit_points", 9 }, { "starting_equipment", new Array<string> { "short-sword" } } },
+                    new Dictionary { { "id", "goblin-archer-c" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(15, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 12 }, { "hit_points", 7 }, { "max_hit_points", 7 }, { "starting_equipment", new Array<string> { "short-bow" } } }
                 }
             }
         };
@@ -675,17 +675,17 @@ public partial class MapLoader : Node
 
     private static Vector2I GetVector2I(Dictionary dict, string key, Vector2I fallback)
     {
-        return dict.ContainsKey(key) ? (Vector2I)((Variant)dict[key]) : fallback;
+        return dict.ContainsKey(key) ? (Vector2I)dict[key] : fallback;
     }
 
     private static string GetString(Dictionary dict, string key, string fallback)
     {
-        return dict.ContainsKey(key) ? ((Variant)dict[key]).AsString() : fallback;
+        return dict.ContainsKey(key) ? dict[key].AsString() : fallback;
     }
 
     private static int GetInt(Dictionary dict, string key, int fallback)
     {
-        return dict.ContainsKey(key) ? (int)((Variant)dict[key]) : fallback;
+        return dict.ContainsKey(key) ? (int)dict[key] : fallback;
     }
 
     private static Array<string> TryGetStringArray(Dictionary dict, string key)
@@ -695,7 +695,7 @@ public partial class MapLoader : Node
             return new Array<string>();
         }
 
-        var raw = (Variant)dict[key];
+        var raw = dict[key];
         if (raw.VariantType != Variant.Type.Array)
         {
             return new Array<string>();
@@ -704,7 +704,7 @@ public partial class MapLoader : Node
         var result = new Array<string>();
         foreach (var entry in (Array)raw)
         {
-            var variant = (Variant)entry;
+            var variant = entry;
             if (variant.VariantType == Variant.Type.String)
             {
                 result.Add(variant.AsString());

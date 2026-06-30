@@ -19,23 +19,20 @@ public partial class Unit : Node2D
     public int Wisdom { get; private set; } = 5;
     public int Dexterity { get; private set; } = 5;
     public int Constitution { get; private set; } = 5;
-    public int BaseAttackDamage { get; private set; } = 3;
-    public int BaseAttackRange { get; private set; } = 1;
     public string PrimaryAbilityId { get; private set; } = "";
     public Array<string> AbilityIds { get; private set; } = new();
     public string EncounterId { get; private set; } = "";
     public int Initiative { get; private set; } = 10;
+    public int Level { get; private set; } = 1;
+    public int Experience { get; private set; }
     public int WeaponAttackDamageBonus { get; private set; }
     public int WeaponAttackRangeBonus { get; private set; }
     public int ArmorClassBonus { get; private set; }
-    public int ArmorAttackDamageBonus { get; private set; }
-    public int ArmorAttackRangeBonus { get; private set; }
-    public int BuffAttackDamageBonus { get; private set; }
-    public int BuffAttackRangeBonus { get; private set; }
 
-    public int AttackDamage => Mathf.Max(0, BaseAttackDamage + WeaponAttackDamageBonus + ArmorAttackDamageBonus + BuffAttackDamageBonus);
-    public int AttackRange => Mathf.Max(1, BaseAttackRange + WeaponAttackRangeBonus + ArmorAttackRangeBonus + BuffAttackRangeBonus);
+    public int AttackDamage => Mathf.Max(0, WeaponAttackDamageBonus);
+    public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
     public int ArmorClass => Mathf.Max(0, ArmorClassBonus);
+    public int ExperienceToNextLevel => Mathf.Max(25, Level * 25);
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
@@ -58,17 +55,13 @@ public partial class Unit : Node2D
         Dexterity = GetInt(config, "dexterity", 5);
         Constitution = GetInt(config, "constitution", 5);
         Initiative = GetInt(config, "initiative", 10);
+        Level = Mathf.Max(1, GetInt(config, "level", 1));
+        Experience = Mathf.Max(0, GetInt(config, "experience", 0));
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
-        BaseAttackDamage = GetInt(config, "base_attack_damage", Team == "player" ? 4 : 3);
-        BaseAttackRange = GetInt(config, "base_attack_range", 1);
-        WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", 0);
-        WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", 0);
+        WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", Team == "player" ? 4 : 3));
+        WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", GetInt(config, "base_attack_range", 1));
         ArmorClassBonus = GetInt(config, "armor_class_bonus", 0);
-        ArmorAttackDamageBonus = GetInt(config, "armor_attack_damage_bonus", 0);
-        ArmorAttackRangeBonus = GetInt(config, "armor_attack_range_bonus", 0);
-        BuffAttackDamageBonus = GetInt(config, "buff_attack_damage_bonus", 0);
-        BuffAttackRangeBonus = GetInt(config, "buff_attack_range_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
         ResetTurnResources();
         SyncWorldPosition();
@@ -239,6 +232,27 @@ public partial class Unit : Node2D
         return true;
     }
 
+    public int GrantExperience(int amount)
+    {
+        var gain = Mathf.Max(0, amount);
+        if (gain <= 0)
+        {
+            return 0;
+        }
+
+        Experience += gain;
+        var levelsGained = 0;
+        while (Experience >= ExperienceToNextLevel)
+        {
+            Experience -= ExperienceToNextLevel;
+            Level += 1;
+            levelsGained += 1;
+            ApplyLevelUpGains();
+        }
+
+        return levelsGained;
+    }
+
     public void MarkAbilityUsed(string abilityId, int cooldownTurns = 0)
     {
         HasUsedAbilityThisTurn = true;
@@ -248,27 +262,80 @@ public partial class Unit : Node2D
         }
     }
 
-    public void SetBuffAttackDamageBonus(int bonus)
-    {
-        BuffAttackDamageBonus = bonus;
-    }
-
-    public void SetBuffAttackRangeBonus(int bonus)
-    {
-        BuffAttackRangeBonus = bonus;
-    }
-
     public void SetWeaponBonuses(int attackDamageBonus, int attackRangeBonus)
     {
         WeaponAttackDamageBonus = attackDamageBonus;
         WeaponAttackRangeBonus = attackRangeBonus;
     }
 
-    public void SetArmorBonuses(int armorClassBonus, int attackDamageBonus, int attackRangeBonus)
+    public void SetArmorBonuses(int armorClassBonus)
     {
         ArmorClassBonus = armorClassBonus;
-        ArmorAttackDamageBonus = attackDamageBonus;
-        ArmorAttackRangeBonus = attackRangeBonus;
+    }
+
+    public Dictionary BuildRuntimeSnapshot()
+    {
+        var cooldowns = new Dictionary();
+        foreach (var pair in _abilityCooldownRemaining)
+        {
+            cooldowns[pair.Key] = pair.Value;
+        }
+
+        return new Dictionary
+        {
+            { "unit_id", UnitId },
+            { "grid_pos", GridPos },
+            { "hit_points", HitPoints },
+            { "max_hit_points", MaxHitPoints },
+            { "magic_points", MagicPoints },
+            { "max_magic_points", MaxMagicPoints },
+            { "is_dead", IsDead },
+            { "remaining_movement", RemainingMovement },
+            { "has_used_ability_this_turn", HasUsedAbilityThisTurn },
+            { "level", Level },
+            { "experience", Experience },
+            { "cooldowns", cooldowns },
+        };
+    }
+
+    public void ApplyRuntimeSnapshot(Dictionary snapshot)
+    {
+        if (snapshot == null || snapshot.Count == 0)
+        {
+            return;
+        }
+
+        MaxHitPoints = Mathf.Max(1, GetInt(snapshot, "max_hit_points", MaxHitPoints));
+        HitPoints = Mathf.Clamp(GetInt(snapshot, "hit_points", HitPoints), 0, MaxHitPoints);
+        MaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", MaxMagicPoints));
+        MagicPoints = Mathf.Clamp(GetInt(snapshot, "magic_points", MagicPoints), 0, MaxMagicPoints);
+        Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
+        Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
+        RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, MaxMovementPerTurn);
+        HasUsedAbilityThisTurn = GetBool(snapshot, "has_used_ability_this_turn", HasUsedAbilityThisTurn);
+        GridPos = GetVector2I(snapshot, "grid_pos", GridPos);
+
+        _abilityCooldownRemaining.Clear();
+        var cooldowns = GetDictionary(snapshot, "cooldowns");
+        foreach (var key in cooldowns.Keys)
+        {
+            var abilityId = ((Variant)key).AsString();
+            if (string.IsNullOrEmpty(abilityId))
+            {
+                continue;
+            }
+
+            _abilityCooldownRemaining[abilityId] = Mathf.Max(0, (int)((Variant)cooldowns[key]));
+        }
+
+        IsDead = GetBool(snapshot, "is_dead", HitPoints <= 0) || HitPoints <= 0;
+        if (IsDead)
+        {
+            HitPoints = 0;
+        }
+
+        SyncWorldPosition();
+        RefreshVisualState();
     }
 
     public void SetGridPos(Vector2I nextPos)
@@ -370,6 +437,46 @@ public partial class Unit : Node2D
     private static int GetInt(Dictionary dict, string key, int fallback)
     {
         return dict.ContainsKey(key) ? (int)((Variant)dict[key]) : fallback;
+    }
+
+    private static bool GetBool(Dictionary dict, string key, bool fallback)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return fallback;
+        }
+
+        var value = (Variant)dict[key];
+        if (value.VariantType == Variant.Type.Bool)
+        {
+            return value.AsBool();
+        }
+
+        if (value.VariantType == Variant.Type.Int)
+        {
+            return (int)value != 0;
+        }
+
+        return fallback;
+    }
+
+    private static Dictionary GetDictionary(Dictionary dict, string key)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return new Dictionary();
+        }
+
+        var value = (Variant)dict[key];
+        return value.VariantType == Variant.Type.Dictionary ? (Dictionary)value : new Dictionary();
+    }
+
+    private void ApplyLevelUpGains()
+    {
+        MaxHitPoints += 2;
+        HitPoints = Mathf.Min(MaxHitPoints, HitPoints + 2);
+        MaxMagicPoints += 1;
+        MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + 1);
     }
 
     private bool IsCellBlockingLineOfSight(Vector2I cell, Unit target, Array<Unit> allUnits)

@@ -24,6 +24,12 @@ public partial class HudController : Control
     [Signal]
     public delegate void LootConfirmRequestedEventHandler(string interactionId);
 
+    [Signal]
+    public delegate void SaveRequestedEventHandler();
+
+    [Signal]
+    public delegate void LoadRequestedEventHandler();
+
     private const float GridPixelWidth = 20.0f * 64.0f;
     private const float Margin = 12.0f;
     private const float SidebarWidth = 360.0f;
@@ -32,6 +38,8 @@ public partial class HudController : Control
     private PanelContainer _utilityPanel;
     private Label _utilityHeader;
     private Button _helpButton;
+    private Button _saveButton;
+    private Button _loadButton;
     private PanelContainer _helpPanel;
     private Label _helpHeader;
     private Label _helpBody;
@@ -107,6 +115,8 @@ public partial class HudController : Control
         _utilityPanel = GetNode<PanelContainer>("UtilityPanel");
         _utilityHeader = GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader");
         _helpButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton");
+        _saveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton");
+        _loadButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/LoadButton");
         _helpPanel = GetNode<PanelContainer>("HelpPanel");
         _helpHeader = GetNode<Label>("HelpPanel/HelpVBox/HelpHeader");
         _helpBody = GetNode<Label>("HelpPanel/HelpVBox/HelpBody");
@@ -159,6 +169,8 @@ public partial class HudController : Control
         _inventoryButton.Pressed += OnInventoryButtonPressed;
         _characterButton.Pressed += OnCharacterButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
+        _saveButton.Pressed += OnSaveButtonPressed;
+        _loadButton.Pressed += OnLoadButtonPressed;
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
         _inventoryPrevUnitButton.Pressed += OnInventoryPrevUnitButtonPressed;
         _inventoryNextUnitButton.Pressed += OnInventoryNextUnitButtonPressed;
@@ -227,6 +239,16 @@ public partial class HudController : Control
         if (_helpButton != null)
         {
             _helpButton.Pressed -= OnHelpButtonPressed;
+        }
+
+        if (_saveButton != null)
+        {
+            _saveButton.Pressed -= OnSaveButtonPressed;
+        }
+
+        if (_loadButton != null)
+        {
+            _loadButton.Pressed -= OnLoadButtonPressed;
         }
 
         if (_closeHelpButton != null)
@@ -333,6 +355,16 @@ public partial class HudController : Control
     private void OnHelpButtonPressed()
     {
         ToggleHelpVisible();
+    }
+
+    private void OnSaveButtonPressed()
+    {
+        EmitSignal(SignalName.SaveRequested);
+    }
+
+    private void OnLoadButtonPressed()
+    {
+        EmitSignal(SignalName.LoadRequested);
     }
 
     private void OnCloseHelpButtonPressed()
@@ -758,6 +790,7 @@ public partial class HudController : Control
             "CONTROLS\n" +
             "- Inventory: I\n" +
             "- Help: H\n" +
+            "- Save/Load: Utility panel buttons\n" +
             "- Inspect: hover units and interactables\n" +
             "- Inventory target: click party member portrait\n" +
             "- Cycle target: Tab / Shift+Tab or Prev/Next Member\n";

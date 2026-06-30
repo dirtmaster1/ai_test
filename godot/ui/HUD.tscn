@@ -54,6 +54,16 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Help (H)"
 
+[node name="SaveButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save"
+
+[node name="LoadButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Load"
+
 [node name="CharacterButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
 size_flags_horizontal = 3

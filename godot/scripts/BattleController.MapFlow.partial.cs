@@ -134,6 +134,7 @@ public partial class BattleController
         SaveClearedEncounterStateForCurrentMap();
         SpawnMapEncounter(toMapId, preserveParty: true, leadSpawnCell: spawnCell);
         EnterExplorationMode($"Transitioned to {toMapId}. Keep exploring.");
+        _persistence.PersistSaveGame(false);
         QueueRedraw();
     }
 
