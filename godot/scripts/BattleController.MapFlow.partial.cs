@@ -24,7 +24,6 @@ public partial class BattleController
 
         if (!string.IsNullOrEmpty(statusText))
         {
-            _hud?.SetStatusText(statusText);
         }
         else
         {

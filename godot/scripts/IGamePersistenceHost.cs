@@ -26,5 +26,4 @@ public interface IGamePersistenceHost
     void RestoreFlowState(string flowStateToken);
     void SyncHudFromGameState();
     void RequestRedraw();
-    void SetStatusText(string text);
 }

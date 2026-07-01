@@ -72,22 +72,14 @@ public partial class BattleController
             var explorer = GetExplorerUnit();
             if (explorer == null)
             {
-                _hud?.SetStatusText("Exploration: no living player units.");
                 return;
             }
-
-            _hud?.SetStatusText($"Map: {_currentMapId} | Exploration: {explorer.UnitName}");
-            _hud?.SetActionDetails($"Exploration party leader: {explorer.UnitName}");
-            _hud?.SetSelectedAction("None");
             SyncHudFromGameState();
             return;
         }
 
         if (_flowState == BattleFlowState.Defeat)
         {
-            _hud?.SetStatusText("Defeat. All player units were defeated.");
-            _hud?.SetActionDetails("Defeat state. Restart the encounter to continue.");
-            _hud?.SetSelectedAction("None");
             SyncHudFromGameState();
             return;
         }
@@ -95,7 +87,6 @@ public partial class BattleController
         var active = _turnManager.GetActiveUnit();
         if (active == null)
         {
-            _hud?.SetStatusText("No active unit");
             return;
         }
 
@@ -107,12 +98,7 @@ public partial class BattleController
             : cooldownRemaining > 0
                 ? $"cooldown ({cooldownRemaining})"
                 : "ready";
-        var combatPrefix = string.IsNullOrEmpty(_lastActionSummary) ? "" : $"Last action: {_lastActionSummary} | ";
-        _hud?.SetStatusText(
-            $"{combatPrefix}Turn: {active.UnitName} ({active.Team}) | HP: {active.HitPoints}/{active.MaxHitPoints} | MP: {active.MagicPoints}/{active.MaxMagicPoints} | Move: {active.RemainingMovement}/{Unit.MaxMovementPerTurn} | Ability: {abilityState}"
-        );
 
-        _hud?.SetSelectedAction(_awaitingPlayerAttackDirection ? $"{selectedProfile.ActionId} (targeting)" : selectedProfile.ActionId);
         SyncHudFromGameState();
     }
 }

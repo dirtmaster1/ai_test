@@ -21,61 +21,33 @@ public sealed class GamePersistence
         using var file = FileAccess.Open(_saveFilePath, FileAccess.ModeFlags.Write);
         if (file == null)
         {
-            if (notifyStatus)
-            {
-                _host.SetStatusText("Failed to save game state.");
-            }
-
             return;
         }
 
         file.StoreString(Json.Stringify(encoded));
-        if (notifyStatus)
-        {
-            _host.SetStatusText("Game saved.");
-        }
     }
 
     public bool TryLoadSaveGame(bool notifyStatus)
     {
         if (!FileAccess.FileExists(_saveFilePath))
         {
-            if (notifyStatus)
-            {
-                _host.SetStatusText("No save file found.");
-            }
-
             return false;
         }
 
         using var file = FileAccess.Open(_saveFilePath, FileAccess.ModeFlags.Read);
         if (file == null)
         {
-            if (notifyStatus)
-            {
-                _host.SetStatusText("Failed to open save file.");
-            }
-
             return false;
         }
 
         var parsed = Json.ParseString(file.GetAsText());
         if (parsed.VariantType != Variant.Type.Dictionary)
         {
-            if (notifyStatus)
-            {
-                _host.SetStatusText("Save file is invalid.");
-            }
-
             return false;
         }
 
         var decoded = DecodeDictionaryFromSave((Dictionary)parsed);
         ApplySaveData(decoded);
-        if (notifyStatus)
-        {
-            _host.SetStatusText("Game loaded.");
-        }
 
         return true;
     }
@@ -84,11 +56,6 @@ public sealed class GamePersistence
     {
         if (!FileAccess.FileExists(_saveFilePath))
         {
-            if (notifyStatus)
-            {
-                _host.SetStatusText("No save file found.");
-            }
-
             return false;
         }
 
@@ -96,17 +63,7 @@ public sealed class GamePersistence
         var result = DirAccess.RemoveAbsolute(absolutePath);
         if (result != Error.Ok)
         {
-            if (notifyStatus)
-            {
-                _host.SetStatusText("Failed to delete save file.");
-            }
-
             return false;
-        }
-
-        if (notifyStatus)
-        {
-            _host.SetStatusText("Save deleted.");
         }
 
         return true;

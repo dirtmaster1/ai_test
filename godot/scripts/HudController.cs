@@ -34,7 +34,6 @@ public partial class HudController : Control
     private const float Margin = 12.0f;
     private const float SidebarWidth = 360.0f;
 
-    private Label _statusLabel;
     private PanelContainer _utilityPanel;
     private Label _utilityHeader;
     private Button _helpButton;
@@ -57,8 +56,6 @@ public partial class HudController : Control
     private Button _endTurnButton;
     private Button _inventoryButton;
     private Button _characterButton;
-    private Label _selectedActionLabel;
-    private Label _actionDetailsLabel;
     private Label _turnQueueHeader;
     private Label _combatLogHeader;
     private Label _turnQueueLabel;
@@ -111,7 +108,6 @@ public partial class HudController : Control
         ZAsRelative = false;
         ZIndex = 4000;
 
-        _statusLabel = GetNode<Label>("StatusLabel");
         _utilityPanel = GetNode<PanelContainer>("UtilityPanel");
         _utilityHeader = GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader");
         _helpButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton");
@@ -135,8 +131,6 @@ public partial class HudController : Control
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
-        _selectedActionLabel = GetNode<Label>("ActionPanel/ActionVBox/SelectedActionLabel");
-        _actionDetailsLabel = GetNode<Label>("ActionPanel/ActionVBox/ActionDetails");
         _turnQueueHeader = GetNode<Label>("TurnQueuePanel/TurnQueueVBox/TurnQueueHeader");
         _turnQueueLabel = GetNode<Label>("TurnQueuePanel/TurnQueueVBox/TurnQueueLabel");
         _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeader");
@@ -183,7 +177,6 @@ public partial class HudController : Control
         _confirmLootButton.Pressed += OnConfirmLootButtonPressed;
         _closeLootButton.Pressed += OnCloseLootButtonPressed;
 
-        RegisterDraggable(_statusLabel, _statusLabel);
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
         RegisterDraggable(_characterHeader, _characterPanel);
@@ -610,13 +603,26 @@ public partial class HudController : Control
         var sidebarLeft = Mathf.Max(GridPixelWidth + Margin, size.X - SidebarWidth - Margin);
         var sidebarRight = size.X - Margin;
 
-        ApplyPanelRect(_statusLabel, new Rect2(new Vector2(sidebarLeft, Margin), new Vector2(sidebarRight - sidebarLeft, 80.0f)), size);
-        ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, 98.0f), new Vector2(sidebarRight - sidebarLeft, 58.0f)), size);
-        ApplyPanelRect(_characterPanel, new Rect2(new Vector2(sidebarLeft, 166.0f), new Vector2(sidebarRight - sidebarLeft, 168.0f)), size);
-        ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, 166.0f), new Vector2(sidebarRight - sidebarLeft, 220.0f)), size);
-        ApplyPanelRect(_turnQueuePanel, new Rect2(new Vector2(sidebarLeft, 344.0f), new Vector2(sidebarRight - sidebarLeft, 198.0f)), size);
-        ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, 552.0f), new Vector2(sidebarRight - sidebarLeft, Mathf.Max(100.0f, size.Y - 640.0f))), size);
-        ApplyPanelRect(_actionPanel, new Rect2(new Vector2(sidebarLeft, size.Y - 80.0f), new Vector2(sidebarRight - sidebarLeft, 68.0f)), size);
+        const float panelGap = 10.0f;
+        const float utilityHeight = 58.0f;
+        const float characterHeight = 168.0f;
+        const float helpHeight = 220.0f;
+        const float turnQueueHeight = 198.0f;
+        const float actionHeight = 68.0f;
+
+        var utilityTop = Margin;
+        var actionTop = utilityTop + utilityHeight + panelGap;
+        var turnQueueTop = actionTop + actionHeight + panelGap + 50;
+        var detailsTop = turnQueueTop + turnQueueHeight + panelGap;
+        var combatTop = detailsTop + helpHeight + panelGap;
+        var combatHeight = Mathf.Max(0.0f, size.Y - Margin - combatTop);
+
+        ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
+        ApplyPanelRect(_actionPanel, new Rect2(new Vector2(sidebarLeft, actionTop), new Vector2(sidebarRight - sidebarLeft, actionHeight)), size);
+        ApplyPanelRect(_characterPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, characterHeight)), size);
+        ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, helpHeight)), size);
+        ApplyPanelRect(_turnQueuePanel, new Rect2(new Vector2(sidebarLeft, turnQueueTop), new Vector2(sidebarRight - sidebarLeft, turnQueueHeight)), size);
+        ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, combatTop), new Vector2(sidebarRight - sidebarLeft, combatHeight)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
     }
 
@@ -737,22 +743,6 @@ public partial class HudController : Control
         node.OffsetBottom = bottom;
     }
 
-    public void SetStatusText(string text)
-    {
-        if (_statusLabel != null)
-        {
-            _statusLabel.Text = text;
-        }
-    }
-
-    public void SetActionDetails(string text)
-    {
-        if (_actionDetailsLabel != null)
-        {
-            _actionDetailsLabel.Text = text;
-        }
-    }
-
     public void SetCharacterSummary(string text)
     {
         if (_characterSummaryLabel != null)
@@ -821,14 +811,6 @@ public partial class HudController : Control
             "\nDEFEAT\n" +
             "- All party members are down\n" +
             "- Restart encounter or reload to continue";
-    }
-
-    public void SetSelectedAction(string actionText)
-    {
-        if (_selectedActionLabel != null)
-        {
-            _selectedActionLabel.Text = $"Selected Ability: {actionText}";
-        }
     }
 
     public void SetActionButtonsEnabled(bool abilityEnabled, bool endTurnEnabled)

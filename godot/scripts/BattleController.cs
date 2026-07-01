@@ -249,7 +249,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (activeUnit == null)
         {
-            _hud?.SetStatusText("No active unit");
             return;
         }
 
@@ -280,14 +279,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!active.CanUseAbilityThisTurn())
         {
-            _hud?.SetStatusText("Ability already used this turn.");
             SetStatusHelp();
             return;
         }
 
         if (string.IsNullOrEmpty(abilityId) || !active.HasAbility(abilityId))
         {
-            _hud?.SetStatusText("That ability is not available for this unit.");
             SetStatusHelp();
             return;
         }
@@ -295,7 +292,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var cooldownRemaining = active.GetAbilityCooldownRemaining(abilityId);
         if (cooldownRemaining > 0)
         {
-            _hud?.SetStatusText($"{abilityId} is on cooldown ({cooldownRemaining} turn{(cooldownRemaining == 1 ? "" : "s")} remaining).");
             SetStatusHelp();
             return;
         }
@@ -309,8 +305,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _awaitingPlayerAttackDirection = true;
         SetSelectedAbilityId(active, abilityId);
         ClearMovementPreviewPath();
-        _hud?.SetSelectedAction($"{actionProfile.ActionId} (targeting)");
-        _hud?.SetStatusText("Ability selected. Click target cell or use direction keys. Right-click or Esc to cancel.");
         SyncHudFromGameState();
         QueueRedraw();
     }
@@ -332,7 +326,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             _awaitingPlayerAttackDirection = false;
             ClearMovementPreviewPath();
-            _hud?.SetSelectedAction("None");
             QueueRedraw();
         }
     }
@@ -353,7 +346,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var itemData = _gameData.GetItem(itemId);
         if (itemData.Count == 0)
         {
-            _hud?.SetStatusText("Cannot equip unknown item.");
             return;
         }
 
@@ -361,7 +353,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         ApplyEquippedItemBonuses(target);
 
         var itemName = GetString(itemData, "name", itemId);
-        _hud?.SetStatusText($"{target.UnitName} equipped {itemName}.");
         _hud?.AddCombatLogEntry($"{target.UnitName} equipped {itemName}.");
         SetStatusHelp();
         _persistence.PersistSaveGame(false);
@@ -382,13 +373,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!TryGetEquippedItemAtSlot(target, equippedSlotKey, out var itemId))
         {
-            _hud?.SetStatusText($"{target.UnitName} has nothing equipped in that slot.");
             return;
         }
 
         if (!UnequipSlotForUnit(target, equippedSlotKey))
         {
-            _hud?.SetStatusText($"{target.UnitName} does not have that item equipped.");
             return;
         }
 
@@ -396,7 +385,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var itemName = _gameData == null
             ? itemId
             : GetString(_gameData.GetItem(itemId), "name", itemId);
-        _hud?.SetStatusText($"{target.UnitName} unequipped {itemName}.");
         _hud?.AddCombatLogEntry($"{target.UnitName} unequipped {itemName}.");
         SetStatusHelp();
         _persistence.PersistSaveGame(false);
@@ -424,13 +412,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var explorer = GetExplorerUnit();
         if (explorer == null)
         {
-            _hud?.SetStatusText("No living player unit available to interact.");
             return;
         }
 
         if (!TryExecuteExplorationInteractionById(explorer, interactionId))
         {
-            _hud?.SetStatusText("That interaction is no longer available.");
         }
 
         var nearbyEntries = BuildNearbyLootEntries(explorer);
@@ -444,7 +430,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (!active.CanUseAbilityThisTurn())
         {
-            _hud?.SetStatusText("Ability already used this turn.");
             return;
         }
 
@@ -452,7 +437,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var actionProfile = ResolveActionProfile(active, selectedAbilityId);
         if (active.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
         {
-            _hud?.SetStatusText($"{actionProfile.ActionId} is on cooldown.");
             return;
         }
 
@@ -494,25 +478,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (actionProfile.ActionType != "attack")
         {
-            _hud?.SetStatusText("No valid target for this action.");
             return;
         }
 
         if (actionProfile.Range > 1)
         {
-            _hud?.SetStatusText("No valid ranged target on that cell.");
             return;
         }
 
         var moveResult = ResolveMoveAction(active, targetCell, endTurnOnSuccess: false);
         if (moveResult.Success)
         {
-            _hud?.SetStatusText("Moved. Attack mode canceled.");
             ApplyActionResult(moveResult);
         }
         else
         {
-            _hud?.SetStatusText("Cannot move there. Attack mode canceled.");
         }
     }
 
@@ -887,7 +867,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (target == null)
         {
-            _hud?.SetStatusText($"{actor.UnitName} has no {actionProfile.ActionType} target in range ({actionProfile.Range}).");
             return CombatActionResult.Failed;
         }
 
@@ -922,7 +901,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (_flowState == BattleFlowState.Combat && !unit.CanMoveThisTurn())
         {
-            _hud?.SetStatusText($"{unit.UnitName} has no movement left this turn.");
             return CombatActionResult.Failed;
         }
 
@@ -944,13 +922,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (_flowState == BattleFlowState.Combat && !attacker.CanUseAbilityThisTurn())
         {
-            _hud?.SetStatusText($"{attacker.UnitName} has already used an ability this turn.");
             return false;
         }
 
         if (!attacker.CanAttackTarget(target, range, _allUnits))
         {
-            _hud?.SetStatusText($"{attacker.UnitName} has no clear line to {target.UnitName}.");
             return false;
         }
 
@@ -961,7 +937,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!attacker.TrySpendMagicPoints(magicPointCost))
         {
-            _hud?.SetStatusText($"{attacker.UnitName} does not have enough MP to cast {actionName}.");
             return false;
         }
 
@@ -1002,7 +977,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _lastActionSummary = resultText;
-        _hud?.SetStatusText(resultText);
         _hud?.AddCombatLogEntry(resultText);
         return true;
     }
@@ -1033,13 +1007,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
         {
-            _hud?.SetStatusText($"{actor.UnitName} has already used an ability this turn.");
             return false;
         }
 
         if (!actor.CanHealTarget(target, range, _allUnits))
         {
-            _hud?.SetStatusText($"{actor.UnitName} cannot heal {target.UnitName} from there.");
             return false;
         }
 
@@ -1051,13 +1023,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var healed = target.ApplyHealing(healAmount);
         if (healed <= 0)
         {
-            _hud?.SetStatusText($"{target.UnitName} is already at full health.");
             return false;
         }
 
         if (!actor.TrySpendMagicPoints(magicPointCost))
         {
-            _hud?.SetStatusText($"{actor.UnitName} does not have enough MP to cast {actionName}.");
             return false;
         }
 
@@ -1075,7 +1045,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             resultText += $" (MP -{magicPointCost})";
         }
         _lastActionSummary = resultText;
-        _hud?.SetStatusText(resultText);
         _hud?.AddCombatLogEntry(resultText);
         return true;
     }
@@ -1154,7 +1123,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             _flowState = BattleFlowState.Defeat;
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
-            _hud?.SetStatusText("Defeat. All player units were defeated.");
             _persistence.PersistSaveGame(false);
             return true;
         }
@@ -1451,13 +1419,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return true;
         }
 
-        if (reportStatus)
-        {
-            _hud?.SetStatusText(
-                $"{actor.UnitName} does not have enough MP to cast {actionProfile.ActionName} ({actor.MagicPoints}/{actionProfile.MagicPointCost})."
-            );
-        }
-
         return false;
     }
 
@@ -1584,7 +1545,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void CancelAttackMode(bool restoreHelpText = true)
     {
         _awaitingPlayerAttackDirection = false;
-        _hud?.SetSelectedAction("None");
         ClearMovementPreviewPath();
         QueueRedraw();
         if (restoreHelpText)
@@ -1833,7 +1793,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!string.IsNullOrEmpty(statusText))
         {
-            _hud?.SetStatusText(statusText);
         }
 
         if (entries.Count > 0)
@@ -1869,7 +1828,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!string.IsNullOrEmpty(statusText))
         {
-            _hud?.SetStatusText(statusText);
         }
 
         if (!string.IsNullOrEmpty(logText))
@@ -2184,7 +2142,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             _selectedCharacterUnitId = unit.UnitId;
-            _hud?.SetStatusText($"Selected {unit.UnitName} for character details.");
             SyncHudFromGameState();
             return true;
         }
@@ -3015,5 +2972,4 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     void IGamePersistenceHost.SyncHudFromGameState() => SyncHudFromGameState();
     void IGamePersistenceHost.RequestRedraw() => QueueRedraw();
-    void IGamePersistenceHost.SetStatusText(string text) => _hud?.SetStatusText(text);
 }

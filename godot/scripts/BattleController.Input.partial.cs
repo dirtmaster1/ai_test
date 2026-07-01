@@ -73,7 +73,6 @@ public partial class BattleController
             {
                 _awaitingPlayerAttackDirection = false;
                 ClearMovementPreviewPath();
-                _hud?.SetSelectedAction("None");
                 QueueRedraw();
             }
             return;
@@ -89,21 +88,18 @@ public partial class BattleController
         {
             if (!active.CanUseAbilityThisTurn())
             {
-                _hud?.SetStatusText("Ability already used this turn.");
                 return;
             }
 
             var selectedAbilityId = GetSelectedAbilityId(active);
             if (string.IsNullOrEmpty(selectedAbilityId) || !active.HasAbility(selectedAbilityId))
             {
-                _hud?.SetStatusText("No ability selected for this unit.");
                 return;
             }
 
             var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedAbilityId);
             if (cooldownRemaining > 0)
             {
-                _hud?.SetStatusText($"{selectedAbilityId} is on cooldown ({cooldownRemaining} turn{(cooldownRemaining == 1 ? "" : "s")} remaining).");
                 return;
             }
 
@@ -115,7 +111,6 @@ public partial class BattleController
 
             _awaitingPlayerAttackDirection = true;
             SetSelectedAbilityId(active, selectedAbilityId);
-            _hud?.SetStatusText("Choose attack direction: WASD / Arrows (Esc to cancel)");
             QueueRedraw();
             return;
         }
@@ -217,14 +212,12 @@ public partial class BattleController
 
         if (!active.CanMoveThisTurn())
         {
-            _hud?.SetStatusText("No movement left this turn.");
             return;
         }
 
         var path = FindPath(active, active.GridPos, clickedCell, active.RemainingMovement);
         if (path.Count == 0)
         {
-            _hud?.SetStatusText($"Cannot path to that cell within {active.RemainingMovement} move.");
             return;
         }
 
@@ -248,7 +241,6 @@ public partial class BattleController
         var explorer = GetExplorerUnit();
         if (explorer == null)
         {
-            _hud?.SetStatusText("No living player unit available to explore.");
             return;
         }
 
@@ -301,7 +293,6 @@ public partial class BattleController
         var clickedCell = WorldToCell(GetGlobalMousePosition());
         if (!Unit.IsWithinRange(active.GridPos, clickedCell, actionProfile.Range))
         {
-            _hud?.SetStatusText($"Click a target cell within range ({actionProfile.Range}).");
             return;
         }
 
@@ -333,7 +324,6 @@ public partial class BattleController
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
         {
-            _hud?.SetStatusText($"No valid {actionProfile.ActionType} target in that direction.");
             return;
         }
 
