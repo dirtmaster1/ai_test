@@ -56,7 +56,7 @@ text = "Load"
 [node name="CharacterButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Character"
+text = "Character (C)"
 
 [node name="HelpPanel" type="PanelContainer" parent="."]
 visible = false
@@ -111,6 +111,25 @@ layout_mode = 2
 size_flags_vertical = 3
 autowrap_mode = 3
 text = "No unit selected."
+
+[node name="CharacterCycleButtons" type="HBoxContainer" parent="CharacterPanel/CharacterVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CharacterPrevButton" type="Button" parent="CharacterPanel/CharacterVBox/CharacterCycleButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Prev Member"
+
+[node name="CharacterNextButton" type="Button" parent="CharacterPanel/CharacterVBox/CharacterCycleButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Next Member"
+
+[node name="CharacterCloseButton" type="Button" parent="CharacterPanel/CharacterVBox/CharacterCycleButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
 
 [node name="ActionPanel" type="PanelContainer" parent="."]
 layout_mode = 0
@@ -309,7 +328,7 @@ theme_override_constants/separation = 8
 [node name="ConfirmLootButton" type="Button" parent="LootPanel/LootVBox/LootButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Confirm Pickup"
+text = "Loot All"
 
 [node name="CloseLootButton" type="Button" parent="LootPanel/LootVBox/LootButtons"]
 layout_mode = 2

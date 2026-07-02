@@ -32,7 +32,8 @@ public partial class HudController : Control
 
     private const float GridPixelWidth = 20.0f * 64.0f;
     private const float Margin = 12.0f;
-    private const float SidebarWidth = 360.0f;
+    private const float SidebarWidth = 430.0f;
+    private const float SidebarRightInset = 24.0f;
 
     private PanelContainer _utilityPanel;
     private Label _utilityHeader;
@@ -47,6 +48,9 @@ public partial class HudController : Control
     private PanelContainer _characterPanel;
     private Label _characterHeader;
     private Label _characterSummaryLabel;
+    private Button _characterPrevButton;
+    private Button _characterNextButton;
+    private Button _characterCloseButton;
     private PanelContainer _turnQueuePanel;
     private PanelContainer _combatLogPanel;
     private Label _activeUnitLabel;
@@ -78,6 +82,7 @@ public partial class HudController : Control
     private Label _lootDetailsLabel;
     private Button _confirmLootButton;
     private Button _closeLootButton;
+    private string _lootAllInteractionId = "";
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _lootEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryEquippedEntriesBySlot = new();
     private readonly System.Collections.Generic.HashSet<string> _equippedItemIds = new();
@@ -121,6 +126,9 @@ public partial class HudController : Control
         _characterPanel = GetNode<PanelContainer>("CharacterPanel");
         _characterHeader = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterHeader");
         _characterSummaryLabel = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterSummaryLabel");
+        _characterPrevButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterPrevButton");
+        _characterNextButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterNextButton");
+        _characterCloseButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterCloseButton");
         _turnQueuePanel = GetNode<PanelContainer>("TurnQueuePanel");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _activeUnitLabel = GetNode<Label>("ActionPanel/ActionVBox/ActiveUnitLabel");
@@ -153,6 +161,9 @@ public partial class HudController : Control
         _lootDetailsLabel = GetNode<Label>("LootPanel/LootVBox/LootDetailsLabel");
         _confirmLootButton = GetNode<Button>("LootPanel/LootVBox/LootButtons/ConfirmLootButton");
         _closeLootButton = GetNode<Button>("LootPanel/LootVBox/LootButtons/CloseLootButton");
+        _confirmLootButton.Text = "Loot All";
+
+        ApplyFantasyHudStyling();
 
         _inventoryPanel.MouseFilter = MouseFilterEnum.Stop;
 
@@ -168,6 +179,9 @@ public partial class HudController : Control
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
         _inventoryPrevUnitButton.Pressed += OnInventoryPrevUnitButtonPressed;
         _inventoryNextUnitButton.Pressed += OnInventoryNextUnitButtonPressed;
+        _characterPrevButton.Pressed += OnCharacterPrevButtonPressed;
+        _characterNextButton.Pressed += OnCharacterNextButtonPressed;
+        _characterCloseButton.Pressed += OnCharacterCloseButtonPressed;
         _equipButton.Pressed += OnEquipButtonPressed;
         _unequipButton.Pressed += OnUnequipButtonPressed;
         _closeInventoryButton.Pressed += OnCloseInventoryButtonPressed;
@@ -262,6 +276,21 @@ public partial class HudController : Control
         if (_inventoryNextUnitButton != null)
         {
             _inventoryNextUnitButton.Pressed -= OnInventoryNextUnitButtonPressed;
+        }
+
+        if (_characterPrevButton != null)
+        {
+            _characterPrevButton.Pressed -= OnCharacterPrevButtonPressed;
+        }
+
+        if (_characterNextButton != null)
+        {
+            _characterNextButton.Pressed -= OnCharacterNextButtonPressed;
+        }
+
+        if (_characterCloseButton != null)
+        {
+            _characterCloseButton.Pressed -= OnCharacterCloseButtonPressed;
         }
 
         if (_unequipButton != null)
@@ -399,6 +428,21 @@ public partial class HudController : Control
         EmitSignal(SignalName.InventoryCycleRequested, 1);
     }
 
+    private void OnCharacterPrevButtonPressed()
+    {
+        EmitSignal(SignalName.InventoryCycleRequested, -1);
+    }
+
+    private void OnCharacterNextButtonPressed()
+    {
+        EmitSignal(SignalName.InventoryCycleRequested, 1);
+    }
+
+    private void OnCharacterCloseButtonPressed()
+    {
+        SetCharacterVisible(false);
+    }
+
     private void OnUnequipButtonPressed()
     {
         if (_inventoryEquippedItemList == null)
@@ -481,29 +525,17 @@ public partial class HudController : Control
         }
 
         _lootDetailsLabel.Text = GetString(entry, "detail", _lootItemList.GetItemText((int)index));
+        EmitSignal(SignalName.LootConfirmRequested, interactionId);
     }
 
     private void OnConfirmLootButtonPressed()
     {
-        if (_lootItemList == null)
+        if (string.IsNullOrEmpty(_lootAllInteractionId))
         {
             return;
         }
 
-        var selected = _lootItemList.GetSelectedItems();
-        if (selected.Length == 0)
-        {
-            return;
-        }
-
-        var metadata = _lootItemList.GetItemMetadata(selected[0]);
-        var interactionId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
-        if (string.IsNullOrEmpty(interactionId))
-        {
-            return;
-        }
-
-        EmitSignal(SignalName.LootConfirmRequested, interactionId);
+        EmitSignal(SignalName.LootConfirmRequested, _lootAllInteractionId);
     }
 
     private void OnCloseLootButtonPressed()
@@ -600,12 +632,12 @@ public partial class HudController : Control
         }
 
         var size = viewport.GetVisibleRect().Size;
-        var sidebarLeft = Mathf.Max(GridPixelWidth + Margin, size.X - SidebarWidth - Margin);
-        var sidebarRight = size.X - Margin;
+        var sidebarRight = size.X - SidebarRightInset;
+        var sidebarLeft = Mathf.Max(GridPixelWidth + Margin, sidebarRight - SidebarWidth);
 
         const float panelGap = 10.0f;
         const float utilityHeight = 58.0f;
-        const float characterHeight = 168.0f;
+        const float characterHeight = 218.0f;
         const float helpHeight = 220.0f;
         const float turnQueueHeight = 198.0f;
         const float actionHeight = 68.0f;
@@ -614,7 +646,7 @@ public partial class HudController : Control
         var actionTop = utilityTop + utilityHeight + panelGap;
         var turnQueueTop = actionTop + actionHeight + panelGap + 50;
         var detailsTop = turnQueueTop + turnQueueHeight + panelGap;
-        var combatTop = detailsTop + helpHeight + panelGap;
+        var combatTop = detailsTop + panelGap;
         var combatHeight = Mathf.Max(0.0f, size.Y - Margin - combatTop);
 
         ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
@@ -726,6 +758,218 @@ public partial class HudController : Control
         _panelOffsets[panel] = panel.Position - baseRect.Position;
     }
 
+    private void ApplyFantasyHudStyling()
+    {
+        var panelBackground = new Color(0.1f, 0.12f, 0.15f, 0.94f);
+        var panelBorder = new Color(0.34f, 0.47f, 0.58f, 0.95f);
+        var panelShadow = new Color(0.01f, 0.02f, 0.03f, 0.35f);
+        var headerColor = new Color(0.86f, 0.93f, 0.98f, 1.0f);
+        var bodyColor = new Color(0.83f, 0.88f, 0.93f, 1.0f);
+        var mutedBodyColor = new Color(0.66f, 0.74f, 0.81f, 1.0f);
+
+        var panelStyle = CreatePanelStyle(panelBackground, panelBorder, panelShadow);
+        StylePanel(_utilityPanel, panelStyle);
+        StylePanel(_actionPanel, panelStyle);
+        StylePanel(_characterPanel, panelStyle);
+        StylePanel(_turnQueuePanel, panelStyle);
+        StylePanel(_combatLogPanel, panelStyle);
+        StylePanel(_inventoryPanel, panelStyle);
+        StylePanel(_helpPanel, panelStyle);
+        StylePanel(_lootPanel, panelStyle);
+
+        StyleHeaderLabel(_utilityHeader, headerColor);
+        StyleHeaderLabel(_helpHeader, headerColor);
+        StyleHeaderLabel(_characterHeader, headerColor);
+        StyleHeaderLabel(_turnQueueHeader, headerColor);
+        StyleHeaderLabel(_combatLogHeader, headerColor);
+        StyleHeaderLabel(_inventoryHeader, headerColor);
+        StyleHeaderLabel(_lootHeader, headerColor);
+
+        StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
+        StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
+        StyleBodyLabel(_turnQueueLabel, bodyColor, 14);
+        StyleBodyLabel(_helpBody, bodyColor, 14);
+        StyleBodyLabel(_inventoryUnitLabel, bodyColor, 14);
+        StyleBodyLabel(_inventoryEquippedSummaryLabel, mutedBodyColor, 13);
+        StyleBodyLabel(_inventoryItemDetails, mutedBodyColor, 13);
+        StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
+
+        StyleButton(_inventoryButton, false);
+        StyleButton(_helpButton, false);
+        StyleButton(_saveButton, false);
+        StyleButton(_loadButton, false);
+        StyleButton(_characterButton, false);
+        StyleButton(_characterPrevButton, false);
+        StyleButton(_characterNextButton, false);
+        StyleButton(_characterCloseButton, false);
+        StyleButton(_abilityButton1, true);
+        StyleButton(_abilityButton2, true);
+        StyleButton(_abilityButton3, true);
+        StyleButton(_endTurnButton, true);
+        StyleButton(_closeHelpButton, false);
+        StyleButton(_inventoryPrevUnitButton, false);
+        StyleButton(_inventoryNextUnitButton, false);
+        StyleButton(_equipButton, true);
+        StyleButton(_unequipButton, false);
+        StyleButton(_closeInventoryButton, false);
+        StyleButton(_confirmLootButton, true);
+        StyleButton(_closeLootButton, false);
+
+        StyleItemList(_combatLog, bodyColor, mutedBodyColor);
+        StyleItemList(_inventoryEquippedItemList, bodyColor, mutedBodyColor);
+        StyleItemList(_inventoryItemList, bodyColor, mutedBodyColor);
+        StyleItemList(_lootItemList, bodyColor, mutedBodyColor);
+
+        _worldHoverBackground = new Color(0.08f, 0.11f, 0.14f, 0.95f);
+        _worldHoverBorder = panelBorder;
+        _worldHoverTitleColor = headerColor;
+        _worldHoverDetailsColor = bodyColor;
+    }
+
+    private static StyleBoxFlat CreatePanelStyle(Color background, Color border, Color shadow)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = background,
+            BorderColor = border,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            CornerRadiusTopLeft = 4,
+            CornerRadiusTopRight = 4,
+            CornerRadiusBottomRight = 4,
+            CornerRadiusBottomLeft = 4,
+            ContentMarginTop = 6,
+            ContentMarginRight = 8,
+            ContentMarginBottom = 6,
+            ContentMarginLeft = 8,
+            ShadowColor = shadow,
+            ShadowSize = 2,
+            AntiAliasing = true
+        };
+    }
+
+    private static void StylePanel(PanelContainer panel, StyleBoxFlat baseStyle)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        panel.AddThemeStyleboxOverride("panel", (StyleBox)baseStyle.Duplicate());
+    }
+
+    private static void StyleHeaderLabel(Label label, Color color)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        label.AddThemeColorOverride("font_color", color);
+        label.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.45f));
+        label.AddThemeConstantOverride("shadow_offset_x", 1);
+        label.AddThemeConstantOverride("shadow_offset_y", 1);
+        label.AddThemeFontSizeOverride("font_size", 16);
+    }
+
+    private static void StyleBodyLabel(Label label, Color color, int fontSize)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        label.AddThemeColorOverride("font_color", color);
+        label.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.35f));
+        label.AddThemeConstantOverride("shadow_offset_x", 1);
+        label.AddThemeConstantOverride("shadow_offset_y", 1);
+        label.AddThemeFontSizeOverride("font_size", fontSize);
+    }
+
+    private static void StyleButton(Button button, bool emphasized)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        var normalBg = emphasized ? new Color(0.17f, 0.27f, 0.34f, 0.98f) : new Color(0.14f, 0.17f, 0.21f, 0.96f);
+        var hoverBg = emphasized ? new Color(0.21f, 0.33f, 0.42f, 1.0f) : new Color(0.18f, 0.22f, 0.27f, 1.0f);
+        var pressedBg = emphasized ? new Color(0.13f, 0.21f, 0.27f, 1.0f) : new Color(0.11f, 0.14f, 0.17f, 1.0f);
+        var border = emphasized ? new Color(0.45f, 0.66f, 0.8f, 0.95f) : new Color(0.34f, 0.47f, 0.58f, 0.9f);
+        var disabledBg = new Color(0.1f, 0.12f, 0.15f, 0.82f);
+        var disabledText = new Color(0.48f, 0.54f, 0.6f, 1.0f);
+
+        button.AddThemeStyleboxOverride("normal", CreateButtonStyle(normalBg, border));
+        button.AddThemeStyleboxOverride("hover", CreateButtonStyle(hoverBg, border));
+        button.AddThemeStyleboxOverride("pressed", CreateButtonStyle(pressedBg, border));
+        button.AddThemeStyleboxOverride("focus", CreateButtonStyle(hoverBg, new Color(0.62f, 0.82f, 0.97f, 1.0f)));
+        button.AddThemeStyleboxOverride("disabled", CreateButtonStyle(disabledBg, new Color(0.26f, 0.32f, 0.38f, 0.85f)));
+
+        button.AddThemeColorOverride("font_color", new Color(0.89f, 0.94f, 0.98f, 1.0f));
+        button.AddThemeColorOverride("font_focus_color", new Color(0.95f, 0.98f, 1.0f, 1.0f));
+        button.AddThemeColorOverride("font_pressed_color", new Color(0.85f, 0.92f, 0.97f, 1.0f));
+        button.AddThemeColorOverride("font_hover_color", new Color(0.94f, 0.98f, 1.0f, 1.0f));
+        button.AddThemeColorOverride("font_disabled_color", disabledText);
+        button.AddThemeFontSizeOverride("font_size", 14);
+    }
+
+    private static StyleBoxFlat CreateButtonStyle(Color background, Color border)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = background,
+            BorderColor = border,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3,
+            ContentMarginTop = 5,
+            ContentMarginRight = 8,
+            ContentMarginBottom = 5,
+            ContentMarginLeft = 8,
+            AntiAliasing = true
+        };
+    }
+
+    private static void StyleItemList(ItemList list, Color bodyColor, Color mutedBodyColor)
+    {
+        if (list == null)
+        {
+            return;
+        }
+
+        var baseStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.08f, 0.11f, 0.13f, 0.95f),
+            BorderColor = new Color(0.3f, 0.42f, 0.5f, 0.95f),
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            CornerRadiusTopLeft = 2,
+            CornerRadiusTopRight = 2,
+            CornerRadiusBottomRight = 2,
+            CornerRadiusBottomLeft = 2,
+            ContentMarginTop = 4,
+            ContentMarginRight = 4,
+            ContentMarginBottom = 4,
+            ContentMarginLeft = 4
+        };
+
+        list.AddThemeStyleboxOverride("panel", baseStyle);
+        list.AddThemeColorOverride("font_color", bodyColor);
+        list.AddThemeColorOverride("font_selected_color", new Color(0.94f, 0.98f, 1.0f, 1.0f));
+        list.AddThemeColorOverride("guide_color", mutedBodyColor);
+        list.AddThemeColorOverride("cursor_color", new Color(0.54f, 0.78f, 0.94f, 0.9f));
+    }
+
     private static void SetRect(Control node, float left, float top, float right, float bottom)
     {
         if (node == null)
@@ -760,18 +1004,29 @@ public partial class HudController : Control
 
         var status = unit.IsDead ? "Defeated" : "Ready";
         var encounterLabel = string.IsNullOrEmpty(unit.EncounterId) ? "Party" : unit.EncounterId;
+        var experienceToNextLevel = Mathf.Max(0, unit.ExperienceToNextLevel - unit.Experience);
 
         return
             $"Name: {unit.UnitName}\n" +
-            $"Team: {unit.Team} | Status: {status}\n" +
-            $"HP: {unit.HitPoints}/{unit.MaxHitPoints} | MP: {unit.MagicPoints}/{unit.MaxMagicPoints}\n" +
+            $"Team: {unit.Team}\n" +
+            $"Status: {status}\n" +
+            $"\n" +
+            $"Level: {unit.Level}\n" +
+            $"Experience: {unit.Experience}/{unit.ExperienceToNextLevel} ({experienceToNextLevel} to next level)\n" +
+            $"\n" +
+            $"HP: {unit.HitPoints}/{unit.MaxHitPoints}\n" +
+            $"MP: {unit.MagicPoints}/{unit.MaxMagicPoints}\n" +
             $"Armor Class: {unit.ArmorClass}\n" +
-            $"Stats - STR {unit.Strength} | DEX {unit.Dexterity} | CON {unit.Constitution} | INT {unit.Intelligence} | WIS {unit.Wisdom}\n" +
-            $"Attack: {unit.AttackDamage} dmg | Range: {unit.AttackRange}\n" +
-            $"Initiative: {unit.Initiative}\n" +
-            $"Primary Ability: {primaryAbilityName}\n" +
-            $"Selected Ability: {selectedAbilityName}\n" +
-            $"Group: {encounterLabel}";
+            $"\n" +
+            $"Strength: {unit.Strength}\n" +
+            $"Dexterity: {unit.Dexterity}\n" +
+            $"Constitution: {unit.Constitution}\n" +
+            $"Intelligence: {unit.Intelligence}\n" +
+            $"Wisdom: {unit.Wisdom}\n" +
+            $"\n" +
+            $"Attack Damage: {unit.AttackDamage}\n" +
+            $"Attack Range: {unit.AttackRange}\n" +
+                $"Initiative: {unit.Initiative}";
     }
 
     public string BuildHelpText(string flowState)
@@ -791,7 +1046,7 @@ public partial class HudController : Control
                 "\nEXPLORATION\n" +
                 "- Move party: WASD or Arrow keys\n" +
                 "- Interact: left-click chest/loot while adjacent (range 1)\n" +
-                "- Confirm pickups in Nearby Loot\n" +
+                "- Loot UI: click item to loot, or use Loot All\n" +
                 "- Map transitions: step on glowing edge cells\n" +
                 "- Combat starts when enemies engage your party";
         }
@@ -899,7 +1154,8 @@ public partial class HudController : Control
         }
 
         _activeUnitLabel.Text =
-            $"Turn: {active.UnitName} [{active.Team}] | HP {active.HitPoints}/{active.MaxHitPoints} | MP {active.MagicPoints}/{active.MaxMagicPoints} | Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
+            $"Turn: {active.UnitName} ({active.Team})\n" +
+            $"HP {active.HitPoints}/{active.MaxHitPoints}  MP {active.MagicPoints}/{active.MaxMagicPoints}  Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)
@@ -1095,6 +1351,50 @@ public partial class HudController : Control
         if (_lootPanel != null)
         {
             _lootPanel.Visible = visible;
+            if (visible)
+            {
+                _lootPanel.MoveToFront();
+            }
+        }
+    }
+
+    public void PositionLootPanelAboveCell(Vector2I cell, int cellSize)
+    {
+        if (_lootPanel == null || cellSize <= 0)
+        {
+            return;
+        }
+
+        var viewport = GetViewport();
+        if (viewport == null)
+        {
+            return;
+        }
+
+        var viewportSize = viewport.GetVisibleRect().Size;
+        var panelSize = _basePanelRects.TryGetValue(_lootPanel, out var baseRect)
+            ? baseRect.Size
+            : _lootPanel.Size;
+
+        if (panelSize.X <= 1.0f || panelSize.Y <= 1.0f)
+        {
+            panelSize = new Vector2(420.0f, 274.0f);
+        }
+
+        var cellTopLeft = new Vector2(cell.X * cellSize, cell.Y * cellSize);
+        var cellCenterX = cellTopLeft.X + (cellSize * 0.5f);
+        var targetX = cellCenterX - (panelSize.X * 0.5f);
+        var targetY = cellTopLeft.Y - panelSize.Y - 8.0f;
+
+        var maxX = Mathf.Max(0.0f, viewportSize.X - panelSize.X);
+        var maxY = Mathf.Max(0.0f, viewportSize.Y - panelSize.Y);
+        var clampedX = Mathf.Clamp(targetX, 0.0f, maxX);
+        var clampedY = Mathf.Clamp(targetY, 0.0f, maxY);
+        SetRect(_lootPanel, clampedX, clampedY, clampedX + panelSize.X, clampedY + panelSize.Y);
+
+        if (_basePanelRects.TryGetValue(_lootPanel, out var baseRectForOffset))
+        {
+            _panelOffsets[_lootPanel] = new Vector2(clampedX, clampedY) - baseRectForOffset.Position;
         }
     }
 
@@ -1107,12 +1407,33 @@ public partial class HudController : Control
 
         _lootItemList.Clear();
         _lootEntriesById.Clear();
+        _lootAllInteractionId = "";
+        if (_lootHeader != null)
+        {
+            _lootHeader.Text = "Nearby Loot";
+        }
 
         if (entries == null || entries.Count == 0)
         {
-            _lootDetailsLabel.Text = "No nearby loot interactions.";
+            _lootDetailsLabel.Text = "No loot available.";
+            if (_confirmLootButton != null)
+            {
+                _confirmLootButton.Disabled = true;
+            }
             SetLootPanelVisible(false);
             return;
+        }
+
+        var sourceTitle = GetString(entries[0], "source_title", "");
+        if (!string.IsNullOrEmpty(sourceTitle) && _lootHeader != null)
+        {
+            _lootHeader.Text = sourceTitle;
+        }
+
+        _lootAllInteractionId = GetString(entries[0], "loot_all_id", "");
+        if (_confirmLootButton != null)
+        {
+            _confirmLootButton.Disabled = string.IsNullOrEmpty(_lootAllInteractionId);
         }
 
         foreach (var entry in entries)
@@ -1131,16 +1452,7 @@ public partial class HudController : Control
 
         if (_lootItemList.ItemCount > 0)
         {
-            _lootItemList.Select(0);
-            var firstId = _lootItemList.GetItemMetadata(0).AsString();
-            if (!string.IsNullOrEmpty(firstId) && _lootEntriesById.TryGetValue(firstId, out var firstEntry))
-            {
-                _lootDetailsLabel.Text = GetString(firstEntry, "detail", _lootItemList.GetItemText(0));
-            }
-            else
-            {
-                _lootDetailsLabel.Text = _lootItemList.GetItemText(0);
-            }
+            _lootDetailsLabel.Text = "Click an item to loot it, or use Loot All.";
         }
     }
 
@@ -1236,7 +1548,7 @@ public partial class HudController : Control
             }
 
             var marker = unit == activeUnit ? ">" : " ";
-            builder.AppendLine($"{marker} {unit.UnitName} [{unit.Team}] HP {unit.HitPoints}/{unit.MaxHitPoints} | MP {unit.MagicPoints}/{unit.MaxMagicPoints}");
+            builder.AppendLine($"{marker} {unit.UnitName} ({unit.Team})  HP {unit.HitPoints}/{unit.MaxHitPoints}  MP {unit.MagicPoints}/{unit.MaxMagicPoints}");
         }
 
         _turnQueueLabel.Text = builder.ToString().TrimEnd();

@@ -58,7 +58,7 @@
 	  "name": "Short Bow",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 3,
+	  "base_damage": 4,
 	  "bonus_damage": 0,
 	  "range": 3
 	},

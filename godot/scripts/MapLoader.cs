@@ -356,12 +356,23 @@ public partial class MapLoader : Node
                 continue;
             }
 
-            entries.Add(new Dictionary
+            var containerName = GetBagSourceName(bag, mapProps);
+
+            for (var itemIndex = 0; itemIndex < itemIds.Count; itemIndex++)
             {
-                { "id", $"bag:{bagId}" },
-                { "label", $"Pick up loot bag ({itemIds.Count} item{(itemIds.Count == 1 ? "" : "s")})" },
-                { "detail", $"Pick up bag at ({bagCell.X}, {bagCell.Y}). Contains: {JoinItemNames(itemIds, gameData)}." }
-            });
+                var itemId = itemIds[itemIndex];
+                var itemData = gameData?.GetItem(itemId) ?? new Dictionary();
+                var itemName = GetString(itemData, "name", itemId);
+
+                entries.Add(new Dictionary
+                {
+                    { "id", $"bag-item:{bagId}:{itemIndex}" },
+                    { "label", itemName },
+                    { "detail", $"Loot {itemName}." },
+                    { "source_title", containerName },
+                    { "loot_all_id", $"bag-all:{bagId}" }
+                });
+            }
         }
 
         return entries;
@@ -399,7 +410,7 @@ public partial class MapLoader : Node
             if (openedPropIds.Contains(propId))
             {
                 statusText = $"{propName} is empty.";
-                return true;
+                break;
             }
 
             entries.Add(new Dictionary
@@ -436,12 +447,22 @@ public partial class MapLoader : Node
                     return true;
                 }
 
-                entries.Add(new Dictionary
+                var containerName = GetBagSourceName(bag, mapProps);
+                for (var itemIndex = 0; itemIndex < itemIds.Count; itemIndex++)
                 {
-                    { "id", $"bag:{bagId}" },
-                    { "label", $"Pick up loot bag ({itemIds.Count} item{(itemIds.Count == 1 ? "" : "s")})" },
-                    { "detail", $"Pick up bag at ({bagCell.X}, {bagCell.Y}). Contains: {JoinItemNames(itemIds, gameData)}." }
-                });
+                    var itemId = itemIds[itemIndex];
+                    var itemData = gameData?.GetItem(itemId) ?? new Dictionary();
+                    var itemName = GetString(itemData, "name", itemId);
+
+                    entries.Add(new Dictionary
+                    {
+                        { "id", $"bag-item:{bagId}:{itemIndex}" },
+                        { "label", itemName },
+                        { "detail", $"Loot {itemName}." },
+                        { "source_title", containerName },
+                        { "loot_all_id", $"bag-all:{bagId}" }
+                    });
+                }
                 break;
             }
         }
@@ -451,7 +472,7 @@ public partial class MapLoader : Node
             return false;
         }
 
-        statusText = "Loot interaction opened. Confirm to proceed.";
+        statusText = "Loot interaction opened.";
         return true;
     }
 
@@ -474,6 +495,82 @@ public partial class MapLoader : Node
         if (interactionId.StartsWith("bag:"))
         {
             return TryPickupBagById(explorer, interactionId.Substring(4), lootBags, lootedBagIds, partyInventoryItemIds, gameData, out statusText, out logText, out changedState);
+        }
+
+        if (interactionId.StartsWith("bag-all:"))
+        {
+            return TryPickupBagById(explorer, interactionId.Substring(8), lootBags, lootedBagIds, partyInventoryItemIds, gameData, out statusText, out logText, out changedState);
+        }
+
+        if (interactionId.StartsWith("bag-item:"))
+        {
+            var bagItemPayload = interactionId.Substring(9);
+            var split = bagItemPayload.Split(':', 2);
+            if (split.Length != 2 || !int.TryParse(split[1], out var itemIndex))
+            {
+                return false;
+            }
+
+            return TryPickupBagItemByIndex(explorer, split[0], itemIndex, lootBags, lootedBagIds, partyInventoryItemIds, gameData, out statusText, out logText, out changedState);
+        }
+
+        return false;
+    }
+
+    private bool TryPickupBagItemByIndex(Unit explorer, string bagId, int itemIndex, Array<Dictionary> lootBags, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, GameData gameData, out string statusText, out string logText, out bool changedState)
+    {
+        statusText = "";
+        logText = "";
+        changedState = false;
+
+        if (itemIndex < 0)
+        {
+            return false;
+        }
+
+        for (var i = lootBags.Count - 1; i >= 0; i--)
+        {
+            var bag = lootBags[i];
+            if (GetString(bag, "id", "") != bagId)
+            {
+                continue;
+            }
+
+            var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            {
+                return false;
+            }
+
+            var itemIds = GetBagItemIds(bag);
+            if (itemIds.Count == 0)
+            {
+                statusText = "This loot bag is empty.";
+                return true;
+            }
+
+            if (itemIndex >= itemIds.Count)
+            {
+                return false;
+            }
+
+            var itemId = itemIds[itemIndex];
+            itemIds.RemoveAt(itemIndex);
+            bag["item_ids"] = itemIds;
+            if (itemIds.Count == 0)
+            {
+                bag["item_id"] = "";
+                lootedBagIds.Add(bagId);
+            }
+
+            partyInventoryItemIds.Add(itemId);
+            changedState = true;
+
+            var itemData = gameData?.GetItem(itemId) ?? new Dictionary();
+            var itemName = GetString(itemData, "name", itemId);
+            statusText = $"{explorer.UnitName} looted {itemName}.";
+            logText = $"Loot acquired: {itemName}.";
+            return true;
         }
 
         return false;
@@ -712,6 +809,27 @@ public partial class MapLoader : Node
         }
 
         return result;
+    }
+
+    private static string GetBagSourceName(Dictionary bag, Array<Dictionary> mapProps)
+    {
+        var sourcePropId = GetString(bag, "source_prop_id", "");
+        if (string.IsNullOrEmpty(sourcePropId))
+        {
+            return "Loot Bag";
+        }
+
+        foreach (var prop in mapProps)
+        {
+            if (GetString(prop, "id", "") != sourcePropId)
+            {
+                continue;
+            }
+
+            return GetString(prop, "name", "Loot Bag");
+        }
+
+        return "Loot Bag";
     }
 
     private Array<Dictionary> BuildDefaultParty()

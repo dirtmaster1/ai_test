@@ -63,6 +63,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Vector2I _movementHoverCell = new(-1, -1);
     private bool _movementHoverReachable;
     private int _movementHoverCost = -1;
+    private bool _hasActiveLootCell;
+    private Vector2I _activeLootCell = new(-1, -1);
     private ulong _lastManualEndTurnAtMs;
     private bool _isEndingTurn;
     private bool _isEnemyTurnProcessing;
@@ -216,6 +218,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _mapLoader?.DrawMapFeaturesOverlay(this, _blockedCells, _mapTransitions, GridWidth, GridHeight, CellSize);
+        DrawFocusedUnitCellHighlight();
         DrawMapInteractablesOverlay();
         DrawMovementPreviewOverlay();
         DrawAttackPreviewOverlay();
@@ -381,6 +384,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        EnsureSharedInventoryHasUnequippedCount(itemId, 1);
+
         ApplyEquippedItemBonuses(target);
         var itemName = _gameData == null
             ? itemId
@@ -419,9 +424,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
         }
 
-        var nearbyEntries = BuildNearbyLootEntries(explorer);
-        _hud?.SetLootEntries(nearbyEntries);
-        _hud?.SetLootPanelVisible(nearbyEntries.Count > 0);
+        var refreshedEntries = new Array<Dictionary>();
+        if (_hasActiveLootCell && _mapLoader != null)
+        {
+            _mapLoader.TryBuildExplorationClickLootEntries(explorer, _activeLootCell, _mapProps, _lootBags, _openedPropIds, _gameData, out refreshedEntries, out _);
+        }
+
+        if (refreshedEntries.Count > 0)
+        {
+            _hud?.SetLootEntries(refreshedEntries);
+            _hud?.PositionLootPanelAboveCell(_activeLootCell, CellSize);
+            _hud?.SetLootPanelVisible(true);
+        }
+        else
+        {
+            _hasActiveLootCell = false;
+            _activeLootCell = new Vector2I(-1, -1);
+            _hud?.SetLootPanelVisible(false);
+        }
+
         SetStatusHelp();
         _persistence.PersistSaveGame(false);
     }
@@ -840,6 +861,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         unit.SetGridPos(targetCell);
         _eventBus?.EmitSignal(EventBus.SignalName.UnitMoved, unit, fromCell, targetCell);
         SetStatusHelp();
+        QueueRedraw();
         return true;
     }
 
@@ -1665,6 +1687,33 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mapLoader?.DrawMapInteractablesOverlay(this, _mapProps, _lootBags, _openedPropIds, CellSize);
     }
 
+    private void DrawFocusedUnitCellHighlight()
+    {
+        Unit highlightedUnit = null;
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            highlightedUnit = _turnManager?.GetActiveUnit();
+        }
+        else if (_flowState == BattleFlowState.Exploration)
+        {
+            highlightedUnit = GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+        }
+
+        if (!IsUsableUnit(highlightedUnit) || highlightedUnit.IsDead || !IsInBounds(highlightedUnit.GridPos))
+        {
+            return;
+        }
+
+        var rect = new Rect2(
+            new Vector2(highlightedUnit.GridPos.X * CellSize, highlightedUnit.GridPos.Y * CellSize),
+            new Vector2(CellSize, CellSize)
+        );
+
+        DrawRect(rect, new Color(0.2f, 0.9f, 0.3f, 0.2f), true);
+        DrawRect(rect, new Color(0.35f, 1.0f, 0.45f, 0.9f), false, 3.0f);
+    }
+
     private void DrawHoveredUnitTooltip()
     {
         var cell = WorldToCell(GetGlobalMousePosition());
@@ -1797,7 +1846,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (entries.Count > 0)
         {
+            var firstInteractionId = GetString(entries[0], "id", "");
+            if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("prop:"))
+            {
+                if (TryExecuteExplorationInteractionById(explorer, firstInteractionId))
+                {
+                    _mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, _mapProps, _lootBags, _openedPropIds, _gameData, out entries, out _);
+                }
+            }
+
+            if (entries.Count == 0)
+            {
+                _hasActiveLootCell = false;
+                _activeLootCell = new Vector2I(-1, -1);
+                _hud?.SetLootPanelVisible(false);
+                return true;
+            }
+
+            _hasActiveLootCell = true;
+            _activeLootCell = clickedCell;
             _hud?.SetLootEntries(entries);
+            _hud?.PositionLootPanelAboveCell(clickedCell, CellSize);
             _hud?.SetLootPanelVisible(true);
         }
 
@@ -1965,8 +2034,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var equippedUsage = new System.Collections.Generic.Dictionary<string, int>();
-        foreach (var equippedBySlot in _equippedItemsByUnitId.Values)
+        foreach (var player in _playerUnits)
         {
+            if (!IsUsableUnit(player) || string.IsNullOrEmpty(player.UnitId))
+            {
+                continue;
+            }
+
+            if (!_equippedItemsByUnitId.TryGetValue(player.UnitId, out var equippedBySlot))
+            {
+                continue;
+            }
+
             foreach (var entry in equippedBySlot)
             {
                 var equippedId = entry.Value;
@@ -2360,15 +2439,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (slot == "2-handed")
         {
-            equippedBySlot.Remove("1-handed-a");
-            equippedBySlot.Remove("1-handed-b");
+            if (equippedBySlot.Remove("1-handed-a", out var removedMainHand))
+            {
+                EnsureSharedInventoryHasUnequippedCount(removedMainHand, 1);
+            }
+
+            if (equippedBySlot.Remove("1-handed-b", out var removedOffHand))
+            {
+                EnsureSharedInventoryHasUnequippedCount(removedOffHand, 1);
+            }
+
             equippedBySlot["2-handed"] = itemId;
             return;
         }
 
         if (slot == "1-handed")
         {
-            equippedBySlot.Remove("2-handed");
+            if (equippedBySlot.Remove("2-handed", out var removedTwoHanded))
+            {
+                EnsureSharedInventoryHasUnequippedCount(removedTwoHanded, 1);
+            }
+
             if (!equippedBySlot.ContainsKey("1-handed-a"))
             {
                 equippedBySlot["1-handed-a"] = itemId;
@@ -2381,11 +2472,67 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
+            if (equippedBySlot.TryGetValue("1-handed-a", out var replacedOneHanded))
+            {
+                EnsureSharedInventoryHasUnequippedCount(replacedOneHanded, 1);
+            }
+
             equippedBySlot["1-handed-a"] = itemId;
             return;
         }
 
+        if (equippedBySlot.TryGetValue(slot, out var replacedSlottedItem))
+        {
+            EnsureSharedInventoryHasUnequippedCount(replacedSlottedItem, 1);
+        }
+
         equippedBySlot[slot] = itemId;
+    }
+
+    private void EnsureSharedInventoryHasUnequippedCount(string itemId, int minimumUnequippedCount)
+    {
+        if (string.IsNullOrEmpty(itemId) || minimumUnequippedCount <= 0)
+        {
+            return;
+        }
+
+        var sharedCount = 0;
+        foreach (var sharedItemId in _partyInventoryItemIds)
+        {
+            if (sharedItemId == itemId)
+            {
+                sharedCount++;
+            }
+        }
+
+        var equippedCount = 0;
+        foreach (var player in _playerUnits)
+        {
+            if (!IsUsableUnit(player) || string.IsNullOrEmpty(player.UnitId))
+            {
+                continue;
+            }
+
+            if (!_equippedItemsByUnitId.TryGetValue(player.UnitId, out var equippedBySlot))
+            {
+                continue;
+            }
+
+            foreach (var equippedItemId in equippedBySlot.Values)
+            {
+                if (equippedItemId == itemId)
+                {
+                    equippedCount++;
+                }
+            }
+        }
+
+        var unequippedCount = sharedCount - equippedCount;
+        while (unequippedCount < minimumUnequippedCount)
+        {
+            _partyInventoryItemIds.Add(itemId);
+            unequippedCount++;
+        }
     }
 
     private Array<Unit> BuildTurnQueueForHud()
