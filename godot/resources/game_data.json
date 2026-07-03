@@ -152,7 +152,7 @@
 		"name": "Cleric",
 		"team": "player",
 		"primary_ability_id": "lesser-heal",
-		"ability_ids": [
+		"ability_ids": [ 
 		  "lesser-heal",
           "melee"
 		],

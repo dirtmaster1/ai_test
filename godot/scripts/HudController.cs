@@ -1045,6 +1045,7 @@ public partial class HudController : Control
             return common +
                 "\nEXPLORATION\n" +
                 "- Move party: WASD or Arrow keys\n" +
+                "- Reorder party lead: Q / E\n" +
                 "- Interact: left-click chest/loot while adjacent (range 1)\n" +
                 "- Loot UI: click item to loot, or use Loot All\n" +
                 "- Map transitions: step on glowing edge cells\n" +

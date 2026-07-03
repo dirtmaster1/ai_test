@@ -2975,12 +2975,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             priorPositions[player] = player.GridPos;
         }
 
-        if (!TryMoveUnit(leader, priorPositions[leader] + delta))
+        var partySet = new HashSet<Unit>(orderedParty);
+        var leaderNextCell = priorPositions[leader] + delta;
+        if (!CanExplorationLeaderEnterCell(leaderNextCell, partySet))
         {
             return false;
         }
 
-        var partySet = new HashSet<Unit>(orderedParty);
+        leader.SetGridPos(leaderNextCell);
+
         for (var i = 1; i < orderedParty.Count; i++)
         {
             var follower = orderedParty[i];
@@ -2994,6 +2997,75 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (CanExplorationFollowerEnterCell(nextCell, partySet))
             {
                 follower.SetGridPos(nextCell);
+            }
+        }
+
+        QueueRedraw();
+        return true;
+    }
+
+    private bool RotateExplorationPartyOrder(int delta)
+    {
+        if (_flowState != BattleFlowState.Exploration || delta == 0)
+        {
+            return false;
+        }
+
+        var party = new List<Unit>();
+        foreach (var player in _playerUnits)
+        {
+            if (IsUsableUnit(player) && !player.IsDead)
+            {
+                party.Add(player);
+            }
+        }
+
+        if (party.Count <= 1)
+        {
+            return false;
+        }
+
+        var leader = GetExplorerUnit();
+        if (!IsUsableUnit(leader) || leader.IsDead)
+        {
+            return false;
+        }
+
+        var index = party.IndexOf(leader);
+        if (index < 0)
+        {
+            index = 0;
+        }
+
+        var nextIndex = (index + delta) % party.Count;
+        if (nextIndex < 0)
+        {
+            nextIndex += party.Count;
+        }
+
+        _explorerUnit = party[nextIndex];
+        _selectedCharacterUnitId = _explorerUnit.UnitId;
+        QueueRedraw();
+        return true;
+    }
+
+    private bool CanExplorationLeaderEnterCell(Vector2I cell, HashSet<Unit> partyMembers)
+    {
+        if (!IsInBounds(cell) || IsBlockedCell(cell))
+        {
+            return false;
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || partyMembers.Contains(unit))
+            {
+                continue;
+            }
+
+            if (unit.GridPos == cell)
+            {
+                return false;
             }
         }
 
