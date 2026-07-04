@@ -100,7 +100,8 @@
 	"default_party": [
 	  "wizard",
 	  "warrior",
-      "cleric"
+	  "cleric",
+	  "ranger"
 	],
 	"templates": {
 	  "wizard": {
@@ -169,6 +170,144 @@
 		  "small-shield",
 		  "short-sword",
           "leather-armor"
+		]
+	  },
+	  "ranger": {
+		"id": "ranger",
+		"name": "Elven Ranger",
+		"team": "player",
+		"primary_ability_id": "ranged",
+		"ability_ids": [
+		  "ranged",
+		  "melee"
+		],
+		"initiative": 14,
+		"hit_points": 9,
+		"max_hit_points": 9,
+		"intelligence": 6,
+		"strength": 6,
+		"wisdom": 7,
+		"dexterity": 10,
+		"starting_equipment": [
+		  "short-bow",
+		  "leather-armor"
+		]
+	  },
+	  "goblin-shaman": {
+		"id": "goblin-shaman",
+		"name": "Goblin Shaman",
+		"team": "enemy",
+		"primary_ability_id": "magic-missile",
+		"ability_ids": [
+		  "magic-missile",
+		  "melee"
+		],
+		"initiative": 11,
+		"hit_points": 8,
+		"max_hit_points": 8,
+		"magic_points": 6,
+		"max_magic_points": 6,
+		"intelligence": 8,
+		"strength": 5,
+		"wisdom": 7,
+		"dexterity": 6
+	  },
+	  "goblin-chieftain": {
+		"id": "goblin-chieftain",
+		"name": "Goblin Chieftain",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 12,
+		"hit_points": 14,
+		"max_hit_points": 14,
+		"intelligence": 5,
+		"strength": 10,
+		"wisdom": 5,
+		"dexterity": 6,
+		"constitution": 9,
+		"starting_equipment": [
+		  "war-axe"
+		]
+	  },
+	  "skeleton-warrior": {
+		"id": "skeleton-warrior",
+		"name": "Skeleton Warrior",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 10,
+		"hit_points": 10,
+		"max_hit_points": 10,
+		"intelligence": 4,
+		"strength": 7,
+		"wisdom": 4,
+		"dexterity": 5,
+		"constitution": 7,
+		"starting_equipment": [
+		  "short-sword"
+		]
+	  },
+	  "skeleton-mage": {
+		"id": "skeleton-mage",
+		"name": "Skeleton Mage",
+		"team": "enemy",
+		"primary_ability_id": "magic-missile",
+		"ability_ids": [
+		  "magic-missile",
+		  "melee"
+		],
+		"initiative": 12,
+		"hit_points": 8,
+		"max_hit_points": 8,
+		"magic_points": 6,
+		"max_magic_points": 6,
+		"intelligence": 9,
+		"strength": 4,
+		"wisdom": 7,
+		"dexterity": 5
+	  },
+	  "zombie": {
+		"id": "zombie",
+		"name": "Zombie",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 7,
+		"hit_points": 13,
+		"max_hit_points": 13,
+		"intelligence": 3,
+		"strength": 8,
+		"wisdom": 3,
+		"dexterity": 3,
+		"constitution": 9
+	  },
+	  "necromancer": {
+		"id": "necromancer",
+		"name": "Necromancer",
+		"team": "enemy",
+		"primary_ability_id": "magic-missile",
+		"ability_ids": [
+		  "magic-missile",
+		  "melee"
+		],
+		"initiative": 13,
+		"hit_points": 9,
+		"max_hit_points": 9,
+		"magic_points": 8,
+		"max_magic_points": 8,
+		"intelligence": 10,
+		"strength": 4,
+		"wisdom": 8,
+		"dexterity": 6,
+		"starting_equipment": [
+		  "cloth-robe"
 		]
 	  }
 	}

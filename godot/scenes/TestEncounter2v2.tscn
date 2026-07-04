@@ -9,6 +9,25 @@
 [node name="TestEncounter2v2" type="Node2D"]
 script = ExtResource("1_btl")
 
+[node name="Maps" type="Node2D" parent="."]
+
+[node name="map-a" type="TileMapLayer" parent="Maps"]
+
+[node name="map-a-collision" type="TileMapLayer" parent="Maps"]
+visible = false
+
+[node name="map-a-markers" type="TileMapLayer" parent="Maps"]
+visible = false
+
+[node name="map-b" type="TileMapLayer" parent="Maps"]
+visible = false
+
+[node name="map-b-collision" type="TileMapLayer" parent="Maps"]
+visible = false
+
+[node name="map-b-markers" type="TileMapLayer" parent="Maps"]
+visible = false
+
 [node name="Units" type="Node2D" parent="."]
 
 [node name="TurnManager" type="Node" parent="."]

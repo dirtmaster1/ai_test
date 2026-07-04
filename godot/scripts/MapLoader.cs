@@ -4,13 +4,20 @@ using System.Collections.Generic;
 
 public partial class MapLoader : Node
 {
+    [Export] public NodePath MapsRootPath = "../Maps";
+    private const string VisualSuffix = "-visual";
+    private const string CollisionSuffix = "-collision";
+    private const string MarkerSuffix = "-markers";
+
     private GameData _gameData;
     private Array<Dictionary> _defaultParty = new();
+    private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _mapLayersById = new();
 
     public override void _Ready()
     {
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
         _defaultParty = BuildDefaultParty();
+        CacheMapLayers();
     }
 
     public Dictionary LoadMapStub(string mapId = "map-a")
@@ -20,11 +27,413 @@ public partial class MapLoader : Node
             _defaultParty = BuildDefaultParty();
         }
 
-        return mapId switch
+        var mapData = mapId switch
         {
             "map-b" => BuildMapB(_defaultParty),
             _ => BuildMapA(_defaultParty)
         };
+
+        if (TryBuildBlockedCellsFromTileMap(mapId, out var blockedFromTiles, out var inferredWidth, out var inferredHeight))
+        {
+            mapData["blocked"] = blockedFromTiles;
+            mapData["width"] = inferredWidth;
+            mapData["height"] = inferredHeight;
+        }
+
+        ApplyMarkerOverrides(mapId, mapData);
+
+        SetActiveMapVisual(mapId);
+        return mapData;
+    }
+
+    public void SetActiveMapVisual(string mapId)
+    {
+        if (_mapLayersById.Count == 0)
+        {
+            CacheMapLayers();
+        }
+
+        foreach (var pair in _mapLayersById)
+        {
+            var isVisual = pair.Key == mapId || pair.Key == mapId + VisualSuffix;
+            pair.Value.Visible = isVisual;
+        }
+    }
+
+    private void CacheMapLayers()
+    {
+        _mapLayersById.Clear();
+
+        var mapsRoot = GetNodeOrNull<Node>(MapsRootPath);
+        if (mapsRoot == null)
+        {
+            return;
+        }
+
+        foreach (var child in mapsRoot.GetChildren())
+        {
+            if (child is not TileMapLayer layer)
+            {
+                continue;
+            }
+
+            var mapId = layer.Name.ToString();
+            _mapLayersById[mapId] = layer;
+        }
+    }
+
+    private bool TryBuildBlockedCellsFromTileMap(string mapId, out Array<Vector2I> blockedCells, out int width, out int height)
+    {
+        blockedCells = new Array<Vector2I>();
+        width = 0;
+        height = 0;
+
+        if (_mapLayersById.Count == 0)
+        {
+            CacheMapLayers();
+        }
+
+        if (!TryGetLayerForPurpose(mapId, CollisionSuffix, out var collisionLayer))
+        {
+            return false;
+        }
+
+        var usedRect = collisionLayer.GetUsedRect();
+        if (usedRect.Size.X <= 0 || usedRect.Size.Y <= 0)
+        {
+            return false;
+        }
+
+        for (var y = usedRect.Position.Y; y < usedRect.End.Y; y++)
+        {
+            for (var x = usedRect.Position.X; x < usedRect.End.X; x++)
+            {
+                var cell = new Vector2I(x, y);
+                if (collisionLayer.GetCellSourceId(cell) == -1)
+                {
+                    continue;
+                }
+
+                blockedCells.Add(cell);
+            }
+        }
+
+        width = Mathf.Max(1, usedRect.End.X);
+        height = Mathf.Max(1, usedRect.End.Y);
+        return true;
+    }
+
+    private bool TryGetLayerForPurpose(string mapId, string suffix, out TileMapLayer layer)
+    {
+        layer = null;
+        if (_mapLayersById.Count == 0)
+        {
+            CacheMapLayers();
+        }
+
+        if (_mapLayersById.TryGetValue(mapId + suffix, out layer) && layer != null)
+        {
+            return true;
+        }
+
+        return _mapLayersById.TryGetValue(mapId, out layer) && layer != null;
+    }
+
+    private void ApplyMarkerOverrides(string mapId, Dictionary mapData)
+    {
+        if (!TryGetLayerForPurpose(mapId, MarkerSuffix, out var markerLayer))
+        {
+            return;
+        }
+
+        var usedRect = markerLayer.GetUsedRect();
+        if (usedRect.Size.X <= 0 || usedRect.Size.Y <= 0)
+        {
+            return;
+        }
+
+        var transitions = new Array<Dictionary>();
+        var props = new Array<Dictionary>();
+        var playerSpawnBySlot = new System.Collections.Generic.Dictionary<int, Vector2I>();
+        Vector2I? playerLeaderSpawn = null;
+
+        var encountersById = new System.Collections.Generic.Dictionary<string, Dictionary>();
+
+        for (var y = usedRect.Position.Y; y < usedRect.End.Y; y++)
+        {
+            for (var x = usedRect.Position.X; x < usedRect.End.X; x++)
+            {
+                var cell = new Vector2I(x, y);
+                if (markerLayer.GetCellSourceId(cell) == -1)
+                {
+                    continue;
+                }
+
+                var tileData = markerLayer.GetCellTileData(cell);
+                if (tileData == null)
+                {
+                    continue;
+                }
+
+                var markerType = GetTileString(tileData, "marker_type", "").ToLowerInvariant();
+                if (string.IsNullOrEmpty(markerType))
+                {
+                    continue;
+                }
+
+                switch (markerType)
+                {
+                    case "transition":
+                    {
+                        var toMap = GetTileString(tileData, "to_map", mapId);
+                        var spawnX = GetTileInt(tileData, "spawn_x", cell.X);
+                        var spawnY = GetTileInt(tileData, "spawn_y", cell.Y);
+                        transitions.Add(new Dictionary
+                        {
+                            { "from_cell", cell },
+                            { "to_map", toMap },
+                            { "spawn_cell", new Vector2I(spawnX, spawnY) }
+                        });
+                        break;
+                    }
+                    case "player_spawn":
+                    {
+                        var slot = GetTileInt(tileData, "party_slot", -1);
+                        if (slot >= 0)
+                        {
+                            playerSpawnBySlot[slot] = cell;
+                        }
+                        else
+                        {
+                            playerLeaderSpawn = cell;
+                        }
+                        break;
+                    }
+                    case "enemy_spawn":
+                    {
+                        var encounterId = GetTileString(tileData, "encounter_id", "encounter-a");
+                        if (!encountersById.TryGetValue(encounterId, out var encounter))
+                        {
+                            encounter = new Dictionary
+                            {
+                                { "id", encounterId },
+                                { "aggro_range", GetTileInt(tileData, "aggro_range", 4) },
+                                { "enemies", new Array<Dictionary>() }
+                            };
+                            encountersById[encounterId] = encounter;
+                        }
+
+                        var templateId = GetTileString(tileData, "template_id", "");
+                        var enemy = new Dictionary();
+                        if (!string.IsNullOrEmpty(templateId) && _gameData != null)
+                        {
+                            var template = _gameData.GetCharacterTemplate(templateId);
+                            if (template.Count > 0)
+                            {
+                                enemy = CopyDictionary(template);
+                            }
+                        }
+
+                        var fallbackEnemyId = GetString(enemy, "id", $"{encounterId}-enemy-{cell.X}-{cell.Y}");
+                        var fallbackEnemyName = GetString(enemy, "name", "Enemy");
+                        var fallbackPrimaryAbility = GetString(enemy, "primary_ability_id", "melee");
+                        var fallbackInitiative = GetInt(enemy, "initiative", 10);
+                        var fallbackHp = GetInt(enemy, "hit_points", 8);
+                        var fallbackMaxHp = GetInt(enemy, "max_hit_points", fallbackHp);
+
+                        enemy["id"] = GetTileString(tileData, "id", fallbackEnemyId);
+                        enemy["name"] = GetTileString(tileData, "name", fallbackEnemyName);
+                        enemy["team"] = "enemy";
+                        enemy["grid_pos"] = cell;
+                        enemy["primary_ability_id"] = GetTileString(tileData, "primary_ability_id", fallbackPrimaryAbility);
+                        enemy["initiative"] = GetTileInt(tileData, "initiative", fallbackInitiative);
+                        enemy["hit_points"] = GetTileInt(tileData, "hit_points", fallbackHp);
+                        enemy["max_hit_points"] = GetTileInt(tileData, "max_hit_points", fallbackMaxHp);
+
+                        var startingEquipment = GetTileStringArray(tileData, "starting_equipment");
+                        if (startingEquipment.Count > 0)
+                        {
+                            enemy["starting_equipment"] = startingEquipment;
+                        }
+
+                        var enemies = (Array<Dictionary>)encounter["enemies"];
+                        enemies.Add(enemy);
+                        break;
+                    }
+                    case "prop":
+                    case "chest":
+                    case "sign":
+                    case "npc":
+                    case "trap":
+                    {
+                        var propType = markerType;
+                        var propId = GetTileString(tileData, "id", $"{mapId}-{propType}-{cell.X}-{cell.Y}");
+                        var fallbackName = char.ToUpper(propType[0]) + propType.Substring(1);
+                        var prop = new Dictionary
+                        {
+                            { "id", propId },
+                            { "type", propType },
+                            { "name", GetTileString(tileData, "name", fallbackName) },
+                            { "grid_pos", cell }
+                        };
+
+                        var interactionText = GetTileString(tileData, "interaction_text", "");
+                        if (!string.IsNullOrEmpty(interactionText))
+                        {
+                            prop["interaction_text"] = interactionText;
+                        }
+
+                        var lootItemIds = GetTileStringArray(tileData, "loot_item_ids");
+                        if (lootItemIds.Count > 0)
+                        {
+                            prop["loot_item_ids"] = lootItemIds;
+                            prop["loot_rolls_min"] = Mathf.Max(1, GetTileInt(tileData, "loot_rolls_min", 1));
+                            prop["loot_rolls_max"] = Mathf.Max((int)prop["loot_rolls_min"], GetTileInt(tileData, "loot_rolls_max", (int)prop["loot_rolls_min"]));
+                        }
+
+                        props.Add(prop);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (transitions.Count > 0)
+        {
+            mapData["transitions"] = transitions;
+        }
+
+        if (props.Count > 0)
+        {
+            mapData["props"] = props;
+        }
+
+        if (encountersById.Count > 0)
+        {
+            var encounterList = new Array<Dictionary>();
+            foreach (var pair in encountersById)
+            {
+                encounterList.Add(pair.Value);
+            }
+
+            mapData["encounters"] = encounterList;
+        }
+
+        if (playerSpawnBySlot.Count > 0 || playerLeaderSpawn.HasValue)
+        {
+            mapData["players"] = BuildPlayersFromMarkerSpawns(playerSpawnBySlot, playerLeaderSpawn);
+        }
+    }
+
+    private Array<Dictionary> BuildPlayersFromMarkerSpawns(System.Collections.Generic.Dictionary<int, Vector2I> playerSpawnBySlot, Vector2I? playerLeaderSpawn)
+    {
+        var players = new Array<Dictionary>();
+        if (_defaultParty.Count == 0)
+        {
+            return players;
+        }
+
+        var leaderCell = playerLeaderSpawn ?? new Vector2I(2, 7);
+        for (var i = 0; i < _defaultParty.Count; i++)
+        {
+            var player = CopyDictionary(_defaultParty[i]);
+            var fallbackCell = leaderCell + GetPartyFormationOffset(i);
+            if (playerSpawnBySlot.TryGetValue(i, out var slotCell))
+            {
+                player["grid_pos"] = slotCell;
+            }
+            else
+            {
+                player["grid_pos"] = fallbackCell;
+            }
+
+            players.Add(player);
+        }
+
+        return players;
+    }
+
+    private static string GetTileString(TileData tileData, string key, string fallback)
+    {
+        var value = tileData.GetCustomData(key);
+        if (value.VariantType == Variant.Type.Nil)
+        {
+            return fallback;
+        }
+
+        if (value.VariantType == Variant.Type.String || value.VariantType == Variant.Type.StringName)
+        {
+            return value.AsString();
+        }
+
+        return value.ToString();
+    }
+
+    private static int GetTileInt(TileData tileData, string key, int fallback)
+    {
+        var value = tileData.GetCustomData(key);
+        if (value.VariantType == Variant.Type.Nil)
+        {
+            return fallback;
+        }
+
+        if (value.VariantType == Variant.Type.Int)
+        {
+            return (int)value;
+        }
+
+        if (value.VariantType == Variant.Type.Float)
+        {
+            return Mathf.RoundToInt((float)value);
+        }
+
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
+    }
+
+    private static Array<string> GetTileStringArray(TileData tileData, string key)
+    {
+        var result = new Array<string>();
+        var value = tileData.GetCustomData(key);
+        if (value.VariantType == Variant.Type.Nil)
+        {
+            return result;
+        }
+
+        if (value.VariantType == Variant.Type.Array)
+        {
+            foreach (var entry in (Array)value)
+            {
+                var variant = entry;
+                if (variant.VariantType == Variant.Type.String || variant.VariantType == Variant.Type.StringName)
+                {
+                    var str = variant.AsString().Trim();
+                    if (!string.IsNullOrEmpty(str))
+                    {
+                        result.Add(str);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        var csv = value.ToString();
+        if (string.IsNullOrEmpty(csv))
+        {
+            return result;
+        }
+
+        var parts = csv.Split(',');
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            if (!string.IsNullOrEmpty(trimmed))
+            {
+                result.Add(trimmed);
+            }
+        }
+
+        return result;
     }
 
     private static Dictionary BuildMapA(Array<Dictionary> defaultParty)
@@ -59,6 +468,20 @@ public partial class MapLoader : Node
             }
         };
 
+        var encounterC = new Dictionary
+        {
+            { "id", "encounter-c" },
+            { "aggro_range", 5 },
+            {
+                "enemies",
+                new Array<Dictionary>
+                {
+                    new Dictionary { { "id", "goblin-shaman-a" }, { "name", "Goblin Shaman" }, { "team", "enemy" }, { "grid_pos", new Vector2I(6, 4) }, { "primary_ability_id", "magic-missile" }, { "ability_ids", new Array<string> { "magic-missile", "melee" } }, { "initiative", 11 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "magic_points", 6 }, { "max_magic_points", 6 }, { "intelligence", 8 } },
+                    new Dictionary { { "id", "goblin-chieftain-a" }, { "name", "Goblin Chieftain" }, { "team", "enemy" }, { "grid_pos", new Vector2I(7, 3) }, { "primary_ability_id", "melee" }, { "initiative", 12 }, { "hit_points", 14 }, { "max_hit_points", 14 }, { "strength", 9 }, { "starting_equipment", new Array<string> { "war-axe" } } }
+                }
+            }
+        };
+
         return new Dictionary
         {
             { "id", "map-a" },
@@ -66,7 +489,7 @@ public partial class MapLoader : Node
             { "height", 15 },
             { "blocked", new Array<Vector2I> { new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7) } },
             { "players", players },
-            { "encounters", new Array<Dictionary> { encounterA, encounterB } },
+            { "encounters", new Array<Dictionary> { encounterA, encounterB, encounterC } },
             {
                 "props",
                 new Array<Dictionary>
@@ -110,16 +533,18 @@ public partial class MapLoader : Node
     {
         var players = UpdatePartyGridPosition(defaultParty, new Vector2I(1, 7));
 
-        var encounterC = new Dictionary
+        var encounterD = new Dictionary
         {
-            { "id", "encounter-c" },
+            { "id", "encounter-d" },
             { "aggro_range", 4 },
             {
                 "enemies",
                 new Array<Dictionary>
                 {
-                    new Dictionary { { "id", "goblin-warrior-c" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(13, 6) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 9 }, { "max_hit_points", 9 }, { "starting_equipment", new Array<string> { "short-sword" } } },
-                    new Dictionary { { "id", "goblin-archer-c" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(15, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 12 }, { "hit_points", 7 }, { "max_hit_points", 7 }, { "starting_equipment", new Array<string> { "short-bow" } } }
+                    new Dictionary { { "id", "skeleton-warrior-a" }, { "name", "Skeleton Warrior" }, { "team", "enemy" }, { "grid_pos", new Vector2I(13, 6) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 10 }, { "max_hit_points", 10 }, { "starting_equipment", new Array<string> { "short-sword" } } },
+                    new Dictionary { { "id", "skeleton-mage-a" }, { "name", "Skeleton Mage" }, { "team", "enemy" }, { "grid_pos", new Vector2I(15, 9) }, { "primary_ability_id", "magic-missile" }, { "ability_ids", new Array<string> { "magic-missile", "melee" } }, { "initiative", 12 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "magic_points", 6 }, { "max_magic_points", 6 } },
+                    new Dictionary { { "id", "zombie-a" }, { "name", "Zombie" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 8) }, { "primary_ability_id", "melee" }, { "initiative", 7 }, { "hit_points", 13 }, { "max_hit_points", 13 }, { "constitution", 9 } },
+                    new Dictionary { { "id", "necromancer-a" }, { "name", "Necromancer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(14, 5) }, { "primary_ability_id", "magic-missile" }, { "ability_ids", new Array<string> { "magic-missile", "melee" } }, { "initiative", 13 }, { "hit_points", 9 }, { "max_hit_points", 9 }, { "magic_points", 8 }, { "max_magic_points", 8 }, { "intelligence", 10 }, { "starting_equipment", new Array<string> { "cloth-robe" } } }
                 }
             }
         };
@@ -131,7 +556,7 @@ public partial class MapLoader : Node
             { "height", 15 },
             { "blocked", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
             { "players", players },
-            { "encounters", new Array<Dictionary> { encounterC } },
+            { "encounters", new Array<Dictionary> { encounterD } },
             {
                 "props",
                 new Array<Dictionary>
@@ -327,17 +752,25 @@ public partial class MapLoader : Node
             }
 
             var propId = GetString(prop, "id", "prop");
-            if (openedPropIds.Contains(propId))
+            var hasLoot = HasLootConfig(prop);
+            if (hasLoot && openedPropIds.Contains(propId))
             {
                 continue;
             }
 
             var propName = GetString(prop, "name", "Prop");
+            var interactionText = GetString(prop, "interaction_text", "");
+            var verb = hasLoot ? "Open" : "Inspect";
+            var detail = hasLoot
+                ? $"Open {propName} at ({propCell.X}, {propCell.Y})."
+                : string.IsNullOrEmpty(interactionText)
+                    ? $"Inspect {propName} at ({propCell.X}, {propCell.Y})."
+                    : interactionText;
             entries.Add(new Dictionary
             {
                 { "id", $"prop:{propId}" },
-                { "label", $"Open {propName}" },
-                { "detail", $"Open {propName} at ({propCell.X}, {propCell.Y})." }
+                { "label", $"{verb} {propName}" },
+                { "detail", detail }
             });
         }
 
@@ -407,7 +840,9 @@ public partial class MapLoader : Node
 
             var propId = GetString(prop, "id", "prop");
             var propName = GetString(prop, "name", "Prop");
-            if (openedPropIds.Contains(propId))
+            var hasLoot = HasLootConfig(prop);
+            var interactionText = GetString(prop, "interaction_text", "");
+            if (hasLoot && openedPropIds.Contains(propId))
             {
                 statusText = $"{propName} is empty.";
                 break;
@@ -416,8 +851,12 @@ public partial class MapLoader : Node
             entries.Add(new Dictionary
             {
                 { "id", $"prop:{propId}" },
-                { "label", $"Open {propName}" },
-                { "detail", $"Open {propName} at ({propCell.X}, {propCell.Y})." }
+                { "label", hasLoot ? $"Open {propName}" : $"Inspect {propName}" },
+                { "detail", hasLoot
+                    ? $"Open {propName} at ({propCell.X}, {propCell.Y})."
+                    : string.IsNullOrEmpty(interactionText)
+                        ? $"Inspect {propName} at ({propCell.X}, {propCell.Y})."
+                        : interactionText }
             });
             break;
         }
@@ -636,6 +1075,18 @@ public partial class MapLoader : Node
                 return true;
             }
 
+            var hasLoot = HasLootConfig(prop);
+            var interactionText = GetString(prop, "interaction_text", "");
+            if (!hasLoot)
+            {
+                statusText = string.IsNullOrEmpty(interactionText)
+                    ? $"{explorer.UnitName} inspected {GetString(prop, "name", "prop")}."
+                    : interactionText;
+                logText = statusText;
+                changedState = false;
+                return true;
+            }
+
             openedPropIds.Add(propId);
             changedState = true;
 
@@ -748,6 +1199,17 @@ public partial class MapLoader : Node
         }
 
         return drops;
+    }
+
+    private static bool HasLootConfig(Dictionary prop)
+    {
+        if (TryGetStringArray(prop, "loot_item_ids").Count > 0)
+        {
+            return true;
+        }
+
+        var single = GetString(prop, "loot_item_id", "");
+        return !string.IsNullOrEmpty(single);
     }
 
     private static int Manhattan(Vector2I a, Vector2I b)
@@ -864,10 +1326,11 @@ public partial class MapLoader : Node
     {
         return index switch
         {
-            0 => new Vector2I(0, -1),
+            0 => new Vector2I(0, 0),
             1 => new Vector2I(0, 1),
-            2 => new Vector2I(0, 0),
-            _ => new Vector2I(0, index - 2)
+            2 => new Vector2I(0, -1),
+            3 => new Vector2I(1, 0),
+            _ => new Vector2I(index - 3, 0)
         };
     }
 

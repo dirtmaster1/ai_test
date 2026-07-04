@@ -5,8 +5,8 @@ using System.Collections.Generic;
 public partial class BattleController : Node2D, IGamePersistenceHost
 {
     // Architecture: Core orchestration state and cross-system coordination.
-    private const int GridWidth = 20;
-    private const int GridHeight = 15;
+    private const int DefaultGridWidth = 20;
+    private const int DefaultGridHeight = 15;
     private const int CellSize = 64;
     private const int DefaultAggroTriggerRange = 4;
     private const float GridLineThickness = 2.0f;
@@ -49,6 +49,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
     private readonly RandomNumberGenerator _lootRng = new();
+
+    private int _gridWidth = DefaultGridWidth;
+    private int _gridHeight = DefaultGridHeight;
 
     private BattleFlowState _flowState = BattleFlowState.Exploration;
     private bool _awaitingPlayerAttackDirection;
@@ -190,34 +193,34 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         );
 
         DrawRect(
-            new Rect2(Vector2.Zero, new Vector2(GridWidth * CellSize, GridHeight * CellSize)),
+            new Rect2(Vector2.Zero, new Vector2(_gridWidth * CellSize, _gridHeight * CellSize)),
             new Color(0.08f, 0.08f, 0.1f),
             true
         );
 
-        for (var x = 0; x <= GridWidth; x++)
+        for (var x = 0; x <= _gridWidth; x++)
         {
             var lineX = x * CellSize + 0.5f;
             DrawLine(
                 new Vector2(lineX, 0),
-                new Vector2(lineX, GridHeight * CellSize),
+                new Vector2(lineX, _gridHeight * CellSize),
                 new Color(0.2f, 0.2f, 0.24f),
                 GridLineThickness
             );
         }
 
-        for (var y = 0; y <= GridHeight; y++)
+        for (var y = 0; y <= _gridHeight; y++)
         {
             var lineY = y * CellSize + 0.5f;
             DrawLine(
                 new Vector2(0, lineY),
-                new Vector2(GridWidth * CellSize, lineY),
+                new Vector2(_gridWidth * CellSize, lineY),
                 new Color(0.2f, 0.2f, 0.24f),
                 GridLineThickness
             );
         }
 
-        _mapLoader?.DrawMapFeaturesOverlay(this, _blockedCells, _mapTransitions, GridWidth, GridHeight, CellSize);
+        _mapLoader?.DrawMapFeaturesOverlay(this, _blockedCells, _mapTransitions, _gridWidth, _gridHeight, CellSize);
         DrawFocusedUnitCellHighlight();
         DrawMapInteractablesOverlay();
         DrawMovementPreviewOverlay();
@@ -752,6 +755,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var mapData = _mapLoader?.LoadMapStub(mapId) ?? new MapLoader().LoadMapStub(mapId);
         _currentMapId = GetString(mapData, "id", mapId);
+        _gridWidth = Mathf.Max(1, GetInt(mapData, "width", DefaultGridWidth));
+        _gridHeight = Mathf.Max(1, GetInt(mapData, "height", DefaultGridHeight));
+        _mapLoader?.SetActiveMapVisual(_currentMapId);
         LoadClearedEncounterStateForCurrentMap();
         LoadMapInteractionStateForCurrentMap();
 
@@ -1187,9 +1193,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return active;
     }
 
-    private static bool IsInBounds(Vector2I cell)
+    private bool IsInBounds(Vector2I cell)
     {
-        return cell.X >= 0 && cell.X < GridWidth && cell.Y >= 0 && cell.Y < GridHeight;
+        return cell.X >= 0 && cell.X < _gridWidth && cell.Y >= 0 && cell.Y < _gridHeight;
     }
 
     private bool IsBlockedCell(Vector2I cell)
@@ -1763,10 +1769,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             var propId = GetString(prop, "id", "prop");
             var propName = GetString(prop, "name", "Chest");
+            var propType = GetString(prop, "type", "prop");
+            var interactionText = GetString(prop, "interaction_text", "");
+            var hasLoot = TryGetStringArray(prop, "loot_item_ids").Count > 0 || !string.IsNullOrEmpty(GetString(prop, "loot_item_id", ""));
             title = propName;
-            details = _openedPropIds.Contains(propId)
-                ? "Lootable object\nEmpty"
-                : "Lootable object\nClosed";
+            if (hasLoot)
+            {
+                details = _openedPropIds.Contains(propId)
+                    ? $"{propType} (loot)\nEmpty"
+                    : $"{propType} (loot)\nClosed";
+            }
+            else
+            {
+                details = string.IsNullOrEmpty(interactionText)
+                    ? $"{propType}\nInteract"
+                    : $"{propType}\n{interactionText}";
+            }
             break;
         }
 

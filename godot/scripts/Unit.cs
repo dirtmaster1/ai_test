@@ -4,10 +4,13 @@ using Godot.Collections;
 public partial class Unit : Node2D
 {
     private const int CellSize = 64;
+    private const int AtlasTileSize = 64;
+    private const string UnitAtlasPath = "res://assets/tilesets/units_2_64.png";
     public const int MaxMovementPerTurn = 3;
 
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
+    public string Race { get; private set; } = "human";
     public string Team { get; private set; } = "player";
     public Vector2I GridPos { get; private set; } = Vector2I.Zero;
     public int HitPoints { get; private set; } = 10;
@@ -37,12 +40,30 @@ public partial class Unit : Node2D
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
+    private Sprite2D _sprite;
+    private Texture2D _unitAtlas;
     private readonly Dictionary<string, int> _abilityCooldownRemaining = new();
+
+    public override void _Ready()
+    {
+        _sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+        if (_sprite == null)
+        {
+            _sprite = new Sprite2D();
+            _sprite.Name = "Sprite2D";
+            _sprite.Centered = true;
+            AddChild(_sprite);
+        }
+
+        _unitAtlas = GD.Load<Texture2D>(UnitAtlasPath);
+        ConfigureSpriteRegion();
+    }
 
     public void Setup(Dictionary config)
     {
         UnitId = GetString(config, "id", "unit");
         UnitName = GetString(config, "name", "Unit");
+        Race = GetString(config, "race", ResolveRace());
         Team = GetString(config, "team", "player");
         EncounterId = GetString(config, "encounter_id", "");
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
@@ -64,6 +85,7 @@ public partial class Unit : Node2D
         ArmorClassBonus = GetInt(config, "armor_class_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
         ResetTurnResources();
+        ConfigureSpriteRegion();
         SyncWorldPosition();
         RefreshVisualState();
     }
@@ -284,6 +306,7 @@ public partial class Unit : Node2D
         return new Dictionary
         {
             { "unit_id", UnitId },
+            { "race", Race },
             { "grid_pos", GridPos },
             { "hit_points", HitPoints },
             { "max_hit_points", MaxHitPoints },
@@ -307,6 +330,7 @@ public partial class Unit : Node2D
 
         MaxHitPoints = Mathf.Max(1, GetInt(snapshot, "max_hit_points", MaxHitPoints));
         HitPoints = Mathf.Clamp(GetInt(snapshot, "hit_points", HitPoints), 0, MaxHitPoints);
+        Race = GetString(snapshot, "race", Race);
         MaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", MaxMagicPoints));
         MagicPoints = Mathf.Clamp(GetInt(snapshot, "magic_points", MagicPoints), 0, MaxMagicPoints);
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
@@ -397,6 +421,7 @@ public partial class Unit : Node2D
             ZIndex = 10;
         }
 
+        UpdateSpriteVisuals();
         QueueRedraw();
     }
 
@@ -410,23 +435,113 @@ public partial class Unit : Node2D
 
     public override void _Draw()
     {
-        const float radius = 22.0f;
-        var fill = new Color(0.4f, 0.8f, 1.0f);
-        if (Team == "enemy")
+        if (IsActive)
         {
-            fill = new Color(0.95f, 0.4f, 0.4f);
+            DrawArc(Vector2.Zero, 30.0f, 0.0f, Mathf.Tau, 36, new Color(1.0f, 0.95f, 0.6f), 3.0f);
         }
 
         if (IsDead)
         {
-            fill = new Color(0.25f, 0.25f, 0.25f);
+            DrawLine(new Vector2(-20.0f, -20.0f), new Vector2(20.0f, 20.0f), new Color(0.2f, 0.2f, 0.2f, 0.8f), 3.0f);
+            DrawLine(new Vector2(20.0f, -20.0f), new Vector2(-20.0f, 20.0f), new Color(0.2f, 0.2f, 0.2f, 0.8f), 3.0f);
+        }
+    }
+
+    private void ConfigureSpriteRegion()
+    {
+        if (_sprite == null || _unitAtlas == null)
+        {
+            return;
         }
 
-        DrawCircle(Vector2.Zero, radius, fill);
-        if (IsActive)
+        _sprite.Texture = _unitAtlas;
+        _sprite.RegionEnabled = true;
+
+        var atlasCell = ResolveAtlasCell();
+        _sprite.RegionRect = new Rect2(
+            atlasCell.X * AtlasTileSize,
+            atlasCell.Y * AtlasTileSize,
+            AtlasTileSize,
+            AtlasTileSize
+        );
+    }
+
+    private void UpdateSpriteVisuals()
+    {
+        if (_sprite == null)
         {
-            DrawArc(Vector2.Zero, radius + 5.0f, 0.0f, Mathf.Tau, 36, new Color(1.0f, 0.95f, 0.6f), 3.0f);
+            return;
         }
+
+        _sprite.Modulate = Team == "enemy"
+            ? new Color(1.0f, 0.92f, 0.92f, 1.0f)
+            : new Color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        if (IsDead)
+        {
+            _sprite.Modulate = new Color(0.5f, 0.5f, 0.5f, 0.5f);
+        }
+    }
+
+    private Vector2I ResolveAtlasCell()
+    {
+        var key = NormalizeToken(UnitId + " " + UnitName);
+
+        if (ContainsAny(key, "goblinarcher")) return new Vector2I(0, 1);
+        if (ContainsAny(key, "ranger")) return new Vector2I(1, 1);
+        if (ContainsAny(key, "goblinshaman")) return new Vector2I(2, 1);
+        if (ContainsAny(key, "goblinchieftain", "chieftain")) return new Vector2I(3, 1);
+        if (ContainsAny(key, "skeletonwarrior")) return new Vector2I(0, 2);
+        if (ContainsAny(key, "skeletonmage")) return new Vector2I(1, 2);
+        if (ContainsAny(key, "zombie")) return new Vector2I(2, 2);
+        if (ContainsAny(key, "necromancer")) return new Vector2I(3, 2);
+        if (ContainsAny(key, "wizard")) return new Vector2I(0, 0);
+        if (ContainsAny(key, "warrior")) return new Vector2I(1, 0);
+        if (ContainsAny(key, "cleric")) return new Vector2I(2, 0);
+        if (ContainsAny(key, "goblin")) return new Vector2I(3, 0);
+
+        return Team == "enemy"
+            ? new Vector2I(3, 0)
+            : new Vector2I(1, 0);
+    }
+
+    private string ResolveRace()
+    {
+        var key = NormalizeToken(UnitId + " " + UnitName);
+
+        if (ContainsAny(key, "warrior")) return "dwarf";
+        if (ContainsAny(key, "ranger")) return "elf";
+        if (ContainsAny(key, "goblin", "goblinarcher", "goblinshaman", "goblinchieftain", "chieftain")) return "goblin";
+        if (ContainsAny(key, "skeleton", "skeletonwarrior", "skeletonmage", "zombie")) return "undead";
+
+        return "human";
+    }
+
+    private static string NormalizeToken(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "";
+        }
+
+        return value
+            .ToLowerInvariant()
+            .Replace("-", "")
+            .Replace("_", "")
+            .Replace(" ", "");
+    }
+
+    private static bool ContainsAny(string haystack, params string[] needles)
+    {
+        foreach (var needle in needles)
+        {
+            if (haystack.Contains(needle))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetString(Dictionary dict, string key, string fallback)

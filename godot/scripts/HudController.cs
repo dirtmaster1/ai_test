@@ -1008,6 +1008,7 @@ public partial class HudController : Control
 
         return
             $"Name: {unit.UnitName}\n" +
+            $"Race: {unit.Race}\n" +
             $"Team: {unit.Team}\n" +
             $"Status: {status}\n" +
             $"\n" +
