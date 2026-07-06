@@ -5,19 +5,27 @@ using System.Collections.Generic;
 public partial class MapLoader : Node
 {
     [Export] public NodePath MapsRootPath = "../Maps";
-    private const string VisualSuffix = "-visual";
-    private const string CollisionSuffix = "-collision";
+    private const string TerrainAtlasPath = "res://assets/tilesets/terrain_64.png";
+    private const int TerrainTileSize = 64;
+    private static readonly Vector2I FloorAtlasCell = new(0, 0);
+    private static readonly Vector2I WallAtlasCell = new(1, 0);
+    private static readonly Vector2I DoorAtlasCell = new(2, 0);
+    private const string BaseSuffix = "-base";
     private const string MarkerSuffix = "-markers";
+    private const string TerrainTypeKey = "terrain_type";
+    private const string DoorIdKey = "door_id";
 
     private GameData _gameData;
     private Array<Dictionary> _defaultParty = new();
     private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _mapLayersById = new();
+    private TileSet _terrainTileSet;
 
     public override void _Ready()
     {
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
         _defaultParty = BuildDefaultParty();
         CacheMapLayers();
+        EnsureBaseLayersPopulated();
     }
 
     public Dictionary LoadMapStub(string mapId = "map-a")
@@ -33,14 +41,14 @@ public partial class MapLoader : Node
             _ => BuildMapA(_defaultParty)
         };
 
-        if (TryBuildBlockedCellsFromTileMap(mapId, out var blockedFromTiles, out var inferredWidth, out var inferredHeight))
+        if (TryBuildGeometryFromBaseLayer(mapId, out var wallCells, out var doors, out var inferredWidth, out var inferredHeight))
         {
-            mapData["blocked"] = blockedFromTiles;
+            mapData["walls"] = wallCells;
+            mapData["doors"] = doors;
+            mapData["blocked"] = wallCells;
             mapData["width"] = inferredWidth;
             mapData["height"] = inferredHeight;
         }
-
-        ApplyMarkerOverrides(mapId, mapData);
 
         SetActiveMapVisual(mapId);
         return mapData;
@@ -55,8 +63,8 @@ public partial class MapLoader : Node
 
         foreach (var pair in _mapLayersById)
         {
-            var isVisual = pair.Key == mapId || pair.Key == mapId + VisualSuffix;
-            pair.Value.Visible = isVisual;
+            var isBase = pair.Key == mapId || pair.Key == mapId + BaseSuffix;
+            pair.Value.Visible = isBase;
         }
     }
 
@@ -82,9 +90,119 @@ public partial class MapLoader : Node
         }
     }
 
-    private bool TryBuildBlockedCellsFromTileMap(string mapId, out Array<Vector2I> blockedCells, out int width, out int height)
+    private void EnsureBaseLayersPopulated()
     {
-        blockedCells = new Array<Vector2I>();
+        EnsureBaseLayerPopulated("map-a");
+        EnsureBaseLayerPopulated("map-b");
+    }
+
+    private void EnsureBaseLayerPopulated(string mapId)
+    {
+        if (!TryGetBaseLayer(mapId, out var baseLayer))
+        {
+            return;
+        }
+
+        if (!TryAssignTerrainTileSet(baseLayer))
+        {
+            return;
+        }
+
+        var usedRect = baseLayer.GetUsedRect();
+        if (usedRect.Size.X > 0 && usedRect.Size.Y > 0)
+        {
+            return;
+        }
+
+        baseLayer.Clear();
+
+        const int width = 20;
+        const int height = 15;
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                baseLayer.SetCell(new Vector2I(x, y), 0, FloorAtlasCell, 0);
+            }
+        }
+
+        foreach (var wallCell in BuildDefaultWallCells(mapId))
+        {
+            baseLayer.SetCell(wallCell, 0, WallAtlasCell, 0);
+        }
+
+        foreach (var doorCell in BuildDefaultDoorCells(mapId))
+        {
+            baseLayer.SetCell(doorCell, 0, DoorAtlasCell, 0);
+        }
+    }
+
+    private bool TryAssignTerrainTileSet(TileMapLayer layer)
+    {
+        if (layer == null)
+        {
+            return false;
+        }
+
+        if (_terrainTileSet == null)
+        {
+            var atlasTexture = GD.Load<Texture2D>(TerrainAtlasPath);
+            if (atlasTexture == null)
+            {
+                return false;
+            }
+
+            var atlasSource = new TileSetAtlasSource
+            {
+                Texture = atlasTexture,
+                TextureRegionSize = new Vector2I(TerrainTileSize, TerrainTileSize)
+            };
+            atlasSource.CreateTile(FloorAtlasCell);
+            atlasSource.CreateTile(WallAtlasCell);
+            atlasSource.CreateTile(DoorAtlasCell);
+
+            _terrainTileSet = new TileSet();
+            _terrainTileSet.TileSize = new Vector2I(TerrainTileSize, TerrainTileSize);
+            _terrainTileSet.AddSource(atlasSource, 0);
+        }
+
+        if (layer.TileSet != _terrainTileSet)
+        {
+            layer.TileSet = _terrainTileSet;
+        }
+
+        return true;
+    }
+
+    private static Array<Vector2I> BuildDefaultWallCells(string mapId)
+    {
+        return mapId switch
+        {
+            "map-b" => new Array<Vector2I>
+            {
+                new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8),
+                new Vector2I(12, 6), new Vector2I(12, 8)
+            },
+            _ => new Array<Vector2I>
+            {
+                new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7)
+            }
+        };
+    }
+
+    private static Array<Vector2I> BuildDefaultDoorCells(string mapId)
+    {
+        return mapId switch
+        {
+            "map-b" => new Array<Vector2I> { new Vector2I(0, 7) },
+            _ => new Array<Vector2I> { new Vector2I(19, 7) }
+        };
+    }
+
+    private bool TryBuildGeometryFromBaseLayer(string mapId, out Array<Vector2I> wallCells, out Array<Dictionary> doors, out int width, out int height)
+    {
+        wallCells = new Array<Vector2I>();
+        doors = new Array<Dictionary>();
         width = 0;
         height = 0;
 
@@ -93,12 +211,12 @@ public partial class MapLoader : Node
             CacheMapLayers();
         }
 
-        if (!TryGetLayerForPurpose(mapId, CollisionSuffix, out var collisionLayer))
+        if (!TryGetBaseLayer(mapId, out var baseLayer))
         {
             return false;
         }
 
-        var usedRect = collisionLayer.GetUsedRect();
+        var usedRect = baseLayer.GetUsedRect();
         if (usedRect.Size.X <= 0 || usedRect.Size.Y <= 0)
         {
             return false;
@@ -109,12 +227,30 @@ public partial class MapLoader : Node
             for (var x = usedRect.Position.X; x < usedRect.End.X; x++)
             {
                 var cell = new Vector2I(x, y);
-                if (collisionLayer.GetCellSourceId(cell) == -1)
+                if (baseLayer.GetCellSourceId(cell) == -1)
                 {
                     continue;
                 }
 
-                blockedCells.Add(cell);
+                var terrainType = ResolveTerrainType(baseLayer, cell);
+
+                if (terrainType == "wall")
+                {
+                    wallCells.Add(cell);
+                    continue;
+                }
+
+                if (terrainType == "door")
+                {
+                    var doorId = $"{mapId}-door-{cell.X}-{cell.Y}";
+
+                    doors.Add(new Dictionary
+                    {
+                        { "id", doorId },
+                        { "cell", cell },
+                        { "is_open", false }
+                    });
+                }
             }
         }
 
@@ -123,7 +259,23 @@ public partial class MapLoader : Node
         return true;
     }
 
-    private bool TryGetLayerForPurpose(string mapId, string suffix, out TileMapLayer layer)
+    private static string ResolveTerrainType(TileMapLayer layer, Vector2I cell)
+    {
+        var atlasCoords = layer.GetCellAtlasCoords(cell);
+        if (atlasCoords == WallAtlasCell)
+        {
+            return "wall";
+        }
+
+        if (atlasCoords == DoorAtlasCell)
+        {
+            return "door";
+        }
+
+        return "floor";
+    }
+
+    private bool TryGetBaseLayer(string mapId, out TileMapLayer layer)
     {
         layer = null;
         if (_mapLayersById.Count == 0)
@@ -131,7 +283,7 @@ public partial class MapLoader : Node
             CacheMapLayers();
         }
 
-        if (_mapLayersById.TryGetValue(mapId + suffix, out layer) && layer != null)
+        if (_mapLayersById.TryGetValue(mapId + BaseSuffix, out layer) && layer != null)
         {
             return true;
         }
@@ -139,9 +291,20 @@ public partial class MapLoader : Node
         return _mapLayersById.TryGetValue(mapId, out layer) && layer != null;
     }
 
+    private bool TryGetMarkerLayer(string mapId, out TileMapLayer layer)
+    {
+        layer = null;
+        if (_mapLayersById.Count == 0)
+        {
+            CacheMapLayers();
+        }
+
+        return _mapLayersById.TryGetValue(mapId + MarkerSuffix, out layer) && layer != null;
+    }
+
     private void ApplyMarkerOverrides(string mapId, Dictionary mapData)
     {
-        if (!TryGetLayerForPurpose(mapId, MarkerSuffix, out var markerLayer))
+        if (!TryGetMarkerLayer(mapId, out var markerLayer))
         {
             return;
         }
@@ -487,6 +650,19 @@ public partial class MapLoader : Node
             { "id", "map-a" },
             { "width", 20 },
             { "height", 15 },
+            { "walls", new Array<Vector2I> { new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7) } },
+            {
+                "doors",
+                new Array<Dictionary>
+                {
+                    new Dictionary
+                    {
+                        { "id", "map-a-east-door" },
+                        { "cell", new Vector2I(19, 7) },
+                        { "is_open", false }
+                    }
+                }
+            },
             { "blocked", new Array<Vector2I> { new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterA, encounterB, encounterC } },
@@ -554,6 +730,19 @@ public partial class MapLoader : Node
             { "id", "map-b" },
             { "width", 20 },
             { "height", 15 },
+            { "walls", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
+            {
+                "doors",
+                new Array<Dictionary>
+                {
+                    new Dictionary
+                    {
+                        { "id", "map-b-west-door" },
+                        { "cell", new Vector2I(0, 7) },
+                        { "is_open", false }
+                    }
+                }
+            },
             { "blocked", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterD } },

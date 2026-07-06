@@ -487,21 +487,21 @@ public partial class Unit : Node2D
     {
         var key = NormalizeToken(UnitId + " " + UnitName);
 
-        if (ContainsAny(key, "goblinarcher")) return new Vector2I(0, 1);
-        if (ContainsAny(key, "ranger")) return new Vector2I(1, 1);
-        if (ContainsAny(key, "goblinshaman")) return new Vector2I(2, 1);
-        if (ContainsAny(key, "goblinchieftain", "chieftain")) return new Vector2I(3, 1);
-        if (ContainsAny(key, "skeletonwarrior")) return new Vector2I(0, 2);
-        if (ContainsAny(key, "skeletonmage")) return new Vector2I(1, 2);
-        if (ContainsAny(key, "zombie")) return new Vector2I(2, 2);
-        if (ContainsAny(key, "necromancer")) return new Vector2I(3, 2);
+        if (ContainsAny(key, "goblinarcher")) return new Vector2I(4, 1);
+        if (ContainsAny(key, "goblinshaman")) return new Vector2I(5, 1);
+        if (ContainsAny(key, "goblinchieftain", "chieftain")) return new Vector2I(0, 2);
+        if (ContainsAny(key, "skeletonwarrior")) return new Vector2I(1, 2);
+        if (ContainsAny(key, "skeletonmage")) return new Vector2I(2, 2);
+        if (ContainsAny(key, "zombie")) return new Vector2I(3, 2);
+        if (ContainsAny(key, "necromancer")) return new Vector2I(4, 2);
         if (ContainsAny(key, "wizard")) return new Vector2I(0, 0);
+        if (ContainsAny(key, "ranger")) return new Vector2I(3, 0);
+        if (ContainsAny(key, "goblin")) return new Vector2I(3, 1);
         if (ContainsAny(key, "warrior")) return new Vector2I(1, 0);
         if (ContainsAny(key, "cleric")) return new Vector2I(2, 0);
-        if (ContainsAny(key, "goblin")) return new Vector2I(3, 0);
 
         return Team == "enemy"
-            ? new Vector2I(3, 0)
+            ? new Vector2I(3, 1)
             : new Vector2I(1, 0);
     }
 

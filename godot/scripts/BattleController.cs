@@ -35,6 +35,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly Array<Unit> _playerUnits = new();
     private readonly Array<Unit> _enemyUnits = new();
     private readonly Array<Vector2I> _blockedCells = new();
+    private readonly Array<Vector2I> _wallCells = new();
+    private readonly Array<Dictionary> _mapDoors = new();
     private readonly Array<Dictionary> _mapTransitions = new();
     private readonly Array<Dictionary> _mapProps = new();
     private readonly Array<Dictionary> _lootBags = new();
@@ -43,8 +45,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly List<string> _partyInventoryItemIds = new();
     private readonly HashSet<string> _clearedEncounterIds = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _clearedEncounterIdsByMap = new();
+    private readonly HashSet<string> _openedDoorIds = new();
     private readonly HashSet<string> _openedPropIds = new();
     private readonly HashSet<string> _lootedBagIds = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedDoorIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedPropIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
@@ -746,6 +750,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _blockedCells.Clear();
+        _wallCells.Clear();
+        _mapDoors.Clear();
         _mapTransitions.Clear();
         _mapProps.Clear();
         _lootBags.Clear();
@@ -761,10 +767,29 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         LoadClearedEncounterStateForCurrentMap();
         LoadMapInteractionStateForCurrentMap();
 
-        var blocked = TryGetVector2IArray(mapData, "blocked");
-        foreach (var blockedCell in blocked)
+        var walls = TryGetVector2IArray(mapData, "walls");
+        if (walls.Count == 0)
         {
-            _blockedCells.Add(blockedCell);
+            walls = TryGetVector2IArray(mapData, "blocked");
+        }
+
+        foreach (var wallCell in walls)
+        {
+            _wallCells.Add(wallCell);
+            _blockedCells.Add(wallCell);
+        }
+
+        var doors = TryGetDictionaryArray(mapData, "doors");
+        foreach (var door in doors)
+        {
+            var copiedDoor = CopyDictionary(door);
+            _mapDoors.Add(copiedDoor);
+
+            var doorId = GetString(copiedDoor, "id", "");
+            if (!string.IsNullOrEmpty(doorId) && GetBool(copiedDoor, "is_open", false))
+            {
+                _openedDoorIds.Add(doorId);
+            }
         }
 
         var transitions = TryGetDictionaryArray(mapData, "transitions");
@@ -958,6 +983,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
+        if (!HasClearLineOfSight(attacker.GridPos, target.GridPos))
+        {
+            return false;
+        }
+
         if (!CanCastAction(attacker, new ActionProfile(actionId, actionName, "attack", range, damage, 0, cooldownTurns, magicPointCost, isMagical), true))
         {
             return false;
@@ -1043,6 +1073,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
+        if (!HasClearLineOfSight(actor.GridPos, target.GridPos))
+        {
+            return false;
+        }
+
         if (!CanCastAction(actor, new ActionProfile(actionId, actionName, "heal", range, 0, healAmount, cooldownTurns, magicPointCost, isMagical), true))
         {
             return false;
@@ -1090,7 +1125,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var distance = Unit.RangeDistance(attacker.GridPos, unit.GridPos);
-            if (distance <= range && distance < nearestDistance && attacker.CanAttackTarget(unit, range, _allUnits))
+            if (distance <= range && distance < nearestDistance && attacker.CanAttackTarget(unit, range, _allUnits) && HasClearLineOfSight(attacker.GridPos, unit.GridPos))
             {
                 nearest = unit;
                 nearestDistance = distance;
@@ -1113,6 +1148,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             if (!actor.CanUseActionAtRange(unit, range, _allUnits))
+            {
+                continue;
+            }
+
+            if (!HasClearLineOfSight(actor.GridPos, unit.GridPos))
             {
                 continue;
             }
@@ -1200,15 +1240,54 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool IsBlockedCell(Vector2I cell)
     {
-        foreach (var blocked in _blockedCells)
+        foreach (var wall in _wallCells)
         {
-            if (blocked == cell)
+            if (wall == cell)
             {
                 return true;
             }
         }
 
+        if (TryGetDoorAtCell(cell, out var door) && !IsDoorOpen(door))
+        {
+            return true;
+        }
+
         return false;
+    }
+
+    private bool TryGetDoorAtCell(Vector2I cell, out Dictionary door)
+    {
+        foreach (var entry in _mapDoors)
+        {
+            var doorCell = GetVector2I(entry, "cell", new Vector2I(-9999, -9999));
+            if (doorCell != cell)
+            {
+                continue;
+            }
+
+            door = entry;
+            return true;
+        }
+
+        door = null;
+        return false;
+    }
+
+    private bool IsDoorOpen(Dictionary door)
+    {
+        if (door == null)
+        {
+            return false;
+        }
+
+        var doorId = GetString(door, "id", "");
+        if (!string.IsNullOrEmpty(doorId) && _openedDoorIds.Contains(doorId))
+        {
+            return true;
+        }
+
+        return GetBool(door, "is_open", false);
     }
 
     private bool IsOccupied(Vector2I cell, Unit ignoreUnit = null)
@@ -1372,6 +1451,59 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private static int Manhattan(Vector2I a, Vector2I b)
     {
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
+    }
+
+    private bool HasClearLineOfSight(Vector2I from, Vector2I to)
+    {
+        var points = BuildLinePoints(from, to);
+        for (var i = 1; i < points.Count - 1; i++)
+        {
+            if (IsBlockedCell(points[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static Array<Vector2I> BuildLinePoints(Vector2I start, Vector2I end)
+    {
+        var points = new Array<Vector2I>();
+        var x0 = start.X;
+        var y0 = start.Y;
+        var x1 = end.X;
+        var y1 = end.Y;
+
+        var dx = Mathf.Abs(x1 - x0);
+        var dy = Mathf.Abs(y1 - y0);
+        var sx = x0 < x1 ? 1 : -1;
+        var sy = y0 < y1 ? 1 : -1;
+        var err = dx - dy;
+
+        while (true)
+        {
+            points.Add(new Vector2I(x0, y0));
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+
+            var e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x0 += sx;
+            }
+
+            if (e2 < dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+
+        return points;
     }
 
     private ActionProfile ResolveActionProfile(Unit actor, string abilityId = null)
@@ -1570,6 +1702,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     }
 
     // UI helpers
+
+    private static bool GetBool(Dictionary dict, string key, bool fallback)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return fallback;
+        }
+
+        var value = (Variant)dict[key];
+        return value.VariantType switch
+        {
+            Variant.Type.Bool => (bool)value,
+            Variant.Type.Int => (int)value != 0,
+            Variant.Type.Float => !Mathf.IsZeroApprox((float)value),
+            _ => bool.TryParse(value.AsString(), out var parsed) ? parsed : fallback
+        };
+    }
     private void CancelAttackMode(bool restoreHelpText = true)
     {
         _awaitingPlayerAttackDirection = false;
@@ -2674,8 +2823,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void LoadMapInteractionStateForCurrentMap()
     {
+        _openedDoorIds.Clear();
         _openedPropIds.Clear();
         _lootedBagIds.Clear();
+
+        if (_openedDoorIdsByMap.TryGetValue(_currentMapId, out var openedDoors))
+        {
+            foreach (var doorId in openedDoors)
+            {
+                _openedDoorIds.Add(doorId);
+            }
+        }
 
         if (_openedPropIdsByMap.TryGetValue(_currentMapId, out var opened))
         {
@@ -2718,6 +2876,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        var openedDoorSnapshot = new HashSet<string>();
+        foreach (var doorId in _openedDoorIds)
+        {
+            openedDoorSnapshot.Add(doorId);
+        }
+
         var openedSnapshot = new HashSet<string>();
         foreach (var propId in _openedPropIds)
         {
@@ -2736,6 +2900,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             lootBagSnapshot.Add(CopyDictionary(bag));
         }
 
+        _openedDoorIdsByMap[_currentMapId] = openedDoorSnapshot;
         _openedPropIdsByMap[_currentMapId] = openedSnapshot;
         _lootedBagIdsByMap[_currentMapId] = lootedSnapshot;
         _lootBagsByMap[_currentMapId] = lootBagSnapshot;
@@ -3022,6 +3187,50 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
+    private bool TryOpenDoorAtCell(Vector2I cell)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return false;
+        }
+
+        if (!TryGetDoorAtCell(cell, out var door))
+        {
+            return false;
+        }
+
+        var explorer = GetExplorerUnit();
+        if (!IsUsableUnit(explorer) || explorer.IsDead)
+        {
+            return false;
+        }
+
+        var doorCell = GetVector2I(door, "cell", new Vector2I(-9999, -9999));
+        if (Manhattan(explorer.GridPos, doorCell) > 1)
+        {
+            return false;
+        }
+
+        var doorId = GetString(door, "id", "");
+        if (!string.IsNullOrEmpty(doorId) && _openedDoorIds.Contains(doorId))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(doorId))
+        {
+            _openedDoorIds.Add(doorId);
+        }
+
+        door["is_open"] = true;
+        _hud?.AddCombatLogEntry($"{explorer.UnitName} opened a door.");
+        SaveMapInteractionStateForCurrentMap();
+        _persistence.PersistSaveGame(false);
+        SetStatusHelp();
+        QueueRedraw();
+        return true;
+    }
+
     private bool RotateExplorationPartyOrder(int delta)
     {
         if (_flowState != BattleFlowState.Exploration || delta == 0)
@@ -3135,6 +3344,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> IGamePersistenceHost.EquippedItemsByUnitId => _equippedItemsByUnitId;
     List<string> IGamePersistenceHost.PartyInventoryItemIds => _partyInventoryItemIds;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.ClearedEncounterIdsByMap => _clearedEncounterIdsByMap;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedDoorIdsByMap => _openedDoorIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedPropIdsByMap => _openedPropIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;

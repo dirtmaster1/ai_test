@@ -136,6 +136,11 @@ public partial class BattleController
         if (mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
         {
             var clickedCell = WorldToCell(GetGlobalMousePosition());
+            if (_flowState == BattleFlowState.Exploration && TryOpenDoorAtCell(clickedCell))
+            {
+                return;
+            }
+
             if (_flowState == BattleFlowState.Exploration && TryOpenExplorationInteractionAtCell(clickedCell))
             {
                 return;

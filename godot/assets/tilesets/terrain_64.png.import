@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dooyrq6a7jgn3"
-path="res://.godot/imported/units_64_atlas.png-13f460c17b8f2755347238a21ec0349a.ctex"
+uid="uid://cuimxjvitpnoq"
+path="res://.godot/imported/terrain_64.png-13bcaa02e11b7f5d04568c96004fad7f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/tilesets/units_64_atlas.png"
-dest_files=["res://.godot/imported/units_64_atlas.png-13f460c17b8f2755347238a21ec0349a.ctex"]
+source_file="res://assets/tilesets/terrain_64.png"
+dest_files=["res://.godot/imported/terrain_64.png-13bcaa02e11b7f5d04568c96004fad7f.ctex"]
 
 [params]
 
