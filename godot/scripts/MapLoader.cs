@@ -5,11 +5,11 @@ using System.Collections.Generic;
 public partial class MapLoader : Node
 {
     [Export] public NodePath MapsRootPath = "../Maps";
-    private const string TerrainAtlasPath = "res://assets/tilesets/terrain_64.png";
+    private const string TerrainAtlasPath = "res://assets/tilesets/terrain_64_new.png";
     private const int TerrainTileSize = 64;
     private static readonly Vector2I FloorAtlasCell = new(0, 0);
-    private static readonly Vector2I WallAtlasCell = new(1, 0);
-    private static readonly Vector2I DoorAtlasCell = new(2, 0);
+    private static readonly Vector2I WallAtlasCell = new(0, 1);
+    private static readonly Vector2I DoorAtlasCell = new(0, 2);
     private const string BaseSuffix = "-base";
     private const string MarkerSuffix = "-markers";
     private const string TerrainTypeKey = "terrain_type";
@@ -797,20 +797,6 @@ public partial class MapLoader : Node
         if (canvas == null)
         {
             return;
-        }
-
-        foreach (var blocked in blockedCells)
-        {
-            var rect = CellRect(blocked, cellSize);
-            canvas.DrawRect(rect, new Color(0.12f, 0.12f, 0.12f, 0.9f), true);
-            canvas.DrawRect(rect, new Color(0.35f, 0.35f, 0.35f, 0.9f), false, 2.0f);
-            canvas.DrawLine(rect.Position, rect.Position + rect.Size, new Color(0.55f, 0.22f, 0.22f, 0.85f), 2.0f);
-            canvas.DrawLine(
-                new Vector2(rect.Position.X + rect.Size.X, rect.Position.Y),
-                new Vector2(rect.Position.X, rect.Position.Y + rect.Size.Y),
-                new Color(0.55f, 0.22f, 0.22f, 0.85f),
-                2.0f
-            );
         }
 
         foreach (var transition in mapTransitions)

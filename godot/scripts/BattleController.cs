@@ -187,8 +187,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     public override void _Draw()
     {
-        _hud?.ClearWorldHoverTooltip();
-
         var viewportSize = GetViewportRect().Size;
         DrawRect(
             new Rect2(Vector2.Zero, viewportSize),
@@ -223,12 +221,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 GridLineThickness
             );
         }
+    }
 
-        _mapLoader?.DrawMapFeaturesOverlay(this, _blockedCells, _mapTransitions, _gridWidth, _gridHeight, CellSize);
-        DrawFocusedUnitCellHighlight();
-        DrawMapInteractablesOverlay();
-        DrawMovementPreviewOverlay();
-        DrawAttackPreviewOverlay();
+    public void DrawWorldOverlays(CanvasItem canvas)
+    {
+        if (canvas == null)
+        {
+            return;
+        }
+
+        _hud?.ClearWorldHoverTooltip();
+        _mapLoader?.DrawMapFeaturesOverlay(canvas, _blockedCells, _mapTransitions, _gridWidth, _gridHeight, CellSize);
+        DrawFocusedUnitCellHighlight(canvas);
+        DrawMapInteractablesOverlay(canvas);
+        DrawMovementPreviewOverlay(canvas);
+        DrawAttackPreviewOverlay(canvas);
         DrawHoveredUnitTooltip();
         DrawHoveredInteractableTooltip();
     }
@@ -1730,7 +1737,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private void DrawAttackPreviewOverlay()
+    private void DrawAttackPreviewOverlay(CanvasItem canvas)
     {
         if (!_awaitingPlayerAttackDirection)
         {
@@ -1745,7 +1752,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         var center = CellCenter(active.GridPos);
-        DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
+    canvas.DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
         for (var dx = -actionProfile.Range; dx <= actionProfile.Range; dx++)
         {
@@ -1770,13 +1777,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
                 var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
-                DrawRect(cellRect, fill, true);
-                DrawRect(cellRect, edge, false, 2.0f);
+                canvas.DrawRect(cellRect, fill, true);
+                canvas.DrawRect(cellRect, edge, false, 2.0f);
             }
         }
     }
 
-    private void DrawMovementPreviewOverlay()
+    private void DrawMovementPreviewOverlay(CanvasItem canvas)
     {
         if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection)
         {
@@ -1794,13 +1801,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var hoverRect = new Rect2(new Vector2(_movementHoverCell.X * CellSize, _movementHoverCell.Y * CellSize), new Vector2(CellSize, CellSize));
             if (_movementHoverReachable)
             {
-                DrawRect(hoverRect, new Color(0.2f, 0.85f, 0.35f, 0.12f), true);
-                DrawRect(hoverRect, new Color(0.3f, 1.0f, 0.45f, 0.9f), false, 2.0f);
+                canvas.DrawRect(hoverRect, new Color(0.2f, 0.85f, 0.35f, 0.12f), true);
+                canvas.DrawRect(hoverRect, new Color(0.3f, 1.0f, 0.45f, 0.9f), false, 2.0f);
             }
             else
             {
-                DrawRect(hoverRect, new Color(0.9f, 0.2f, 0.2f, 0.12f), true);
-                DrawRect(hoverRect, new Color(1.0f, 0.35f, 0.35f, 0.9f), false, 2.0f);
+                canvas.DrawRect(hoverRect, new Color(0.9f, 0.2f, 0.2f, 0.12f), true);
+                canvas.DrawRect(hoverRect, new Color(1.0f, 0.35f, 0.35f, 0.9f), false, 2.0f);
             }
 
             var label = _movementHoverReachable
@@ -1810,7 +1817,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 ? new Color(0.78f, 1.0f, 0.86f, 1.0f)
                 : new Color(1.0f, 0.72f, 0.72f, 1.0f);
             var labelPos = new Vector2(_movementHoverCell.X * CellSize + CellSize / 2.0f, _movementHoverCell.Y * CellSize + CellSize - 10.0f);
-            DrawString(ThemeDB.FallbackFont, labelPos, label, HorizontalAlignment.Center, CellSize - 8.0f, ThemeDB.FallbackFontSize, labelColor);
+            canvas.DrawString(ThemeDB.FallbackFont, labelPos, label, HorizontalAlignment.Center, CellSize - 8.0f, ThemeDB.FallbackFontSize, labelColor);
         }
 
         if (_movementPreviewPath.Count == 0)
@@ -1824,25 +1831,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
             var alpha = 0.12f + (0.06f * i);
             var clampedAlpha = Mathf.Clamp(alpha, 0.12f, 0.28f);
-            DrawRect(cellRect, new Color(0.22f, 0.72f, 1.0f, clampedAlpha), true);
-            DrawRect(cellRect, new Color(0.35f, 0.85f, 1.0f, 0.92f), false, 2.0f);
+            canvas.DrawRect(cellRect, new Color(0.22f, 0.72f, 1.0f, clampedAlpha), true);
+            canvas.DrawRect(cellRect, new Color(0.35f, 0.85f, 1.0f, 0.92f), false, 2.0f);
         }
 
         var startCenter = CellCenter(active.GridPos);
         foreach (var cell in _movementPreviewPath)
         {
             var nextCenter = CellCenter(cell);
-            DrawLine(startCenter, nextCenter, new Color(0.45f, 0.9f, 1.0f, 0.9f), 2.0f);
+            canvas.DrawLine(startCenter, nextCenter, new Color(0.45f, 0.9f, 1.0f, 0.9f), 2.0f);
             startCenter = nextCenter;
         }
     }
 
-    private void DrawMapInteractablesOverlay()
+    private void DrawMapInteractablesOverlay(CanvasItem canvas)
     {
-        _mapLoader?.DrawMapInteractablesOverlay(this, _mapProps, _lootBags, _openedPropIds, CellSize);
+        _mapLoader?.DrawMapInteractablesOverlay(canvas, _mapProps, _lootBags, _openedPropIds, CellSize);
     }
 
-    private void DrawFocusedUnitCellHighlight()
+    private void DrawFocusedUnitCellHighlight(CanvasItem canvas)
     {
         Unit highlightedUnit = null;
 
@@ -1865,8 +1872,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             new Vector2(CellSize, CellSize)
         );
 
-        DrawRect(rect, new Color(0.2f, 0.9f, 0.3f, 0.2f), true);
-        DrawRect(rect, new Color(0.35f, 1.0f, 0.45f, 0.9f), false, 3.0f);
+        canvas.DrawRect(rect, new Color(0.2f, 0.9f, 0.3f, 0.2f), true);
+        canvas.DrawRect(rect, new Color(0.35f, 1.0f, 0.45f, 0.9f), false, 3.0f);
     }
 
     private void DrawHoveredUnitTooltip()
