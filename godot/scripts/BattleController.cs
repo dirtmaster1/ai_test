@@ -34,7 +34,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly Array<Unit> _allUnits = new();
     private readonly Array<Unit> _playerUnits = new();
     private readonly Array<Unit> _enemyUnits = new();
-    private readonly Array<Vector2I> _blockedCells = new();
     private readonly Array<Vector2I> _wallCells = new();
     private readonly Array<Dictionary> _mapDoors = new();
     private readonly Array<Dictionary> _mapTransitions = new();
@@ -231,7 +230,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _hud?.ClearWorldHoverTooltip();
-        _mapLoader?.DrawMapFeaturesOverlay(canvas, _blockedCells, _mapTransitions, _gridWidth, _gridHeight, CellSize);
+        _mapLoader?.DrawMapFeaturesOverlay(canvas, _mapTransitions, _gridWidth, _gridHeight, CellSize);
         DrawFocusedUnitCellHighlight(canvas);
         DrawMapInteractablesOverlay(canvas);
         DrawMovementPreviewOverlay(canvas);
@@ -756,7 +755,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _partyInventoryItemIds.Clear();
         }
 
-        _blockedCells.Clear();
         _wallCells.Clear();
         _mapDoors.Clear();
         _mapTransitions.Clear();
@@ -775,15 +773,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         LoadMapInteractionStateForCurrentMap();
 
         var walls = TryGetVector2IArray(mapData, "walls");
-        if (walls.Count == 0)
-        {
-            walls = TryGetVector2IArray(mapData, "blocked");
-        }
 
         foreach (var wallCell in walls)
         {
             _wallCells.Add(wallCell);
-            _blockedCells.Add(wallCell);
         }
 
         var doors = TryGetDictionaryArray(mapData, "doors");

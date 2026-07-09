@@ -2,6 +2,14 @@
 
 This plan maps the current JavaScript game structure to a Godot production build and defines the shortest path to a sellable Steam release.
 
+## Current Checkpoint
+
+- Current phase: Week 8 (Stability and Content Completion).
+- Week 8 execution docs:
+  - `docs/WEEK8_STABILITY_RUNBOOK.md`
+  - `docs/WEEK8_RUN_LOG.md`
+- Gate to clear before Week 9: 10 consecutive full runs without a blocker bug.
+
 ## 1) Product Target
 
 - Platform: Windows (Steam) first.

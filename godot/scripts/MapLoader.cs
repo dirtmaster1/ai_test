@@ -45,7 +45,6 @@ public partial class MapLoader : Node
         {
             mapData["walls"] = wallCells;
             mapData["doors"] = doors;
-            mapData["blocked"] = wallCells;
             mapData["width"] = inferredWidth;
             mapData["height"] = inferredHeight;
         }
@@ -663,7 +662,6 @@ public partial class MapLoader : Node
                     }
                 }
             },
-            { "blocked", new Array<Vector2I> { new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterA, encounterB, encounterC } },
             {
@@ -743,7 +741,6 @@ public partial class MapLoader : Node
                     }
                 }
             },
-            { "blocked", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
             { "players", players },
             { "encounters", new Array<Dictionary> { encounterD } },
             {
@@ -787,7 +784,6 @@ public partial class MapLoader : Node
 
     public void DrawMapFeaturesOverlay(
         CanvasItem canvas,
-        Array<Vector2I> blockedCells,
         Array<Dictionary> mapTransitions,
         int gridWidth,
         int gridHeight,
