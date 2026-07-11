@@ -94,6 +94,54 @@
 	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1
+	},
+	"long-bow": {
+	  "id": "long-bow",
+	  "name": "Long Bow",
+	  "type": "weapon",
+	  "slot": "2-handed",
+	  "base_damage": 6,
+	  "bonus_damage": 0,
+	  "range": 4
+	},
+	"chain-mail": {
+	  "id": "chain-mail",
+	  "name": "Chain Mail",
+	  "type": "armor",
+	  "slot": "body",
+	  "base_armor_class": 2,
+	  "bonus_armor_class": 0
+	},
+	"healers-circlet": {
+	  "id": "healers-circlet",
+	  "name": "Healer's Circlet",
+	  "type": "armor",
+	  "slot": "head",
+	  "base_armor_class": 1,
+	  "bonus_armor_class": 1
+	},
+	"mages-amulet": {
+	  "id": "mages-amulet",
+	  "name": "Mage's Amulet",
+	  "type": "armor",
+	  "slot": "head",
+	  "base_armor_class": 0,
+	  "bonus_armor_class": 1
+	},
+	"chieftain-club": {
+	  "id": "chieftain-club",
+	  "name": "Chieftain Club",
+	  "type": "weapon",
+	  "slot": "2-handed",
+	  "base_damage": 9,
+	  "bonus_damage": 0,
+	  "range": 1
+	},
+	"fireball-scroll": {
+	  "id": "fireball-scroll",
+	  "name": "Fireball Scroll",
+	  "type": "consumable",
+	  "slot": "none"
 	}
   },
   "characters": {
@@ -309,6 +357,137 @@
 		"starting_equipment": [
 		  "cloth-robe"
 		]
+	  },
+	  "goblin-warrior": {
+		"id": "goblin-warrior",
+		"name": "Goblin Warrior",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 10,
+		"hit_points": 9,
+		"max_hit_points": 9,
+		"intelligence": 4,
+		"strength": 7,
+		"wisdom": 4,
+		"dexterity": 6,
+		"constitution": 6,
+		"starting_equipment": [
+		  "short-sword"
+		]
+	  },
+	  "goblin-archer": {
+		"id": "goblin-archer",
+		"name": "Goblin Archer",
+		"team": "enemy",
+		"primary_ability_id": "ranged",
+		"ability_ids": [
+		  "ranged",
+		  "melee"
+		],
+		"initiative": 13,
+		"hit_points": 7,
+		"max_hit_points": 7,
+		"intelligence": 5,
+		"strength": 5,
+		"wisdom": 4,
+		"dexterity": 9,
+		"constitution": 5,
+		"starting_equipment": [
+		  "short-bow"
+		]
+	  },
+	  "goblin-brute": {
+		"id": "goblin-brute",
+		"name": "Goblin Brute",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 8,
+		"hit_points": 16,
+		"max_hit_points": 16,
+		"intelligence": 3,
+		"strength": 11,
+		"wisdom": 3,
+		"dexterity": 4,
+		"constitution": 10,
+		"starting_equipment": [
+		  "war-axe"
+		]
+	  },
+	  "giant-spider": {
+		"id": "giant-spider",
+		"name": "Giant Spider",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 12,
+		"hit_points": 11,
+		"max_hit_points": 11,
+		"intelligence": 2,
+		"strength": 7,
+		"wisdom": 2,
+		"dexterity": 8,
+		"constitution": 6
+	  },
+	  "dire-wolf": {
+		"id": "dire-wolf",
+		"name": "Dire Wolf",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 14,
+		"hit_points": 12,
+		"max_hit_points": 12,
+		"intelligence": 3,
+		"strength": 8,
+		"wisdom": 3,
+		"dexterity": 9,
+		"constitution": 7
+	  },
+	  "ghoul": {
+		"id": "ghoul",
+		"name": "Ghoul",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee"
+		],
+		"initiative": 10,
+		"hit_points": 12,
+		"max_hit_points": 12,
+		"intelligence": 4,
+		"strength": 8,
+		"wisdom": 3,
+		"dexterity": 6,
+		"constitution": 8
+	  },
+	  "spectre": {
+		"id": "spectre",
+		"name": "Spectre",
+		"team": "enemy",
+		"primary_ability_id": "magic-missile",
+		"ability_ids": [
+		  "magic-missile",
+		  "melee"
+		],
+		"initiative": 14,
+		"hit_points": 10,
+		"max_hit_points": 10,
+		"magic_points": 8,
+		"max_magic_points": 8,
+		"intelligence": 9,
+		"strength": 4,
+		"wisdom": 6,
+		"dexterity": 8
 	  }
 	}
   }

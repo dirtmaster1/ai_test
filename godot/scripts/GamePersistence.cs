@@ -130,7 +130,7 @@ public sealed class GamePersistence
         _host.LootedBagIdsByMap.Clear();
         _host.LootBagsByMap.Clear();
 
-        _host.CurrentMapId = GetString(saveData, "current_map_id", "map-a");
+        _host.CurrentMapId = GetString(saveData, "current_map_id", "forest-town");
         _host.ActiveEncounterId = GetString(saveData, "active_encounter_id", "");
         _host.SelectedCharacterUnitId = GetString(saveData, "selected_character_unit_id", "");
 

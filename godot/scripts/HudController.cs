@@ -62,8 +62,10 @@ public partial class HudController : Control
     private Button _characterButton;
     private Label _turnQueueHeader;
     private Label _combatLogHeader;
-    private Label _turnQueueLabel;
+    private RichTextLabel _turnQueueLabel;
     private ItemList _combatLog;
+    private Button _turnQueueResizeHandle;
+    private Button _combatLogResizeHandle;
     private PanelContainer _inventoryPanel;
     private Label _inventoryHeader;
     private Label _inventoryUnitLabel;
@@ -89,7 +91,7 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private string _lastLogLine = "";
-    private const int MaxLogEntries = 12;
+    private const int MaxLogEntries = 250;
     private const float CombatLogTextPadding = 16.0f;
     private const float CombatLogMaxWrapWidth = 420.0f;
 
@@ -104,12 +106,20 @@ public partial class HudController : Control
 
     private readonly System.Collections.Generic.Dictionary<Control, Vector2> _panelOffsets = new();
     private readonly System.Collections.Generic.Dictionary<Control, Rect2> _basePanelRects = new();
+    private readonly System.Collections.Generic.Dictionary<Control, Vector2> _panelSizeOverrides = new();
     private bool _isDraggingPanel;
     private Control _dragPanel;
     private Vector2 _dragGrabOffset;
+    private bool _isResizingPanel;
+    private Control _resizePanel;
+    private Vector2 _resizeStartMouseGlobal;
+    private Vector2 _resizeStartSize;
+    private const float MinResizablePanelWidth = 260.0f;
+    private const float MinResizablePanelHeight = 160.0f;
 
     public override void _Ready()
     {
+        TopLevel = true;
         ZAsRelative = false;
         ZIndex = 4000;
 
@@ -140,9 +150,14 @@ public partial class HudController : Control
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
         _turnQueueHeader = GetNode<Label>("TurnQueuePanel/TurnQueueVBox/TurnQueueHeader");
-        _turnQueueLabel = GetNode<Label>("TurnQueuePanel/TurnQueueVBox/TurnQueueLabel");
+        _turnQueueLabel = GetNode<RichTextLabel>("TurnQueuePanel/TurnQueueVBox/TurnQueueLabel");
+        _turnQueueLabel.BbcodeEnabled = true;
+        _turnQueueLabel.SelectionEnabled = false;
+        _turnQueueLabel.ScrollActive = true;
         _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeader");
         _combatLog = GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog");
+        _turnQueueResizeHandle = GetNode<Button>("TurnQueuePanel/TurnQueueVBox/TurnQueueResizeRow/TurnQueueResizeHandle");
+        _combatLogResizeHandle = GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogResizeRow/CombatLogResizeHandle");
         _inventoryPanel = GetNode<PanelContainer>("InventoryPanel");
         _inventoryHeader = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryHeader");
         _inventoryUnitLabel = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryUnitLabel");
@@ -199,6 +214,8 @@ public partial class HudController : Control
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryHeader, _inventoryPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
+        RegisterResizable(_turnQueueResizeHandle, _turnQueuePanel);
+        RegisterResizable(_combatLogResizeHandle, _combatLogPanel);
 
         EnsureFullscreenLayout();
         ApplyHudLayout();
@@ -551,6 +568,23 @@ public partial class HudController : Control
 
     public override void _Input(InputEvent @event)
     {
+        if (_isResizingPanel && _resizePanel != null)
+        {
+            if (@event is InputEventMouseMotion resizeMotion)
+            {
+                UpdatePanelResize(resizeMotion.GlobalPosition);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            if (@event is InputEventMouseButton resizeButton && resizeButton.ButtonIndex == MouseButton.Left && !resizeButton.Pressed)
+            {
+                EndPanelResize();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+        }
+
         if (!_isDraggingPanel || _dragPanel == null)
         {
             return;
@@ -674,6 +708,17 @@ public partial class HudController : Control
         handle.GuiInput += (inputEvent) => OnDragHandleInput(inputEvent, panel);
     }
 
+    private void RegisterResizable(Control handle, Control panel)
+    {
+        if (handle == null || panel == null)
+        {
+            return;
+        }
+
+        handle.MouseFilter = MouseFilterEnum.Stop;
+        handle.GuiInput += (inputEvent) => OnResizeHandleInput(inputEvent, panel);
+    }
+
     private void OnDragHandleInput(InputEvent inputEvent, Control panel)
     {
         if (inputEvent is not InputEventMouseButton button || button.ButtonIndex != MouseButton.Left)
@@ -706,6 +751,30 @@ public partial class HudController : Control
         _isDraggingPanel = false;
     }
 
+    private void OnResizeHandleInput(InputEvent inputEvent, Control panel)
+    {
+        if (inputEvent is not InputEventMouseButton button || button.ButtonIndex != MouseButton.Left)
+        {
+            return;
+        }
+
+        if (button.Pressed)
+        {
+            _isResizingPanel = true;
+            _resizePanel = panel;
+            _resizeStartMouseGlobal = button.GlobalPosition;
+            _resizeStartSize = panel.Size;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (_isResizingPanel && _resizePanel == panel)
+        {
+            EndPanelResize();
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
     private void UpdatePanelDragPosition(Vector2 mouseGlobal)
     {
         var panel = _dragPanel;
@@ -731,6 +800,38 @@ public partial class HudController : Control
         UpdatePanelOffsetFromCurrent(panel);
     }
 
+    private void UpdatePanelResize(Vector2 mouseGlobal)
+    {
+        var panel = _resizePanel;
+        if (panel == null)
+        {
+            return;
+        }
+
+        var viewport = GetViewport();
+        if (viewport == null)
+        {
+            return;
+        }
+
+        var viewportSize = viewport.GetVisibleRect().Size;
+        var delta = mouseGlobal - _resizeStartMouseGlobal;
+        var maxWidth = Mathf.Max(MinResizablePanelWidth, viewportSize.X - panel.Position.X);
+        var maxHeight = Mathf.Max(MinResizablePanelHeight, viewportSize.Y - panel.Position.Y);
+        var width = Mathf.Clamp(_resizeStartSize.X + delta.X, MinResizablePanelWidth, maxWidth);
+        var height = Mathf.Clamp(_resizeStartSize.Y + delta.Y, MinResizablePanelHeight, maxHeight);
+
+        _panelSizeOverrides[panel] = new Vector2(width, height);
+        panel.Size = new Vector2(width, height);
+        ApplyHudLayout();
+    }
+
+    private void EndPanelResize()
+    {
+        _isResizingPanel = false;
+        _resizePanel = null;
+    }
+
     private void ApplyPanelRect(Control panel, Rect2 baseRect, Vector2 viewportSize)
     {
         if (panel == null)
@@ -739,13 +840,21 @@ public partial class HudController : Control
         }
 
         _basePanelRects[panel] = baseRect;
+        var panelSize = _panelSizeOverrides.TryGetValue(panel, out var overriddenSize)
+            ? overriddenSize
+            : baseRect.Size;
+
+        panelSize.X = Mathf.Clamp(panelSize.X, MinResizablePanelWidth, Mathf.Max(MinResizablePanelWidth, viewportSize.X));
+        panelSize.Y = Mathf.Clamp(panelSize.Y, MinResizablePanelHeight, Mathf.Max(MinResizablePanelHeight, viewportSize.Y));
+
         var offset = _panelOffsets.TryGetValue(panel, out var storedOffset) ? storedOffset : Vector2.Zero;
         var pos = baseRect.Position + offset;
-        pos.X = Mathf.Clamp(pos.X, 0.0f, Mathf.Max(0.0f, viewportSize.X - baseRect.Size.X));
-        pos.Y = Mathf.Clamp(pos.Y, 0.0f, Mathf.Max(0.0f, viewportSize.Y - baseRect.Size.Y));
+        pos.X = Mathf.Clamp(pos.X, 0.0f, Mathf.Max(0.0f, viewportSize.X - panelSize.X));
+        pos.Y = Mathf.Clamp(pos.Y, 0.0f, Mathf.Max(0.0f, viewportSize.Y - panelSize.Y));
 
-        SetRect(panel, pos.X, pos.Y, pos.X + baseRect.Size.X, pos.Y + baseRect.Size.Y);
+        SetRect(panel, pos.X, pos.Y, pos.X + panelSize.X, pos.Y + panelSize.Y);
         _panelOffsets[panel] = pos - baseRect.Position;
+        _panelSizeOverrides[panel] = panelSize;
     }
 
     private void UpdatePanelOffsetFromCurrent(Control panel)
@@ -787,7 +896,7 @@ public partial class HudController : Control
 
         StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
-        StyleBodyLabel(_turnQueueLabel, bodyColor, 14);
+        StyleBodyRichText(_turnQueueLabel, bodyColor, mutedBodyColor, 14);
         StyleBodyLabel(_helpBody, bodyColor, 14);
         StyleBodyLabel(_inventoryUnitLabel, bodyColor, 14);
         StyleBodyLabel(_inventoryEquippedSummaryLabel, mutedBodyColor, 13);
@@ -886,6 +995,41 @@ public partial class HudController : Control
         label.AddThemeConstantOverride("shadow_offset_x", 1);
         label.AddThemeConstantOverride("shadow_offset_y", 1);
         label.AddThemeFontSizeOverride("font_size", fontSize);
+    }
+
+    private static void StyleBodyRichText(RichTextLabel label, Color color, Color mutedColor, int fontSize)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        var innerPanelStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.08f, 0.11f, 0.13f, 0.95f),
+            BorderColor = new Color(0.3f, 0.42f, 0.5f, 0.95f),
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            CornerRadiusTopLeft = 2,
+            CornerRadiusTopRight = 2,
+            CornerRadiusBottomRight = 2,
+            CornerRadiusBottomLeft = 2,
+            ContentMarginTop = 6,
+            ContentMarginRight = 6,
+            ContentMarginBottom = 6,
+            ContentMarginLeft = 6
+        };
+
+        label.AddThemeStyleboxOverride("normal", innerPanelStyle);
+        label.AddThemeColorOverride("default_color", color);
+        label.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.35f));
+        label.AddThemeColorOverride("font_outline_color", mutedColor);
+        label.AddThemeConstantOverride("shadow_offset_x", 1);
+        label.AddThemeConstantOverride("shadow_offset_y", 1);
+        label.AddThemeConstantOverride("line_separation", 2);
+        label.AddThemeFontSizeOverride("normal_font_size", fontSize);
     }
 
     private static void StyleButton(Button button, bool emphasized)
@@ -1536,12 +1680,11 @@ public partial class HudController : Control
 
         if (queue == null || queue.Count == 0)
         {
-            _turnQueueLabel.Text = "Turn Queue\n-";
+            _turnQueueLabel.Text = "-";
             return;
         }
 
         var builder = new StringBuilder();
-        builder.AppendLine("Turn Queue");
         foreach (var unit in queue)
         {
             if (unit == null || unit.IsDead)
@@ -1549,11 +1692,24 @@ public partial class HudController : Control
                 continue;
             }
 
-            var marker = unit == activeUnit ? ">" : " ";
-            builder.AppendLine($"{marker} {unit.UnitName} ({unit.Team})  HP {unit.HitPoints}/{unit.MaxHitPoints}  MP {unit.MagicPoints}/{unit.MaxMagicPoints}");
+            var row = $"{unit.UnitName} ({unit.Team})  HP {unit.HitPoints}/{unit.MaxHitPoints}  MP {unit.MagicPoints}/{unit.MaxMagicPoints}";
+            if (unit == activeUnit)
+            {
+                builder.Append("[bgcolor=#2d4657]");
+                builder.Append("[color=#f5fbff]");
+                builder.Append(row);
+                builder.Append("[/color][/bgcolor]");
+            }
+            else
+            {
+                builder.Append(row);
+            }
+
+            builder.Append('\n');
         }
 
         _turnQueueLabel.Text = builder.ToString().TrimEnd();
+        _turnQueueLabel.ScrollToLine(0);
     }
 
     public void AddCombatLogEntry(string text)

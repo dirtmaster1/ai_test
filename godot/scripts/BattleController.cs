@@ -60,7 +60,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool _awaitingPlayerAttackDirection;
     private Unit _explorerUnit;
     private string _activeEncounterId = "";
-    private string _currentMapId = "map-a";
+    private string _currentMapId = "forest-town";
     private string _selectedCharacterUnitId = "";
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
     private string _lastActionSummary = "";
@@ -74,6 +74,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private ulong _lastManualEndTurnAtMs;
     private bool _isEndingTurn;
     private bool _isEnemyTurnProcessing;
+    private bool _isPanningView;
+    private bool _leftMouseClickCandidate;
+    private Vector2 _viewPanStartMouseGlobal;
+    private Vector2 _viewPanStartPosition;
+    private const float ViewPanDragThreshold = 8.0f;
+    private const float ViewPanOverscroll = 96.0f;
 
     private static readonly Vector2I[] AttackDirections =
     {
@@ -161,6 +167,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         SyncHudFromGameState();
+        CenterViewOnCurrentFocus();
         QueueRedraw();
     }
 
@@ -269,6 +276,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         activeUnit.ResetTurnResources();
+        CenterViewOnCurrentFocus();
 
         if (activeUnit.Team == "enemy")
         {
@@ -768,6 +776,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _currentMapId = GetString(mapData, "id", mapId);
         _gridWidth = Mathf.Max(1, GetInt(mapData, "width", DefaultGridWidth));
         _gridHeight = Mathf.Max(1, GetInt(mapData, "height", DefaultGridHeight));
+        ClampViewPositionToBounds();
         _mapLoader?.SetActiveMapVisual(_currentMapId);
         LoadClearedEncounterStateForCurrentMap();
         LoadMapInteractionStateForCurrentMap();
@@ -810,6 +819,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         SpawnEnemiesFromMap(mapData);
+        CenterViewOnCurrentFocus();
     }
 
     private void SpawnPlayersFromMap(Dictionary mapData)
@@ -1871,7 +1881,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void DrawHoveredUnitTooltip()
     {
-        var cell = WorldToCell(GetGlobalMousePosition());
+        var cell = WorldToCell(ToLocal(GetGlobalMousePosition()));
         if (!IsInBounds(cell))
         {
             return;
@@ -1899,7 +1909,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void DrawHoveredInteractableTooltip()
     {
-        var cell = WorldToCell(GetGlobalMousePosition());
+        var cell = WorldToCell(ToLocal(GetGlobalMousePosition()));
         if (!IsInBounds(cell) || GetLivingUnitAtCell(cell) != null)
         {
             return;
@@ -2190,6 +2200,97 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             Mathf.FloorToInt(world.X / CellSize),
             Mathf.FloorToInt(world.Y / CellSize)
         );
+    }
+
+    private bool IsPointInsideVisibleGrid(Vector2 globalPoint)
+    {
+        var gridRect = new Rect2(GlobalPosition, new Vector2(_gridWidth * CellSize, _gridHeight * CellSize));
+        return gridRect.HasPoint(globalPoint);
+    }
+
+    private bool IsPointInsideGrid(Vector2 localPoint)
+    {
+        return localPoint.X >= 0
+            && localPoint.Y >= 0
+            && localPoint.X < _gridWidth * CellSize
+            && localPoint.Y < _gridHeight * CellSize;
+    }
+
+    private void SetViewPositionClamped(Vector2 targetPosition)
+    {
+        var viewportSize = GetViewportRect().Size;
+        var worldWidth = _gridWidth * CellSize;
+        var worldHeight = _gridHeight * CellSize;
+
+        var minX = viewportSize.X - worldWidth;
+        var maxX = 0.0f;
+        if (minX > maxX)
+        {
+            var centeredX = (minX + maxX) * 0.5f;
+            minX = centeredX;
+            maxX = centeredX;
+        }
+
+        var minY = viewportSize.Y - worldHeight;
+        var maxY = 0.0f;
+        if (minY > maxY)
+        {
+            var centeredY = (minY + maxY) * 0.5f;
+            minY = centeredY;
+            maxY = centeredY;
+        }
+
+        minX -= ViewPanOverscroll;
+        maxX += ViewPanOverscroll;
+        minY -= ViewPanOverscroll;
+        maxY += ViewPanOverscroll;
+
+        Position = new Vector2(
+            Mathf.Clamp(targetPosition.X, minX, maxX),
+            Mathf.Clamp(targetPosition.Y, minY, maxY)
+        );
+    }
+
+    private void ClampViewPositionToBounds()
+    {
+        SetViewPositionClamped(Position);
+    }
+
+    private Unit GetCurrentViewFocusUnit()
+    {
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            return GetExplorerUnit();
+        }
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            return _turnManager?.GetActiveUnit() ?? GetActivePlayerUnit();
+        }
+
+        return null;
+    }
+
+    private void CenterViewOnCell(Vector2I cell)
+    {
+        var viewportSize = GetViewportRect().Size;
+        var targetPosition = new Vector2(
+            viewportSize.X * 0.5f - (cell.X * CellSize + CellSize * 0.5f),
+            viewportSize.Y * 0.5f - (cell.Y * CellSize + CellSize * 0.5f)
+        );
+        SetViewPositionClamped(targetPosition);
+    }
+
+    private void CenterViewOnCurrentFocus()
+    {
+        var focus = GetCurrentViewFocusUnit();
+        if (!IsUsableUnit(focus) || focus.IsDead)
+        {
+            ClampViewPositionToBounds();
+            return;
+        }
+
+        CenterViewOnCell(focus.GridPos);
     }
 
     private Array<Dictionary> BuildInventoryItemsForHud()
@@ -3183,6 +3284,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
+        CenterViewOnCurrentFocus();
         QueueRedraw();
         return true;
     }
@@ -3272,6 +3374,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _explorerUnit = party[nextIndex];
         _selectedCharacterUnitId = _explorerUnit.UnitId;
+        CenterViewOnCurrentFocus();
         QueueRedraw();
         return true;
     }

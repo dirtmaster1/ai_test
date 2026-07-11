@@ -194,10 +194,25 @@ layout_mode = 2
 layout_mode = 2
 text = "Turn Queue"
 
-[node name="TurnQueueLabel" type="Label" parent="TurnQueuePanel/TurnQueueVBox"]
+[node name="TurnQueueLabel" type="RichTextLabel" parent="TurnQueuePanel/TurnQueueVBox"]
 layout_mode = 2
+size_flags_vertical = 3
 autowrap_mode = 3
+scroll_active = true
+fit_content = false
 text = "-"
+
+[node name="TurnQueueResizeRow" type="HBoxContainer" parent="TurnQueuePanel/TurnQueueVBox"]
+layout_mode = 2
+
+[node name="TurnQueueResizeSpacer" type="Control" parent="TurnQueuePanel/TurnQueueVBox/TurnQueueResizeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TurnQueueResizeHandle" type="Button" parent="TurnQueuePanel/TurnQueueVBox/TurnQueueResizeRow"]
+layout_mode = 2
+focus_mode = 0
+text = "Resize"
 
 [node name="CombatLogPanel" type="PanelContainer" parent="."]
 layout_mode = 0
@@ -218,9 +233,21 @@ text = "Combat Log"
 
 [node name="CombatLog" type="ItemList" parent="CombatLogPanel/CombatLogVBox"]
 layout_mode = 2
-auto_height = true
+size_flags_vertical = 3
 same_column_width = true
 allow_reselect = true
+
+[node name="CombatLogResizeRow" type="HBoxContainer" parent="CombatLogPanel/CombatLogVBox"]
+layout_mode = 2
+
+[node name="CombatLogResizeSpacer" type="Control" parent="CombatLogPanel/CombatLogVBox/CombatLogResizeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CombatLogResizeHandle" type="Button" parent="CombatLogPanel/CombatLogVBox/CombatLogResizeRow"]
+layout_mode = 2
+focus_mode = 0
+text = "Resize"
 
 [node name="InventoryPanel" type="PanelContainer" parent="."]
 visible = false

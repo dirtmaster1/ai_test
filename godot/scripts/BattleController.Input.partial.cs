@@ -127,15 +127,20 @@ public partial class BattleController
 
     private void HandleMouseInput(InputEventMouseButton mouseEvent)
     {
+        if (HandleViewPanInput(mouseEvent))
+        {
+            return;
+        }
+
         if (_awaitingPlayerAttackDirection)
         {
             HandleMouseAttackInput(mouseEvent);
             return;
         }
 
-        if (mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
+        if (!mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
         {
-            var clickedCell = WorldToCell(GetGlobalMousePosition());
+            var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
             if (_flowState == BattleFlowState.Exploration && TryOpenDoorAtCell(clickedCell))
             {
                 return;
@@ -155,8 +160,13 @@ public partial class BattleController
         HandleMouseMoveInput(mouseEvent);
     }
 
-    private void HandleMouseHoverInput(InputEventMouseMotion _mouseMotion)
+    private void HandleMouseHoverInput(InputEventMouseMotion mouseMotion)
     {
+        if (HandleViewPanInput(mouseMotion))
+        {
+            return;
+        }
+
         QueueRedraw();
 
         if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection)
@@ -172,7 +182,7 @@ public partial class BattleController
             return;
         }
 
-        var hoveredCell = WorldToCell(GetGlobalMousePosition());
+        var hoveredCell = WorldToCell(ToLocal(mouseMotion.GlobalPosition));
         if (!IsInBounds(hoveredCell) || hoveredCell == active.GridPos)
         {
             ClearMovementPreviewPath();
@@ -193,7 +203,7 @@ public partial class BattleController
 
     private void HandleMouseMoveInput(InputEventMouseButton mouseEvent)
     {
-        if (_flowState != BattleFlowState.Combat || !mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left)
+        if (_flowState != BattleFlowState.Combat || mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left)
         {
             return;
         }
@@ -204,7 +214,7 @@ public partial class BattleController
             return;
         }
 
-        var clickedCell = WorldToCell(GetGlobalMousePosition());
+        var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
         if (!IsInBounds(clickedCell))
         {
             return;
@@ -305,7 +315,7 @@ public partial class BattleController
         }
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
-        var clickedCell = WorldToCell(GetGlobalMousePosition());
+        var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
         if (!Unit.IsWithinRange(active.GridPos, clickedCell, actionProfile.Range))
         {
             return;
@@ -344,5 +354,70 @@ public partial class BattleController
 
         CancelAttackMode(false);
         TryResolvePlayerActionAtCell(active, targetCell);
+    }
+
+    private bool HandleViewPanInput(InputEventMouseButton mouseEvent)
+    {
+        if (mouseEvent.ButtonIndex != MouseButton.Left)
+        {
+            return false;
+        }
+
+        if (mouseEvent.Pressed)
+        {
+            if (!IsPointInsideVisibleGrid(mouseEvent.GlobalPosition))
+            {
+                _leftMouseClickCandidate = false;
+                return false;
+            }
+
+            if (mouseEvent.DoubleClick)
+            {
+                _leftMouseClickCandidate = false;
+                _isPanningView = false;
+                CenterViewOnCurrentFocus();
+                QueueRedraw();
+                return true;
+            }
+
+            _leftMouseClickCandidate = true;
+            _isPanningView = false;
+            _viewPanStartMouseGlobal = mouseEvent.GlobalPosition;
+            _viewPanStartPosition = Position;
+            return false;
+        }
+
+        var handledPan = _isPanningView;
+        _isPanningView = false;
+        _leftMouseClickCandidate = false;
+        return handledPan;
+    }
+
+    private bool HandleViewPanInput(InputEventMouseMotion mouseMotion)
+    {
+        if (!_leftMouseClickCandidate && !_isPanningView)
+        {
+            return false;
+        }
+
+        if ((mouseMotion.ButtonMask & MouseButtonMask.Left) == 0)
+        {
+            return false;
+        }
+
+        var delta = mouseMotion.GlobalPosition - _viewPanStartMouseGlobal;
+        if (!_isPanningView && delta.Length() >= ViewPanDragThreshold)
+        {
+            _isPanningView = true;
+        }
+
+        if (!_isPanningView)
+        {
+            return false;
+        }
+
+        SetViewPositionClamped(_viewPanStartPosition + delta);
+        QueueRedraw();
+        return true;
     }
 }

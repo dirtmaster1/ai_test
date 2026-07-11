@@ -17,6 +17,7 @@ public partial class Unit : Node2D
     public int MaxHitPoints { get; private set; } = 10;
     public int MagicPoints { get; private set; }
     public int MaxMagicPoints { get; private set; }
+    public int MagicPointRegenPerTurn { get; private set; }
     public int Intelligence { get; private set; } = 5;
     public int Strength { get; private set; } = 5;
     public int Wisdom { get; private set; } = 5;
@@ -70,6 +71,8 @@ public partial class Unit : Node2D
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
         MaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
         MagicPoints = Mathf.Clamp(GetInt(config, "magic_points", MaxMagicPoints), 0, MaxMagicPoints);
+        var defaultMagicRegen = MaxMagicPoints > 0 ? 1 : 0;
+        MagicPointRegenPerTurn = Mathf.Max(0, GetInt(config, "magic_point_regen_per_turn", defaultMagicRegen));
         Intelligence = GetInt(config, "intelligence", 5);
         Strength = GetInt(config, "strength", 5);
         Wisdom = GetInt(config, "wisdom", 5);
@@ -94,6 +97,7 @@ public partial class Unit : Node2D
     {
         RemainingMovement = MaxMovementPerTurn;
         HasUsedAbilityThisTurn = false;
+        MagicPoints = Mathf.Clamp(MagicPoints + Mathf.Max(0, MagicPointRegenPerTurn), 0, MaxMagicPoints);
 
         var keys = new Array<string>();
         foreach (var pair in _abilityCooldownRemaining)
@@ -312,6 +316,7 @@ public partial class Unit : Node2D
             { "max_hit_points", MaxHitPoints },
             { "magic_points", MagicPoints },
             { "max_magic_points", MaxMagicPoints },
+            { "magic_point_regen_per_turn", MagicPointRegenPerTurn },
             { "is_dead", IsDead },
             { "remaining_movement", RemainingMovement },
             { "has_used_ability_this_turn", HasUsedAbilityThisTurn },
@@ -333,6 +338,7 @@ public partial class Unit : Node2D
         Race = GetString(snapshot, "race", Race);
         MaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", MaxMagicPoints));
         MagicPoints = Mathf.Clamp(GetInt(snapshot, "magic_points", MagicPoints), 0, MaxMagicPoints);
+        MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
         RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, MaxMovementPerTurn);
@@ -492,6 +498,9 @@ public partial class Unit : Node2D
         if (ContainsAny(key, "goblinchieftain", "chieftain")) return new Vector2I(0, 2);
         if (ContainsAny(key, "skeletonwarrior")) return new Vector2I(1, 2);
         if (ContainsAny(key, "skeletonmage")) return new Vector2I(2, 2);
+        if (ContainsAny(key, "ghoul")) return new Vector2I(3, 2);
+        if (ContainsAny(key, "direwolf", "wolf")) return new Vector2I(0, 3);
+        if (ContainsAny(key, "giantspider", "spider")) return new Vector2I(1, 3);
         if (ContainsAny(key, "zombie")) return new Vector2I(3, 2);
         if (ContainsAny(key, "necromancer")) return new Vector2I(4, 2);
         if (ContainsAny(key, "wizard")) return new Vector2I(0, 0);

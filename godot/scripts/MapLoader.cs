@@ -28,29 +28,402 @@ public partial class MapLoader : Node
         EnsureBaseLayersPopulated();
     }
 
-    public Dictionary LoadMapStub(string mapId = "map-a")
+    public Dictionary LoadMapStub(string mapId = "forest-town")
     {
         if (_defaultParty.Count == 0)
         {
             _defaultParty = BuildDefaultParty();
         }
 
-        var mapData = mapId switch
-        {
-            "map-b" => BuildMapB(_defaultParty),
-            _ => BuildMapA(_defaultParty)
-        };
+        EnsureBaseLayerPopulated(mapId);
 
-        if (TryBuildGeometryFromBaseLayer(mapId, out var wallCells, out var doors, out var inferredWidth, out var inferredHeight))
+        if (!TryBuildMapFromTokenDefinition(mapId, out var tokenMapData))
         {
-            mapData["walls"] = wallCells;
-            mapData["doors"] = doors;
-            mapData["width"] = inferredWidth;
-            mapData["height"] = inferredHeight;
+            tokenMapData = new Dictionary
+            {
+                { "id", mapId },
+                { "width", 1 },
+                { "height", 1 },
+                { "walls", new Array<Vector2I>() },
+                { "doors", new Array<Dictionary>() },
+                { "players", BuildPlayersFromTokenSpawns(new System.Collections.Generic.Dictionary<string, Vector2I>(System.StringComparer.OrdinalIgnoreCase)) },
+                { "encounters", new Array<Dictionary>() },
+                { "props", new Array<Dictionary>() },
+                { "transitions", new Array<Dictionary>() }
+            };
         }
 
+        ApplyMarkerOverrides(mapId, tokenMapData);
         SetActiveMapVisual(mapId);
-        return mapData;
+        return tokenMapData;
+    }
+
+    private bool TryBuildMapFromTokenDefinition(string mapId, out Dictionary mapData)
+    {
+        mapData = null;
+
+        if (!MapTokenCatalog.Maps.TryGetValue(mapId, out var definition))
+        {
+            return false;
+        }
+
+        var layoutRows = SplitTokenRows(definition.LayoutRows);
+        if (layoutRows.Count == 0)
+        {
+            return false;
+        }
+
+        var height = layoutRows.Count;
+        var width = GetRowWidth(layoutRows);
+        var walls = new Array<Vector2I>();
+        var doors = new Array<Dictionary>();
+        var transitions = new Array<Dictionary>();
+        var enemyConfigs = new Array<Dictionary>();
+        var playerSpawnByCharacterId = new System.Collections.Generic.Dictionary<string, Vector2I>(System.StringComparer.OrdinalIgnoreCase);
+
+        for (var y = 0; y < height; y++)
+        {
+            var row = layoutRows[y];
+            for (var x = 0; x < width; x++)
+            {
+                var token = GetRowToken(row, x);
+                var cell = new Vector2I(x, y);
+
+                if (definition.BaseLegend.TryGetValue(token, out var baseDef))
+                {
+                    switch (baseDef.Type)
+                    {
+                        case MapBaseTileType.Wall:
+                            walls.Add(cell);
+                            break;
+                        case MapBaseTileType.Door:
+                            doors.Add(new Dictionary
+                            {
+                                { "id", $"{mapId}-door-{x}-{y}" },
+                                { "cell", cell },
+                                { "is_open", false }
+                            });
+                            break;
+                        case MapBaseTileType.MapTransition:
+                            var spawnCell = TryFindExplicitTransitionSpawnCell(definition.Id, baseDef.TargetMapId, out var explicitSpawn)
+                                ? explicitSpawn
+                                : BuildTransitionSpawnCell(cell, width, height);
+                            transitions.Add(new Dictionary
+                            {
+                                { "from_cell", cell },
+                                { "to_map", baseDef.TargetMapId },
+                                { "spawn_cell", spawnCell }
+                            });
+                            break;
+                    }
+                }
+
+                if (!definition.EncounterLegend.TryGetValue(token, out var encounterDef))
+                {
+                    continue;
+                }
+
+                if (string.Equals(encounterDef.Kind, "player", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrEmpty(encounterDef.CharacterId))
+                    {
+                        playerSpawnByCharacterId[encounterDef.CharacterId] = cell;
+                    }
+
+                    continue;
+                }
+
+                if (string.Equals(encounterDef.Kind, "enemy", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    enemyConfigs.Add(BuildEnemyFromToken(mapId, token, encounterDef, cell, enemyConfigs.Count));
+                }
+            }
+        }
+
+        var players = BuildPlayersFromTokenSpawns(playerSpawnByCharacterId);
+        var encounters = new Array<Dictionary>();
+        if (enemyConfigs.Count > 0)
+        {
+            encounters.Add(new Dictionary
+            {
+                { "id", $"{mapId}-encounter-main" },
+                { "aggro_range", 4 },
+                { "enemies", enemyConfigs }
+            });
+        }
+
+        var props = BuildPropsFromTokenDefinition(mapId, definition, width, height);
+
+        mapData = new Dictionary
+        {
+            { "id", definition.Id },
+            { "name", definition.Name },
+            { "width", width },
+            { "height", height },
+            { "walls", walls },
+            { "doors", doors },
+            { "players", players },
+            { "encounters", encounters },
+            { "props", props },
+            { "transitions", transitions }
+        };
+
+        return true;
+    }
+
+    private static List<string[]> SplitTokenRows(string[] rows)
+    {
+        var parsedRows = new List<string[]>();
+        if (rows == null)
+        {
+            return parsedRows;
+        }
+
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row))
+            {
+                continue;
+            }
+
+            parsedRows.Add(row.Split(' ', System.StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        return parsedRows;
+    }
+
+    private static int GetRowWidth(List<string[]> rows)
+    {
+        var width = 0;
+        foreach (var row in rows)
+        {
+            width = Mathf.Max(width, row.Length);
+        }
+
+        return Mathf.Max(1, width);
+    }
+
+    private static string GetRowToken(string[] row, int x)
+    {
+        if (row == null || x < 0 || x >= row.Length)
+        {
+            return "__";
+        }
+
+        return row[x];
+    }
+
+    private static Vector2I BuildTransitionSpawnCell(Vector2I sourceCell, int width, int height)
+    {
+        if (sourceCell.X <= 0)
+        {
+            return new Vector2I(Mathf.Max(1, width - 2), sourceCell.Y);
+        }
+
+        if (sourceCell.X >= width - 1)
+        {
+            return new Vector2I(1, sourceCell.Y);
+        }
+
+        if (sourceCell.Y <= 0)
+        {
+            return new Vector2I(sourceCell.X, Mathf.Max(1, height - 2));
+        }
+
+        if (sourceCell.Y >= height - 1)
+        {
+            return new Vector2I(sourceCell.X, 1);
+        }
+
+        return sourceCell;
+    }
+
+    private static bool TryFindExplicitTransitionSpawnCell(string sourceMapId, string targetMapId, out Vector2I spawnCell)
+    {
+        spawnCell = default;
+        if (string.IsNullOrEmpty(sourceMapId) || string.IsNullOrEmpty(targetMapId))
+        {
+            return false;
+        }
+
+        if (!MapTokenCatalog.Maps.TryGetValue(targetMapId, out var targetDefinition))
+        {
+            return false;
+        }
+
+        var rows = SplitTokenRows(targetDefinition.LayoutRows);
+        for (var y = 0; y < rows.Count; y++)
+        {
+            var row = rows[y];
+            for (var x = 0; x < row.Length; x++)
+            {
+                var token = row[x];
+                if (!targetDefinition.BaseLegend.TryGetValue(token, out var baseDef))
+                {
+                    continue;
+                }
+
+                if (baseDef.Type != MapBaseTileType.MapTransitionSpawn)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(baseDef.TargetMapId, sourceMapId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                spawnCell = new Vector2I(x, y);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Dictionary BuildEnemyFromToken(string mapId, string token, MapEncounterTokenDef encounterDef, Vector2I cell, int index)
+    {
+        var archetypeId = encounterDef.ArchetypeId;
+        var enemy = new Dictionary();
+
+        if (!string.IsNullOrEmpty(archetypeId) && _gameData != null)
+        {
+            var template = _gameData.GetCharacterTemplate(archetypeId);
+            if (template.Count > 0)
+            {
+                enemy = CopyDictionary(template);
+            }
+        }
+
+        if (enemy.Count == 0)
+        {
+            enemy["name"] = BuildFallbackName(archetypeId, "Enemy");
+            enemy["primary_ability_id"] = "melee";
+            enemy["initiative"] = 10;
+            enemy["hit_points"] = 10;
+            enemy["max_hit_points"] = 10;
+        }
+
+        enemy["id"] = $"{mapId}-{token.ToLowerInvariant()}-{index}";
+        enemy["team"] = "enemy";
+        enemy["grid_pos"] = cell;
+
+        if (string.IsNullOrEmpty(GetString(enemy, "name", "")))
+        {
+            enemy["name"] = BuildFallbackName(archetypeId, "Enemy");
+        }
+
+        if (string.IsNullOrEmpty(GetString(enemy, "primary_ability_id", "")))
+        {
+            enemy["primary_ability_id"] = "melee";
+        }
+
+        return enemy;
+    }
+
+    private Array<Dictionary> BuildPlayersFromTokenSpawns(System.Collections.Generic.Dictionary<string, Vector2I> spawnByCharacterId)
+    {
+        var players = new Array<Dictionary>();
+        if (_defaultParty.Count == 0)
+        {
+            return players;
+        }
+
+        var anchor = new Vector2I(2, 7);
+        foreach (var pair in spawnByCharacterId)
+        {
+            anchor = pair.Value;
+            break;
+        }
+
+        for (var i = 0; i < _defaultParty.Count; i++)
+        {
+            var player = CopyDictionary(_defaultParty[i]);
+            var playerId = GetString(player, "id", "");
+            if (!string.IsNullOrEmpty(playerId) && spawnByCharacterId.TryGetValue(playerId, out var specificCell))
+            {
+                player["grid_pos"] = specificCell;
+            }
+            else
+            {
+                player["grid_pos"] = anchor + GetPartyFormationOffset(i);
+            }
+
+            players.Add(player);
+        }
+
+        return players;
+    }
+
+    private static string BuildFallbackName(string archetypeId, string fallback)
+    {
+        if (string.IsNullOrEmpty(archetypeId))
+        {
+            return fallback;
+        }
+
+        return archetypeId.Replace('-', ' ');
+    }
+
+    private static Array<Dictionary> BuildPropsFromTokenDefinition(string mapId, TokenMapDef definition, int width, int height)
+    {
+        var props = new Array<Dictionary>();
+        var propRows = SplitTokenRows(definition.PropRows);
+        if (propRows.Count == 0 || definition.PropLegend.Count == 0)
+        {
+            return props;
+        }
+
+        var rowCount = Mathf.Min(height, propRows.Count);
+        for (var y = 0; y < rowCount; y++)
+        {
+            var row = propRows[y];
+            var colCount = Mathf.Min(width, row.Length);
+            for (var x = 0; x < colCount; x++)
+            {
+                var token = row[x];
+                if (token == "__" || !definition.PropLegend.TryGetValue(token, out var propDef))
+                {
+                    continue;
+                }
+
+                var prop = new Dictionary
+                {
+                    { "id", $"{mapId}-{token.ToLowerInvariant()}-{x}-{y}" },
+                    { "type", propDef.Type },
+                    { "name", propDef.Name },
+                    { "grid_pos", new Vector2I(x, y) }
+                };
+
+                if (!string.IsNullOrEmpty(propDef.InteractionText))
+                {
+                    prop["interaction_text"] = propDef.InteractionText;
+                }
+
+                if (propDef.LootItemIds != null && propDef.LootItemIds.Length > 0)
+                {
+                    var lootIds = new Array<string>();
+                    foreach (var itemId in propDef.LootItemIds)
+                    {
+                        if (!string.IsNullOrEmpty(itemId))
+                        {
+                            lootIds.Add(itemId.Trim());
+                        }
+                    }
+
+                    if (lootIds.Count > 0)
+                    {
+                        prop["loot_item_ids"] = lootIds;
+                        prop["loot_rolls_min"] = Mathf.Max(1, propDef.LootRollsMin);
+                        prop["loot_rolls_max"] = Mathf.Max((int)prop["loot_rolls_min"], propDef.LootRollsMax);
+                    }
+                }
+
+                props.Add(prop);
+            }
+        }
+
+        return props;
     }
 
     public void SetActiveMapVisual(string mapId)
@@ -58,6 +431,18 @@ public partial class MapLoader : Node
         if (_mapLayersById.Count == 0)
         {
             CacheMapLayers();
+        }
+
+        var hasDirectLayer = _mapLayersById.ContainsKey(mapId) || _mapLayersById.ContainsKey(mapId + BaseSuffix);
+        if (!hasDirectLayer)
+        {
+            var fallbackLayer = ResolveFallbackBaseLayer();
+            foreach (var pair in _mapLayersById)
+            {
+                pair.Value.Visible = pair.Value == fallbackLayer;
+            }
+
+            return;
         }
 
         foreach (var pair in _mapLayersById)
@@ -91,8 +476,7 @@ public partial class MapLoader : Node
 
     private void EnsureBaseLayersPopulated()
     {
-        EnsureBaseLayerPopulated("map-a");
-        EnsureBaseLayerPopulated("map-b");
+        EnsureBaseLayerPopulated("forest-town");
     }
 
     private void EnsureBaseLayerPopulated(string mapId)
@@ -107,32 +491,36 @@ public partial class MapLoader : Node
             return;
         }
 
-        var usedRect = baseLayer.GetUsedRect();
-        if (usedRect.Size.X > 0 && usedRect.Size.Y > 0)
+        if (!MapTokenCatalog.Maps.TryGetValue(mapId, out var definition))
         {
             return;
         }
 
         baseLayer.Clear();
 
-        const int width = 20;
-        const int height = 15;
+        var rows = SplitTokenRows(definition.LayoutRows);
+        var width = GetRowWidth(rows);
+        var height = rows.Count;
         for (var y = 0; y < height; y++)
         {
             for (var x = 0; x < width; x++)
             {
-                baseLayer.SetCell(new Vector2I(x, y), 0, FloorAtlasCell, 0);
+                var token = GetRowToken(rows[y], x);
+                var atlas = FloorAtlasCell;
+                if (definition.BaseLegend.TryGetValue(token, out var baseDef))
+                {
+                    if (baseDef.Type == MapBaseTileType.Wall)
+                    {
+                        atlas = WallAtlasCell;
+                    }
+                    else if (baseDef.Type == MapBaseTileType.Door)
+                    {
+                        atlas = DoorAtlasCell;
+                    }
+                }
+
+                baseLayer.SetCell(new Vector2I(x, y), 0, atlas, 0);
             }
-        }
-
-        foreach (var wallCell in BuildDefaultWallCells(mapId))
-        {
-            baseLayer.SetCell(wallCell, 0, WallAtlasCell, 0);
-        }
-
-        foreach (var doorCell in BuildDefaultDoorCells(mapId))
-        {
-            baseLayer.SetCell(doorCell, 0, DoorAtlasCell, 0);
         }
     }
 
@@ -171,31 +559,6 @@ public partial class MapLoader : Node
         }
 
         return true;
-    }
-
-    private static Array<Vector2I> BuildDefaultWallCells(string mapId)
-    {
-        return mapId switch
-        {
-            "map-b" => new Array<Vector2I>
-            {
-                new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8),
-                new Vector2I(12, 6), new Vector2I(12, 8)
-            },
-            _ => new Array<Vector2I>
-            {
-                new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7)
-            }
-        };
-    }
-
-    private static Array<Vector2I> BuildDefaultDoorCells(string mapId)
-    {
-        return mapId switch
-        {
-            "map-b" => new Array<Vector2I> { new Vector2I(0, 7) },
-            _ => new Array<Vector2I> { new Vector2I(19, 7) }
-        };
     }
 
     private bool TryBuildGeometryFromBaseLayer(string mapId, out Array<Vector2I> wallCells, out Array<Dictionary> doors, out int width, out int height)
@@ -287,7 +650,26 @@ public partial class MapLoader : Node
             return true;
         }
 
-        return _mapLayersById.TryGetValue(mapId, out layer) && layer != null;
+        if (_mapLayersById.TryGetValue(mapId, out layer) && layer != null)
+        {
+            return true;
+        }
+
+        layer = ResolveFallbackBaseLayer();
+        return layer != null;
+    }
+
+    private TileMapLayer ResolveFallbackBaseLayer()
+    {
+        foreach (var pair in _mapLayersById)
+        {
+            if (pair.Value != null)
+            {
+                return pair.Value;
+            }
+        }
+
+        return null;
     }
 
     private bool TryGetMarkerLayer(string mapId, out TileMapLayer layer)
@@ -596,190 +978,6 @@ public partial class MapLoader : Node
         }
 
         return result;
-    }
-
-    private static Dictionary BuildMapA(Array<Dictionary> defaultParty)
-    {
-        var players = UpdatePartyGridPosition(defaultParty, new Vector2I(2, 7));
-
-        var encounterA = new Dictionary
-        {
-            { "id", "encounter-a" },
-            { "aggro_range", 4 },
-            {
-                "enemies",
-                new Array<Dictionary>
-                {
-                    new Dictionary { { "id", "goblin-warrior-a" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(9, 6) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "starting_equipment", new Array<string> { "short-sword" } } },
-                    new Dictionary { { "id", "goblin-archer-a" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 8) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 }, { "starting_equipment", new Array<string> { "short-bow" } } }
-                }
-            }
-        };
-
-        var encounterB = new Dictionary
-        {
-            { "id", "encounter-b" },
-            { "aggro_range", 4 },
-            {
-                "enemies",
-                new Array<Dictionary>
-                {
-                    new Dictionary { { "id", "goblin-warrior-b" }, { "name", "Goblin" }, { "team", "enemy" }, { "grid_pos", new Vector2I(16, 5) }, { "primary_ability_id", "melee" }, { "initiative", 9 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "starting_equipment", new Array<string> { "short-sword" } } },
-                    new Dictionary { { "id", "goblin-archer-b" }, { "name", "Goblin Archer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(17, 9) }, { "primary_ability_id", "ranged" }, { "initiative", 13 }, { "hit_points", 7 }, { "max_hit_points", 7 }, { "starting_equipment", new Array<string> { "short-bow" } } }
-                }
-            }
-        };
-
-        var encounterC = new Dictionary
-        {
-            { "id", "encounter-c" },
-            { "aggro_range", 5 },
-            {
-                "enemies",
-                new Array<Dictionary>
-                {
-                    new Dictionary { { "id", "goblin-shaman-a" }, { "name", "Goblin Shaman" }, { "team", "enemy" }, { "grid_pos", new Vector2I(6, 4) }, { "primary_ability_id", "magic-missile" }, { "ability_ids", new Array<string> { "magic-missile", "melee" } }, { "initiative", 11 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "magic_points", 6 }, { "max_magic_points", 6 }, { "intelligence", 8 } },
-                    new Dictionary { { "id", "goblin-chieftain-a" }, { "name", "Goblin Chieftain" }, { "team", "enemy" }, { "grid_pos", new Vector2I(7, 3) }, { "primary_ability_id", "melee" }, { "initiative", 12 }, { "hit_points", 14 }, { "max_hit_points", 14 }, { "strength", 9 }, { "starting_equipment", new Array<string> { "war-axe" } } }
-                }
-            }
-        };
-
-        return new Dictionary
-        {
-            { "id", "map-a" },
-            { "width", 20 },
-            { "height", 15 },
-            { "walls", new Array<Vector2I> { new Vector2I(7, 5), new Vector2I(7, 9), new Vector2I(13, 7), new Vector2I(15, 7) } },
-            {
-                "doors",
-                new Array<Dictionary>
-                {
-                    new Dictionary
-                    {
-                        { "id", "map-a-east-door" },
-                        { "cell", new Vector2I(19, 7) },
-                        { "is_open", false }
-                    }
-                }
-            },
-            { "players", players },
-            { "encounters", new Array<Dictionary> { encounterA, encounterB, encounterC } },
-            {
-                "props",
-                new Array<Dictionary>
-                {
-                    new Dictionary
-                    {
-                        { "id", "map-a-chest-1" },
-                        { "name", "Old Chest" },
-                        { "grid_pos", new Vector2I(5, 11) },
-                        { "loot_item_ids", new Array<string> { "short-sword", "small-shield" } },
-                        { "loot_rolls_min", 1 },
-                        { "loot_rolls_max", 2 }
-                    },
-                    new Dictionary
-                    {
-                        { "id", "map-a-crate-1" },
-                        { "name", "Supply Crate" },
-                        { "grid_pos", new Vector2I(10, 3) },
-                        { "loot_item_ids", new Array<string> { "small-shield" } },
-                        { "loot_rolls_min", 1 },
-                        { "loot_rolls_max", 1 }
-                    }
-                }
-            },
-            {
-                "transitions",
-                new Array<Dictionary>
-                {
-                    new Dictionary
-                    {
-                        { "from_cell", new Vector2I(19, 7) },
-                        { "to_map", "map-b" },
-                        { "spawn_cell", new Vector2I(1, 7) }
-                    }
-                }
-            }
-        };
-    }
-
-    private static Dictionary BuildMapB(Array<Dictionary> defaultParty)
-    {
-        var players = UpdatePartyGridPosition(defaultParty, new Vector2I(1, 7));
-
-        var encounterD = new Dictionary
-        {
-            { "id", "encounter-d" },
-            { "aggro_range", 4 },
-            {
-                "enemies",
-                new Array<Dictionary>
-                {
-                    new Dictionary { { "id", "skeleton-warrior-a" }, { "name", "Skeleton Warrior" }, { "team", "enemy" }, { "grid_pos", new Vector2I(13, 6) }, { "primary_ability_id", "melee" }, { "initiative", 10 }, { "hit_points", 10 }, { "max_hit_points", 10 }, { "starting_equipment", new Array<string> { "short-sword" } } },
-                    new Dictionary { { "id", "skeleton-mage-a" }, { "name", "Skeleton Mage" }, { "team", "enemy" }, { "grid_pos", new Vector2I(15, 9) }, { "primary_ability_id", "magic-missile" }, { "ability_ids", new Array<string> { "magic-missile", "melee" } }, { "initiative", 12 }, { "hit_points", 8 }, { "max_hit_points", 8 }, { "magic_points", 6 }, { "max_magic_points", 6 } },
-                    new Dictionary { { "id", "zombie-a" }, { "name", "Zombie" }, { "team", "enemy" }, { "grid_pos", new Vector2I(11, 8) }, { "primary_ability_id", "melee" }, { "initiative", 7 }, { "hit_points", 13 }, { "max_hit_points", 13 }, { "constitution", 9 } },
-                    new Dictionary { { "id", "necromancer-a" }, { "name", "Necromancer" }, { "team", "enemy" }, { "grid_pos", new Vector2I(14, 5) }, { "primary_ability_id", "magic-missile" }, { "ability_ids", new Array<string> { "magic-missile", "melee" } }, { "initiative", 13 }, { "hit_points", 9 }, { "max_hit_points", 9 }, { "magic_points", 8 }, { "max_magic_points", 8 }, { "intelligence", 10 }, { "starting_equipment", new Array<string> { "cloth-robe" } } }
-                }
-            }
-        };
-
-        return new Dictionary
-        {
-            { "id", "map-b" },
-            { "width", 20 },
-            { "height", 15 },
-            { "walls", new Array<Vector2I> { new Vector2I(8, 6), new Vector2I(8, 7), new Vector2I(8, 8), new Vector2I(12, 6), new Vector2I(12, 8) } },
-            {
-                "doors",
-                new Array<Dictionary>
-                {
-                    new Dictionary
-                    {
-                        { "id", "map-b-west-door" },
-                        { "cell", new Vector2I(0, 7) },
-                        { "is_open", false }
-                    }
-                }
-            },
-            { "players", players },
-            { "encounters", new Array<Dictionary> { encounterD } },
-            {
-                "props",
-                new Array<Dictionary>
-                {
-                    new Dictionary
-                    {
-                        { "id", "map-b-chest-1" },
-                        { "name", "Worn Chest" },
-                        { "grid_pos", new Vector2I(14, 4) },
-                        { "loot_item_ids", new Array<string> { "short-sword", "small-shield" } },
-                        { "loot_rolls_min", 1 },
-                        { "loot_rolls_max", 2 }
-                    },
-                    new Dictionary
-                    {
-                        { "id", "map-b-crate-1" },
-                        { "name", "Broken Crate" },
-                        { "grid_pos", new Vector2I(3, 10) },
-                        { "loot_item_ids", new Array<string> { "short-sword" } },
-                        { "loot_rolls_min", 1 },
-                        { "loot_rolls_max", 1 }
-                    }
-                }
-            },
-            {
-                "transitions",
-                new Array<Dictionary>
-                {
-                    new Dictionary
-                    {
-                        { "from_cell", new Vector2I(0, 7) },
-                        { "to_map", "map-a" },
-                        { "spawn_cell", new Vector2I(18, 7) }
-                    }
-                }
-            }
-        };
     }
 
     public void DrawMapFeaturesOverlay(

@@ -29,6 +29,8 @@ public partial class BattleController
         {
             SetStatusHelp();
         }
+
+        CenterViewOnCurrentFocus();
     }
 
     private void TryStartCombatFromAggro()
@@ -104,6 +106,7 @@ public partial class BattleController
 
         _turnManager.SetupTurnOrder(combatUnits);
         SetStatusHelp();
+        CenterViewOnCurrentFocus();
     }
 
     private bool TryHandleMapTransition()
