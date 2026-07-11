@@ -55,9 +55,11 @@ public partial class Unit : Node2D
         _sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
         if (_sprite == null)
         {
-            _sprite = new Sprite2D();
-            _sprite.Name = "Sprite2D";
-            _sprite.Centered = true;
+            _sprite = new Sprite2D
+            {
+                Name = "Sprite2D",
+                Centered = true
+            };
             AddChild(_sprite);
         }
 
