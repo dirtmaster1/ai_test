@@ -808,6 +808,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         LoadPropsFromMap(mapData);
+        SyncDoorVisualStateForCurrentMap();
 
         if (preserveParty)
         {
@@ -3314,23 +3315,50 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var doorId = GetString(door, "id", "");
-        if (!string.IsNullOrEmpty(doorId) && _openedDoorIds.Contains(doorId))
-        {
-            return false;
-        }
+        var isOpen = IsDoorOpen(door);
+        var shouldOpen = !isOpen;
 
         if (!string.IsNullOrEmpty(doorId))
         {
-            _openedDoorIds.Add(doorId);
+            if (shouldOpen)
+            {
+                _openedDoorIds.Add(doorId);
+            }
+            else
+            {
+                _openedDoorIds.Remove(doorId);
+            }
         }
 
-        door["is_open"] = true;
-        _hud?.AddCombatLogEntry($"{explorer.UnitName} opened a door.");
+        door["is_open"] = shouldOpen;
+        _mapLoader?.SetDoorVisual(_currentMapId, doorCell, shouldOpen);
+        _hud?.AddCombatLogEntry(shouldOpen
+            ? $"{explorer.UnitName} opened a door."
+            : $"{explorer.UnitName} closed a door.");
         SaveMapInteractionStateForCurrentMap();
         _persistence.PersistSaveGame(false);
         SetStatusHelp();
         QueueRedraw();
         return true;
+    }
+
+    private void SyncDoorVisualStateForCurrentMap()
+    {
+        if (_mapLoader == null)
+        {
+            return;
+        }
+
+        foreach (var door in _mapDoors)
+        {
+            var cell = GetVector2I(door, "cell", new Vector2I(-9999, -9999));
+            if (cell.X < 0 || cell.Y < 0)
+            {
+                continue;
+            }
+
+            _mapLoader.SetDoorVisual(_currentMapId, cell, IsDoorOpen(door));
+        }
     }
 
     private bool RotateExplorationPartyOrder(int delta)

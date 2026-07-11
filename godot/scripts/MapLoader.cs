@@ -10,6 +10,7 @@ public partial class MapLoader : Node
     private static readonly Vector2I FloorAtlasCell = new(0, 0);
     private static readonly Vector2I WallAtlasCell = new(0, 1);
     private static readonly Vector2I DoorAtlasCell = new(0, 2);
+    private static readonly Vector2I OpenDoorAtlasCell = new(3, 2);
     private const string BaseSuffix = "-base";
     private const string MarkerSuffix = "-markers";
     private const string TerrainTypeKey = "terrain_type";
@@ -547,6 +548,7 @@ public partial class MapLoader : Node
             atlasSource.CreateTile(FloorAtlasCell);
             atlasSource.CreateTile(WallAtlasCell);
             atlasSource.CreateTile(DoorAtlasCell);
+            atlasSource.CreateTile(OpenDoorAtlasCell);
 
             _terrainTileSet = new TileSet();
             _terrainTileSet.TileSize = new Vector2I(TerrainTileSize, TerrainTileSize);
@@ -558,6 +560,23 @@ public partial class MapLoader : Node
             layer.TileSet = _terrainTileSet;
         }
 
+        return true;
+    }
+
+    public bool SetDoorVisual(string mapId, Vector2I cell, bool isOpen)
+    {
+        if (!TryGetBaseLayer(mapId, out var baseLayer))
+        {
+            return false;
+        }
+
+        if (!TryAssignTerrainTileSet(baseLayer))
+        {
+            return false;
+        }
+
+        var atlas = isOpen ? OpenDoorAtlasCell : DoorAtlasCell;
+        baseLayer.SetCell(cell, 0, atlas, 0);
         return true;
     }
 
@@ -629,7 +648,7 @@ public partial class MapLoader : Node
             return "wall";
         }
 
-        if (atlasCoords == DoorAtlasCell)
+        if (atlasCoords == DoorAtlasCell || atlasCoords == OpenDoorAtlasCell)
         {
             return "door";
         }

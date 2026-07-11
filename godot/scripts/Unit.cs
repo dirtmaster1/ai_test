@@ -29,11 +29,16 @@ public partial class Unit : Node2D
     public int Initiative { get; private set; } = 10;
     public int Level { get; private set; } = 1;
     public int Experience { get; private set; }
+    public int BaseUnarmedDamage { get; private set; } = 1;
     public int WeaponAttackDamageBonus { get; private set; }
     public int WeaponAttackRangeBonus { get; private set; }
     public int ArmorClassBonus { get; private set; }
 
-    public int AttackDamage => Mathf.Max(0, WeaponAttackDamageBonus);
+    public int AttackDamage => WeaponAttackDamageBonus > 0
+        ? WeaponAttackDamageBonus
+        : HasAbility("melee")
+            ? Mathf.Max(1, BaseUnarmedDamage)
+            : 0;
     public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
     public int ArmorClass => Mathf.Max(0, ArmorClassBonus);
     public int ExperienceToNextLevel => Mathf.Max(25, Level * 25);
@@ -83,7 +88,8 @@ public partial class Unit : Node2D
         Experience = Mathf.Max(0, GetInt(config, "experience", 0));
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
-        WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", Team == "player" ? 4 : 3));
+        BaseUnarmedDamage = Mathf.Max(1, GetInt(config, "base_unarmed_damage", 1));
+        WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", 0));
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", GetInt(config, "base_attack_range", 1));
         ArmorClassBonus = GetInt(config, "armor_class_bonus", 0);
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);

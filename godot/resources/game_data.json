@@ -327,6 +327,7 @@
 		"ability_ids": [
 		  "melee"
 		],
+		"base_unarmed_damage": 2,
 		"initiative": 7,
 		"hit_points": 13,
 		"max_hit_points": 13,
@@ -427,6 +428,7 @@
 		"ability_ids": [
 		  "melee"
 		],
+		"base_unarmed_damage": 3,
 		"initiative": 12,
 		"hit_points": 11,
 		"max_hit_points": 11,
@@ -444,6 +446,7 @@
 		"ability_ids": [
 		  "melee"
 		],
+		"base_unarmed_damage": 4,
 		"initiative": 14,
 		"hit_points": 12,
 		"max_hit_points": 12,
@@ -461,6 +464,7 @@
 		"ability_ids": [
 		  "melee"
 		],
+		"base_unarmed_damage": 3,
 		"initiative": 10,
 		"hit_points": 12,
 		"max_hit_points": 12,
