@@ -42,6 +42,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> _equippedItemsByUnitId = new();
     private readonly List<string> _partyInventoryItemIds = new();
+    private readonly System.Collections.Generic.Dictionary<string, int> _vendorGoldById = new();
+    private readonly System.Collections.Generic.Dictionary<string, List<string>> _vendorInventoryItemIdsById = new();
     private readonly HashSet<string> _clearedEncounterIds = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _clearedEncounterIdsByMap = new();
     private readonly HashSet<string> _openedDoorIds = new();
@@ -62,6 +64,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private string _activeEncounterId = "";
     private string _currentMapId = "forest-town";
     private string _selectedCharacterUnitId = "";
+    private int _partyGold = 25;
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
     private string _lastActionSummary = "";
     private readonly Array<Vector2I> _movementPreviewPath = new();
@@ -158,7 +161,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.UnequipItemRequested += OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested += OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested += OnHudLootConfirmRequested;
+            _hud.VendorBuyRequested += OnHudVendorBuyRequested;
+            _hud.VendorSellRequested += OnHudVendorSellRequested;
         }
+
+        EnsureDefaultVendorState();
 
         if (!_persistence.TryLoadSaveGame(false))
         {
@@ -186,6 +193,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.UnequipItemRequested -= OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested -= OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
+            _hud.VendorBuyRequested -= OnHudVendorBuyRequested;
+            _hud.VendorSellRequested -= OnHudVendorSellRequested;
         }
 
         _persistence.PersistSaveGame(false);
@@ -761,6 +770,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _enemyUnits.Clear();
             _equippedItemsByUnitId.Clear();
             _partyInventoryItemIds.Clear();
+            _partyGold = 25;
+            _vendorGoldById.Clear();
+            _vendorInventoryItemIdsById.Clear();
+            EnsureDefaultVendorState();
         }
 
         _wallCells.Clear();
@@ -2025,6 +2038,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (entries.Count > 0)
         {
             var firstInteractionId = GetString(entries[0], "id", "");
+            if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("vendor:"))
+            {
+                OpenVendor(firstInteractionId.Substring(7));
+                return true;
+            }
+
             if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("prop:"))
             {
                 if (TryExecuteExplorationInteractionById(explorer, firstInteractionId))
@@ -2049,6 +2068,261 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return true;
+    }
+
+    private void OpenVendor(string vendorId)
+    {
+        if (string.IsNullOrEmpty(vendorId))
+        {
+            return;
+        }
+
+        EnsureDefaultVendorState();
+        _hud?.SetLootPanelVisible(false);
+        _hud?.OpenVendorPanel(GetVendorDisplayName(vendorId));
+        RefreshVendorHud(vendorId, "");
+    }
+
+    private void OnHudVendorBuyRequested(string itemId)
+    {
+        var message = TryBuyVendorItem("mira", itemId);
+        RefreshVendorHud("mira", message);
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+    }
+
+    private void OnHudVendorSellRequested(string itemId)
+    {
+        var message = TrySellVendorItem("mira", itemId);
+        RefreshVendorHud("mira", message);
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+    }
+
+    private string TryBuyVendorItem(string vendorId, string itemId)
+    {
+        EnsureDefaultVendorState();
+        if (string.IsNullOrEmpty(itemId) || !_vendorInventoryItemIdsById.TryGetValue(vendorId, out var vendorInventory) || !vendorInventory.Contains(itemId))
+        {
+            return "Mira does not have that item in stock.";
+        }
+
+        var price = GetItemBuyPrice(itemId);
+        if (_partyGold < price)
+        {
+            return $"Not enough gold. {GetItemName(itemId)} costs {price} gp.";
+        }
+
+        _partyGold -= price;
+        _vendorGoldById[vendorId] = GetVendorGold(vendorId) + price;
+        vendorInventory.Remove(itemId);
+        _partyInventoryItemIds.Add(itemId);
+        _hud?.AddCombatLogEntry($"Bought {GetItemName(itemId)} for {price} gp.");
+        return $"Bought {GetItemName(itemId)} for {price} gp.";
+    }
+
+    private string TrySellVendorItem(string vendorId, string itemId)
+    {
+        EnsureDefaultVendorState();
+        if (string.IsNullOrEmpty(itemId) || !HasUnequippedSharedItem(itemId))
+        {
+            return "That item is not available to sell.";
+        }
+
+        var price = GetItemSellPrice(itemId);
+        var vendorGold = GetVendorGold(vendorId);
+        if (vendorGold < price)
+        {
+            return $"Mira only has {vendorGold} gp.";
+        }
+
+        _partyInventoryItemIds.Remove(itemId);
+        _partyGold += price;
+        _vendorGoldById[vendorId] = vendorGold - price;
+        GetVendorInventory(vendorId).Add(itemId);
+        _hud?.AddCombatLogEntry($"Sold {GetItemName(itemId)} for {price} gp.");
+        return $"Sold {GetItemName(itemId)} for {price} gp.";
+    }
+
+    private void RefreshVendorHud(string vendorId, string message)
+    {
+        _hud?.SetVendorItems(BuildVendorBuyItemsForHud(vendorId), BuildVendorSellItemsForHud());
+        _hud?.SetVendorStatus($"Party: {_partyGold} gp | {GetVendorDisplayName(vendorId)}: {GetVendorGold(vendorId)} gp");
+        if (!string.IsNullOrEmpty(message))
+        {
+            _hud?.SetVendorTransactionMessage(message);
+        }
+    }
+
+    private Array<Dictionary> BuildVendorBuyItemsForHud(string vendorId)
+    {
+        var result = new Array<Dictionary>();
+        var counts = CountItems(GetVendorInventory(vendorId));
+        foreach (var entry in counts)
+        {
+            var itemData = CopyDictionary(_gameData?.GetItem(entry.Key) ?? new Dictionary());
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            itemData["quantity"] = entry.Value;
+            itemData["price"] = GetItemBuyPrice(entry.Key);
+            result.Add(itemData);
+        }
+
+        return result;
+    }
+
+    private Array<Dictionary> BuildVendorSellItemsForHud()
+    {
+        var result = new Array<Dictionary>();
+        var sellable = new List<string>();
+        foreach (var item in BuildInventoryItemsForHud())
+        {
+            var itemId = GetString(item, "id", "");
+            if (!string.IsNullOrEmpty(itemId))
+            {
+                sellable.Add(itemId);
+            }
+        }
+
+        var counts = CountItems(sellable);
+        foreach (var entry in counts)
+        {
+            var itemData = CopyDictionary(_gameData?.GetItem(entry.Key) ?? new Dictionary());
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            itemData["quantity"] = entry.Value;
+            itemData["price"] = GetItemSellPrice(entry.Key);
+            result.Add(itemData);
+        }
+
+        return result;
+    }
+
+    private void EnsureDefaultVendorState()
+    {
+        if (!_vendorGoldById.ContainsKey("mira"))
+        {
+            _vendorGoldById["mira"] = 100;
+        }
+
+        if (!_vendorInventoryItemIdsById.ContainsKey("mira"))
+        {
+            _vendorInventoryItemIdsById["mira"] = new List<string>
+            {
+                "leather-armor",
+                "leather-armor",
+                "small-shield",
+                "short-sword"
+            };
+        }
+    }
+
+    private List<string> GetVendorInventory(string vendorId)
+    {
+        EnsureDefaultVendorState();
+        if (!_vendorInventoryItemIdsById.TryGetValue(vendorId, out var inventory))
+        {
+            inventory = new List<string>();
+            _vendorInventoryItemIdsById[vendorId] = inventory;
+        }
+
+        return inventory;
+    }
+
+    private int GetVendorGold(string vendorId)
+    {
+        EnsureDefaultVendorState();
+        return _vendorGoldById.TryGetValue(vendorId, out var gold) ? Mathf.Max(0, gold) : 0;
+    }
+
+    private static string GetVendorDisplayName(string vendorId)
+    {
+        return string.Equals(vendorId, "mira", System.StringComparison.OrdinalIgnoreCase) ? "Mira the Vendor" : "Vendor";
+    }
+
+    private static System.Collections.Generic.Dictionary<string, int> CountItems(IEnumerable<string> itemIds)
+    {
+        var counts = new System.Collections.Generic.Dictionary<string, int>();
+        foreach (var itemId in itemIds)
+        {
+            if (string.IsNullOrEmpty(itemId))
+            {
+                continue;
+            }
+
+            counts[itemId] = counts.TryGetValue(itemId, out var count) ? count + 1 : 1;
+        }
+
+        return counts;
+    }
+
+    private int GetItemBuyPrice(string itemId)
+    {
+        return itemId switch
+        {
+            "cloth-robe" => 5,
+            "small-shield" => 10,
+            "iron-helmet" => 10,
+            "leather-armor" => 15,
+            "short-bow" => 18,
+            "short-sword" => 20,
+            "healers-circlet" => 25,
+            "mages-amulet" => 25,
+            "chain-mail" => 30,
+            "fireball-scroll" => 30,
+            "long-bow" => 35,
+            "war-axe" => 40,
+            "chieftain-club" => 45,
+            _ => 10
+        };
+    }
+
+    private int GetItemSellPrice(string itemId)
+    {
+        return Mathf.Max(1, GetItemBuyPrice(itemId) / 2);
+    }
+
+    private string GetItemName(string itemId)
+    {
+        var item = _gameData?.GetItem(itemId) ?? new Dictionary();
+        return GetString(item, "name", itemId);
+    }
+
+    private bool HasUnequippedSharedItem(string itemId)
+    {
+        if (string.IsNullOrEmpty(itemId))
+        {
+            return false;
+        }
+
+        var sharedCount = 0;
+        foreach (var sharedItemId in _partyInventoryItemIds)
+        {
+            if (sharedItemId == itemId)
+            {
+                sharedCount++;
+            }
+        }
+
+        var equippedCount = 0;
+        foreach (var equippedBySlot in _equippedItemsByUnitId.Values)
+        {
+            foreach (var equippedItemId in equippedBySlot.Values)
+            {
+                if (equippedItemId == itemId)
+                {
+                    equippedCount++;
+                }
+            }
+        }
+
+        return sharedCount > equippedCount;
     }
 
     private Array<Dictionary> BuildNearbyLootEntries(Unit explorer)
@@ -2743,16 +3017,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             if (equippedBySlot.TryGetValue("1-handed-a", out var replacedOneHanded))
             {
+                equippedBySlot["1-handed-a"] = itemId;
                 EnsureSharedInventoryHasUnequippedCount(replacedOneHanded, 1);
+                return;
             }
 
-            equippedBySlot["1-handed-a"] = itemId;
             return;
         }
 
         if (equippedBySlot.TryGetValue(slot, out var replacedSlottedItem))
         {
+            equippedBySlot[slot] = itemId;
             EnsureSharedInventoryHasUnequippedCount(replacedSlottedItem, 1);
+            return;
         }
 
         equippedBySlot[slot] = itemId;
@@ -3471,9 +3748,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         set => _selectedCharacterUnitId = value;
     }
 
+    int IGamePersistenceHost.PartyGold
+    {
+        get => _partyGold;
+        set => _partyGold = Mathf.Max(0, value);
+    }
+
     System.Collections.Generic.Dictionary<string, string> IGamePersistenceHost.SelectedAbilityIdByUnitId => _selectedAbilityIdByUnitId;
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> IGamePersistenceHost.EquippedItemsByUnitId => _equippedItemsByUnitId;
     List<string> IGamePersistenceHost.PartyInventoryItemIds => _partyInventoryItemIds;
+    System.Collections.Generic.Dictionary<string, int> IGamePersistenceHost.VendorGoldById => _vendorGoldById;
+    System.Collections.Generic.Dictionary<string, List<string>> IGamePersistenceHost.VendorInventoryItemIdsById => _vendorInventoryItemIdsById;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.ClearedEncounterIdsByMap => _clearedEncounterIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedDoorIdsByMap => _openedDoorIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedPropIdsByMap => _openedPropIdsByMap;

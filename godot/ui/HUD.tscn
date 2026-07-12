@@ -361,3 +361,83 @@ text = "Loot All"
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"
+
+[node name="VendorPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 460.0
+offset_top = 180.0
+offset_right = 900.0
+offset_bottom = 620.0
+
+[node name="VendorVBox" type="VBoxContainer" parent="VendorPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="VendorHeader" type="Label" parent="VendorPanel/VendorVBox"]
+layout_mode = 2
+text = "Mira the Vendor"
+
+[node name="VendorDialogueLabel" type="Label" parent="VendorPanel/VendorVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Welcome to forest town."
+
+[node name="VendorChoiceButtons" type="HBoxContainer" parent="VendorPanel/VendorVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TalkButton" type="Button" parent="VendorPanel/VendorVBox/VendorChoiceButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Talk"
+
+[node name="StoreButton" type="Button" parent="VendorPanel/VendorVBox/VendorChoiceButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Store"
+
+[node name="StoreTabs" type="TabContainer" parent="VendorPanel/VendorVBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="Buy" type="VBoxContainer" parent="VendorPanel/VendorVBox/StoreTabs"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="BuyList" type="ItemList" parent="VendorPanel/VendorVBox/StoreTabs/Buy"]
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+
+[node name="BuyButton" type="Button" parent="VendorPanel/VendorVBox/StoreTabs/Buy"]
+layout_mode = 2
+text = "Buy"
+
+[node name="Sell" type="VBoxContainer" parent="VendorPanel/VendorVBox/StoreTabs"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="SellList" type="ItemList" parent="VendorPanel/VendorVBox/StoreTabs/Sell"]
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+
+[node name="SellButton" type="Button" parent="VendorPanel/VendorVBox/StoreTabs/Sell"]
+layout_mode = 2
+text = "Sell"
+
+[node name="VendorStatusLabel" type="Label" parent="VendorPanel/VendorVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Party: 25 gp | Mira: 100 gp"
+
+[node name="VendorButtons" type="HBoxContainer" parent="VendorPanel/VendorVBox"]
+layout_mode = 2
+
+[node name="CloseVendorButton" type="Button" parent="VendorPanel/VendorVBox/VendorButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"

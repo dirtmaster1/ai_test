@@ -97,6 +97,24 @@ public sealed class GamePersistence
             partyInventory.Add(itemId);
         }
 
+        var vendorGoldById = new Dictionary();
+        foreach (var entry in _host.VendorGoldById)
+        {
+            vendorGoldById[entry.Key] = entry.Value;
+        }
+
+        var vendorInventoryById = new Dictionary();
+        foreach (var entry in _host.VendorInventoryItemIdsById)
+        {
+            var itemIds = new Array<string>();
+            foreach (var itemId in entry.Value)
+            {
+                itemIds.Add(itemId);
+            }
+
+            vendorInventoryById[entry.Key] = itemIds;
+        }
+
         var unitSnapshots = _host.BuildUnitSnapshots();
 
         return new Dictionary
@@ -108,7 +126,10 @@ public sealed class GamePersistence
             { "explorer_unit_id", _host.GetExplorerUnitId() },
             { "selected_character_unit_id", _host.SelectedCharacterUnitId },
             { "selected_ability_id_by_unit_id", selectedAbilities },
+            { "party_gold", _host.PartyGold },
             { "party_inventory_item_ids", partyInventory },
+            { "vendor_gold_by_id", vendorGoldById },
+            { "vendor_inventory_item_ids_by_id", vendorInventoryById },
             { "equipped_items_by_unit_id", equippedByUnit },
             { "cleared_encounter_ids_by_map", BuildSetMapSnapshot(_host.ClearedEncounterIdsByMap) },
             { "opened_door_ids_by_map", BuildSetMapSnapshot(_host.OpenedDoorIdsByMap) },
@@ -124,6 +145,8 @@ public sealed class GamePersistence
         _host.SelectedAbilityIdByUnitId.Clear();
         _host.EquippedItemsByUnitId.Clear();
         _host.PartyInventoryItemIds.Clear();
+        _host.VendorGoldById.Clear();
+        _host.VendorInventoryItemIdsById.Clear();
         _host.ClearedEncounterIdsByMap.Clear();
         _host.OpenedDoorIdsByMap.Clear();
         _host.OpenedPropIdsByMap.Clear();
@@ -148,7 +171,10 @@ public sealed class GamePersistence
         _host.EquippedItemsByUnitId.Clear();
 
         // Restore runtime inventory/equipment collections from save.
+    _host.PartyGold = GetInt(saveData, "party_gold", 25);
         RestorePartyInventory(GetStringArray(saveData, "party_inventory_item_ids"));
+        RestoreVendorGold(GetDictionary(saveData, "vendor_gold_by_id"));
+        RestoreVendorInventory(GetDictionary(saveData, "vendor_inventory_item_ids_by_id"));
         RestoreEquippedItemsByUnit(GetDictionary(saveData, "equipped_items_by_unit_id"));
 
         _host.ApplyUnitSnapshots(GetDictionaryArray(saveData, "unit_snapshots"));
@@ -246,6 +272,45 @@ public sealed class GamePersistence
             }
 
             _host.EquippedItemsByUnitId[unitId] = bySlot;
+        }
+    }
+
+    private void RestoreVendorGold(Dictionary snapshot)
+    {
+        foreach (var key in snapshot.Keys)
+        {
+            var vendorId = ((Variant)key).AsString();
+            if (string.IsNullOrEmpty(vendorId))
+            {
+                continue;
+            }
+
+            _host.VendorGoldById[vendorId] = (int)((Variant)snapshot[key]);
+        }
+    }
+
+    private void RestoreVendorInventory(Dictionary snapshot)
+    {
+        foreach (var key in snapshot.Keys)
+        {
+            var vendorId = ((Variant)key).AsString();
+            if (string.IsNullOrEmpty(vendorId))
+            {
+                continue;
+            }
+
+            var itemIds = new List<string>();
+            var snapshotItems = (Array)((Variant)snapshot[key]);
+            foreach (var entry in snapshotItems)
+            {
+                var itemId = ((Variant)entry).AsString();
+                if (!string.IsNullOrEmpty(itemId))
+                {
+                    itemIds.Add(itemId);
+                }
+            }
+
+            _host.VendorInventoryItemIdsById[vendorId] = itemIds;
         }
     }
 
@@ -446,6 +511,11 @@ public sealed class GamePersistence
     private static string GetString(Dictionary dict, string key, string fallback)
     {
         return dict.ContainsKey(key) ? ((Variant)dict[key]).AsString() : fallback;
+    }
+
+    private static int GetInt(Dictionary dict, string key, int fallback)
+    {
+        return dict.ContainsKey(key) ? (int)((Variant)dict[key]) : fallback;
     }
 
     private static Dictionary CopyDictionary(Dictionary source)

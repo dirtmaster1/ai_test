@@ -25,6 +25,12 @@ public partial class HudController : Control
     public delegate void LootConfirmRequestedEventHandler(string interactionId);
 
     [Signal]
+    public delegate void VendorBuyRequestedEventHandler(string itemId);
+
+    [Signal]
+    public delegate void VendorSellRequestedEventHandler(string itemId);
+
+    [Signal]
     public delegate void SaveRequestedEventHandler();
 
     [Signal]
@@ -84,8 +90,22 @@ public partial class HudController : Control
     private Label _lootDetailsLabel;
     private Button _confirmLootButton;
     private Button _closeLootButton;
+    private PanelContainer _vendorPanel;
+    private Label _vendorHeader;
+    private Label _vendorDialogueLabel;
+    private Button _vendorTalkButton;
+    private Button _vendorStoreButton;
+    private TabContainer _vendorStoreTabs;
+    private ItemList _vendorBuyList;
+    private ItemList _vendorSellList;
+    private Button _vendorBuyButton;
+    private Button _vendorSellButton;
+    private Label _vendorStatusLabel;
+    private Button _closeVendorButton;
     private string _lootAllInteractionId = "";
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _lootEntriesById = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _vendorBuyItemsById = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _vendorSellItemsById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryEquippedEntriesBySlot = new();
     private readonly System.Collections.Generic.HashSet<string> _equippedItemIds = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
@@ -176,11 +196,24 @@ public partial class HudController : Control
         _lootDetailsLabel = GetNode<Label>("LootPanel/LootVBox/LootDetailsLabel");
         _confirmLootButton = GetNode<Button>("LootPanel/LootVBox/LootButtons/ConfirmLootButton");
         _closeLootButton = GetNode<Button>("LootPanel/LootVBox/LootButtons/CloseLootButton");
+        _vendorPanel = GetNode<PanelContainer>("VendorPanel");
+        _vendorHeader = GetNode<Label>("VendorPanel/VendorVBox/VendorHeader");
+        _vendorDialogueLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorDialogueLabel");
+        _vendorTalkButton = GetNode<Button>("VendorPanel/VendorVBox/VendorChoiceButtons/TalkButton");
+        _vendorStoreButton = GetNode<Button>("VendorPanel/VendorVBox/VendorChoiceButtons/StoreButton");
+        _vendorStoreTabs = GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
+        _vendorBuyList = GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyList");
+        _vendorSellList = GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Sell/SellList");
+        _vendorBuyButton = GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyButton");
+        _vendorSellButton = GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Sell/SellButton");
+        _vendorStatusLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorStatusLabel");
+        _closeVendorButton = GetNode<Button>("VendorPanel/VendorVBox/VendorButtons/CloseVendorButton");
         _confirmLootButton.Text = "Loot All";
 
         ApplyFantasyHudStyling();
 
         _inventoryPanel.MouseFilter = MouseFilterEnum.Stop;
+        _vendorPanel.MouseFilter = MouseFilterEnum.Stop;
 
         _abilityButton1.Pressed += OnAbilityButton1Pressed;
         _abilityButton2.Pressed += OnAbilityButton2Pressed;
@@ -205,6 +238,11 @@ public partial class HudController : Control
         _lootItemList.ItemSelected += OnLootItemSelected;
         _confirmLootButton.Pressed += OnConfirmLootButtonPressed;
         _closeLootButton.Pressed += OnCloseLootButtonPressed;
+        _vendorTalkButton.Pressed += OnVendorTalkButtonPressed;
+        _vendorStoreButton.Pressed += OnVendorStoreButtonPressed;
+        _vendorBuyButton.Pressed += OnVendorBuyButtonPressed;
+        _vendorSellButton.Pressed += OnVendorSellButtonPressed;
+        _closeVendorButton.Pressed += OnCloseVendorButtonPressed;
 
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
@@ -214,6 +252,7 @@ public partial class HudController : Control
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryHeader, _inventoryPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
+        RegisterDraggable(_vendorHeader, _vendorPanel);
         RegisterResizable(_turnQueueResizeHandle, _turnQueuePanel);
         RegisterResizable(_combatLogResizeHandle, _combatLogPanel);
 
@@ -343,6 +382,31 @@ public partial class HudController : Control
         if (_closeLootButton != null)
         {
             _closeLootButton.Pressed -= OnCloseLootButtonPressed;
+        }
+
+        if (_vendorTalkButton != null)
+        {
+            _vendorTalkButton.Pressed -= OnVendorTalkButtonPressed;
+        }
+
+        if (_vendorStoreButton != null)
+        {
+            _vendorStoreButton.Pressed -= OnVendorStoreButtonPressed;
+        }
+
+        if (_vendorBuyButton != null)
+        {
+            _vendorBuyButton.Pressed -= OnVendorBuyButtonPressed;
+        }
+
+        if (_vendorSellButton != null)
+        {
+            _vendorSellButton.Pressed -= OnVendorSellButtonPressed;
+        }
+
+        if (_closeVendorButton != null)
+        {
+            _closeVendorButton.Pressed -= OnCloseVendorButtonPressed;
         }
     }
 
@@ -560,6 +624,70 @@ public partial class HudController : Control
         SetLootPanelVisible(false);
     }
 
+    private void OnVendorTalkButtonPressed()
+    {
+        if (_vendorDialogueLabel != null)
+        {
+            _vendorDialogueLabel.Text = "Hello welcome to forest town! Please save us from the evil Necromancer in the Graveyard!";
+        }
+
+        if (_vendorStoreTabs != null)
+        {
+            _vendorStoreTabs.Visible = false;
+        }
+    }
+
+    private void OnVendorStoreButtonPressed()
+    {
+        if (_vendorDialogueLabel != null)
+        {
+            _vendorDialogueLabel.Text = "Take a look. Mira buys and sells for gold.";
+        }
+
+        if (_vendorStoreTabs != null)
+        {
+            _vendorStoreTabs.Visible = true;
+        }
+    }
+
+    private void OnVendorBuyButtonPressed()
+    {
+        EmitSelectedVendorItem(_vendorBuyList, _vendorBuyItemsById, SignalName.VendorBuyRequested);
+    }
+
+    private void OnVendorSellButtonPressed()
+    {
+        EmitSelectedVendorItem(_vendorSellList, _vendorSellItemsById, SignalName.VendorSellRequested);
+    }
+
+    private void OnCloseVendorButtonPressed()
+    {
+        SetVendorPanelVisible(false);
+    }
+
+    private void EmitSelectedVendorItem(ItemList list, System.Collections.Generic.Dictionary<string, Dictionary> entriesById, StringName signalName)
+    {
+        if (list == null)
+        {
+            return;
+        }
+
+        var selected = list.GetSelectedItems();
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        var metadata = list.GetItemMetadata(selected[0]);
+        var itemId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (string.IsNullOrEmpty(itemId) || !entriesById.ContainsKey(itemId))
+        {
+            return;
+        }
+
+        EmitSignal(signalName, itemId);
+    }
+
     private void OnViewportSizeChanged()
     {
         EnsureFullscreenLayout();
@@ -690,6 +818,7 @@ public partial class HudController : Control
         ApplyPanelRect(_turnQueuePanel, new Rect2(new Vector2(sidebarLeft, turnQueueTop), new Vector2(sidebarRight - sidebarLeft, turnQueueHeight)), size);
         ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, combatTop), new Vector2(sidebarRight - sidebarLeft, combatHeight)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
+        ApplyPanelRect(_vendorPanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 480.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 440.0f) * 0.5f)), new Vector2(480.0f, 440.0f)), size);
     }
 
     private void RegisterDraggable(Control handle, Control panel)
@@ -885,6 +1014,7 @@ public partial class HudController : Control
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
+        StylePanel(_vendorPanel, panelStyle);
 
         StyleHeaderLabel(_utilityHeader, headerColor);
         StyleHeaderLabel(_helpHeader, headerColor);
@@ -893,6 +1023,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_combatLogHeader, headerColor);
         StyleHeaderLabel(_inventoryHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
+        StyleHeaderLabel(_vendorHeader, headerColor);
 
         StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
@@ -902,6 +1033,8 @@ public partial class HudController : Control
         StyleBodyLabel(_inventoryEquippedSummaryLabel, mutedBodyColor, 13);
         StyleBodyLabel(_inventoryItemDetails, mutedBodyColor, 13);
         StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
+        StyleBodyLabel(_vendorDialogueLabel, bodyColor, 14);
+        StyleBodyLabel(_vendorStatusLabel, mutedBodyColor, 13);
 
         StyleButton(_inventoryButton, false);
         StyleButton(_helpButton, false);
@@ -923,11 +1056,18 @@ public partial class HudController : Control
         StyleButton(_closeInventoryButton, false);
         StyleButton(_confirmLootButton, true);
         StyleButton(_closeLootButton, false);
+        StyleButton(_vendorTalkButton, true);
+        StyleButton(_vendorStoreButton, true);
+        StyleButton(_vendorBuyButton, true);
+        StyleButton(_vendorSellButton, true);
+        StyleButton(_closeVendorButton, false);
 
         StyleItemList(_combatLog, bodyColor, mutedBodyColor);
         StyleItemList(_inventoryEquippedItemList, bodyColor, mutedBodyColor);
         StyleItemList(_inventoryItemList, bodyColor, mutedBodyColor);
         StyleItemList(_lootItemList, bodyColor, mutedBodyColor);
+        StyleItemList(_vendorBuyList, bodyColor, mutedBodyColor);
+        StyleItemList(_vendorSellList, bodyColor, mutedBodyColor);
 
         _worldHoverBackground = new Color(0.08f, 0.11f, 0.14f, 0.95f);
         _worldHoverBorder = panelBorder;
@@ -1599,6 +1739,110 @@ public partial class HudController : Control
         if (_lootItemList.ItemCount > 0)
         {
             _lootDetailsLabel.Text = "Click an item to loot it, or use Loot All.";
+        }
+    }
+
+    public void OpenVendorPanel(string vendorName)
+    {
+        if (_vendorHeader != null)
+        {
+            _vendorHeader.Text = string.IsNullOrEmpty(vendorName) ? "Vendor" : vendorName;
+        }
+
+        if (_vendorDialogueLabel != null)
+        {
+            _vendorDialogueLabel.Text = "Welcome. Would you like to talk or browse the store?";
+        }
+
+        if (_vendorStoreTabs != null)
+        {
+            _vendorStoreTabs.Visible = false;
+            _vendorStoreTabs.CurrentTab = 0;
+        }
+
+        SetVendorPanelVisible(true);
+    }
+
+    public void SetVendorPanelVisible(bool visible)
+    {
+        if (_vendorPanel != null)
+        {
+            _vendorPanel.Visible = visible;
+            if (visible)
+            {
+                _vendorPanel.MoveToFront();
+            }
+        }
+    }
+
+    public void SetVendorStatus(string text)
+    {
+        if (_vendorStatusLabel != null)
+        {
+            _vendorStatusLabel.Text = text;
+        }
+    }
+
+    public void SetVendorTransactionMessage(string text)
+    {
+        if (_vendorDialogueLabel != null && !string.IsNullOrEmpty(text))
+        {
+            _vendorDialogueLabel.Text = text;
+        }
+    }
+
+    public void SetVendorItems(Array<Dictionary> buyItems, Array<Dictionary> sellItems)
+    {
+        SetVendorList(_vendorBuyList, _vendorBuyItemsById, buyItems, "Mira has nothing left to sell.");
+        SetVendorList(_vendorSellList, _vendorSellItemsById, sellItems, "No shared inventory items to sell.");
+
+        if (_vendorBuyButton != null)
+        {
+            _vendorBuyButton.Disabled = _vendorBuyList == null || _vendorBuyList.ItemCount == 0;
+        }
+
+        if (_vendorSellButton != null)
+        {
+            _vendorSellButton.Disabled = _vendorSellList == null || _vendorSellList.ItemCount == 0;
+        }
+    }
+
+    private static void SetVendorList(ItemList list, System.Collections.Generic.Dictionary<string, Dictionary> entriesById, Array<Dictionary> items, string emptyText)
+    {
+        if (list == null)
+        {
+            return;
+        }
+
+        list.Clear();
+        entriesById.Clear();
+
+        if (items == null || items.Count == 0)
+        {
+            list.AddItem(emptyText);
+            list.SetItemDisabled(0, true);
+            return;
+        }
+
+        foreach (var item in items)
+        {
+            var itemId = GetString(item, "id", "");
+            if (string.IsNullOrEmpty(itemId))
+            {
+                continue;
+            }
+
+            var quantity = GetInt(item, "quantity", 1);
+            var price = GetInt(item, "price", 0);
+            var label = $"{Mathf.Max(1, quantity)} x {BuildItemSummary(item)} - {Mathf.Max(0, price)} gp";
+            entriesById[itemId] = item;
+            list.AddItem(label);
+            list.SetItemMetadata(list.ItemCount - 1, itemId);
+        }
+
+        if (list.ItemCount > 0)
+        {
+            list.Select(0);
         }
     }
 

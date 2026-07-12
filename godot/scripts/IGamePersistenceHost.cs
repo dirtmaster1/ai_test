@@ -7,10 +7,13 @@ public interface IGamePersistenceHost
     string CurrentMapId { get; set; }
     string ActiveEncounterId { get; set; }
     string SelectedCharacterUnitId { get; set; }
+    int PartyGold { get; set; }
 
     System.Collections.Generic.Dictionary<string, string> SelectedAbilityIdByUnitId { get; }
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> EquippedItemsByUnitId { get; }
     List<string> PartyInventoryItemIds { get; }
+    System.Collections.Generic.Dictionary<string, int> VendorGoldById { get; }
+    System.Collections.Generic.Dictionary<string, List<string>> VendorInventoryItemIdsById { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> ClearedEncounterIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> OpenedDoorIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> OpenedPropIdsByMap { get; }

@@ -6,7 +6,9 @@ public partial class MapLoader : Node
 {
     [Export] public NodePath MapsRootPath = "../Maps";
     private const string TerrainAtlasPath = "res://assets/tilesets/terrain_64_new.png";
+    private const string UnitsAtlasPath = "res://assets/tilesets/units_2_64.png";
     private const int TerrainTileSize = 64;
+    private const int UnitTileSize = 64;
     private static readonly Vector2I FloorAtlasCell = new(0, 0);
     private static readonly Vector2I WallAtlasCell = new(0, 1);
     private static readonly Vector2I DoorAtlasCell = new(0, 2);
@@ -20,6 +22,7 @@ public partial class MapLoader : Node
     private Array<Dictionary> _defaultParty = new();
     private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _mapLayersById = new();
     private TileSet _terrainTileSet;
+    private Texture2D _unitsTexture;
 
     public override void _Ready()
     {
@@ -1084,8 +1087,22 @@ public partial class MapLoader : Node
         {
             var cell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             var propId = GetString(prop, "id", "prop");
+            var propType = GetString(prop, "type", "prop");
             var isOpened = openedPropIds.Contains(propId);
             var rect = CellRect(cell, cellSize);
+            if (propType == "npc")
+            {
+                canvas.DrawRect(rect, new Color(0.08f, 0.12f, 0.11f, 0.25f), true);
+                var texture = GetUnitsTexture();
+                if (texture != null)
+                {
+                    var sourceRect = new Rect2(new Vector2(0.0f, UnitTileSize), new Vector2(UnitTileSize, UnitTileSize));
+                    canvas.DrawTextureRectRegion(texture, rect, sourceRect);
+                }
+                canvas.DrawRect(rect, new Color(0.48f, 0.78f, 0.62f, 0.95f), false, 2.0f);
+                continue;
+            }
+
             if (isOpened)
             {
                 canvas.DrawRect(rect, new Color(0.34f, 0.3f, 0.24f, 0.24f), true);
@@ -1228,8 +1245,21 @@ public partial class MapLoader : Node
 
             var propId = GetString(prop, "id", "prop");
             var propName = GetString(prop, "name", "Prop");
+            var propType = GetString(prop, "type", "prop");
             var hasLoot = HasLootConfig(prop);
             var interactionText = GetString(prop, "interaction_text", "");
+            if (propType == "npc" && propName == "Mira the Vendor")
+            {
+                entries.Add(new Dictionary
+                {
+                    { "id", "vendor:mira" },
+                    { "label", "Mira the Vendor" },
+                    { "detail", "Talk or browse Mira's store." },
+                    { "source_title", "Mira the Vendor" }
+                });
+                break;
+            }
+
             if (hasLoot && openedPropIds.Contains(propId))
             {
                 statusText = $"{propName} is empty.";
@@ -1301,6 +1331,16 @@ public partial class MapLoader : Node
 
         statusText = "Loot interaction opened.";
         return true;
+    }
+
+    private Texture2D GetUnitsTexture()
+    {
+        if (_unitsTexture == null)
+        {
+            _unitsTexture = GD.Load<Texture2D>(UnitsAtlasPath);
+        }
+
+        return _unitsTexture;
     }
 
     public bool TryResolveExplorationInteractionById(Unit explorer, string interactionId, Array<Dictionary> mapProps, Array<Dictionary> lootBags, HashSet<string> openedPropIds, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, GameData gameData, RandomNumberGenerator lootRng, out string statusText, out string logText, out bool changedState)
