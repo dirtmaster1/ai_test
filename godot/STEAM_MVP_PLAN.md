@@ -31,7 +31,7 @@ This plan maps the current JavaScript game structure to a Godot production build
 
 ### Godot target modules
 
-- `godot/scenes/TestEncounter2v2.tscn` + `godot/scripts/BattleController.cs`
+- `godot/scenes/Gameworld.tscn` + `godot/scripts/BattleController.cs`
 - `godot/scripts/TurnManager.cs`
 - `godot/scripts/AiDirector.cs`
 - `godot/autoload/GameData.cs`

@@ -11,6 +11,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const int DefaultAggroTriggerRange = 4;
     private const float GridLineThickness = 2.0f;
     private const ulong ManualEndTurnDebounceMs = 220;
+    private const ulong PostPlayerActionMouseMoveLockMs = 300;
     private const float EnemyActionDelaySeconds = 0.24f;
     private const string SaveFilePath = "user://dark_dungeon_tactics_save.json";
 
@@ -45,12 +46,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, int> _vendorGoldById = new();
     private readonly System.Collections.Generic.Dictionary<string, List<string>> _vendorInventoryItemIdsById = new();
     private readonly HashSet<string> _clearedEncounterIds = new();
+    private readonly HashSet<string> _activeCombatEnemyUnitIds = new();
+    private readonly HashSet<string> _activeCombatEncounterIds = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _clearedEncounterIdsByMap = new();
     private readonly HashSet<string> _openedDoorIds = new();
     private readonly HashSet<string> _openedPropIds = new();
+    private readonly HashSet<string> _defeatedEnemyIds = new();
     private readonly HashSet<string> _lootedBagIds = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedDoorIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedPropIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _defeatedEnemyIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
     private readonly RandomNumberGenerator _lootRng = new();
@@ -79,6 +84,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool _isEnemyTurnProcessing;
     private bool _isPanningView;
     private bool _leftMouseClickCandidate;
+    private ulong _mouseMoveInputLockedUntilMs;
     private Vector2 _viewPanStartMouseGlobal;
     private Vector2 _viewPanStartPosition;
     private const float ViewPanDragThreshold = 8.0f;
@@ -508,6 +514,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 var result = ResolveSuccessfulAction(actionProfile.ActionType);
                 ApplyActionResult(result);
+                BeginPostPlayerActionMouseMoveLock();
                 return;
             }
         }
@@ -523,6 +530,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 var result = ResolveSuccessfulAction(actionProfile.ActionType);
                 ApplyActionResult(result);
+                BeginPostPlayerActionMouseMoveLock();
                 return;
             }
         }
@@ -545,6 +553,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         else
         {
         }
+    }
+
+    private void BeginPostPlayerActionMouseMoveLock()
+    {
+        _mouseMoveInputLockedUntilMs = Time.GetTicksMsec() + PostPlayerActionMouseMoveLockMs;
+        ClearMovementPreviewPath();
+    }
+
+    private bool IsMouseMoveInputLocked()
+    {
+        return Time.GetTicksMsec() < _mouseMoveInputLockedUntilMs;
     }
 
     private async void RunEnemyTurn(Unit enemyUnit)
@@ -862,6 +881,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var enemies = TryGetDictionaryArray(encounter, "enemies");
             foreach (var enemyConfig in enemies)
             {
+                var enemyId = GetString(enemyConfig, "id", "");
+                if (!string.IsNullOrEmpty(enemyId) && _defeatedEnemyIds.Contains(enemyId))
+                {
+                    continue;
+                }
+
                 enemyConfig["encounter_id"] = encounterId;
                 SpawnUnit(enemyConfig);
             }
@@ -1194,8 +1219,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void CleanupDefeatedUnits()
     {
+        RecordDefeatedEnemiesForCurrentMap();
         RemoveDeadFromTeam(_playerUnits);
         RemoveDeadFromTeam(_enemyUnits);
+    }
+
+    private void RecordDefeatedEnemiesForCurrentMap()
+    {
+        foreach (var enemy in _enemyUnits)
+        {
+            if (!IsUsableUnit(enemy) || !enemy.IsDead || string.IsNullOrEmpty(enemy.UnitId))
+            {
+                continue;
+            }
+
+            _defeatedEnemyIds.Add(enemy.UnitId);
+        }
     }
 
     private static void RemoveDeadFromTeam(Array<Unit> units)
@@ -1227,11 +1266,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return true;
         }
 
-        if (!HasLivingEnemiesInEncounter(_activeEncounterId))
+        if (!HasLivingActiveCombatEnemies())
         {
-            _clearedEncounterIds.Add(_activeEncounterId);
+            MarkClearedEncounterIdsForActiveCombat();
             SaveClearedEncounterStateForCurrentMap();
             _activeEncounterId = "";
+            _activeCombatEnemyUnitIds.Clear();
+            _activeCombatEncounterIds.Clear();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             EnterExplorationMode("Encounter cleared. Exploration resumed.");
             _persistence.PersistSaveGame(false);
@@ -3204,6 +3245,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         _openedDoorIds.Clear();
         _openedPropIds.Clear();
+        _defeatedEnemyIds.Clear();
         _lootedBagIds.Clear();
 
         if (_openedDoorIdsByMap.TryGetValue(_currentMapId, out var openedDoors))
@@ -3219,6 +3261,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             foreach (var propId in opened)
             {
                 _openedPropIds.Add(propId);
+            }
+        }
+
+        if (_defeatedEnemyIdsByMap.TryGetValue(_currentMapId, out var defeatedEnemies))
+        {
+            foreach (var enemyId in defeatedEnemies)
+            {
+                _defeatedEnemyIds.Add(enemyId);
             }
         }
 
@@ -3273,6 +3323,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             lootedSnapshot.Add(bagId);
         }
 
+        var defeatedEnemySnapshot = new HashSet<string>();
+        foreach (var enemyId in _defeatedEnemyIds)
+        {
+            defeatedEnemySnapshot.Add(enemyId);
+        }
+
         var lootBagSnapshot = new Array<Dictionary>();
         foreach (var bag in _lootBags)
         {
@@ -3281,6 +3337,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _openedDoorIdsByMap[_currentMapId] = openedDoorSnapshot;
         _openedPropIdsByMap[_currentMapId] = openedSnapshot;
+        _defeatedEnemyIdsByMap[_currentMapId] = defeatedEnemySnapshot;
         _lootedBagIdsByMap[_currentMapId] = lootedSnapshot;
         _lootBagsByMap[_currentMapId] = lootBagSnapshot;
     }
@@ -3316,6 +3373,35 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
+    private bool HasLivingActiveCombatEnemies()
+    {
+        foreach (var enemy in _enemyUnits)
+        {
+            if (IsEnemyInActiveCombat(enemy))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsEnemyInActiveCombat(Unit enemy)
+    {
+        return IsUsableUnit(enemy) && !enemy.IsDead && enemy.Team == "enemy" && _activeCombatEnemyUnitIds.Contains(enemy.UnitId);
+    }
+
+    private void MarkClearedEncounterIdsForActiveCombat()
+    {
+        foreach (var encounterId in _activeCombatEncounterIds)
+        {
+            if (!HasLivingEnemiesInEncounter(encounterId))
+            {
+                _clearedEncounterIds.Add(encounterId);
+            }
+        }
+    }
+
     private bool IsValidAttackTarget(Unit attacker, Unit candidate)
     {
         if (!IsUsableUnit(attacker) || !IsUsableUnit(candidate) || candidate.IsDead || candidate.Team == attacker.Team)
@@ -3343,7 +3429,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return true;
         }
 
-        return candidate.EncounterId == _activeEncounterId;
+        return IsEnemyInActiveCombat(candidate);
     }
 
     private bool IsValidAttackTargetByTeam(string attackerTeam, Unit candidate)
@@ -3363,7 +3449,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return true;
         }
 
-        return candidate.EncounterId == _activeEncounterId;
+        return IsEnemyInActiveCombat(candidate);
     }
 
     private static Array<Dictionary> TryGetDictionaryArray(Dictionary dict, string key)
@@ -3762,6 +3848,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.ClearedEncounterIdsByMap => _clearedEncounterIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedDoorIdsByMap => _openedDoorIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedPropIdsByMap => _openedPropIdsByMap;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.DefeatedEnemyIdsByMap => _defeatedEnemyIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;
 
@@ -3822,6 +3909,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         _isEndingTurn = false;
         _isEnemyTurnProcessing = false;
+        _activeCombatEnemyUnitIds.Clear();
+        _activeCombatEncounterIds.Clear();
 
         if (flowStateToken == "combat" && !string.IsNullOrEmpty(_activeEncounterId) && HasLivingEnemiesInEncounter(_activeEncounterId))
         {

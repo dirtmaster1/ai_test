@@ -4,7 +4,7 @@ This project now uses one base TileMapLayer per map for floor/wall/door geometry
 
 ## Layer Naming Convention
 
-For each map id (example: `map-a`), create one layer under `Maps` in `TestEncounter2v2.tscn`:
+For each map id (example: `map-a`), create one layer under `Maps` in `Gameworld.tscn`:
 
 - `map-a-base`
 - `map-b-base`

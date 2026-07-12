@@ -66,23 +66,37 @@ public partial class BattleController
 
                 if (Manhattan(player.GridPos, enemy.GridPos) <= aggroRange)
                 {
-                    StartCombat(encounterId);
+                    StartCombat(enemy);
                     return;
                 }
             }
         }
     }
 
-    private void StartCombat(string encounterId)
+    private void StartCombat(Unit triggeringEnemy)
     {
         if (_flowState == BattleFlowState.Combat)
         {
             return;
         }
 
+        if (!IsUsableUnit(triggeringEnemy) || triggeringEnemy.IsDead || triggeringEnemy.Team != "enemy")
+        {
+            return;
+        }
+
         PruneInvalidUnitReferences();
 
-        _activeEncounterId = encounterId;
+        _activeCombatEnemyUnitIds.Clear();
+        _activeCombatEncounterIds.Clear();
+        AddChainedAggroEnemies(triggeringEnemy, 4);
+
+        if (_activeCombatEnemyUnitIds.Count == 0)
+        {
+            return;
+        }
+
+        _activeEncounterId = triggeringEnemy.EncounterId;
         _flowState = BattleFlowState.Combat;
         _awaitingPlayerAttackDirection = false;
         _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
@@ -98,7 +112,7 @@ public partial class BattleController
 
         foreach (var enemy in _enemyUnits)
         {
-            if (IsUsableUnit(enemy) && !enemy.IsDead && enemy.EncounterId == encounterId)
+            if (IsEnemyInActiveCombat(enemy))
             {
                 combatUnits.Add(enemy);
             }
@@ -107,6 +121,58 @@ public partial class BattleController
         _turnManager.SetupTurnOrder(combatUnits);
         SetStatusHelp();
         CenterViewOnCurrentFocus();
+    }
+
+    private void StartCombat(string encounterId)
+    {
+        foreach (var enemy in _enemyUnits)
+        {
+            if (IsUsableUnit(enemy) && !enemy.IsDead && enemy.EncounterId == encounterId)
+            {
+                StartCombat(enemy);
+                return;
+            }
+        }
+    }
+
+    private void AddChainedAggroEnemies(Unit triggeringEnemy, int chainRange)
+    {
+        var queue = new System.Collections.Generic.Queue<Unit>();
+        _activeCombatEnemyUnitIds.Add(triggeringEnemy.UnitId);
+        if (!string.IsNullOrEmpty(triggeringEnemy.EncounterId))
+        {
+            _activeCombatEncounterIds.Add(triggeringEnemy.EncounterId);
+        }
+        queue.Enqueue(triggeringEnemy);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var candidate in _enemyUnits)
+            {
+                if (!IsUsableUnit(candidate) || candidate.IsDead || candidate.Team != "enemy" || string.IsNullOrEmpty(candidate.UnitId))
+                {
+                    continue;
+                }
+
+                if (_activeCombatEnemyUnitIds.Contains(candidate.UnitId))
+                {
+                    continue;
+                }
+
+                if (Manhattan(current.GridPos, candidate.GridPos) > chainRange)
+                {
+                    continue;
+                }
+
+                _activeCombatEnemyUnitIds.Add(candidate.UnitId);
+                if (!string.IsNullOrEmpty(candidate.EncounterId))
+                {
+                    _activeCombatEncounterIds.Add(candidate.EncounterId);
+                }
+                queue.Enqueue(candidate);
+            }
+        }
     }
 
     private bool TryHandleMapTransition()

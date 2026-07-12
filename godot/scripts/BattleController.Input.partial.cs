@@ -169,7 +169,7 @@ public partial class BattleController
 
         QueueRedraw();
 
-        if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection)
+        if (_flowState != BattleFlowState.Combat || _awaitingPlayerAttackDirection || IsMouseMoveInputLocked())
         {
             ClearMovementPreviewPath();
             return;
@@ -205,6 +205,12 @@ public partial class BattleController
     {
         if (_flowState != BattleFlowState.Combat || mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left)
         {
+            return;
+        }
+
+        if (IsMouseMoveInputLocked())
+        {
+            ClearMovementPreviewPath();
             return;
         }
 

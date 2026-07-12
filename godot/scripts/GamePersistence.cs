@@ -134,6 +134,7 @@ public sealed class GamePersistence
             { "cleared_encounter_ids_by_map", BuildSetMapSnapshot(_host.ClearedEncounterIdsByMap) },
             { "opened_door_ids_by_map", BuildSetMapSnapshot(_host.OpenedDoorIdsByMap) },
             { "opened_prop_ids_by_map", BuildSetMapSnapshot(_host.OpenedPropIdsByMap) },
+            { "defeated_enemy_ids_by_map", BuildSetMapSnapshot(_host.DefeatedEnemyIdsByMap) },
             { "looted_bag_ids_by_map", BuildSetMapSnapshot(_host.LootedBagIdsByMap) },
             { "loot_bags_by_map", BuildLootBagsByMapSnapshot(_host.LootBagsByMap) },
             { "unit_snapshots", unitSnapshots },
@@ -150,6 +151,7 @@ public sealed class GamePersistence
         _host.ClearedEncounterIdsByMap.Clear();
         _host.OpenedDoorIdsByMap.Clear();
         _host.OpenedPropIdsByMap.Clear();
+        _host.DefeatedEnemyIdsByMap.Clear();
         _host.LootedBagIdsByMap.Clear();
         _host.LootBagsByMap.Clear();
 
@@ -161,6 +163,7 @@ public sealed class GamePersistence
         RestoreSetMapSnapshot(GetDictionary(saveData, "cleared_encounter_ids_by_map"), _host.ClearedEncounterIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_door_ids_by_map"), _host.OpenedDoorIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_prop_ids_by_map"), _host.OpenedPropIdsByMap);
+        RestoreSetMapSnapshot(GetDictionary(saveData, "defeated_enemy_ids_by_map"), _host.DefeatedEnemyIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "looted_bag_ids_by_map"), _host.LootedBagIdsByMap);
         RestoreLootBagsByMapSnapshot(GetDictionary(saveData, "loot_bags_by_map"), _host.LootBagsByMap);
 
@@ -171,7 +174,7 @@ public sealed class GamePersistence
         _host.EquippedItemsByUnitId.Clear();
 
         // Restore runtime inventory/equipment collections from save.
-    _host.PartyGold = GetInt(saveData, "party_gold", 25);
+        _host.PartyGold = GetInt(saveData, "party_gold", 25);
         RestorePartyInventory(GetStringArray(saveData, "party_inventory_item_ids"));
         RestoreVendorGold(GetDictionary(saveData, "vendor_gold_by_id"));
         RestoreVendorInventory(GetDictionary(saveData, "vendor_inventory_item_ids_by_id"));
