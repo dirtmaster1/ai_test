@@ -550,10 +550,15 @@ public partial class MapLoader : Node
                 Texture = atlasTexture,
                 TextureRegionSize = new Vector2I(TerrainTileSize, TerrainTileSize)
             };
-            atlasSource.CreateTile(floorAtlasCell);
-            atlasSource.CreateTile(wallAtlasCell);
-            atlasSource.CreateTile(doorAtlasCell);
-            atlasSource.CreateTile(openDoorAtlasCell);
+            var createdAtlasCells = new HashSet<Vector2I>();
+            if (!TryCreateTerrainTile(atlasSource, atlasTexture, floorAtlasCell, createdAtlasCells)
+                || !TryCreateTerrainTile(atlasSource, atlasTexture, wallAtlasCell, createdAtlasCells))
+            {
+                return false;
+            }
+
+            TryCreateTerrainTile(atlasSource, atlasTexture, doorAtlasCell, createdAtlasCells);
+            TryCreateTerrainTile(atlasSource, atlasTexture, openDoorAtlasCell, createdAtlasCells);
 
             terrainTileSet = new TileSet();
             terrainTileSet.TileSize = new Vector2I(TerrainTileSize, TerrainTileSize);
@@ -567,6 +572,30 @@ public partial class MapLoader : Node
         }
 
         return true;
+    }
+
+    private static bool TryCreateTerrainTile(TileSetAtlasSource atlasSource, Texture2D atlasTexture, Vector2I atlasCell, HashSet<Vector2I> createdAtlasCells)
+    {
+        if (!IsTerrainAtlasCellInBounds(atlasTexture, atlasCell))
+        {
+            GD.PushWarning($"Skipping terrain atlas cell {atlasCell}; it is outside {atlasTexture.ResourcePath}.");
+            return false;
+        }
+
+        if (createdAtlasCells.Add(atlasCell))
+        {
+            atlasSource.CreateTile(atlasCell);
+        }
+
+        return true;
+    }
+
+    private static bool IsTerrainAtlasCellInBounds(Texture2D atlasTexture, Vector2I atlasCell)
+    {
+        return atlasCell.X >= 0
+            && atlasCell.Y >= 0
+            && (atlasCell.X + 1) * TerrainTileSize <= atlasTexture.GetWidth()
+            && (atlasCell.Y + 1) * TerrainTileSize <= atlasTexture.GetHeight();
     }
 
     public bool SetDoorVisual(string mapId, Vector2I cell, bool isOpen)

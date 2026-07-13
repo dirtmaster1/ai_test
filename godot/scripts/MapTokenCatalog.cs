@@ -163,7 +163,11 @@ public static class MapTokenCatalog
                 FloorAtlasX = 1,
                 FloorAtlasY = 0,
                 WallAtlasX = 0,
-                WallAtlasY = 1
+                WallAtlasY = 1,
+                DoorAtlasX = 0,
+                DoorAtlasY = 1,
+                OpenDoorAtlasX = 1,
+                OpenDoorAtlasY = 0
             },
             LayoutRows = new[]
             {
