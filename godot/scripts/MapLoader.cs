@@ -5,14 +5,9 @@ using System.Collections.Generic;
 public partial class MapLoader : Node
 {
     [Export] public NodePath MapsRootPath = "../Maps";
-    private const string TerrainAtlasPath = "res://assets/tilesets/terrain_64_new.png";
     private const string UnitsAtlasPath = "res://assets/tilesets/units_2_64.png";
     private const int TerrainTileSize = 64;
     private const int UnitTileSize = 64;
-    private static readonly Vector2I FloorAtlasCell = new(0, 0);
-    private static readonly Vector2I WallAtlasCell = new(0, 1);
-    private static readonly Vector2I DoorAtlasCell = new(0, 2);
-    private static readonly Vector2I OpenDoorAtlasCell = new(3, 2);
     private const string BaseSuffix = "-base";
     private const string MarkerSuffix = "-markers";
     private const string TerrainTypeKey = "terrain_type";
@@ -21,7 +16,7 @@ public partial class MapLoader : Node
     private GameData _gameData;
     private Array<Dictionary> _defaultParty = new();
     private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _mapLayersById = new();
-    private TileSet _terrainTileSet;
+    private readonly System.Collections.Generic.Dictionary<string, TileSet> _terrainTileSetsByKey = new(System.StringComparer.OrdinalIgnoreCase);
     private Texture2D _unitsTexture;
 
     public override void _Ready()
@@ -490,7 +485,8 @@ public partial class MapLoader : Node
             return;
         }
 
-        if (!TryAssignTerrainTileSet(baseLayer))
+        var terrain = ResolveTerrainDefinition(mapId);
+        if (!TryAssignTerrainTileSet(baseLayer, terrain))
         {
             return;
         }
@@ -510,16 +506,16 @@ public partial class MapLoader : Node
             for (var x = 0; x < width; x++)
             {
                 var token = GetRowToken(rows[y], x);
-                var atlas = FloorAtlasCell;
+                var atlas = GetFloorAtlasCell(terrain);
                 if (definition.BaseLegend.TryGetValue(token, out var baseDef))
                 {
                     if (baseDef.Type == MapBaseTileType.Wall)
                     {
-                        atlas = WallAtlasCell;
+                        atlas = GetWallAtlasCell(terrain);
                     }
                     else if (baseDef.Type == MapBaseTileType.Door)
                     {
-                        atlas = DoorAtlasCell;
+                        atlas = GetDoorAtlasCell(terrain);
                     }
                 }
 
@@ -528,39 +524,46 @@ public partial class MapLoader : Node
         }
     }
 
-    private bool TryAssignTerrainTileSet(TileMapLayer layer)
+    private bool TryAssignTerrainTileSet(TileMapLayer layer, MapTerrainDef terrain)
     {
         if (layer == null)
         {
             return false;
         }
 
-        if (_terrainTileSet == null)
+        terrain ??= new MapTerrainDef();
+        var terrainKey = BuildTerrainKey(terrain);
+        if (!_terrainTileSetsByKey.TryGetValue(terrainKey, out var terrainTileSet))
         {
-            var atlasTexture = GD.Load<Texture2D>(TerrainAtlasPath);
+            var atlasTexture = GD.Load<Texture2D>(terrain.AtlasPath);
             if (atlasTexture == null)
             {
                 return false;
             }
 
+            var floorAtlasCell = GetFloorAtlasCell(terrain);
+            var wallAtlasCell = GetWallAtlasCell(terrain);
+            var doorAtlasCell = GetDoorAtlasCell(terrain);
+            var openDoorAtlasCell = GetOpenDoorAtlasCell(terrain);
             var atlasSource = new TileSetAtlasSource
             {
                 Texture = atlasTexture,
                 TextureRegionSize = new Vector2I(TerrainTileSize, TerrainTileSize)
             };
-            atlasSource.CreateTile(FloorAtlasCell);
-            atlasSource.CreateTile(WallAtlasCell);
-            atlasSource.CreateTile(DoorAtlasCell);
-            atlasSource.CreateTile(OpenDoorAtlasCell);
+            atlasSource.CreateTile(floorAtlasCell);
+            atlasSource.CreateTile(wallAtlasCell);
+            atlasSource.CreateTile(doorAtlasCell);
+            atlasSource.CreateTile(openDoorAtlasCell);
 
-            _terrainTileSet = new TileSet();
-            _terrainTileSet.TileSize = new Vector2I(TerrainTileSize, TerrainTileSize);
-            _terrainTileSet.AddSource(atlasSource, 0);
+            terrainTileSet = new TileSet();
+            terrainTileSet.TileSize = new Vector2I(TerrainTileSize, TerrainTileSize);
+            terrainTileSet.AddSource(atlasSource, 0);
+            _terrainTileSetsByKey[terrainKey] = terrainTileSet;
         }
 
-        if (layer.TileSet != _terrainTileSet)
+        if (layer.TileSet != terrainTileSet)
         {
-            layer.TileSet = _terrainTileSet;
+            layer.TileSet = terrainTileSet;
         }
 
         return true;
@@ -573,12 +576,13 @@ public partial class MapLoader : Node
             return false;
         }
 
-        if (!TryAssignTerrainTileSet(baseLayer))
+        var terrain = ResolveTerrainDefinition(mapId);
+        if (!TryAssignTerrainTileSet(baseLayer, terrain))
         {
             return false;
         }
 
-        var atlas = isOpen ? OpenDoorAtlasCell : DoorAtlasCell;
+        var atlas = isOpen ? GetOpenDoorAtlasCell(terrain) : GetDoorAtlasCell(terrain);
         baseLayer.SetCell(cell, 0, atlas, 0);
         return true;
     }
@@ -616,7 +620,7 @@ public partial class MapLoader : Node
                     continue;
                 }
 
-                var terrainType = ResolveTerrainType(baseLayer, cell);
+                var terrainType = ResolveTerrainType(mapId, baseLayer, cell);
 
                 if (terrainType == "wall")
                 {
@@ -643,20 +647,39 @@ public partial class MapLoader : Node
         return true;
     }
 
-    private static string ResolveTerrainType(TileMapLayer layer, Vector2I cell)
+    private string ResolveTerrainType(string mapId, TileMapLayer layer, Vector2I cell)
     {
         var atlasCoords = layer.GetCellAtlasCoords(cell);
-        if (atlasCoords == WallAtlasCell)
+        var terrain = ResolveTerrainDefinition(mapId);
+        if (atlasCoords == GetWallAtlasCell(terrain))
         {
             return "wall";
         }
 
-        if (atlasCoords == DoorAtlasCell || atlasCoords == OpenDoorAtlasCell)
+        if (atlasCoords == GetDoorAtlasCell(terrain) || atlasCoords == GetOpenDoorAtlasCell(terrain))
         {
             return "door";
         }
 
         return "floor";
+    }
+
+    private static string BuildTerrainKey(MapTerrainDef terrain)
+    {
+        return $"{terrain.AtlasPath}|{terrain.FloorAtlasX},{terrain.FloorAtlasY}|{terrain.WallAtlasX},{terrain.WallAtlasY}|{terrain.DoorAtlasX},{terrain.DoorAtlasY}|{terrain.OpenDoorAtlasX},{terrain.OpenDoorAtlasY}";
+    }
+
+    private static Vector2I GetFloorAtlasCell(MapTerrainDef terrain) => new(terrain.FloorAtlasX, terrain.FloorAtlasY);
+
+    private static Vector2I GetWallAtlasCell(MapTerrainDef terrain) => new(terrain.WallAtlasX, terrain.WallAtlasY);
+
+    private static Vector2I GetDoorAtlasCell(MapTerrainDef terrain) => new(terrain.DoorAtlasX, terrain.DoorAtlasY);
+
+    private static Vector2I GetOpenDoorAtlasCell(MapTerrainDef terrain) => new(terrain.OpenDoorAtlasX, terrain.OpenDoorAtlasY);
+
+    private static MapTerrainDef ResolveTerrainDefinition(string mapId)
+    {
+        return MapTokenCatalog.Maps.TryGetValue(mapId, out var definition) ? definition.Terrain ?? new MapTerrainDef() : new MapTerrainDef();
     }
 
     private bool TryGetBaseLayer(string mapId, out TileMapLayer layer)

@@ -33,10 +33,24 @@ public sealed class MapEncounterTokenDef
     public string CharacterId { get; init; } = "";
 }
 
+public sealed class MapTerrainDef
+{
+    public string AtlasPath { get; init; } = "res://assets/tilesets/dungeon_terrain_64.png";
+    public int FloorAtlasX { get; init; } = 0;
+    public int FloorAtlasY { get; init; } = 0;
+    public int WallAtlasX { get; init; } = 0;
+    public int WallAtlasY { get; init; } = 1;
+    public int DoorAtlasX { get; init; } = 0;
+    public int DoorAtlasY { get; init; } = 2;
+    public int OpenDoorAtlasX { get; init; } = 3;
+    public int OpenDoorAtlasY { get; init; } = 2;
+}
+
 public sealed class TokenMapDef
 {
     public string Id { get; init; } = "";
     public string Name { get; init; } = "";
+    public MapTerrainDef Terrain { get; init; } = new();
     public string[] LayoutRows { get; init; } = Array.Empty<string>();
     public string[] PropRows { get; init; } = Array.Empty<string>();
     public Dictionary<string, MapBaseTokenDef> BaseLegend { get; init; } = new(StringComparer.OrdinalIgnoreCase);
@@ -143,6 +157,14 @@ public static class MapTokenCatalog
         {
             Id = "forest-path",
             Name = "Forest Path",
+            Terrain = new MapTerrainDef
+            {
+                AtlasPath = "res://assets/tilesets/forest_terrain_64.png",
+                FloorAtlasX = 1,
+                FloorAtlasY = 0,
+                WallAtlasX = 0,
+                WallAtlasY = 1
+            },
             LayoutRows = new[]
             {
                 "wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa m3 m3 wa wa",

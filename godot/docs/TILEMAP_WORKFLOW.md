@@ -17,8 +17,11 @@ Use `64x64` tiles in your TileSet atlases (`.png`).
 
 Recommended folder layout:
 
-- `assets/tilesets/terrain_64.png`
+- `assets/tilesets/dungeon_terrain_64.png`
+- `assets/tilesets/forest_terrain_64.png`
 - `assets/tilesets/units_2_64.png`
+
+Each `TokenMapDef` can configure its own terrain atlas and atlas cells with `Terrain = new MapTerrainDef { ... }`. If omitted, the map uses the dungeon terrain defaults.
 
 ## Base Layer Tile Custom Data
 
