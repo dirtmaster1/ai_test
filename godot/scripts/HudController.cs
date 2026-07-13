@@ -798,18 +798,18 @@ public partial class HudController : Control
         var sidebarLeft = Mathf.Max(GridPixelWidth + Margin, sidebarRight - SidebarWidth);
 
         const float panelGap = 10.0f;
-        const float utilityHeight = 58.0f;
+        const float utilityHeight = 20.0f;
         const float characterHeight = 218.0f;
         const float helpHeight = 220.0f;
         const float turnQueueHeight = 198.0f;
         const float actionHeight = 68.0f;
 
         var utilityTop = Margin;
-        var actionTop = utilityTop + utilityHeight + panelGap;
-        var turnQueueTop = actionTop + actionHeight + panelGap + 50;
+        var actionTop = utilityTop + utilityHeight + panelGap + 50.0f;
+        var turnQueueTop = actionTop + actionHeight + panelGap + 30.0f;
         var detailsTop = turnQueueTop + turnQueueHeight + panelGap;
-        var combatTop = detailsTop + panelGap;
-        var combatHeight = Mathf.Max(0.0f, size.Y - Margin - combatTop);
+        var combatTop = turnQueueTop + turnQueueHeight + panelGap;
+        var combatHeight = 100.0f;
 
         ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
         ApplyPanelRect(_actionPanel, new Rect2(new Vector2(sidebarLeft, actionTop), new Vector2(sidebarRight - sidebarLeft, actionHeight)), size);
@@ -973,8 +973,12 @@ public partial class HudController : Control
             ? overriddenSize
             : baseRect.Size;
 
-        panelSize.X = Mathf.Clamp(panelSize.X, MinResizablePanelWidth, Mathf.Max(MinResizablePanelWidth, viewportSize.X));
-        panelSize.Y = Mathf.Clamp(panelSize.Y, MinResizablePanelHeight, Mathf.Max(MinResizablePanelHeight, viewportSize.Y));
+        var isResizablePanel = panel == _turnQueuePanel || panel == _combatLogPanel;
+        var minWidth = isResizablePanel ? MinResizablePanelWidth : 1.0f;
+        var minHeight = isResizablePanel ? MinResizablePanelHeight : 1.0f;
+
+        panelSize.X = Mathf.Clamp(panelSize.X, minWidth, Mathf.Max(minWidth, viewportSize.X));
+        panelSize.Y = Mathf.Clamp(panelSize.Y, minHeight, Mathf.Max(minHeight, viewportSize.Y));
 
         var offset = _panelOffsets.TryGetValue(panel, out var storedOffset) ? storedOffset : Vector2.Zero;
         var pos = baseRect.Position + offset;
@@ -1287,6 +1291,11 @@ public partial class HudController : Control
         }
 
         var status = unit.IsDead ? "Defeated" : "Ready";
+        if (unit.IsDefending && !unit.IsDead)
+        {
+            status = $"Defending (-{Unit.DefendDamageReductionPercent}% damage taken)";
+        }
+
         var encounterLabel = string.IsNullOrEmpty(unit.EncounterId) ? "Party" : unit.EncounterId;
         var experienceToNextLevel = Mathf.Max(0, unit.ExperienceToNextLevel - unit.Experience);
 
@@ -1441,7 +1450,7 @@ public partial class HudController : Control
 
         _activeUnitLabel.Text =
             $"Turn: {active.UnitName} ({active.Team})\n" +
-            $"HP {active.HitPoints}/{active.MaxHitPoints}  MP {active.MagicPoints}/{active.MaxMagicPoints}  Move {active.RemainingMovement}/{Unit.MaxMovementPerTurn}";
+            $"HP {active.HitPoints}/{active.MaxHitPoints}  MP {active.MagicPoints}/{active.MaxMagicPoints}  Move {active.RemainingMovement}/{active.MovementPerTurn}";
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)

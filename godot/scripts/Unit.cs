@@ -7,6 +7,7 @@ public partial class Unit : Node2D
     private const int AtlasTileSize = 64;
     private const string UnitAtlasPath = "res://assets/tilesets/units_2_64.png";
     public const int MaxMovementPerTurn = 3;
+    public const int DefendDamageReductionPercent = 10;
 
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
@@ -42,8 +43,10 @@ public partial class Unit : Node2D
     public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
     public int ArmorClass => Mathf.Max(0, ArmorClassBonus);
     public int ExperienceToNextLevel => Mathf.Max(25, Level * 25);
+    public int MovementPerTurn { get; private set; } = MaxMovementPerTurn;
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
+    public bool IsDefending { get; private set; }
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
     private Sprite2D _sprite;
@@ -94,6 +97,7 @@ public partial class Unit : Node2D
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", 0));
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", GetInt(config, "base_attack_range", 1));
         ArmorClassBonus = GetInt(config, "armor_class_bonus", 0);
+        MovementPerTurn = Mathf.Max(1, GetInt(config, "movement_per_turn", MaxMovementPerTurn));
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
         ResetTurnResources();
         ConfigureSpriteRegion();
@@ -103,8 +107,9 @@ public partial class Unit : Node2D
 
     public void ResetTurnResources()
     {
-        RemainingMovement = MaxMovementPerTurn;
+        RemainingMovement = MovementPerTurn;
         HasUsedAbilityThisTurn = false;
+        IsDefending = false;
         MagicPoints = Mathf.Clamp(MagicPoints + Mathf.Max(0, MagicPointRegenPerTurn), 0, MaxMagicPoints);
 
         var keys = new Array<string>();
@@ -296,6 +301,12 @@ public partial class Unit : Node2D
         }
     }
 
+    public void MarkDefending()
+    {
+        IsDefending = true;
+        RefreshVisualState();
+    }
+
     public void SetWeaponBonuses(int attackDamageBonus, int attackRangeBonus)
     {
         WeaponAttackDamageBonus = attackDamageBonus;
@@ -326,8 +337,10 @@ public partial class Unit : Node2D
             { "max_magic_points", MaxMagicPoints },
             { "magic_point_regen_per_turn", MagicPointRegenPerTurn },
             { "is_dead", IsDead },
+            { "movement_per_turn", MovementPerTurn },
             { "remaining_movement", RemainingMovement },
             { "has_used_ability_this_turn", HasUsedAbilityThisTurn },
+            { "is_defending", IsDefending },
             { "level", Level },
             { "experience", Experience },
             { "cooldowns", cooldowns },
@@ -349,8 +362,10 @@ public partial class Unit : Node2D
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
-        RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, MaxMovementPerTurn);
+        MovementPerTurn = Mathf.Max(1, GetInt(snapshot, "movement_per_turn", MovementPerTurn));
+        RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, MovementPerTurn);
         HasUsedAbilityThisTurn = GetBool(snapshot, "has_used_ability_this_turn", HasUsedAbilityThisTurn);
+        IsDefending = GetBool(snapshot, "is_defending", IsDefending);
         GridPos = GetVector2I(snapshot, "grid_pos", GridPos);
 
         _abilityCooldownRemaining.Clear();
@@ -388,20 +403,27 @@ public partial class Unit : Node2D
         RefreshVisualState();
     }
 
-    public void ApplyDamage(int amount)
+    public int ApplyDamage(int amount)
     {
         if (IsDead)
         {
-            return;
+            return 0;
         }
 
-        HitPoints = Mathf.Max(0, HitPoints - Mathf.Max(0, amount));
+        var incomingDamage = Mathf.Max(0, amount);
+        if (IsDefending && incomingDamage > 0)
+        {
+            incomingDamage = Mathf.Max(0, incomingDamage - Mathf.FloorToInt(incomingDamage * DefendDamageReductionPercent / 100.0f));
+        }
+
+        HitPoints = Mathf.Max(0, HitPoints - incomingDamage);
         if (HitPoints <= 0)
         {
             IsDead = true;
         }
 
         RefreshVisualState();
+        return incomingDamage;
     }
 
     public int ApplyHealing(int amount)
@@ -458,6 +480,11 @@ public partial class Unit : Node2D
         {
             DrawLine(new Vector2(-20.0f, -20.0f), new Vector2(20.0f, 20.0f), new Color(0.2f, 0.2f, 0.2f, 0.8f), 3.0f);
             DrawLine(new Vector2(20.0f, -20.0f), new Vector2(-20.0f, 20.0f), new Color(0.2f, 0.2f, 0.2f, 0.8f), 3.0f);
+        }
+
+        if (IsDefending && !IsDead)
+        {
+            DrawArc(Vector2.Zero, 24.0f, 0.0f, Mathf.Tau, 36, new Color(0.45f, 0.85f, 1.0f, 0.9f), 2.0f);
         }
     }
 
@@ -621,6 +648,12 @@ public partial class Unit : Node2D
         foreach (var unit in allUnits)
         {
             if (!IsUsableUnit(unit) || unit.IsDead || unit == this || unit == target)
+            {
+                continue;
+            }
+
+            // Allies do not block line of sight for this unit.
+            if (unit.Team == Team)
             {
                 continue;
             }

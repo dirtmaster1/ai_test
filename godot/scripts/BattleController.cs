@@ -341,8 +341,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        _awaitingPlayerAttackDirection = true;
         SetSelectedAbilityId(active, abilityId);
+
+        if (actionProfile.ActionType == "defend")
+        {
+            var result = TryDefend(active, actionProfile);
+            ApplyActionResult(result);
+            _awaitingPlayerAttackDirection = false;
+            ClearMovementPreviewPath();
+            SyncHudFromGameState();
+            QueueRedraw();
+            return;
+        }
+
+        _awaitingPlayerAttackDirection = true;
         ClearMovementPreviewPath();
         SyncHudFromGameState();
         QueueRedraw();
@@ -498,6 +510,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         if (!CanCastAction(active, actionProfile, true))
+        {
+            return;
+        }
+
+        if (actionProfile.ActionType == "defend")
         {
             return;
         }
@@ -947,6 +964,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private CombatActionResult TryUsePrimaryAction(Unit actor)
     {
+        // This method is for enemy AI automation only.
+        if (actor == null || actor.Team != "enemy")
+        {
+            return CombatActionResult.Failed;
+        }
+
         if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
         {
             return CombatActionResult.Failed;
@@ -961,6 +984,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (!CanCastAction(actor, actionProfile, true))
         {
             return CombatActionResult.Failed;
+        }
+
+        if (actionProfile.ActionType == "defend")
+        {
+            return TryDefend(actor, actionProfile);
         }
 
         Unit target = actionProfile.ActionType == "heal"
@@ -1047,8 +1075,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var mitigatedDamage = isMagical ? damage : Mathf.Max(0, damage - target.ArmorClass);
-        target.ApplyDamage(mitigatedDamage);
+        var preDefenseDamage = isMagical ? damage : Mathf.Max(0, damage - target.ArmorClass);
+        var mitigatedDamage = target.ApplyDamage(preDefenseDamage);
         if (_flowState == BattleFlowState.Combat)
         {
             attacker.MarkAbilityUsed(actionId, cooldownTurns);
@@ -1061,11 +1089,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             : $"{attacker.UnitName} hits {target.UnitName} for {mitigatedDamage}.";
         if (!isMagical && target.ArmorClass > 0)
         {
-            var reducedBy = Mathf.Max(0, damage - mitigatedDamage);
+            var reducedBy = Mathf.Max(0, damage - preDefenseDamage);
             if (reducedBy > 0)
             {
                 resultText += $" ({reducedBy} blocked by armor_class)";
             }
+        }
+
+        if (target.IsDefending && preDefenseDamage > mitigatedDamage)
+        {
+            resultText += $" ({preDefenseDamage - mitigatedDamage} blocked by defend)";
         }
 
         if (magicPointCost > 0)
@@ -1088,6 +1121,33 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
+    private CombatActionResult TryDefend(Unit actor, ActionProfile actionProfile)
+    {
+        if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
+        {
+            return CombatActionResult.Failed;
+        }
+
+        if (!CanCastAction(actor, actionProfile, true))
+        {
+            return CombatActionResult.Failed;
+        }
+
+        actor.MarkDefending();
+        if (_flowState == BattleFlowState.Combat)
+        {
+            actor.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        }
+
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionProfile.ActionId, actor.UnitId);
+        var resultText = $"{actor.UnitName} defends, reducing incoming damage by {Unit.DefendDamageReductionPercent}% until their next turn.";
+        _lastActionSummary = resultText;
+        _hud?.AddCombatLogEntry(resultText);
+        SyncHudFromGameState();
+        QueueRedraw();
+        return CombatActionResult.AttackResolved;
+    }
+
     private string AwardExperienceForDefeat(Unit attacker, Unit defeatedTarget)
     {
         if (!IsUsableUnit(attacker) || !IsUsableUnit(defeatedTarget))
@@ -1100,14 +1160,38 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return "";
         }
 
-        var xpReward = Mathf.Max(5, defeatedTarget.Initiative * 2);
-        var levelsGained = attacker.GrantExperience(xpReward);
-        if (levelsGained > 0)
+        var livingParty = new List<Unit>();
+        foreach (var unit in _playerUnits)
         {
-            return $"+{xpReward} XP. Level up to {attacker.Level}!";
+            if (IsUsableUnit(unit) && !unit.IsDead)
+            {
+                livingParty.Add(unit);
+            }
         }
 
-        return $"+{xpReward} XP.";
+        if (livingParty.Count == 0)
+        {
+            return "";
+        }
+
+        var xpReward = Mathf.Max(1, defeatedTarget.MaxHitPoints + defeatedTarget.MaxMagicPoints);
+        var xpShare = Mathf.Max(1, xpReward / livingParty.Count);
+        var levelUpNames = new List<string>();
+        foreach (var unit in livingParty)
+        {
+            var levelsGained = unit.GrantExperience(xpShare);
+            if (levelsGained > 0)
+            {
+                levelUpNames.Add($"{unit.UnitName} to level {unit.Level}");
+            }
+        }
+
+        if (levelUpNames.Count > 0)
+        {
+            return $"Party gains {xpReward} XP ({xpShare} each). Level up: {string.Join(", ", levelUpNames)}!";
+        }
+
+        return $"Party gains {xpReward} XP ({xpShare} each).";
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false)
@@ -1618,7 +1702,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ? actor.AttackDamage
             : configuredDamage;
 
-        range = Mathf.Max(1, range);
+        range = actionType == "defend" ? 0 : Mathf.Max(1, range);
         damage = Mathf.Max(0, damage);
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
         var cooldownTurns = Mathf.Max(0, GetInt(actionData, "cooldown", 0));
@@ -1718,7 +1802,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
             var valueText = profile.ActionType == "heal"
                 ? $"Heal: {profile.HealAmount}"
-                : $"Damage: {profile.Damage}";
+                : profile.ActionType == "defend"
+                    ? $"Effect: damage taken -{Unit.DefendDamageReductionPercent}%"
+                    : $"Damage: {profile.Damage}";
             var mpCostLabel = profile.MagicPointCost <= 0
                 ? "MP Cost: none"
                 : $"MP Cost: {profile.MagicPointCost}";

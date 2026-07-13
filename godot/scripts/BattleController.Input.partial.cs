@@ -109,6 +109,12 @@ public partial class BattleController
                 return;
             }
 
+            if (actionProfile.ActionType == "defend")
+            {
+                // Defend is activated only via explicit HUD button click.
+                return;
+            }
+
             _awaitingPlayerAttackDirection = true;
             SetSelectedAbilityId(active, selectedAbilityId);
             QueueRedraw();
