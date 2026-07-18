@@ -34,7 +34,11 @@ public partial class MapLoader : Node
             _defaultParty = BuildDefaultParty();
         }
 
-        EnsureBaseLayerPopulated(mapId);
+        var hasAuthoredBaseLayer = HasAuthoredBaseLayer(mapId);
+        if (!hasAuthoredBaseLayer)
+        {
+            EnsureBaseLayerPopulated(mapId);
+        }
 
         if (!TryBuildMapFromTokenDefinition(mapId, out var tokenMapData))
         {
@@ -50,6 +54,14 @@ public partial class MapLoader : Node
                 { "props", new Array<Dictionary>() },
                 { "transitions", new Array<Dictionary>() }
             };
+        }
+
+        if (hasAuthoredBaseLayer && TryBuildGeometryFromBaseLayer(mapId, out var visualWalls, out var visualDoors, out var visualWidth, out var visualHeight))
+        {
+            tokenMapData["width"] = visualWidth;
+            tokenMapData["height"] = visualHeight;
+            tokenMapData["walls"] = visualWalls;
+            tokenMapData["doors"] = visualDoors;
         }
 
         ApplyMarkerOverrides(mapId, tokenMapData);
@@ -480,6 +492,11 @@ public partial class MapLoader : Node
 
     private void EnsureBaseLayerPopulated(string mapId)
     {
+        if (HasAuthoredBaseLayer(mapId))
+        {
+            return;
+        }
+
         if (!TryGetBaseLayer(mapId, out var baseLayer))
         {
             return;
@@ -649,6 +666,7 @@ public partial class MapLoader : Node
                     continue;
                 }
 
+                var tileData = baseLayer.GetCellTileData(cell);
                 var terrainType = ResolveTerrainType(mapId, baseLayer, cell);
 
                 if (terrainType == "wall")
@@ -659,7 +677,8 @@ public partial class MapLoader : Node
 
                 if (terrainType == "door")
                 {
-                    var doorId = $"{mapId}-door-{cell.X}-{cell.Y}";
+                    var fallbackDoorId = $"{mapId}-door-{cell.X}-{cell.Y}";
+                    var doorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId);
 
                     doors.Add(new Dictionary
                     {
@@ -678,6 +697,16 @@ public partial class MapLoader : Node
 
     private string ResolveTerrainType(string mapId, TileMapLayer layer, Vector2I cell)
     {
+        var tileData = layer.GetCellTileData(cell);
+        if (tileData != null)
+        {
+            var terrainType = GetTileString(layer, tileData, TerrainTypeKey, "").ToLowerInvariant();
+            if (!string.IsNullOrEmpty(terrainType))
+            {
+                return terrainType;
+            }
+        }
+
         var atlasCoords = layer.GetCellAtlasCoords(cell);
         var terrain = ResolveTerrainDefinition(mapId);
         if (atlasCoords == GetWallAtlasCell(terrain))
@@ -709,6 +738,29 @@ public partial class MapLoader : Node
     private static MapTerrainDef ResolveTerrainDefinition(string mapId)
     {
         return MapTokenCatalog.Maps.TryGetValue(mapId, out var definition) ? definition.Terrain ?? new MapTerrainDef() : new MapTerrainDef();
+    }
+
+    private bool HasAuthoredBaseLayer(string mapId)
+    {
+        return TryGetDirectBaseLayer(mapId, out var layer)
+            && layer.GetUsedRect().Size.X > 0
+            && layer.GetUsedRect().Size.Y > 0;
+    }
+
+    private bool TryGetDirectBaseLayer(string mapId, out TileMapLayer layer)
+    {
+        layer = null;
+        if (_mapLayersById.Count == 0)
+        {
+            CacheMapLayers();
+        }
+
+        if (_mapLayersById.TryGetValue(mapId + BaseSuffix, out layer) && layer != null)
+        {
+            return true;
+        }
+
+        return _mapLayersById.TryGetValue(mapId, out layer) && layer != null;
     }
 
     private bool TryGetBaseLayer(string mapId, out TileMapLayer layer)
@@ -793,7 +845,7 @@ public partial class MapLoader : Node
                     continue;
                 }
 
-                var markerType = GetTileString(tileData, "marker_type", "").ToLowerInvariant();
+                var markerType = GetTileString(markerLayer, tileData, "marker_type", "").ToLowerInvariant();
                 if (string.IsNullOrEmpty(markerType))
                 {
                     continue;
@@ -803,9 +855,9 @@ public partial class MapLoader : Node
                 {
                     case "transition":
                     {
-                        var toMap = GetTileString(tileData, "to_map", mapId);
-                        var spawnX = GetTileInt(tileData, "spawn_x", cell.X);
-                        var spawnY = GetTileInt(tileData, "spawn_y", cell.Y);
+                        var toMap = GetTileString(markerLayer, tileData, "to_map", mapId);
+                        var spawnX = GetTileInt(markerLayer, tileData, "spawn_x", cell.X);
+                        var spawnY = GetTileInt(markerLayer, tileData, "spawn_y", cell.Y);
                         transitions.Add(new Dictionary
                         {
                             { "from_cell", cell },
@@ -816,7 +868,7 @@ public partial class MapLoader : Node
                     }
                     case "player_spawn":
                     {
-                        var slot = GetTileInt(tileData, "party_slot", -1);
+                        var slot = GetTileInt(markerLayer, tileData, "party_slot", -1);
                         if (slot >= 0)
                         {
                             playerSpawnBySlot[slot] = cell;
@@ -829,19 +881,19 @@ public partial class MapLoader : Node
                     }
                     case "enemy_spawn":
                     {
-                        var encounterId = GetTileString(tileData, "encounter_id", "encounter-a");
+                        var encounterId = GetTileString(markerLayer, tileData, "encounter_id", "encounter-a");
                         if (!encountersById.TryGetValue(encounterId, out var encounter))
                         {
                             encounter = new Dictionary
                             {
                                 { "id", encounterId },
-                                { "aggro_range", GetTileInt(tileData, "aggro_range", 4) },
+                                { "aggro_range", GetTileInt(markerLayer, tileData, "aggro_range", 4) },
                                 { "enemies", new Array<Dictionary>() }
                             };
                             encountersById[encounterId] = encounter;
                         }
 
-                        var templateId = GetTileString(tileData, "template_id", "");
+                        var templateId = GetTileString(markerLayer, tileData, "template_id", "");
                         var enemy = new Dictionary();
                         if (!string.IsNullOrEmpty(templateId) && _gameData != null)
                         {
@@ -852,23 +904,23 @@ public partial class MapLoader : Node
                             }
                         }
 
-                        var fallbackEnemyId = GetString(enemy, "id", $"{encounterId}-enemy-{cell.X}-{cell.Y}");
+                        var fallbackEnemyId = $"{encounterId}-enemy-{cell.X}-{cell.Y}";
                         var fallbackEnemyName = GetString(enemy, "name", "Enemy");
                         var fallbackPrimaryAbility = GetString(enemy, "primary_ability_id", "melee");
                         var fallbackInitiative = GetInt(enemy, "initiative", 10);
                         var fallbackHp = GetInt(enemy, "hit_points", 8);
                         var fallbackMaxHp = GetInt(enemy, "max_hit_points", fallbackHp);
 
-                        enemy["id"] = GetTileString(tileData, "id", fallbackEnemyId);
-                        enemy["name"] = GetTileString(tileData, "name", fallbackEnemyName);
+                        enemy["id"] = GetTileString(markerLayer, tileData, "id", fallbackEnemyId);
+                        enemy["name"] = GetTileString(markerLayer, tileData, "name", fallbackEnemyName);
                         enemy["team"] = "enemy";
                         enemy["grid_pos"] = cell;
-                        enemy["primary_ability_id"] = GetTileString(tileData, "primary_ability_id", fallbackPrimaryAbility);
-                        enemy["initiative"] = GetTileInt(tileData, "initiative", fallbackInitiative);
-                        enemy["hit_points"] = GetTileInt(tileData, "hit_points", fallbackHp);
-                        enemy["max_hit_points"] = GetTileInt(tileData, "max_hit_points", fallbackMaxHp);
+                        enemy["primary_ability_id"] = GetTileString(markerLayer, tileData, "primary_ability_id", fallbackPrimaryAbility);
+                        enemy["initiative"] = GetTileInt(markerLayer, tileData, "initiative", fallbackInitiative);
+                        enemy["hit_points"] = GetTileInt(markerLayer, tileData, "hit_points", fallbackHp);
+                        enemy["max_hit_points"] = GetTileInt(markerLayer, tileData, "max_hit_points", fallbackMaxHp);
 
-                        var startingEquipment = GetTileStringArray(tileData, "starting_equipment");
+                        var startingEquipment = GetTileStringArray(markerLayer, tileData, "starting_equipment");
                         if (startingEquipment.Count > 0)
                         {
                             enemy["starting_equipment"] = startingEquipment;
@@ -885,28 +937,28 @@ public partial class MapLoader : Node
                     case "trap":
                     {
                         var propType = markerType;
-                        var propId = GetTileString(tileData, "id", $"{mapId}-{propType}-{cell.X}-{cell.Y}");
+                        var propId = GetTileString(markerLayer, tileData, "id", $"{mapId}-{propType}-{cell.X}-{cell.Y}");
                         var fallbackName = char.ToUpper(propType[0]) + propType.Substring(1);
                         var prop = new Dictionary
                         {
                             { "id", propId },
                             { "type", propType },
-                            { "name", GetTileString(tileData, "name", fallbackName) },
+                            { "name", GetTileString(markerLayer, tileData, "name", fallbackName) },
                             { "grid_pos", cell }
                         };
 
-                        var interactionText = GetTileString(tileData, "interaction_text", "");
+                        var interactionText = GetTileString(markerLayer, tileData, "interaction_text", "");
                         if (!string.IsNullOrEmpty(interactionText))
                         {
                             prop["interaction_text"] = interactionText;
                         }
 
-                        var lootItemIds = GetTileStringArray(tileData, "loot_item_ids");
+                        var lootItemIds = GetTileStringArray(markerLayer, tileData, "loot_item_ids");
                         if (lootItemIds.Count > 0)
                         {
                             prop["loot_item_ids"] = lootItemIds;
-                            prop["loot_rolls_min"] = Mathf.Max(1, GetTileInt(tileData, "loot_rolls_min", 1));
-                            prop["loot_rolls_max"] = Mathf.Max((int)prop["loot_rolls_min"], GetTileInt(tileData, "loot_rolls_max", (int)prop["loot_rolls_min"]));
+                            prop["loot_rolls_min"] = Mathf.Max(1, GetTileInt(markerLayer, tileData, "loot_rolls_min", 1));
+                            prop["loot_rolls_max"] = Mathf.Max((int)prop["loot_rolls_min"], GetTileInt(markerLayer, tileData, "loot_rolls_max", (int)prop["loot_rolls_min"]));
                         }
 
                         props.Add(prop);
@@ -971,8 +1023,13 @@ public partial class MapLoader : Node
         return players;
     }
 
-    private static string GetTileString(TileData tileData, string key, string fallback)
+    private static string GetTileString(TileMapLayer layer, TileData tileData, string key, string fallback)
     {
+        if (!HasCustomDataLayer(layer, key))
+        {
+            return fallback;
+        }
+
         var value = tileData.GetCustomData(key);
         if (value.VariantType == Variant.Type.Nil)
         {
@@ -987,8 +1044,13 @@ public partial class MapLoader : Node
         return value.ToString();
     }
 
-    private static int GetTileInt(TileData tileData, string key, int fallback)
+    private static int GetTileInt(TileMapLayer layer, TileData tileData, string key, int fallback)
     {
+        if (!HasCustomDataLayer(layer, key))
+        {
+            return fallback;
+        }
+
         var value = tileData.GetCustomData(key);
         if (value.VariantType == Variant.Type.Nil)
         {
@@ -1008,9 +1070,14 @@ public partial class MapLoader : Node
         return int.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
     }
 
-    private static Array<string> GetTileStringArray(TileData tileData, string key)
+    private static Array<string> GetTileStringArray(TileMapLayer layer, TileData tileData, string key)
     {
         var result = new Array<string>();
+        if (!HasCustomDataLayer(layer, key))
+        {
+            return result;
+        }
+
         var value = tileData.GetCustomData(key);
         if (value.VariantType == Variant.Type.Nil)
         {
@@ -1052,6 +1119,25 @@ public partial class MapLoader : Node
         }
 
         return result;
+    }
+
+    private static bool HasCustomDataLayer(TileMapLayer layer, string key)
+    {
+        if (layer?.TileSet == null || string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        var tileSet = layer.TileSet;
+        for (var i = 0; i < tileSet.GetCustomDataLayersCount(); i++)
+        {
+            if (tileSet.GetCustomDataLayerName(i).ToString() == key)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void DrawMapFeaturesOverlay(

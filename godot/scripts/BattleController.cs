@@ -153,6 +153,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _aiDirector = GetNode<AiDirector>("AiDirector");
         _mapLoader = GetNodeOrNull<MapLoader>("MapLoader");
         _hud = GetNodeOrNull<HudController>("HUD");
+        if (_hud != null)
+        {
+            _hud.Visible = true;
+        }
+
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
         _persistence = new GamePersistence(this, SaveFilePath);

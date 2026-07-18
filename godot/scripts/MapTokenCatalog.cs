@@ -235,6 +235,18 @@ public static class MapTokenCatalog
         {
             Id = "forest-town",
             Name = "Forest Town",
+            Terrain = new MapTerrainDef
+            {
+                AtlasPath = "res://assets/tilesets/forest_terrain_64.png",
+                FloorAtlasX = 1,
+                FloorAtlasY = 0,
+                WallAtlasX = 0,
+                WallAtlasY = 1,
+                DoorAtlasX = 0,
+                DoorAtlasY = 2,
+                OpenDoorAtlasX = 1,
+                OpenDoorAtlasY = 0
+            },
             LayoutRows = new[]
             {
                 "wa wa wa wa wa wa wa wa wa m4 m4 wa wa wa wa wa wa wa wa wa",
@@ -311,6 +323,18 @@ public static class MapTokenCatalog
         {
             Id = "graveyard",
             Name = "Graveyard",
+            Terrain = new MapTerrainDef
+            {
+                AtlasPath = "res://assets/tilesets/forest_terrain_64.png",
+                FloorAtlasX = 1,
+                FloorAtlasY = 0,
+                WallAtlasX = 0,
+                WallAtlasY = 1,
+                DoorAtlasX = 0,
+                DoorAtlasY = 2,
+                OpenDoorAtlasX = 1,
+                OpenDoorAtlasY = 0
+            },
             LayoutRows = new[]
             {
                 "wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa wa",
