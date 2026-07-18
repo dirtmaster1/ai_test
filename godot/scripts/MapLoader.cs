@@ -6,7 +6,6 @@ public partial class MapLoader : Node
 {
     [Export] public NodePath MapsRootPath = "../Maps";
     private const string UnitsAtlasPath = "res://assets/tilesets/units_2_64.png";
-    private const int TerrainTileSize = 64;
     private const int UnitTileSize = 64;
     private const string BaseSuffix = "-base";
     private const string MarkerSuffix = "-markers";
@@ -16,15 +15,29 @@ public partial class MapLoader : Node
     private GameData _gameData;
     private Array<Dictionary> _defaultParty = new();
     private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _mapLayersById = new();
-    private readonly System.Collections.Generic.Dictionary<string, TileSet> _terrainTileSetsByKey = new(System.StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Generic.Dictionary<string, BaseLayerSnapshot> _baseLayerSnapshotsByMapId = new(System.StringComparer.OrdinalIgnoreCase);
     private Texture2D _unitsTexture;
+
+    private sealed class BaseLayerCellSnapshot
+    {
+        public int SourceId { get; init; }
+        public Vector2I AtlasCoords { get; init; }
+        public int AlternativeTile { get; init; }
+        public string TerrainType { get; init; } = "floor";
+        public string DoorId { get; init; } = "";
+    }
+
+    private sealed class BaseLayerSnapshot
+    {
+        public Rect2I UsedRect { get; init; }
+        public System.Collections.Generic.Dictionary<Vector2I, BaseLayerCellSnapshot> Cells { get; init; } = new();
+    }
 
     public override void _Ready()
     {
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
         _defaultParty = BuildDefaultParty();
         CacheMapLayers();
-        EnsureBaseLayersPopulated();
     }
 
     public Dictionary LoadMapStub(string mapId = "forest-town")
@@ -34,407 +47,44 @@ public partial class MapLoader : Node
             _defaultParty = BuildDefaultParty();
         }
 
-        var hasAuthoredBaseLayer = HasAuthoredBaseLayer(mapId);
-        if (!hasAuthoredBaseLayer)
+        var mapData = BuildEmptyMapData(mapId);
+
+        if (TryBuildGeometryFromBaseLayer(mapId, out var visualWalls, out var visualDoors, out var visualWidth, out var visualHeight))
         {
-            EnsureBaseLayerPopulated(mapId);
+            mapData["width"] = visualWidth;
+            mapData["height"] = visualHeight;
+            mapData["walls"] = visualWalls;
+            mapData["doors"] = visualDoors;
         }
 
-        if (!TryBuildMapFromTokenDefinition(mapId, out var tokenMapData))
-        {
-            tokenMapData = new Dictionary
-            {
-                { "id", mapId },
-                { "width", 1 },
-                { "height", 1 },
-                { "walls", new Array<Vector2I>() },
-                { "doors", new Array<Dictionary>() },
-                { "players", BuildPlayersFromTokenSpawns(new System.Collections.Generic.Dictionary<string, Vector2I>(System.StringComparer.OrdinalIgnoreCase)) },
-                { "encounters", new Array<Dictionary>() },
-                { "props", new Array<Dictionary>() },
-                { "transitions", new Array<Dictionary>() }
-            };
-        }
-
-        if (hasAuthoredBaseLayer && TryBuildGeometryFromBaseLayer(mapId, out var visualWalls, out var visualDoors, out var visualWidth, out var visualHeight))
-        {
-            tokenMapData["width"] = visualWidth;
-            tokenMapData["height"] = visualHeight;
-            tokenMapData["walls"] = visualWalls;
-            tokenMapData["doors"] = visualDoors;
-        }
-
-        ApplyMarkerOverrides(mapId, tokenMapData);
+        ApplyMarkerOverrides(mapId, mapData);
         SetActiveMapVisual(mapId);
-        return tokenMapData;
+        return mapData;
     }
 
-    private bool TryBuildMapFromTokenDefinition(string mapId, out Dictionary mapData)
+    private Dictionary BuildEmptyMapData(string mapId)
     {
-        mapData = null;
-
-        if (!MapTokenCatalog.Maps.TryGetValue(mapId, out var definition))
+        var id = mapId;
+        var name = mapId;
+        if (MapTokenCatalog.Maps.TryGetValue(mapId, out var definition))
         {
-            return false;
+            id = string.IsNullOrEmpty(definition.Id) ? mapId : definition.Id;
+            name = string.IsNullOrEmpty(definition.Name) ? id : definition.Name;
         }
 
-        var layoutRows = SplitTokenRows(definition.LayoutRows);
-        if (layoutRows.Count == 0)
+        return new Dictionary
         {
-            return false;
-        }
-
-        var height = layoutRows.Count;
-        var width = GetRowWidth(layoutRows);
-        var walls = new Array<Vector2I>();
-        var doors = new Array<Dictionary>();
-        var transitions = new Array<Dictionary>();
-        var enemyConfigs = new Array<Dictionary>();
-        var playerSpawnByCharacterId = new System.Collections.Generic.Dictionary<string, Vector2I>(System.StringComparer.OrdinalIgnoreCase);
-
-        for (var y = 0; y < height; y++)
-        {
-            var row = layoutRows[y];
-            for (var x = 0; x < width; x++)
-            {
-                var token = GetRowToken(row, x);
-                var cell = new Vector2I(x, y);
-
-                if (definition.BaseLegend.TryGetValue(token, out var baseDef))
-                {
-                    switch (baseDef.Type)
-                    {
-                        case MapBaseTileType.Wall:
-                            walls.Add(cell);
-                            break;
-                        case MapBaseTileType.Door:
-                            doors.Add(new Dictionary
-                            {
-                                { "id", $"{mapId}-door-{x}-{y}" },
-                                { "cell", cell },
-                                { "is_open", false }
-                            });
-                            break;
-                        case MapBaseTileType.MapTransition:
-                            var spawnCell = TryFindExplicitTransitionSpawnCell(definition.Id, baseDef.TargetMapId, out var explicitSpawn)
-                                ? explicitSpawn
-                                : BuildTransitionSpawnCell(cell, width, height);
-                            transitions.Add(new Dictionary
-                            {
-                                { "from_cell", cell },
-                                { "to_map", baseDef.TargetMapId },
-                                { "spawn_cell", spawnCell }
-                            });
-                            break;
-                    }
-                }
-
-                if (!definition.EncounterLegend.TryGetValue(token, out var encounterDef))
-                {
-                    continue;
-                }
-
-                if (string.Equals(encounterDef.Kind, "player", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!string.IsNullOrEmpty(encounterDef.CharacterId))
-                    {
-                        playerSpawnByCharacterId[encounterDef.CharacterId] = cell;
-                    }
-
-                    continue;
-                }
-
-                if (string.Equals(encounterDef.Kind, "enemy", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    enemyConfigs.Add(BuildEnemyFromToken(mapId, token, encounterDef, cell, enemyConfigs.Count));
-                }
-            }
-        }
-
-        var players = BuildPlayersFromTokenSpawns(playerSpawnByCharacterId);
-        var encounters = new Array<Dictionary>();
-        if (enemyConfigs.Count > 0)
-        {
-            encounters.Add(new Dictionary
-            {
-                { "id", $"{mapId}-encounter-main" },
-                { "aggro_range", 4 },
-                { "enemies", enemyConfigs }
-            });
-        }
-
-        var props = BuildPropsFromTokenDefinition(mapId, definition, width, height);
-
-        mapData = new Dictionary
-        {
-            { "id", definition.Id },
-            { "name", definition.Name },
-            { "width", width },
-            { "height", height },
-            { "walls", walls },
-            { "doors", doors },
-            { "players", players },
-            { "encounters", encounters },
-            { "props", props },
-            { "transitions", transitions }
+            { "id", id },
+            { "name", name },
+            { "width", 1 },
+            { "height", 1 },
+            { "walls", new Array<Vector2I>() },
+            { "doors", new Array<Dictionary>() },
+            { "players", BuildPlayersFromMarkerSpawns(new System.Collections.Generic.Dictionary<int, Vector2I>(), null) },
+            { "encounters", new Array<Dictionary>() },
+            { "props", new Array<Dictionary>() },
+            { "transitions", new Array<Dictionary>() }
         };
-
-        return true;
-    }
-
-    private static List<string[]> SplitTokenRows(string[] rows)
-    {
-        var parsedRows = new List<string[]>();
-        if (rows == null)
-        {
-            return parsedRows;
-        }
-
-        foreach (var row in rows)
-        {
-            if (string.IsNullOrWhiteSpace(row))
-            {
-                continue;
-            }
-
-            parsedRows.Add(row.Split(' ', System.StringSplitOptions.RemoveEmptyEntries));
-        }
-
-        return parsedRows;
-    }
-
-    private static int GetRowWidth(List<string[]> rows)
-    {
-        var width = 0;
-        foreach (var row in rows)
-        {
-            width = Mathf.Max(width, row.Length);
-        }
-
-        return Mathf.Max(1, width);
-    }
-
-    private static string GetRowToken(string[] row, int x)
-    {
-        if (row == null || x < 0 || x >= row.Length)
-        {
-            return "__";
-        }
-
-        return row[x];
-    }
-
-    private static Vector2I BuildTransitionSpawnCell(Vector2I sourceCell, int width, int height)
-    {
-        if (sourceCell.X <= 0)
-        {
-            return new Vector2I(Mathf.Max(1, width - 2), sourceCell.Y);
-        }
-
-        if (sourceCell.X >= width - 1)
-        {
-            return new Vector2I(1, sourceCell.Y);
-        }
-
-        if (sourceCell.Y <= 0)
-        {
-            return new Vector2I(sourceCell.X, Mathf.Max(1, height - 2));
-        }
-
-        if (sourceCell.Y >= height - 1)
-        {
-            return new Vector2I(sourceCell.X, 1);
-        }
-
-        return sourceCell;
-    }
-
-    private static bool TryFindExplicitTransitionSpawnCell(string sourceMapId, string targetMapId, out Vector2I spawnCell)
-    {
-        spawnCell = default;
-        if (string.IsNullOrEmpty(sourceMapId) || string.IsNullOrEmpty(targetMapId))
-        {
-            return false;
-        }
-
-        if (!MapTokenCatalog.Maps.TryGetValue(targetMapId, out var targetDefinition))
-        {
-            return false;
-        }
-
-        var rows = SplitTokenRows(targetDefinition.LayoutRows);
-        for (var y = 0; y < rows.Count; y++)
-        {
-            var row = rows[y];
-            for (var x = 0; x < row.Length; x++)
-            {
-                var token = row[x];
-                if (!targetDefinition.BaseLegend.TryGetValue(token, out var baseDef))
-                {
-                    continue;
-                }
-
-                if (baseDef.Type != MapBaseTileType.MapTransitionSpawn)
-                {
-                    continue;
-                }
-
-                if (!string.Equals(baseDef.TargetMapId, sourceMapId, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                spawnCell = new Vector2I(x, y);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private Dictionary BuildEnemyFromToken(string mapId, string token, MapEncounterTokenDef encounterDef, Vector2I cell, int index)
-    {
-        var archetypeId = encounterDef.ArchetypeId;
-        var enemy = new Dictionary();
-
-        if (!string.IsNullOrEmpty(archetypeId) && _gameData != null)
-        {
-            var template = _gameData.GetCharacterTemplate(archetypeId);
-            if (template.Count > 0)
-            {
-                enemy = CopyDictionary(template);
-            }
-        }
-
-        if (enemy.Count == 0)
-        {
-            enemy["name"] = BuildFallbackName(archetypeId, "Enemy");
-            enemy["primary_ability_id"] = "melee";
-            enemy["initiative"] = 10;
-            enemy["hit_points"] = 10;
-            enemy["max_hit_points"] = 10;
-        }
-
-        enemy["id"] = $"{mapId}-{token.ToLowerInvariant()}-{index}";
-        enemy["team"] = "enemy";
-        enemy["grid_pos"] = cell;
-
-        if (string.IsNullOrEmpty(GetString(enemy, "name", "")))
-        {
-            enemy["name"] = BuildFallbackName(archetypeId, "Enemy");
-        }
-
-        if (string.IsNullOrEmpty(GetString(enemy, "primary_ability_id", "")))
-        {
-            enemy["primary_ability_id"] = "melee";
-        }
-
-        return enemy;
-    }
-
-    private Array<Dictionary> BuildPlayersFromTokenSpawns(System.Collections.Generic.Dictionary<string, Vector2I> spawnByCharacterId)
-    {
-        var players = new Array<Dictionary>();
-        if (_defaultParty.Count == 0)
-        {
-            return players;
-        }
-
-        var anchor = new Vector2I(2, 7);
-        foreach (var pair in spawnByCharacterId)
-        {
-            anchor = pair.Value;
-            break;
-        }
-
-        for (var i = 0; i < _defaultParty.Count; i++)
-        {
-            var player = CopyDictionary(_defaultParty[i]);
-            var playerId = GetString(player, "id", "");
-            if (!string.IsNullOrEmpty(playerId) && spawnByCharacterId.TryGetValue(playerId, out var specificCell))
-            {
-                player["grid_pos"] = specificCell;
-            }
-            else
-            {
-                player["grid_pos"] = anchor + GetPartyFormationOffset(i);
-            }
-
-            players.Add(player);
-        }
-
-        return players;
-    }
-
-    private static string BuildFallbackName(string archetypeId, string fallback)
-    {
-        if (string.IsNullOrEmpty(archetypeId))
-        {
-            return fallback;
-        }
-
-        return archetypeId.Replace('-', ' ');
-    }
-
-    private static Array<Dictionary> BuildPropsFromTokenDefinition(string mapId, TokenMapDef definition, int width, int height)
-    {
-        var props = new Array<Dictionary>();
-        var propRows = SplitTokenRows(definition.PropRows);
-        if (propRows.Count == 0 || definition.PropLegend.Count == 0)
-        {
-            return props;
-        }
-
-        var rowCount = Mathf.Min(height, propRows.Count);
-        for (var y = 0; y < rowCount; y++)
-        {
-            var row = propRows[y];
-            var colCount = Mathf.Min(width, row.Length);
-            for (var x = 0; x < colCount; x++)
-            {
-                var token = row[x];
-                if (token == "__" || !definition.PropLegend.TryGetValue(token, out var propDef))
-                {
-                    continue;
-                }
-
-                var prop = new Dictionary
-                {
-                    { "id", $"{mapId}-{token.ToLowerInvariant()}-{x}-{y}" },
-                    { "type", propDef.Type },
-                    { "name", propDef.Name },
-                    { "grid_pos", new Vector2I(x, y) }
-                };
-
-                if (!string.IsNullOrEmpty(propDef.InteractionText))
-                {
-                    prop["interaction_text"] = propDef.InteractionText;
-                }
-
-                if (propDef.LootItemIds != null && propDef.LootItemIds.Length > 0)
-                {
-                    var lootIds = new Array<string>();
-                    foreach (var itemId in propDef.LootItemIds)
-                    {
-                        if (!string.IsNullOrEmpty(itemId))
-                        {
-                            lootIds.Add(itemId.Trim());
-                        }
-                    }
-
-                    if (lootIds.Count > 0)
-                    {
-                        prop["loot_item_ids"] = lootIds;
-                        prop["loot_rolls_min"] = Mathf.Max(1, propDef.LootRollsMin);
-                        prop["loot_rolls_max"] = Mathf.Max((int)prop["loot_rolls_min"], propDef.LootRollsMax);
-                    }
-                }
-
-                props.Add(prop);
-            }
-        }
-
-        return props;
     }
 
     public void SetActiveMapVisual(string mapId)
@@ -485,136 +135,6 @@ public partial class MapLoader : Node
         }
     }
 
-    private void EnsureBaseLayersPopulated()
-    {
-        EnsureBaseLayerPopulated("forest-town");
-    }
-
-    private void EnsureBaseLayerPopulated(string mapId)
-    {
-        if (HasAuthoredBaseLayer(mapId))
-        {
-            return;
-        }
-
-        if (!TryGetBaseLayer(mapId, out var baseLayer))
-        {
-            return;
-        }
-
-        var terrain = ResolveTerrainDefinition(mapId);
-        if (!TryAssignTerrainTileSet(baseLayer, terrain))
-        {
-            return;
-        }
-
-        if (!MapTokenCatalog.Maps.TryGetValue(mapId, out var definition))
-        {
-            return;
-        }
-
-        baseLayer.Clear();
-
-        var rows = SplitTokenRows(definition.LayoutRows);
-        var width = GetRowWidth(rows);
-        var height = rows.Count;
-        for (var y = 0; y < height; y++)
-        {
-            for (var x = 0; x < width; x++)
-            {
-                var token = GetRowToken(rows[y], x);
-                var atlas = GetFloorAtlasCell(terrain);
-                if (definition.BaseLegend.TryGetValue(token, out var baseDef))
-                {
-                    if (baseDef.Type == MapBaseTileType.Wall)
-                    {
-                        atlas = GetWallAtlasCell(terrain);
-                    }
-                    else if (baseDef.Type == MapBaseTileType.Door)
-                    {
-                        atlas = GetDoorAtlasCell(terrain);
-                    }
-                }
-
-                baseLayer.SetCell(new Vector2I(x, y), 0, atlas, 0);
-            }
-        }
-    }
-
-    private bool TryAssignTerrainTileSet(TileMapLayer layer, MapTerrainDef terrain)
-    {
-        if (layer == null)
-        {
-            return false;
-        }
-
-        terrain ??= new MapTerrainDef();
-        var terrainKey = BuildTerrainKey(terrain);
-        if (!_terrainTileSetsByKey.TryGetValue(terrainKey, out var terrainTileSet))
-        {
-            var atlasTexture = GD.Load<Texture2D>(terrain.AtlasPath);
-            if (atlasTexture == null)
-            {
-                return false;
-            }
-
-            var floorAtlasCell = GetFloorAtlasCell(terrain);
-            var wallAtlasCell = GetWallAtlasCell(terrain);
-            var doorAtlasCell = GetDoorAtlasCell(terrain);
-            var openDoorAtlasCell = GetOpenDoorAtlasCell(terrain);
-            var atlasSource = new TileSetAtlasSource
-            {
-                Texture = atlasTexture,
-                TextureRegionSize = new Vector2I(TerrainTileSize, TerrainTileSize)
-            };
-            var createdAtlasCells = new HashSet<Vector2I>();
-            if (!TryCreateTerrainTile(atlasSource, atlasTexture, floorAtlasCell, createdAtlasCells)
-                || !TryCreateTerrainTile(atlasSource, atlasTexture, wallAtlasCell, createdAtlasCells))
-            {
-                return false;
-            }
-
-            TryCreateTerrainTile(atlasSource, atlasTexture, doorAtlasCell, createdAtlasCells);
-            TryCreateTerrainTile(atlasSource, atlasTexture, openDoorAtlasCell, createdAtlasCells);
-
-            terrainTileSet = new TileSet();
-            terrainTileSet.TileSize = new Vector2I(TerrainTileSize, TerrainTileSize);
-            terrainTileSet.AddSource(atlasSource, 0);
-            _terrainTileSetsByKey[terrainKey] = terrainTileSet;
-        }
-
-        if (layer.TileSet != terrainTileSet)
-        {
-            layer.TileSet = terrainTileSet;
-        }
-
-        return true;
-    }
-
-    private static bool TryCreateTerrainTile(TileSetAtlasSource atlasSource, Texture2D atlasTexture, Vector2I atlasCell, HashSet<Vector2I> createdAtlasCells)
-    {
-        if (!IsTerrainAtlasCellInBounds(atlasTexture, atlasCell))
-        {
-            GD.PushWarning($"Skipping terrain atlas cell {atlasCell}; it is outside {atlasTexture.ResourcePath}.");
-            return false;
-        }
-
-        if (createdAtlasCells.Add(atlasCell))
-        {
-            atlasSource.CreateTile(atlasCell);
-        }
-
-        return true;
-    }
-
-    private static bool IsTerrainAtlasCellInBounds(Texture2D atlasTexture, Vector2I atlasCell)
-    {
-        return atlasCell.X >= 0
-            && atlasCell.Y >= 0
-            && (atlasCell.X + 1) * TerrainTileSize <= atlasTexture.GetWidth()
-            && (atlasCell.Y + 1) * TerrainTileSize <= atlasTexture.GetHeight();
-    }
-
     public bool SetDoorVisual(string mapId, Vector2I cell, bool isOpen)
     {
         if (!TryGetBaseLayer(mapId, out var baseLayer))
@@ -622,14 +142,20 @@ public partial class MapLoader : Node
             return false;
         }
 
-        var terrain = ResolveTerrainDefinition(mapId);
-        if (!TryAssignTerrainTileSet(baseLayer, terrain))
+        if (!TryGetBaseLayerSnapshot(mapId, baseLayer, out var snapshot)
+            || !snapshot.Cells.TryGetValue(cell, out var authoredCell))
         {
             return false;
         }
 
-        var atlas = isOpen ? GetOpenDoorAtlasCell(terrain) : GetDoorAtlasCell(terrain);
-        baseLayer.SetCell(cell, 0, atlas, 0);
+        var terrain = ResolveTerrainDefinition(mapId);
+        var atlas = isOpen ? GetOpenDoorAtlasCell(terrain) : authoredCell.AtlasCoords;
+        if (!HasAtlasTile(baseLayer, authoredCell.SourceId, atlas))
+        {
+            return false;
+        }
+
+        baseLayer.SetCell(cell, authoredCell.SourceId, atlas, authoredCell.AlternativeTile);
         return true;
     }
 
@@ -650,48 +176,83 @@ public partial class MapLoader : Node
             return false;
         }
 
-        var usedRect = baseLayer.GetUsedRect();
-        if (usedRect.Size.X <= 0 || usedRect.Size.Y <= 0)
+        if (!TryGetBaseLayerSnapshot(mapId, baseLayer, out var snapshot))
         {
             return false;
         }
 
+        foreach (var pair in snapshot.Cells)
+        {
+            var cell = pair.Key;
+            var cellSnapshot = pair.Value;
+
+            if (cellSnapshot.TerrainType == "wall")
+            {
+                wallCells.Add(cell);
+                continue;
+            }
+
+            if (cellSnapshot.TerrainType == "door")
+            {
+                doors.Add(new Dictionary
+                {
+                    { "id", string.IsNullOrEmpty(cellSnapshot.DoorId) ? $"{mapId}-door-{cell.X}-{cell.Y}" : cellSnapshot.DoorId },
+                    { "cell", cell },
+                    { "is_open", false }
+                });
+            }
+        }
+
+        width = Mathf.Max(1, snapshot.UsedRect.End.X);
+        height = Mathf.Max(1, snapshot.UsedRect.End.Y);
+        return true;
+    }
+
+    private bool TryGetBaseLayerSnapshot(string mapId, TileMapLayer baseLayer, out BaseLayerSnapshot snapshot)
+    {
+        if (_baseLayerSnapshotsByMapId.TryGetValue(mapId, out snapshot))
+        {
+            return true;
+        }
+
+        var usedRect = baseLayer.GetUsedRect();
+        if (usedRect.Size.X <= 0 || usedRect.Size.Y <= 0)
+        {
+            snapshot = null;
+            return false;
+        }
+
+        var cells = new System.Collections.Generic.Dictionary<Vector2I, BaseLayerCellSnapshot>();
         for (var y = usedRect.Position.Y; y < usedRect.End.Y; y++)
         {
             for (var x = usedRect.Position.X; x < usedRect.End.X; x++)
             {
                 var cell = new Vector2I(x, y);
-                if (baseLayer.GetCellSourceId(cell) == -1)
+                var sourceId = baseLayer.GetCellSourceId(cell);
+                if (sourceId == -1)
                 {
                     continue;
                 }
 
                 var tileData = baseLayer.GetCellTileData(cell);
-                var terrainType = ResolveTerrainType(mapId, baseLayer, cell);
-
-                if (terrainType == "wall")
+                var fallbackDoorId = $"{mapId}-door-{cell.X}-{cell.Y}";
+                cells[cell] = new BaseLayerCellSnapshot
                 {
-                    wallCells.Add(cell);
-                    continue;
-                }
-
-                if (terrainType == "door")
-                {
-                    var fallbackDoorId = $"{mapId}-door-{cell.X}-{cell.Y}";
-                    var doorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId);
-
-                    doors.Add(new Dictionary
-                    {
-                        { "id", doorId },
-                        { "cell", cell },
-                        { "is_open", false }
-                    });
-                }
+                    SourceId = sourceId,
+                    AtlasCoords = baseLayer.GetCellAtlasCoords(cell),
+                    AlternativeTile = baseLayer.GetCellAlternativeTile(cell),
+                    TerrainType = ResolveTerrainType(mapId, baseLayer, cell),
+                    DoorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId)
+                };
             }
         }
 
-        width = Mathf.Max(1, usedRect.End.X);
-        height = Mathf.Max(1, usedRect.End.Y);
+        snapshot = new BaseLayerSnapshot
+        {
+            UsedRect = usedRect,
+            Cells = cells
+        };
+        _baseLayerSnapshotsByMapId[mapId] = snapshot;
         return true;
     }
 
@@ -722,9 +283,15 @@ public partial class MapLoader : Node
         return "floor";
     }
 
-    private static string BuildTerrainKey(MapTerrainDef terrain)
+    private static bool HasAtlasTile(TileMapLayer layer, int sourceId, Vector2I atlasCoords)
     {
-        return $"{terrain.AtlasPath}|{terrain.FloorAtlasX},{terrain.FloorAtlasY}|{terrain.WallAtlasX},{terrain.WallAtlasY}|{terrain.DoorAtlasX},{terrain.DoorAtlasY}|{terrain.OpenDoorAtlasX},{terrain.OpenDoorAtlasY}";
+        if (layer.TileSet == null || !layer.TileSet.HasSource(sourceId))
+        {
+            return false;
+        }
+
+        return layer.TileSet.GetSource(sourceId) is TileSetAtlasSource atlasSource
+            && atlasSource.HasTile(atlasCoords);
     }
 
     private static Vector2I GetFloorAtlasCell(MapTerrainDef terrain) => new(terrain.FloorAtlasX, terrain.FloorAtlasY);
