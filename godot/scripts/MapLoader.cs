@@ -471,8 +471,10 @@ public partial class MapLoader : Node
                             }
                         }
 
-                        var fallbackEnemyId = $"{encounterId}-enemy-{cell.X}-{cell.Y}";
-                        var fallbackEnemyName = GetString(enemy, "name", "Enemy");
+                        var fallbackEnemyId = string.IsNullOrEmpty(templateId)
+                            ? $"{encounterId}-enemy-{cell.X}-{cell.Y}"
+                            : $"{encounterId}-{templateId}-{cell.X}-{cell.Y}";
+                        var fallbackEnemyName = GetString(enemy, "name", string.IsNullOrEmpty(templateId) ? "Enemy" : HumanizeToken(templateId));
                         var fallbackPrimaryAbility = GetString(enemy, "primary_ability_id", "melee");
                         var fallbackInitiative = GetInt(enemy, "initiative", 10);
                         var fallbackHp = GetInt(enemy, "hit_points", 8);
@@ -705,6 +707,30 @@ public partial class MapLoader : Node
         }
 
         return false;
+    }
+
+    private static string HumanizeToken(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "Enemy";
+        }
+
+        var parts = value.Replace('_', '-').Split('-', System.StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return value;
+        }
+
+        for (var index = 0; index < parts.Length; index++)
+        {
+            var part = parts[index];
+            parts[index] = part.Length == 1
+                ? part.ToUpperInvariant()
+                : char.ToUpperInvariant(part[0]) + part.Substring(1);
+        }
+
+        return string.Join(" ", parts);
     }
 
     public void DrawMapFeaturesOverlay(
