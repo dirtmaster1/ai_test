@@ -448,7 +448,7 @@ public partial class MapLoader : Node
                     }
                     case "enemy_spawn":
                     {
-                        var encounterId = GetTileString(markerLayer, tileData, "encounter_id", "encounter-a");
+                        var encounterId = GetTileString(markerLayer, tileData, "encounter_id", $"{mapId}-encounter-main");
                         if (!encountersById.TryGetValue(encounterId, out var encounter))
                         {
                             encounter = new Dictionary
