@@ -83,6 +83,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private ulong _lastManualEndTurnAtMs;
     private bool _isEndingTurn;
     private bool _isEnemyTurnProcessing;
+    private bool _isExplorationAutoMoving;
     private bool _isPanningView;
     private bool _leftMouseClickCandidate;
     private ulong _mouseMoveInputLockedUntilMs;
@@ -90,6 +91,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Vector2 _viewPanStartPosition;
     private const float ViewPanDragThreshold = 8.0f;
     private const float ViewPanOverscroll = 96.0f;
+    private const float ViewRightEdgeFollowBuffer = 72.0f;
+    private const float ExplorationStepSeconds = 0.14f;
 
     private static readonly Vector2I[] AttackDirections =
     {
@@ -2029,8 +2032,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        // Use current world position so the highlight stays in sync with tweened movement.
+        var topLeft = highlightedUnit.Position - new Vector2(CellSize * 0.5f, CellSize * 0.5f);
+
         var rect = new Rect2(
-            new Vector2(highlightedUnit.GridPos.X * CellSize, highlightedUnit.GridPos.Y * CellSize),
+            topLeft,
             new Vector2(CellSize, CellSize)
         );
 
@@ -2624,26 +2630,38 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool IsPointInsideVisibleGrid(Vector2 globalPoint)
     {
-        var gridRect = new Rect2(GlobalPosition, new Vector2(_gridWidth * CellSize, _gridHeight * CellSize));
+        var worldBounds = GetWorldPixelBounds();
+        var gridRect = new Rect2(GlobalPosition + worldBounds.Position, worldBounds.Size);
         return gridRect.HasPoint(globalPoint);
     }
 
     private bool IsPointInsideGrid(Vector2 localPoint)
     {
-        return localPoint.X >= 0
-            && localPoint.Y >= 0
-            && localPoint.X < _gridWidth * CellSize
-            && localPoint.Y < _gridHeight * CellSize;
+        var worldBounds = GetWorldPixelBounds();
+        var maxX = worldBounds.Position.X + worldBounds.Size.X;
+        var maxY = worldBounds.Position.Y + worldBounds.Size.Y;
+        return localPoint.X >= worldBounds.Position.X
+            && localPoint.Y >= worldBounds.Position.Y
+            && localPoint.X < maxX
+            && localPoint.Y < maxY;
     }
 
     private void SetViewPositionClamped(Vector2 targetPosition)
     {
-        var viewportSize = GetViewportRect().Size;
-        var worldWidth = _gridWidth * CellSize;
-        var worldHeight = _gridHeight * CellSize;
+        Position = GetClampedViewPosition(targetPosition);
+    }
 
-        var minX = viewportSize.X - worldWidth;
-        var maxX = 0.0f;
+    private Vector2 GetClampedViewPosition(Vector2 targetPosition)
+    {
+        var viewportSize = GetViewportRect().Size;
+        var worldBounds = GetWorldPixelBounds();
+        var worldLeft = worldBounds.Position.X;
+        var worldTop = worldBounds.Position.Y;
+        var worldRight = worldLeft + worldBounds.Size.X;
+        var worldBottom = worldTop + worldBounds.Size.Y;
+
+        var minX = viewportSize.X - worldRight;
+        var maxX = -worldLeft;
         if (minX > maxX)
         {
             var centeredX = (minX + maxX) * 0.5f;
@@ -2651,8 +2669,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             maxX = centeredX;
         }
 
-        var minY = viewportSize.Y - worldHeight;
-        var maxY = 0.0f;
+        var minY = viewportSize.Y - worldBottom;
+        var maxY = -worldTop;
         if (minY > maxY)
         {
             var centeredY = (minY + maxY) * 0.5f;
@@ -2660,15 +2678,70 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             maxY = centeredY;
         }
 
-        minX -= ViewPanOverscroll;
+        // Extra right-edge slack keeps the party clear of right-side HUD panels near map boundaries.
+        minX -= ViewPanOverscroll + ViewRightEdgeFollowBuffer;
         maxX += ViewPanOverscroll;
         minY -= ViewPanOverscroll;
         maxY += ViewPanOverscroll;
 
-        Position = new Vector2(
+        return new Vector2(
             Mathf.Clamp(targetPosition.X, minX, maxX),
             Mathf.Clamp(targetPosition.Y, minY, maxY)
         );
+    }
+
+    private Rect2 GetWorldPixelBounds()
+    {
+        if (_walkableCells.Count == 0)
+        {
+            return new Rect2(0.0f, 0.0f, _gridWidth * CellSize, _gridHeight * CellSize);
+        }
+
+        var hasAny = false;
+        var minCellX = 0;
+        var maxCellX = 0;
+        var minCellY = 0;
+        var maxCellY = 0;
+
+        foreach (var cell in _walkableCells)
+        {
+            if (!hasAny)
+            {
+                minCellX = cell.X;
+                maxCellX = cell.X;
+                minCellY = cell.Y;
+                maxCellY = cell.Y;
+                hasAny = true;
+                continue;
+            }
+
+            if (cell.X < minCellX)
+            {
+                minCellX = cell.X;
+            }
+            else if (cell.X > maxCellX)
+            {
+                maxCellX = cell.X;
+            }
+
+            if (cell.Y < minCellY)
+            {
+                minCellY = cell.Y;
+            }
+            else if (cell.Y > maxCellY)
+            {
+                maxCellY = cell.Y;
+            }
+        }
+
+        if (!hasAny)
+        {
+            return new Rect2(0.0f, 0.0f, _gridWidth * CellSize, _gridHeight * CellSize);
+        }
+
+        var width = (maxCellX - minCellX + 1) * CellSize;
+        var height = (maxCellY - minCellY + 1) * CellSize;
+        return new Rect2(minCellX * CellSize, minCellY * CellSize, width, height);
     }
 
     private void ClampViewPositionToBounds()
@@ -2693,12 +2766,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void CenterViewOnCell(Vector2I cell)
     {
+        SetViewPositionClamped(GetCenteredViewTargetForCell(cell));
+    }
+
+    private Vector2 GetCenteredViewTargetForCell(Vector2I cell)
+    {
         var viewportSize = GetViewportRect().Size;
-        var targetPosition = new Vector2(
+        return new Vector2(
             viewportSize.X * 0.5f - (cell.X * CellSize + CellSize * 0.5f),
             viewportSize.Y * 0.5f - (cell.Y * CellSize + CellSize * 0.5f)
         );
-        SetViewPositionClamped(targetPosition);
     }
 
     private void CenterViewOnCurrentFocus()
@@ -3753,6 +3830,235 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         CenterViewOnCurrentFocus();
+        QueueRedraw();
+        return true;
+    }
+
+    private async void BeginExplorationClickMove(Vector2I targetCell)
+    {
+        if (!CanBeginExplorationClickMove(targetCell))
+        {
+            return;
+        }
+
+        _isExplorationAutoMoving = true;
+        try
+        {
+            var leader = GetExplorerUnit();
+            if (!IsUsableUnit(leader) || leader.IsDead)
+            {
+                return;
+            }
+
+            var party = BuildExplorationPartyOrdered(leader);
+            if (party.Count == 0)
+            {
+                return;
+            }
+
+            var path = FindExplorationPath(leader.GridPos, targetCell, party);
+            if (path.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var step in path)
+            {
+                if (_flowState != BattleFlowState.Exploration)
+                {
+                    break;
+                }
+
+                if (!await TryMoveExplorationPartyStepAnimated(step, party))
+                {
+                    break;
+                }
+
+                if (TryHandleMapTransition())
+                {
+                    return;
+                }
+
+                SetStatusHelp();
+                TryStartCombatFromAggro();
+                if (_flowState != BattleFlowState.Exploration)
+                {
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            _isExplorationAutoMoving = false;
+        }
+    }
+
+    private bool CanBeginExplorationClickMove(Vector2I targetCell)
+    {
+        if (_flowState != BattleFlowState.Exploration || _isExplorationAutoMoving)
+        {
+            return false;
+        }
+
+        if (!IsInBounds(targetCell))
+        {
+            return false;
+        }
+
+        var leader = GetExplorerUnit();
+        if (!IsUsableUnit(leader) || leader.IsDead || leader.GridPos == targetCell)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private List<Unit> BuildExplorationPartyOrdered(Unit leader)
+    {
+        var party = new List<Unit>();
+        if (!IsUsableUnit(leader) || leader.IsDead)
+        {
+            return party;
+        }
+
+        party.Add(leader);
+        foreach (var player in _playerUnits)
+        {
+            if (!IsUsableUnit(player) || player.IsDead || player == leader)
+            {
+                continue;
+            }
+
+            party.Add(player);
+        }
+
+        return party;
+    }
+
+    private Array<Vector2I> FindExplorationPath(Vector2I start, Vector2I goal, List<Unit> party)
+    {
+        var path = new Array<Vector2I>();
+        if (start == goal || party == null || party.Count == 0)
+        {
+            return path;
+        }
+
+        var partySet = new HashSet<Unit>(party);
+        if (!CanExplorationLeaderEnterCell(goal, partySet))
+        {
+            return path;
+        }
+
+        var frontier = new Queue<Vector2I>();
+        var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
+        var visited = new HashSet<Vector2I>();
+
+        frontier.Enqueue(start);
+        visited.Add(start);
+
+        while (frontier.Count > 0)
+        {
+            var current = frontier.Dequeue();
+            if (current == goal)
+            {
+                break;
+            }
+
+            foreach (var dir in AttackDirections)
+            {
+                var next = current + dir;
+                if (visited.Contains(next) || !CanExplorationLeaderEnterCell(next, partySet))
+                {
+                    continue;
+                }
+
+                visited.Add(next);
+                cameFrom[next] = current;
+                frontier.Enqueue(next);
+            }
+        }
+
+        if (!visited.Contains(goal))
+        {
+            return path;
+        }
+
+        var cursor = goal;
+        while (cursor != start)
+        {
+            path.Insert(0, cursor);
+            cursor = cameFrom[cursor];
+        }
+
+        return path;
+    }
+
+    private async System.Threading.Tasks.Task<bool> TryMoveExplorationPartyStepAnimated(Vector2I leaderNextCell, List<Unit> orderedParty)
+    {
+        if (_flowState != BattleFlowState.Exploration || orderedParty == null || orderedParty.Count == 0)
+        {
+            return false;
+        }
+
+        var partySet = new HashSet<Unit>(orderedParty);
+        var priorPositions = new System.Collections.Generic.Dictionary<Unit, Vector2I>();
+        foreach (var member in orderedParty)
+        {
+            if (!IsUsableUnit(member) || member.IsDead)
+            {
+                continue;
+            }
+
+            priorPositions[member] = member.GridPos;
+        }
+
+        var leader = orderedParty[0];
+        if (!priorPositions.ContainsKey(leader) || !CanExplorationLeaderEnterCell(leaderNextCell, partySet))
+        {
+            return false;
+        }
+
+        var visualFrom = new System.Collections.Generic.Dictionary<Unit, Vector2>();
+        var visualTo = new System.Collections.Generic.Dictionary<Unit, Vector2>();
+
+        visualFrom[leader] = leader.Position;
+        leader.SetGridPos(leaderNextCell);
+        visualTo[leader] = leader.Position;
+        leader.Position = visualFrom[leader];
+
+        for (var i = 1; i < orderedParty.Count; i++)
+        {
+            var follower = orderedParty[i];
+            if (!priorPositions.ContainsKey(follower))
+            {
+                continue;
+            }
+
+            var nextCell = priorPositions[orderedParty[i - 1]];
+            if (!CanExplorationFollowerEnterCell(nextCell, partySet))
+            {
+                continue;
+            }
+
+            visualFrom[follower] = follower.Position;
+            follower.SetGridPos(nextCell);
+            visualTo[follower] = follower.Position;
+            follower.Position = visualFrom[follower];
+        }
+
+        var tween = CreateTween();
+        tween.SetTrans(Tween.TransitionType.Sine);
+        tween.SetEase(Tween.EaseType.Out);
+        foreach (var pair in visualTo)
+        {
+            tween.Parallel().TweenProperty(pair.Key, "position", pair.Value, ExplorationStepSeconds);
+        }
+
+        var cameraTarget = GetClampedViewPosition(GetCenteredViewTargetForCell(leaderNextCell));
+        tween.Parallel().TweenProperty(this, "position", cameraTarget, ExplorationStepSeconds);
+
+        await ToSignal(tween, Tween.SignalName.Finished);
         QueueRedraw();
         return true;
     }

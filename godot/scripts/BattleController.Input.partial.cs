@@ -133,6 +133,17 @@ public partial class BattleController
 
     private void HandleMouseInput(InputEventMouseButton mouseEvent)
     {
+        if (_isExplorationAutoMoving)
+        {
+            return;
+        }
+
+        if (ShouldIgnoreWorldMouseInput())
+        {
+            ClearMovementPreviewPath();
+            return;
+        }
+
         if (HandleViewPanInput(mouseEvent))
         {
             return;
@@ -161,6 +172,12 @@ public partial class BattleController
             {
                 return;
             }
+
+            if (_flowState == BattleFlowState.Exploration)
+            {
+                BeginExplorationClickMove(clickedCell);
+                return;
+            }
         }
 
         HandleMouseMoveInput(mouseEvent);
@@ -168,6 +185,12 @@ public partial class BattleController
 
     private void HandleMouseHoverInput(InputEventMouseMotion mouseMotion)
     {
+        if (ShouldIgnoreWorldMouseInput())
+        {
+            ClearMovementPreviewPath();
+            return;
+        }
+
         if (HandleViewPanInput(mouseMotion))
         {
             return;
@@ -263,8 +286,18 @@ public partial class BattleController
         SetStatusHelp();
     }
 
+    private bool ShouldIgnoreWorldMouseInput()
+    {
+        return _hud != null && _hud.ShouldBlockWorldMouseInput();
+    }
+
     private void HandleExplorationInput(InputEventKey keyEvent)
     {
+        if (_isExplorationAutoMoving)
+        {
+            return;
+        }
+
         var explorer = GetExplorerUnit();
         if (explorer == null)
         {

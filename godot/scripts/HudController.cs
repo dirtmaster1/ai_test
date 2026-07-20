@@ -1641,6 +1641,34 @@ public partial class HudController : Control
         return _inventoryPanel != null && _inventoryPanel.Visible;
     }
 
+    public bool ShouldBlockWorldMouseInput()
+    {
+        if (_isDraggingPanel || _isResizingPanel)
+        {
+            return true;
+        }
+
+        var viewport = GetViewport();
+        if (viewport == null)
+        {
+            return false;
+        }
+
+        var hovered = viewport.GuiGetHoveredControl();
+        if (hovered == null)
+        {
+            return false;
+        }
+
+        // HudController itself is a fullscreen root control; only child controls should block world clicks.
+        if (hovered == this)
+        {
+            return false;
+        }
+
+        return hovered == this || IsAncestorOf(hovered);
+    }
+
     public void SetLootPanelVisible(bool visible)
     {
         if (_lootPanel != null)
