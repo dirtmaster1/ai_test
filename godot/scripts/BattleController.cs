@@ -36,6 +36,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly Array<Unit> _playerUnits = new();
     private readonly Array<Unit> _enemyUnits = new();
     private readonly Array<Vector2I> _wallCells = new();
+    private readonly HashSet<Vector2I> _walkableCells = new();
     private readonly Array<Dictionary> _mapDoors = new();
     private readonly Array<Dictionary> _mapTransitions = new();
     private readonly Array<Dictionary> _mapProps = new();
@@ -818,6 +819,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _wallCells.Clear();
+        _walkableCells.Clear();
         _mapDoors.Clear();
         _mapTransitions.Clear();
         _mapProps.Clear();
@@ -840,6 +842,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         foreach (var wallCell in walls)
         {
             _wallCells.Add(wallCell);
+        }
+
+        var walkableCells = TryGetVector2IArray(mapData, "walkable_cells");
+        foreach (var walkableCell in walkableCells)
+        {
+            _walkableCells.Add(walkableCell);
         }
 
         var doors = TryGetDictionaryArray(mapData, "doors");
@@ -1389,6 +1397,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool IsInBounds(Vector2I cell)
     {
+        if (_walkableCells.Count > 0)
+        {
+            return _walkableCells.Contains(cell);
+        }
+
         return cell.X >= 0 && cell.X < _gridWidth && cell.Y >= 0 && cell.Y < _gridHeight;
     }
 
