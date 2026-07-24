@@ -6,6 +6,7 @@ public partial class BattleController
     // Architecture: Map/encounter orchestration only.
     private void EnterExplorationMode(string statusText = null)
     {
+        ClearCombatOnlyDebuffsForParty();
         _flowState = BattleFlowState.Exploration;
         _awaitingPlayerAttackDirection = false;
         ClearMovementPreviewPath();

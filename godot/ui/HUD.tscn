@@ -106,11 +106,24 @@ theme_override_constants/separation = 4
 layout_mode = 2
 text = "Character"
 
-[node name="CharacterSummaryLabel" type="Label" parent="CharacterPanel/CharacterVBox"]
+[node name="CharacterDetailsPanel" type="PanelContainer" parent="CharacterPanel/CharacterVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CharacterDetailsVBox" type="VBoxContainer" parent="CharacterPanel/CharacterVBox/CharacterDetailsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="CharacterSummaryLabel" type="Label" parent="CharacterPanel/CharacterVBox/CharacterDetailsPanel/CharacterDetailsVBox"]
 layout_mode = 2
 size_flags_vertical = 3
 autowrap_mode = 3
 text = "No unit selected."
+
+[node name="CharacterStatusLabel" type="Label" parent="CharacterPanel/CharacterVBox/CharacterDetailsPanel/CharacterDetailsVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Status Effects: none"
 
 [node name="CharacterCycleButtons" type="HBoxContainer" parent="CharacterPanel/CharacterVBox"]
 layout_mode = 2

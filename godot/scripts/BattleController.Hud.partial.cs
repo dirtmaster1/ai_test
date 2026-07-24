@@ -34,6 +34,7 @@ public partial class BattleController
                 characterUnit == null ? "" : GetActionDisplayName(characterUnit.PrimaryAbilityId)
             )
         );
+        _hud.SetCharacterStatusSummary(_hud.BuildCharacterStatusSummary(characterUnit));
 
         var activePlayer = GetActivePlayerUnit();
         var abilityEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();

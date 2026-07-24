@@ -300,6 +300,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         activeUnit.ResetTurnResources();
+        ApplyStartOfTurnStatusEffects(activeUnit);
+        if (activeUnit.IsDead)
+        {
+            CleanupDefeatedUnits();
+            if (CheckCombatResolved())
+            {
+                return;
+            }
+
+            TryRequestEndTurn(activeUnit, manualInput: false);
+            return;
+        }
+
         CenterViewOnCurrentFocus();
 
         if (activeUnit.Team == "enemy")
@@ -1122,6 +1135,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             resultText += $" (MP -{magicPointCost})";
         }
 
+        if (mitigatedDamage > 0 && !target.IsDead)
+        {
+            var onHitStatusText = TryApplyOnHitStatusEffects(attacker, target);
+            if (!string.IsNullOrEmpty(onHitStatusText))
+            {
+                resultText += $" {onHitStatusText}";
+            }
+        }
+
         if (target.IsDead)
         {
             resultText += $" {target.UnitName} is defeated.";
@@ -1353,6 +1375,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_playerUnits.Count == 0)
         {
             _flowState = BattleFlowState.Defeat;
+            ClearCombatOnlyDebuffsForParty();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             _persistence.PersistSaveGame(false);
             return true;
@@ -1752,6 +1775,145 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
+    private void ApplyStartOfTurnStatusEffects(Unit activeUnit)
+    {
+        if (!IsUsableUnit(activeUnit) || activeUnit.IsDead)
+        {
+            return;
+        }
+
+        var events = activeUnit.ProcessStartOfTurnStatusEffects();
+        foreach (var entry in events)
+        {
+            var statusName = GetString(entry, "display_name", "Effect");
+            var damage = GetInt(entry, "damage", 0);
+            var turnsLeft = GetInt(entry, "remaining_turns", 0);
+            var stacks = Mathf.Max(1, GetInt(entry, "stacks", 1));
+
+            if (damage > 0)
+            {
+                var message = $"{activeUnit.UnitName} takes {damage} damage from {statusName.ToLowerInvariant()}";
+                if (stacks > 1)
+                {
+                    message += $" ({stacks} stacks)";
+                }
+
+                if (turnsLeft > 0)
+                {
+                    message += $" ({turnsLeft} turn{(turnsLeft == 1 ? "" : "s")} left)";
+                }
+
+                message += ".";
+                _hud?.AddCombatLogEntry(message);
+                _lastActionSummary = message;
+            }
+        }
+
+        SyncHudFromGameState();
+        QueueRedraw();
+    }
+
+    private string TryApplyOnHitStatusEffects(Unit attacker, Unit target)
+    {
+        if (!IsUsableUnit(attacker) || !IsUsableUnit(target) || target.IsDead || _gameData == null)
+        {
+            return "";
+        }
+
+        var appliedMessages = new List<string>();
+        foreach (var abilityId in attacker.AbilityIds)
+        {
+            var abilityData = _gameData.GetAbility(abilityId);
+            if (abilityData.Count == 0)
+            {
+                continue;
+            }
+
+            if (GetString(abilityData, "type", "").ToLowerInvariant() != "passive")
+            {
+                continue;
+            }
+
+            if (GetString(abilityData, "trigger", "").ToLowerInvariant() != "on_hit")
+            {
+                continue;
+            }
+
+            var effectId = GetString(abilityData, "effect_id", "");
+            if (string.IsNullOrEmpty(effectId))
+            {
+                continue;
+            }
+
+            var effectName = GetString(abilityData, "effect_name", effectId);
+            var durationTurns = Mathf.Max(1, GetInt(abilityData, "duration_turns", 1));
+            var startDelayTurns = Mathf.Max(0, GetInt(abilityData, "start_delay_turns", 0));
+            var damagePerTurn = Mathf.Max(0, GetInt(abilityData, "damage_per_turn", 0));
+            var effectKind = GetString(abilityData, "effect_kind", "debuff").ToLowerInvariant();
+            var isBuff = effectKind == "buff";
+            var stackingMode = GetString(abilityData, "stacking_mode", "refresh");
+            var maxStacks = Mathf.Max(1, GetInt(abilityData, "max_stacks", 1));
+            var stackAmount = Mathf.Max(1, GetInt(abilityData, "stack_amount", 1));
+            var effectScope = GetString(abilityData, "effect_scope", "persistent");
+
+            var applied = target.ApplyStatusEffect(effectId, effectName, isBuff, durationTurns, startDelayTurns, damagePerTurn, stackingMode, maxStacks, stackAmount, effectScope);
+            if (!GetBool(applied, "applied", false))
+            {
+                continue;
+            }
+
+            var message = $"{target.UnitName} is {effectName.ToLowerInvariant()}";
+            if (durationTurns > 0)
+            {
+                message += $" for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}";
+            }
+
+            var stacks = Mathf.Max(1, GetInt(applied, "stacks", 1));
+            if (stacks > 1)
+            {
+                message += $" ({stacks} stacks)";
+            }
+
+            message += ".";
+            appliedMessages.Add(message);
+        }
+
+        return appliedMessages.Count == 0 ? "" : string.Join(" ", appliedMessages);
+    }
+
+    private bool IsPassiveAbilityId(string abilityId)
+    {
+        if (string.IsNullOrEmpty(abilityId) || _gameData == null)
+        {
+            return false;
+        }
+
+        var abilityData = _gameData.GetAbility(abilityId);
+        if (abilityData.Count == 0)
+        {
+            return false;
+        }
+
+        return GetString(abilityData, "type", "attack").ToLowerInvariant() == "passive";
+    }
+
+    private void ClearCombatOnlyDebuffsForParty()
+    {
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            var removedCount = unit.ClearStatusEffectsByScope("combat_only", includeBuffs: false);
+            if (removedCount > 0)
+            {
+                _hud?.AddCombatLogEntry($"{unit.UnitName} shakes off lingering combat debuffs.");
+            }
+        }
+    }
+
     private string GetSelectedAbilityId(Unit unit)
     {
         if (unit == null)
@@ -1759,12 +1921,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return "";
         }
 
-        if (_selectedAbilityIdByUnitId.TryGetValue(unit.UnitId, out var selectedId) && unit.HasAbility(selectedId))
+        if (_selectedAbilityIdByUnitId.TryGetValue(unit.UnitId, out var selectedId) && unit.HasAbility(selectedId) && !IsPassiveAbilityId(selectedId))
         {
             return selectedId;
         }
 
-        if (!string.IsNullOrEmpty(unit.PrimaryAbilityId) && unit.HasAbility(unit.PrimaryAbilityId))
+        if (!string.IsNullOrEmpty(unit.PrimaryAbilityId) && unit.HasAbility(unit.PrimaryAbilityId) && !IsPassiveAbilityId(unit.PrimaryAbilityId))
         {
             _selectedAbilityIdByUnitId[unit.UnitId] = unit.PrimaryAbilityId;
             return unit.PrimaryAbilityId;
@@ -1772,8 +1934,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (unit.AbilityIds != null && unit.AbilityIds.Count > 0)
         {
-            _selectedAbilityIdByUnitId[unit.UnitId] = unit.AbilityIds[0];
-            return unit.AbilityIds[0];
+            foreach (var abilityId in unit.AbilityIds)
+            {
+                if (IsPassiveAbilityId(abilityId))
+                {
+                    continue;
+                }
+
+                _selectedAbilityIdByUnitId[unit.UnitId] = abilityId;
+                return abilityId;
+            }
         }
 
         return "";
@@ -1798,6 +1968,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var abilityId in unit.AbilityIds)
         {
+            if (IsPassiveAbilityId(abilityId))
+            {
+                continue;
+            }
+
             if (unit.CanUseAbility(abilityId) && CanCastAction(unit, ResolveActionProfile(unit, abilityId), false))
             {
                 return true;
@@ -1818,6 +1993,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var selectedId = GetSelectedAbilityId(unit);
         foreach (var abilityId in unit.AbilityIds)
         {
+            if (IsPassiveAbilityId(abilityId))
+            {
+                continue;
+            }
+
             var profile = ResolveActionProfile(unit, abilityId);
             var actionName = string.IsNullOrEmpty(profile.ActionName) ? GetActionDisplayName(abilityId) : profile.ActionName;
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);

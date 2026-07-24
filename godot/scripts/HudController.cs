@@ -54,6 +54,7 @@ public partial class HudController : Control
     private PanelContainer _characterPanel;
     private Label _characterHeader;
     private Label _characterSummaryLabel;
+    private Label _characterStatusLabel;
     private Button _characterPrevButton;
     private Button _characterNextButton;
     private Button _characterCloseButton;
@@ -155,7 +156,8 @@ public partial class HudController : Control
         _actionPanel = GetNode<PanelContainer>("ActionPanel");
         _characterPanel = GetNode<PanelContainer>("CharacterPanel");
         _characterHeader = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterHeader");
-        _characterSummaryLabel = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterSummaryLabel");
+        _characterSummaryLabel = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterDetailsPanel/CharacterDetailsVBox/CharacterSummaryLabel");
+        _characterStatusLabel = GetNode<Label>("CharacterPanel/CharacterVBox/CharacterDetailsPanel/CharacterDetailsVBox/CharacterStatusLabel");
         _characterPrevButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterPrevButton");
         _characterNextButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterNextButton");
         _characterCloseButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterCloseButton");
@@ -1031,6 +1033,7 @@ public partial class HudController : Control
 
         StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
+        StyleBodyLabel(_characterStatusLabel, mutedBodyColor, 13);
         StyleBodyRichText(_turnQueueLabel, bodyColor, mutedBodyColor, 14);
         StyleBodyLabel(_helpBody, bodyColor, 14);
         StyleBodyLabel(_inventoryUnitLabel, bodyColor, 14);
@@ -1072,6 +1075,29 @@ public partial class HudController : Control
         StyleItemList(_lootItemList, bodyColor, mutedBodyColor);
         StyleItemList(_vendorBuyList, bodyColor, mutedBodyColor);
         StyleItemList(_vendorSellList, bodyColor, mutedBodyColor);
+
+        var characterInnerPanel = GetNodeOrNull<PanelContainer>("CharacterPanel/CharacterVBox/CharacterDetailsPanel");
+        if (characterInnerPanel != null)
+        {
+            var innerStyle = new StyleBoxFlat
+            {
+                BgColor = new Color(0.08f, 0.11f, 0.13f, 0.95f),
+                BorderColor = new Color(0.3f, 0.42f, 0.5f, 0.95f),
+                BorderWidthTop = 1,
+                BorderWidthRight = 1,
+                BorderWidthBottom = 1,
+                BorderWidthLeft = 1,
+                CornerRadiusTopLeft = 2,
+                CornerRadiusTopRight = 2,
+                CornerRadiusBottomRight = 2,
+                CornerRadiusBottomLeft = 2,
+                ContentMarginTop = 6,
+                ContentMarginRight = 6,
+                ContentMarginBottom = 6,
+                ContentMarginLeft = 6
+            };
+            characterInnerPanel.AddThemeStyleboxOverride("panel", innerStyle);
+        }
 
         _worldHoverBackground = new Color(0.08f, 0.11f, 0.14f, 0.95f);
         _worldHoverBorder = panelBorder;
@@ -1283,6 +1309,14 @@ public partial class HudController : Control
         }
     }
 
+    public void SetCharacterStatusSummary(string text)
+    {
+        if (_characterStatusLabel != null)
+        {
+            _characterStatusLabel.Text = text;
+        }
+    }
+
     public string BuildCharacterSummary(Unit unit, string selectedAbilityName, string primaryAbilityName)
     {
         if (unit == null)
@@ -1321,6 +1355,52 @@ public partial class HudController : Control
             $"Attack Damage: {unit.AttackDamage}\n" +
             $"Attack Range: {unit.AttackRange}\n" +
                 $"Initiative: {unit.Initiative}";
+    }
+
+    public string BuildCharacterStatusSummary(Unit unit)
+    {
+        if (unit == null)
+        {
+            return "Status Effects: none";
+        }
+
+        var entries = unit.GetStatusEntriesForHud();
+        if (entries == null || entries.Count == 0)
+        {
+            return "Status Effects: none";
+        }
+
+        var builder = new StringBuilder();
+        builder.Append("Status Effects:\n");
+        foreach (var entry in entries)
+        {
+            var label = GetString(entry, "label", "Effect");
+            var isBuff = GetBool(entry, "is_buff", false);
+            var remainingTurns = GetInt(entry, "remaining_turns", -1);
+            var startDelayTurns = GetInt(entry, "start_delay_turns", 0);
+            var stacks = Mathf.Max(1, GetInt(entry, "stacks", 1));
+
+            builder.Append("- ");
+            builder.Append(isBuff ? "Buff: " : "Debuff: ");
+            builder.Append(label);
+            if (stacks > 1)
+            {
+                builder.Append($" ({stacks} stacks)");
+            }
+
+            if (startDelayTurns > 0)
+            {
+                builder.Append($" (starts in {startDelayTurns} turn{(startDelayTurns == 1 ? "" : "s")})");
+            }
+            else if (remainingTurns > 0)
+            {
+                builder.Append($" ({remainingTurns} turn{(remainingTurns == 1 ? "" : "s")} left)");
+            }
+
+            builder.Append("\n");
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
     public string BuildHelpText(string flowState)
@@ -1901,6 +1981,23 @@ public partial class HudController : Control
         }
 
         return (int)((Variant)dict[key]);
+    }
+
+    private static bool GetBool(Dictionary dict, string key, bool fallback)
+    {
+        if (dict == null || !dict.ContainsKey(key))
+        {
+            return fallback;
+        }
+
+        var value = (Variant)dict[key];
+        return value.VariantType switch
+        {
+            Variant.Type.Bool => (bool)value,
+            Variant.Type.Int => (int)value != 0,
+            Variant.Type.Float => !Mathf.IsZeroApprox((float)value),
+            _ => bool.TryParse(value.AsString(), out var parsed) ? parsed : fallback
+        };
     }
 
     private static string BuildItemSummary(Dictionary item)

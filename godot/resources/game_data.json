@@ -20,6 +20,22 @@
 	  "type": "defend",
 	  "range": 0,
 	  "damage": 0
+	},
+	"poison": {
+	  "id": "poison",
+	  "name": "Poisoned",
+	  "type": "passive",
+	  "trigger": "on_hit",
+	  "effect_id": "poison",
+	  "effect_name": "Poisoned",
+	  "effect_kind": "debuff",
+	  "effect_scope": "combat_only",
+	  "stacking_mode": "intensity",
+	  "max_stacks": 3,
+	  "stack_amount": 1,
+	  "duration_turns": 2,
+	  "start_delay_turns": 1,
+	  "damage_per_turn": 2
 	}
   },
   "spells": {
@@ -438,7 +454,8 @@
 		"team": "enemy",
 		"primary_ability_id": "melee",
 		"ability_ids": [
-		  "melee"
+		  "melee",
+		  "poison"
 		],
 		"base_unarmed_damage": 3,
 		"initiative": 12,

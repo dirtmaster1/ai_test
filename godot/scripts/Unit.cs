@@ -3,6 +3,21 @@ using Godot.Collections;
 
 public partial class Unit : Node2D
 {
+    private sealed class StatusEffectState
+    {
+        public string BaseStatusId = "";
+        public string StatusId = "";
+        public string DisplayName = "";
+        public bool IsBuff;
+        public int RemainingTurns;
+        public int StartDelayTurns;
+        public int DamagePerTurn;
+        public int Stacks = 1;
+        public int MaxStacks = 1;
+        public string StackingMode = "refresh";
+        public string Scope = "persistent";
+    }
+
     private const int CellSize = 64;
     private const int AtlasTileSize = 64;
     private const string UnitAtlasPath = "res://assets/tilesets/units_2_64.png";
@@ -42,7 +57,7 @@ public partial class Unit : Node2D
             : 0;
     public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
     public int ArmorClass => Mathf.Max(0, ArmorClassBonus);
-    public int ExperienceToNextLevel => Mathf.Max(25, Level * 25);
+    public int ExperienceToNextLevel => Mathf.Max(100, Level * 25);
     public int MovementPerTurn { get; private set; } = MaxMovementPerTurn;
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
@@ -52,6 +67,8 @@ public partial class Unit : Node2D
     private Sprite2D _sprite;
     private Texture2D _unitAtlas;
     private readonly Dictionary<string, int> _abilityCooldownRemaining = new();
+    private readonly System.Collections.Generic.Dictionary<string, StatusEffectState> _statusEffects = new();
+    private int _statusEffectSequence;
 
     public override void _Ready()
     {
@@ -271,6 +288,262 @@ public partial class Unit : Node2D
         return true;
     }
 
+    public Dictionary ApplyStatusEffect(string statusId, string displayName, bool isBuff, int durationTurns, int startDelayTurns = 0, int damagePerTurn = 0, string stackingMode = "refresh", int maxStacks = 1, int stackAmount = 1, string scope = "persistent")
+    {
+        var result = new Dictionary
+        {
+            { "applied", false },
+            { "base_status_id", "" },
+            { "display_name", "" },
+            { "stacks", 0 },
+            { "remaining_turns", 0 },
+            { "start_delay_turns", 0 },
+            { "stacking_mode", "refresh" },
+        };
+
+        if (string.IsNullOrEmpty(statusId))
+        {
+            return result;
+        }
+
+        var baseStatusId = statusId.Trim();
+        if (string.IsNullOrEmpty(baseStatusId))
+        {
+            return result;
+        }
+
+        var normalizedMode = NormalizeStackingMode(stackingMode);
+        var safeScope = string.IsNullOrEmpty(scope) ? "persistent" : scope;
+        var safeDuration = Mathf.Max(1, durationTurns);
+        var safeDelay = Mathf.Max(0, startDelayTurns);
+        var safeDamage = Mathf.Max(0, damagePerTurn);
+        var safeStackAmount = Mathf.Max(1, stackAmount);
+        var safeMaxStacks = Mathf.Max(1, maxStacks);
+
+        if (normalizedMode == "independent")
+        {
+            _statusEffectSequence += 1;
+            var instanceId = $"{baseStatusId}#{_statusEffectSequence}";
+            _statusEffects[instanceId] = new StatusEffectState
+            {
+                BaseStatusId = baseStatusId,
+                StatusId = instanceId,
+                DisplayName = string.IsNullOrEmpty(displayName) ? baseStatusId : displayName,
+                IsBuff = isBuff,
+                RemainingTurns = safeDuration,
+                StartDelayTurns = safeDelay,
+                DamagePerTurn = safeDamage,
+                Stacks = safeStackAmount,
+                MaxStacks = safeMaxStacks,
+                StackingMode = normalizedMode,
+                Scope = safeScope,
+            };
+
+            result["applied"] = true;
+            result["base_status_id"] = baseStatusId;
+            result["display_name"] = string.IsNullOrEmpty(displayName) ? baseStatusId : displayName;
+            result["stacks"] = safeStackAmount;
+            result["remaining_turns"] = safeDuration;
+            result["start_delay_turns"] = safeDelay;
+            result["stacking_mode"] = normalizedMode;
+            return result;
+        }
+
+        var existingKey = FindStatusEffectKeyByBaseId(baseStatusId);
+        if (existingKey == null)
+        {
+            _statusEffects[baseStatusId] = new StatusEffectState
+            {
+                BaseStatusId = baseStatusId,
+                StatusId = baseStatusId,
+                DisplayName = string.IsNullOrEmpty(displayName) ? baseStatusId : displayName,
+                IsBuff = isBuff,
+                RemainingTurns = safeDuration,
+                StartDelayTurns = safeDelay,
+                DamagePerTurn = safeDamage,
+                Stacks = safeStackAmount,
+                MaxStacks = safeMaxStacks,
+                StackingMode = normalizedMode,
+                Scope = safeScope,
+            };
+
+            result["applied"] = true;
+            result["base_status_id"] = baseStatusId;
+            result["display_name"] = string.IsNullOrEmpty(displayName) ? baseStatusId : displayName;
+            result["stacks"] = safeStackAmount;
+            result["remaining_turns"] = safeDuration;
+            result["start_delay_turns"] = safeDelay;
+            result["stacking_mode"] = normalizedMode;
+            return result;
+        }
+
+        var effect = _statusEffects[existingKey];
+        effect.DisplayName = string.IsNullOrEmpty(displayName) ? effect.DisplayName : displayName;
+        effect.IsBuff = isBuff;
+        effect.Scope = safeScope;
+        effect.MaxStacks = Mathf.Max(effect.MaxStacks, safeMaxStacks);
+        effect.StackingMode = normalizedMode;
+        effect.DamagePerTurn = Mathf.Max(effect.DamagePerTurn, safeDamage);
+
+        if (normalizedMode == "intensity")
+        {
+            effect.Stacks = Mathf.Clamp(effect.Stacks + safeStackAmount, 1, effect.MaxStacks);
+        }
+        else
+        {
+            effect.Stacks = Mathf.Clamp(effect.Stacks, 1, effect.MaxStacks);
+        }
+
+        effect.RemainingTurns = Mathf.Max(effect.RemainingTurns, safeDuration);
+        effect.StartDelayTurns = Mathf.Min(effect.StartDelayTurns, safeDelay);
+        _statusEffects[existingKey] = effect;
+
+        result["applied"] = true;
+        result["base_status_id"] = effect.BaseStatusId;
+        result["display_name"] = effect.DisplayName;
+        result["stacks"] = effect.Stacks;
+        result["remaining_turns"] = effect.RemainingTurns;
+        result["start_delay_turns"] = effect.StartDelayTurns;
+        result["stacking_mode"] = effect.StackingMode;
+        return result;
+    }
+
+    public int ClearStatusEffectsByScope(string scope, bool includeBuffs = true)
+    {
+        if (string.IsNullOrEmpty(scope) || _statusEffects.Count == 0)
+        {
+            return 0;
+        }
+
+        var removed = 0;
+        var keys = new Array<string>();
+        foreach (var key in _statusEffects.Keys)
+        {
+            keys.Add(key);
+        }
+
+        foreach (var key in keys)
+        {
+            if (!_statusEffects.TryGetValue(key, out var effect))
+            {
+                continue;
+            }
+
+            if (effect.Scope != scope)
+            {
+                continue;
+            }
+
+            if (!includeBuffs && effect.IsBuff)
+            {
+                continue;
+            }
+
+            _statusEffects.Remove(key);
+            removed += 1;
+        }
+
+        return removed;
+    }
+
+    public Array<Dictionary> ProcessStartOfTurnStatusEffects()
+    {
+        var events = new Array<Dictionary>();
+        if (IsDead || _statusEffects.Count == 0)
+        {
+            return events;
+        }
+
+        var keys = new Array<string>();
+        foreach (var key in _statusEffects.Keys)
+        {
+            keys.Add(key);
+        }
+
+        foreach (var key in keys)
+        {
+            if (!_statusEffects.TryGetValue(key, out var effect))
+            {
+                continue;
+            }
+
+            if (effect.StartDelayTurns > 0)
+            {
+                effect.StartDelayTurns = Mathf.Max(0, effect.StartDelayTurns - 1);
+                _statusEffects[key] = effect;
+                if (effect.StartDelayTurns > 0)
+                {
+                    continue;
+                }
+            }
+
+            var damageApplied = 0;
+            if (effect.DamagePerTurn > 0 && !IsDead)
+            {
+                damageApplied = ApplyDamage(effect.DamagePerTurn * Mathf.Max(1, effect.Stacks));
+            }
+
+            effect.RemainingTurns = Mathf.Max(0, effect.RemainingTurns - 1);
+            var turnsLeft = effect.RemainingTurns;
+            var expired = turnsLeft <= 0;
+
+            events.Add(new Dictionary
+            {
+                { "status_id", effect.StatusId },
+                { "display_name", effect.DisplayName },
+                { "is_buff", effect.IsBuff },
+                { "damage", damageApplied },
+                { "remaining_turns", turnsLeft },
+                { "stacks", effect.Stacks },
+                { "expired", expired },
+            });
+
+            if (expired)
+            {
+                _statusEffects.Remove(key);
+            }
+            else
+            {
+                _statusEffects[key] = effect;
+            }
+        }
+
+        return events;
+    }
+
+    public Array<Dictionary> GetStatusEntriesForHud()
+    {
+        var entries = new Array<Dictionary>();
+
+        if (IsDefending && !IsDead)
+        {
+            entries.Add(new Dictionary
+            {
+                { "id", "defending" },
+                { "label", "Defending" },
+                { "is_buff", true },
+                { "remaining_turns", -1 },
+                { "start_delay_turns", 0 },
+            });
+        }
+
+        foreach (var effect in _statusEffects.Values)
+        {
+            entries.Add(new Dictionary
+            {
+                { "id", effect.StatusId },
+                { "base_id", effect.BaseStatusId },
+                { "label", effect.DisplayName },
+                { "is_buff", effect.IsBuff },
+                { "remaining_turns", effect.RemainingTurns },
+                { "start_delay_turns", effect.StartDelayTurns },
+                { "stacks", effect.Stacks },
+            });
+        }
+
+        return entries;
+    }
+
     public int GrantExperience(int amount)
     {
         var gain = Mathf.Max(0, amount);
@@ -326,6 +599,25 @@ public partial class Unit : Node2D
             cooldowns[pair.Key] = pair.Value;
         }
 
+        var statusEffects = new Array<Dictionary>();
+        foreach (var effect in _statusEffects.Values)
+        {
+            statusEffects.Add(new Dictionary
+            {
+                { "id", effect.StatusId },
+                { "base_id", effect.BaseStatusId },
+                { "display_name", effect.DisplayName },
+                { "is_buff", effect.IsBuff },
+                { "remaining_turns", effect.RemainingTurns },
+                { "start_delay_turns", effect.StartDelayTurns },
+                { "damage_per_turn", effect.DamagePerTurn },
+                { "stacks", effect.Stacks },
+                { "max_stacks", effect.MaxStacks },
+                { "stacking_mode", effect.StackingMode },
+                { "scope", effect.Scope },
+            });
+        }
+
         return new Dictionary
         {
             { "unit_id", UnitId },
@@ -344,6 +636,7 @@ public partial class Unit : Node2D
             { "level", Level },
             { "experience", Experience },
             { "cooldowns", cooldowns },
+            { "status_effects", statusEffects },
         };
     }
 
@@ -379,6 +672,38 @@ public partial class Unit : Node2D
             }
 
             _abilityCooldownRemaining[abilityId] = Mathf.Max(0, (int)((Variant)cooldowns[key]));
+        }
+
+        _statusEffects.Clear();
+        var statusEffects = TryGetDictionaryArray(snapshot, "status_effects");
+        foreach (var entry in statusEffects)
+        {
+            var statusId = GetString(entry, "id", "");
+            if (string.IsNullOrEmpty(statusId))
+            {
+                continue;
+            }
+
+            var remainingTurns = Mathf.Max(0, GetInt(entry, "remaining_turns", 0));
+            if (remainingTurns <= 0)
+            {
+                continue;
+            }
+
+            _statusEffects[statusId] = new StatusEffectState
+            {
+                BaseStatusId = GetString(entry, "base_id", statusId),
+                StatusId = statusId,
+                DisplayName = GetString(entry, "display_name", statusId),
+                IsBuff = GetBool(entry, "is_buff", false),
+                RemainingTurns = remainingTurns,
+                StartDelayTurns = Mathf.Max(0, GetInt(entry, "start_delay_turns", 0)),
+                DamagePerTurn = Mathf.Max(0, GetInt(entry, "damage_per_turn", 0)),
+                Stacks = Mathf.Max(1, GetInt(entry, "stacks", 1)),
+                MaxStacks = Mathf.Max(1, GetInt(entry, "max_stacks", 1)),
+                StackingMode = NormalizeStackingMode(GetString(entry, "stacking_mode", "refresh")),
+                Scope = GetString(entry, "scope", "persistent"),
+            };
         }
 
         IsDead = GetBool(snapshot, "is_dead", HitPoints <= 0) || HitPoints <= 0;
@@ -628,6 +953,70 @@ public partial class Unit : Node2D
 
         var value = (Variant)dict[key];
         return value.VariantType == Variant.Type.Dictionary ? (Dictionary)value : new Dictionary();
+    }
+
+    private static Array<Dictionary> TryGetDictionaryArray(Dictionary dict, string key)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return new Array<Dictionary>();
+        }
+
+        var raw = (Variant)dict[key];
+        if (raw.VariantType != Variant.Type.Array)
+        {
+            return new Array<Dictionary>();
+        }
+
+        var result = new Array<Dictionary>();
+        foreach (var entry in (Array)raw)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType == Variant.Type.Dictionary)
+            {
+                result.Add((Dictionary)variant);
+            }
+        }
+
+        return result;
+    }
+
+    private static string NormalizeStackingMode(string stackingMode)
+    {
+        var mode = string.IsNullOrEmpty(stackingMode)
+            ? "refresh"
+            : stackingMode.Trim().ToLowerInvariant();
+
+        return mode switch
+        {
+            "refresh" => "refresh",
+            "intensity" => "intensity",
+            "independent" => "independent",
+            _ => "refresh"
+        };
+    }
+
+    private string FindStatusEffectKeyByBaseId(string baseStatusId)
+    {
+        if (string.IsNullOrEmpty(baseStatusId))
+        {
+            return null;
+        }
+
+        if (_statusEffects.ContainsKey(baseStatusId))
+        {
+            return baseStatusId;
+        }
+
+        foreach (var pair in _statusEffects)
+        {
+            if (pair.Value.BaseStatusId == baseStatusId)
+            {
+                return pair.Key;
+            }
+        }
+
+        return null;
     }
 
     private void ApplyLevelUpGains()
