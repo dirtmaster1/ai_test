@@ -9,12 +9,14 @@ public partial class MapLoader : Node
     private const int UnitTileSize = 64;
     private const string BaseSuffix = "-base";
     private const string MarkerSuffix = "-markers";
+    private const string ItemVisualSuffix = "-item-visuals";
     private const string TerrainTypeKey = "terrain_type";
     private const string DoorIdKey = "door_id";
 
     private GameData _gameData;
     private Array<Dictionary> _defaultParty = new();
     private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _mapLayersById = new();
+    private readonly System.Collections.Generic.Dictionary<string, TileMapLayer> _itemVisualLayersByMapId = new();
     private readonly System.Collections.Generic.Dictionary<string, BaseLayerSnapshot> _baseLayerSnapshotsByMapId = new(System.StringComparer.OrdinalIgnoreCase);
     private Texture2D _unitsTexture;
 
@@ -105,6 +107,11 @@ public partial class MapLoader : Node
                 pair.Value.Visible = pair.Value == fallbackLayer;
             }
 
+            foreach (var pair in _itemVisualLayersByMapId)
+            {
+                pair.Value.Visible = false;
+            }
+
             return;
         }
 
@@ -113,11 +120,17 @@ public partial class MapLoader : Node
             var isBase = pair.Key == mapId || pair.Key == mapId + BaseSuffix;
             pair.Value.Visible = isBase;
         }
+
+        foreach (var pair in _itemVisualLayersByMapId)
+        {
+            pair.Value.Visible = pair.Key == mapId;
+        }
     }
 
     private void CacheMapLayers()
     {
         _mapLayersById.Clear();
+        _itemVisualLayersByMapId.Clear();
 
         var mapsRoot = GetNodeOrNull<Node>(MapsRootPath);
         if (mapsRoot == null)
@@ -133,8 +146,63 @@ public partial class MapLoader : Node
             }
 
             var mapId = layer.Name.ToString();
+            if (mapId.EndsWith(ItemVisualSuffix, System.StringComparison.Ordinal))
+            {
+                _itemVisualLayersByMapId[mapId.Substring(0, mapId.Length - ItemVisualSuffix.Length)] = layer;
+                continue;
+            }
+
             _mapLayersById[mapId] = layer;
         }
+
+
+        foreach (var pair in _mapLayersById)
+        {
+            if (!pair.Key.EndsWith(MarkerSuffix, System.StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var mapId = pair.Key.Substring(0, pair.Key.Length - MarkerSuffix.Length);
+            if (_itemVisualLayersByMapId.ContainsKey(mapId))
+            {
+                continue;
+            }
+
+            var visualLayer = BuildItemVisualLayer(pair.Value, mapId);
+            mapsRoot.AddChild(visualLayer);
+            _itemVisualLayersByMapId[mapId] = visualLayer;
+        }
+    }
+
+    private static TileMapLayer BuildItemVisualLayer(TileMapLayer markerLayer, string mapId)
+    {
+        var visualLayer = new TileMapLayer
+        {
+            Name = mapId + ItemVisualSuffix,
+            TileSet = markerLayer.TileSet,
+            Transform = markerLayer.Transform,
+            ZIndex = markerLayer.ZIndex,
+            Visible = false
+        };
+
+        foreach (var cell in markerLayer.GetUsedCells())
+        {
+            var tileData = ResolveCellTileData(markerLayer, cell);
+            if (tileData == null || !GetTileBool(markerLayer, tileData, "uses_tile_visual", false))
+            {
+                continue;
+            }
+
+            visualLayer.SetCell(
+                cell,
+                markerLayer.GetCellSourceId(cell),
+                markerLayer.GetCellAtlasCoords(cell),
+                markerLayer.GetCellAlternativeTile(cell)
+            );
+        }
+
+        return visualLayer;
     }
 
     public bool SetDoorVisual(string mapId, Vector2I cell, bool isOpen)
@@ -544,7 +612,8 @@ public partial class MapLoader : Node
                             { "id", propId },
                             { "type", propType },
                             { "name", GetTileString(markerLayer, tileData, "name", fallbackName) },
-                            { "grid_pos", cell }
+                            { "grid_pos", cell },
+                            { "uses_tile_visual", GetTileBool(markerLayer, tileData, "uses_tile_visual", false) }
                         };
 
                         var interactionText = GetTileString(markerLayer, tileData, "interaction_text", "");
@@ -670,6 +739,27 @@ public partial class MapLoader : Node
         }
 
         return int.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
+    }
+
+    private static bool GetTileBool(TileMapLayer layer, TileData tileData, string key, bool fallback)
+    {
+        if (!HasCustomDataLayer(layer, key))
+        {
+            return fallback;
+        }
+
+        var value = tileData.GetCustomData(key);
+        if (value.VariantType == Variant.Type.Nil)
+        {
+            return fallback;
+        }
+
+        if (value.VariantType == Variant.Type.Bool)
+        {
+            return (bool)value;
+        }
+
+        return bool.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
     }
 
     private static Array<string> GetTileStringArray(TileMapLayer layer, TileData tileData, string key)
@@ -909,6 +999,11 @@ public partial class MapLoader : Node
 
         foreach (var prop in mapProps)
         {
+            if (GetBool(prop, "uses_tile_visual", false))
+            {
+                continue;
+            }
+
             var cell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             var propId = GetString(prop, "id", "prop");
             var propType = GetString(prop, "type", "prop");
@@ -1497,6 +1592,11 @@ public partial class MapLoader : Node
     private static int GetInt(Dictionary dict, string key, int fallback)
     {
         return dict.ContainsKey(key) ? (int)dict[key] : fallback;
+    }
+
+    private static bool GetBool(Dictionary dict, string key, bool fallback)
+    {
+        return dict.ContainsKey(key) ? (bool)dict[key] : fallback;
     }
 
     private static Array<string> TryGetStringArray(Dictionary dict, string key)
