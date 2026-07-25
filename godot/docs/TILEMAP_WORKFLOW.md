@@ -65,6 +65,7 @@ General item tiles use these custom data keys:
 - `interaction_text`: text shown when inspecting a non-loot item
 - `loot_item_ids`: comma-separated item IDs for lootable items
 - `loot_rolls_min` and `loot_rolls_max`: number of unique entries selected from the loot pool
+- `gold_amount`: fixed amount shown with the chest contents and added to the party when looted
 - `uses_tile_visual`: keeps the atlas tile as the runtime visual instead of drawing the legacy prop overlay
 
 The item atlas includes ready-to-paint chest, signpost, trap, and cosmetic defaults. To give two placements different IDs, loot, or text, create tile alternatives in the TileSet editor and override their custom data, matching the existing transition-marker workflow.

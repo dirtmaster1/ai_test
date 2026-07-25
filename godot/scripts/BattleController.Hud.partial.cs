@@ -40,6 +40,7 @@ public partial class BattleController
         var abilityEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
         _hud.SetActionButtonsEnabled(abilityEnabled, _flowState == BattleFlowState.Combat);
         _hud.SetAbilityButtons(BuildAbilityEntriesForHud(activePlayer), abilityEnabled);
+        _hud.SetInventoryGold(_partyGold);
 
         var inventoryTarget = GetInventoryTargetUnit();
         if (inventoryTarget != null)

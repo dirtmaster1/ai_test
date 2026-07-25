@@ -77,6 +77,7 @@ public partial class HudController : Control
     private Label _inventoryHeader;
     private Label _inventoryUnitLabel;
     private Label _inventoryEquippedSummaryLabel;
+    private Label _inventoryGoldLabel;
     private ItemList _inventoryEquippedItemList;
     private ItemList _inventoryItemList;
     private Label _inventoryItemDetails;
@@ -185,6 +186,7 @@ public partial class HudController : Control
         _inventoryUnitLabel = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryUnitLabel");
         _inventoryEquippedSummaryLabel = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryEquippedSummaryLabel");
         _inventoryEquippedItemList = GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryEquippedItemList");
+        _inventoryGoldLabel = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryGoldLabel");
         _inventoryItemList = GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryItemList");
         _inventoryItemDetails = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryItemDetails");
         _inventoryPrevUnitButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryCycleButtons/PrevUnitButton");
@@ -1038,6 +1040,7 @@ public partial class HudController : Control
         StyleBodyLabel(_helpBody, bodyColor, 14);
         StyleBodyLabel(_inventoryUnitLabel, bodyColor, 14);
         StyleBodyLabel(_inventoryEquippedSummaryLabel, mutedBodyColor, 13);
+        StyleBodyLabel(_inventoryGoldLabel, bodyColor, 14);
         StyleBodyLabel(_inventoryItemDetails, mutedBodyColor, 13);
         StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
         StyleBodyLabel(_vendorDialogueLabel, bodyColor, 14);
@@ -1641,6 +1644,14 @@ public partial class HudController : Control
         if (_inventoryEquippedSummaryLabel != null)
         {
             _inventoryEquippedSummaryLabel.Text = text;
+        }
+    }
+
+    public void SetInventoryGold(int goldAmount)
+    {
+        if (_inventoryGoldLabel != null)
+        {
+            _inventoryGoldLabel.Text = $"Party Gold: {Mathf.Max(0, goldAmount)} gp";
         }
     }
 

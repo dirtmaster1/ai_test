@@ -2275,7 +2275,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var propName = GetString(prop, "name", "Chest");
             var propType = GetString(prop, "type", "prop");
             var interactionText = GetString(prop, "interaction_text", "");
-            var hasLoot = TryGetStringArray(prop, "loot_item_ids").Count > 0 || !string.IsNullOrEmpty(GetString(prop, "loot_item_id", ""));
+            var hasLoot = TryGetStringArray(prop, "loot_item_ids").Count > 0
+                || !string.IsNullOrEmpty(GetString(prop, "loot_item_id", ""))
+                || GetInt(prop, "gold_amount", 0) > 0;
             title = propName;
             if (hasLoot)
             {
@@ -2673,7 +2675,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!_mapLoader.TryResolveExplorationInteractionById(explorer, interactionId, _mapProps, _lootBags, _openedPropIds, _lootedBagIds, _partyInventoryItemIds, _gameData, _lootRng, out var statusText, out var logText, out var changedState))
+        if (!_mapLoader.TryResolveExplorationInteractionById(explorer, interactionId, _mapProps, _lootBags, _openedPropIds, _lootedBagIds, _partyInventoryItemIds, ref _partyGold, _gameData, _lootRng, out var statusText, out var logText, out var changedState))
         {
             return false;
         }

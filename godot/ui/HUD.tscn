@@ -306,6 +306,10 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Next Member"
 
+[node name="InventoryGoldLabel" type="Label" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+text = "Party Gold: 0 gp"
+
 [node name="InventoryItemList" type="ItemList" parent="InventoryPanel/InventoryVBox"]
 layout_mode = 2
 size_flags_vertical = 3

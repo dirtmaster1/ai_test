@@ -630,6 +630,12 @@ public partial class MapLoader : Node
                             prop["loot_rolls_max"] = Mathf.Max((int)prop["loot_rolls_min"], GetTileInt(markerLayer, tileData, "loot_rolls_max", (int)prop["loot_rolls_min"]));
                         }
 
+                        var goldAmount = Mathf.Max(0, GetTileInt(markerLayer, tileData, "gold_amount", 0));
+                        if (goldAmount > 0)
+                        {
+                            prop["gold_amount"] = goldAmount;
+                        }
+
                         props.Add(prop);
                         break;
                     }
@@ -1041,7 +1047,7 @@ public partial class MapLoader : Node
         foreach (var bag in lootBags)
         {
             var cell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            var isEmpty = GetBagItemIds(bag).Count == 0;
+            var isEmpty = GetBagItemIds(bag).Count == 0 && GetBagGoldAmount(bag) == 0;
             var rect = CellRect(cell, cellSize);
             if (isEmpty)
             {
@@ -1071,6 +1077,11 @@ public partial class MapLoader : Node
         {
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             if (Manhattan(explorer.GridPos, propCell) > 1)
+            {
+                continue;
+            }
+
+            if (GetString(prop, "type", "prop") == "sign")
             {
                 continue;
             }
@@ -1108,12 +1119,24 @@ public partial class MapLoader : Node
 
             var bagId = GetString(bag, "id", "bag");
             var itemIds = GetBagItemIds(bag);
-            if (itemIds.Count == 0)
+            var goldAmount = GetBagGoldAmount(bag);
+            if (itemIds.Count == 0 && goldAmount == 0)
             {
                 continue;
             }
 
             var containerName = GetBagSourceName(bag, mapProps);
+            if (goldAmount > 0)
+            {
+                entries.Add(new Dictionary
+                {
+                    { "id", $"bag-gold:{bagId}" },
+                    { "label", $"{goldAmount} Gold" },
+                    { "detail", $"Loot {goldAmount} gold." },
+                    { "source_title", containerName },
+                    { "loot_all_id", $"bag-all:{bagId}" }
+                });
+            }
 
             for (var itemIndex = 0; itemIndex < itemIds.Count; itemIndex++)
             {
@@ -1167,6 +1190,11 @@ public partial class MapLoader : Node
             var propType = GetString(prop, "type", "prop");
             var hasLoot = HasLootConfig(prop);
             var interactionText = GetString(prop, "interaction_text", "");
+            if (propType == "sign")
+            {
+                return true;
+            }
+
             if (propType == "npc")
             {
                 entries.Add(new Dictionary
@@ -1217,13 +1245,26 @@ public partial class MapLoader : Node
 
                 var bagId = GetString(bag, "id", "bag");
                 var itemIds = GetBagItemIds(bag);
-                if (itemIds.Count == 0)
+                var goldAmount = GetBagGoldAmount(bag);
+                if (itemIds.Count == 0 && goldAmount == 0)
                 {
                     statusText = "This loot bag is empty.";
                     return true;
                 }
 
                 var containerName = GetBagSourceName(bag, mapProps);
+                if (goldAmount > 0)
+                {
+                    entries.Add(new Dictionary
+                    {
+                        { "id", $"bag-gold:{bagId}" },
+                        { "label", $"{goldAmount} Gold" },
+                        { "detail", $"Loot {goldAmount} gold." },
+                        { "source_title", containerName },
+                        { "loot_all_id", $"bag-all:{bagId}" }
+                    });
+                }
+
                 for (var itemIndex = 0; itemIndex < itemIds.Count; itemIndex++)
                 {
                     var itemId = itemIds[itemIndex];
@@ -1262,7 +1303,7 @@ public partial class MapLoader : Node
         return _unitsTexture;
     }
 
-    public bool TryResolveExplorationInteractionById(Unit explorer, string interactionId, Array<Dictionary> mapProps, Array<Dictionary> lootBags, HashSet<string> openedPropIds, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, GameData gameData, RandomNumberGenerator lootRng, out string statusText, out string logText, out bool changedState)
+    public bool TryResolveExplorationInteractionById(Unit explorer, string interactionId, Array<Dictionary> mapProps, Array<Dictionary> lootBags, HashSet<string> openedPropIds, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, ref int partyGold, GameData gameData, RandomNumberGenerator lootRng, out string statusText, out string logText, out bool changedState)
     {
         statusText = "";
         logText = "";
@@ -1280,12 +1321,17 @@ public partial class MapLoader : Node
 
         if (interactionId.StartsWith("bag:"))
         {
-            return TryPickupBagById(explorer, interactionId.Substring(4), lootBags, lootedBagIds, partyInventoryItemIds, gameData, out statusText, out logText, out changedState);
+            return TryPickupBagById(explorer, interactionId.Substring(4), lootBags, lootedBagIds, partyInventoryItemIds, ref partyGold, gameData, out statusText, out logText, out changedState);
         }
 
         if (interactionId.StartsWith("bag-all:"))
         {
-            return TryPickupBagById(explorer, interactionId.Substring(8), lootBags, lootedBagIds, partyInventoryItemIds, gameData, out statusText, out logText, out changedState);
+            return TryPickupBagById(explorer, interactionId.Substring(8), lootBags, lootedBagIds, partyInventoryItemIds, ref partyGold, gameData, out statusText, out logText, out changedState);
+        }
+
+        if (interactionId.StartsWith("bag-gold:"))
+        {
+            return TryPickupBagGoldById(explorer, interactionId.Substring(9), lootBags, lootedBagIds, ref partyGold, out statusText, out logText, out changedState);
         }
 
         if (interactionId.StartsWith("bag-item:"))
@@ -1343,9 +1389,9 @@ public partial class MapLoader : Node
             var itemId = itemIds[itemIndex];
             itemIds.RemoveAt(itemIndex);
             bag["item_ids"] = itemIds;
-            if (itemIds.Count == 0)
+            bag["item_id"] = "";
+            if (itemIds.Count == 0 && GetBagGoldAmount(bag) == 0)
             {
-                bag["item_id"] = "";
                 lootedBagIds.Add(bagId);
             }
 
@@ -1377,6 +1423,11 @@ public partial class MapLoader : Node
         }
 
         return itemIds;
+    }
+
+    public int GetBagGoldAmount(Dictionary bag)
+    {
+        return Mathf.Max(0, GetInt(bag, "gold_amount", 0));
     }
 
     public string JoinItemNames(Array<string> itemIds, GameData gameData)
@@ -1438,18 +1489,23 @@ public partial class MapLoader : Node
             changedState = true;
 
             var drops = BuildPropLootDrops(prop, lootRng);
-            if (drops.Count > 0)
+            var goldAmount = Mathf.Max(0, GetInt(prop, "gold_amount", 0));
+            if (drops.Count > 0 || goldAmount > 0)
             {
                 var bag = new Dictionary
                 {
                     { "id", $"bag-{propId}" },
                     { "grid_pos", propCell },
                     { "item_ids", drops },
+                    { "gold_amount", goldAmount },
                     { "source_prop_id", propId }
                 };
                 lootBags.Add(bag);
                 statusText = $"{explorer.UnitName} opened {GetString(prop, "name", "prop")} and revealed loot.";
-                logText = $"Opened {GetString(prop, "name", "prop")}: found {JoinItemNames(drops, gameData)}.";
+                var revealedLoot = drops.Count > 0 && goldAmount > 0
+                    ? $"{JoinItemNames(drops, gameData)} and {goldAmount} gold"
+                    : goldAmount > 0 ? $"{goldAmount} gold" : JoinItemNames(drops, gameData);
+                logText = $"Opened {GetString(prop, "name", "prop")}: found {revealedLoot}.";
             }
             else
             {
@@ -1462,7 +1518,7 @@ public partial class MapLoader : Node
         return false;
     }
 
-    private bool TryPickupBagById(Unit explorer, string bagId, Array<Dictionary> lootBags, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, GameData gameData, out string statusText, out string logText, out bool changedState)
+    private bool TryPickupBagById(Unit explorer, string bagId, Array<Dictionary> lootBags, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, ref int partyGold, GameData gameData, out string statusText, out string logText, out bool changedState)
     {
         statusText = "";
         logText = "";
@@ -1483,7 +1539,8 @@ public partial class MapLoader : Node
             }
 
             var itemIds = GetBagItemIds(bag);
-            if (itemIds.Count == 0)
+            var goldAmount = GetBagGoldAmount(bag);
+            if (itemIds.Count == 0 && goldAmount == 0)
             {
                 statusText = "This loot bag is empty.";
                 return true;
@@ -1492,16 +1549,63 @@ public partial class MapLoader : Node
             lootedBagIds.Add(bagId);
             bag["item_ids"] = new Array<string>();
             bag["item_id"] = "";
+            bag["gold_amount"] = 0;
             changedState = true;
 
             foreach (var itemId in itemIds)
             {
                 partyInventoryItemIds.Add(itemId);
             }
+            partyGold += goldAmount;
 
-            var pickupSummary = JoinItemNames(itemIds, gameData);
+            var itemSummary = itemIds.Count > 0 ? JoinItemNames(itemIds, gameData) : "";
+            var pickupSummary = itemIds.Count > 0 && goldAmount > 0
+                ? $"{itemSummary} and {goldAmount} gold"
+                : goldAmount > 0 ? $"{goldAmount} gold" : itemSummary;
             statusText = $"{explorer.UnitName} picked up {pickupSummary}.";
             logText = $"Loot acquired: {pickupSummary}.";
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryPickupBagGoldById(Unit explorer, string bagId, Array<Dictionary> lootBags, HashSet<string> lootedBagIds, ref int partyGold, out string statusText, out string logText, out bool changedState)
+    {
+        statusText = "";
+        logText = "";
+        changedState = false;
+
+        foreach (var bag in lootBags)
+        {
+            if (GetString(bag, "id", "") != bagId)
+            {
+                continue;
+            }
+
+            var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
+            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            {
+                return false;
+            }
+
+            var goldAmount = GetBagGoldAmount(bag);
+            if (goldAmount == 0)
+            {
+                statusText = "This loot bag contains no gold.";
+                return true;
+            }
+
+            partyGold += goldAmount;
+            bag["gold_amount"] = 0;
+            if (GetBagItemIds(bag).Count == 0)
+            {
+                lootedBagIds.Add(bagId);
+            }
+
+            changedState = true;
+            statusText = $"{explorer.UnitName} looted {goldAmount} gold.";
+            logText = $"Loot acquired: {goldAmount} gold.";
             return true;
         }
 
@@ -1550,6 +1654,11 @@ public partial class MapLoader : Node
 
     private static bool HasLootConfig(Dictionary prop)
     {
+        if (GetInt(prop, "gold_amount", 0) > 0)
+        {
+            return true;
+        }
+
         if (TryGetStringArray(prop, "loot_item_ids").Count > 0)
         {
             return true;
