@@ -177,6 +177,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.VendorBuyRequested += OnHudVendorBuyRequested;
             _hud.VendorSellRequested += OnHudVendorSellRequested;
             _hud.TurnOrderUnitFocused += OnHudTurnOrderUnitFocused;
+            _hud.PartyUnitSelected += OnHudPartyUnitSelected;
+            _hud.PartyOrderRequested += OnHudPartyOrderRequested;
         }
 
         EnsureDefaultVendorState();
@@ -210,6 +212,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.VendorBuyRequested -= OnHudVendorBuyRequested;
             _hud.VendorSellRequested -= OnHudVendorSellRequested;
             _hud.TurnOrderUnitFocused -= OnHudTurnOrderUnitFocused;
+            _hud.PartyUnitSelected -= OnHudPartyUnitSelected;
+            _hud.PartyOrderRequested -= OnHudPartyOrderRequested;
         }
 
         _persistence.PersistSaveGame(false);
@@ -441,6 +445,66 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ? new Color(0.95f, 0.18f, 0.16f, 1.0f)
             : new Color(0.18f, 0.9f, 0.36f, 1.0f);
         unit.FlashFocusHighlight(highlightColor);
+    }
+
+    private void OnHudPartyUnitSelected(string unitId)
+    {
+        var unit = FindUnitById(unitId);
+        if (!IsUsableUnit(unit) || unit.Team != "player")
+        {
+            return;
+        }
+
+        _selectedCharacterUnitId = unit.UnitId;
+        SyncHudFromGameState();
+        _hud?.SetCharacterVisible(true);
+    }
+
+    private void OnHudPartyOrderRequested(string sourceUnitId, string targetUnitId)
+    {
+        if (_flowState != BattleFlowState.Exploration
+            || string.IsNullOrEmpty(sourceUnitId)
+            || string.IsNullOrEmpty(targetUnitId)
+            || sourceUnitId == targetUnitId)
+        {
+            return;
+        }
+
+        var sourceIndex = -1;
+        var targetIndex = -1;
+        for (var i = 0; i < _playerUnits.Count; i++)
+        {
+            if (_playerUnits[i]?.UnitId == sourceUnitId)
+            {
+                sourceIndex = i;
+            }
+            if (_playerUnits[i]?.UnitId == targetUnitId)
+            {
+                targetIndex = i;
+            }
+        }
+
+        if (sourceIndex < 0 || targetIndex < 0)
+        {
+            return;
+        }
+
+        var movedUnit = _playerUnits[sourceIndex];
+        _playerUnits.RemoveAt(sourceIndex);
+        _playerUnits.Insert(targetIndex, movedUnit);
+
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && !unit.IsDead)
+            {
+                _explorerUnit = unit;
+                break;
+            }
+        }
+
+        SyncHudFromGameState();
+        CenterViewOnCurrentFocus();
+        QueueRedraw();
     }
 
     private void OnHudEquipItemRequested(string itemId)
@@ -1110,6 +1174,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (_flowState == BattleFlowState.Combat)
         {
+            if (ResolveCombatTraps(unit, out var combatEnded))
+            {
+                if (combatEnded)
+                {
+                    return CombatActionResult.CombatResolvedResult;
+                }
+
+                if (unit.IsDead)
+                {
+                    TryRequestEndTurn(unit, manualInput: false);
+                    return CombatActionResult.Failed;
+                }
+            }
+
             unit.TrySpendMovement();
             SetStatusHelp();
         }
@@ -3996,6 +4074,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
+        ResolveExplorationTraps();
         CenterViewOnCurrentFocus();
         QueueRedraw();
         return true;
@@ -4226,7 +4305,163 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         tween.Parallel().TweenProperty(this, "position", cameraTarget, ExplorationStepSeconds);
 
         await ToSignal(tween, Tween.SignalName.Finished);
+        ResolveExplorationTraps();
         QueueRedraw();
+        return true;
+    }
+
+    private void ResolveExplorationTraps()
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
+        var triggeredAny = false;
+        foreach (var prop in _mapProps)
+        {
+            if (GetString(prop, "type", "") != "trap")
+            {
+                continue;
+            }
+
+            var trapId = GetString(prop, "id", "");
+            if (string.IsNullOrEmpty(trapId) || _openedPropIds.Contains(trapId))
+            {
+                continue;
+            }
+
+            var trapCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            Unit triggeringUnit = null;
+            foreach (var unit in _playerUnits)
+            {
+                if (IsUsableUnit(unit) && !unit.IsDead && unit.GridPos == trapCell)
+                {
+                    triggeringUnit = unit;
+                    break;
+                }
+            }
+
+            if (triggeringUnit == null)
+            {
+                continue;
+            }
+
+            triggeredAny |= TryTriggerTrap(prop, triggeringUnit);
+        }
+
+        if (!triggeredAny)
+        {
+            return;
+        }
+
+        var livingLeader = GetExplorerUnit();
+        if (!IsUsableUnit(livingLeader) || livingLeader.IsDead)
+        {
+            livingLeader = null;
+            foreach (var unit in _playerUnits)
+            {
+                if (IsUsableUnit(unit) && !unit.IsDead)
+                {
+                    livingLeader = unit;
+                    break;
+                }
+            }
+            _explorerUnit = livingLeader;
+        }
+
+        if (livingLeader == null)
+        {
+            _flowState = BattleFlowState.Defeat;
+            ClearCombatOnlyDebuffsForParty();
+            _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
+        }
+
+        SaveMapInteractionStateForCurrentMap();
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+    }
+
+    private bool ResolveCombatTraps(Unit triggeringUnit, out bool combatEnded)
+    {
+        combatEnded = false;
+        if (_flowState != BattleFlowState.Combat || !IsUsableUnit(triggeringUnit) || triggeringUnit.IsDead)
+        {
+            return false;
+        }
+
+        var triggeredAny = false;
+        foreach (var prop in _mapProps)
+        {
+            if (GetString(prop, "type", "") != "trap"
+                || GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999)) != triggeringUnit.GridPos)
+            {
+                continue;
+            }
+
+            triggeredAny |= TryTriggerTrap(prop, triggeringUnit);
+        }
+
+        if (!triggeredAny)
+        {
+            return false;
+        }
+
+        SaveMapInteractionStateForCurrentMap();
+        CleanupDefeatedUnits();
+        combatEnded = CheckCombatResolved();
+        if (!combatEnded)
+        {
+            SyncHudFromGameState();
+        }
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryTriggerTrap(Dictionary trap, Unit triggeringUnit)
+    {
+        if (trap == null || !IsUsableUnit(triggeringUnit) || triggeringUnit.IsDead)
+        {
+            return false;
+        }
+
+        var trapId = GetString(trap, "id", "");
+        if (string.IsNullOrEmpty(trapId) || _openedPropIds.Contains(trapId))
+        {
+            return false;
+        }
+
+        _openedPropIds.Add(trapId);
+        var trapName = GetString(trap, "name", "Trap");
+        var damage = Mathf.Max(0, GetInt(trap, "damage", 0));
+        var targetScope = GetString(trap, "target_scope", "triggering_unit").ToLowerInvariant();
+        var targets = new List<Unit>();
+        if (targetScope == "party")
+        {
+            foreach (var unit in _allUnits)
+            {
+                if (IsUsableUnit(unit) && !unit.IsDead && unit.Team == triggeringUnit.Team)
+                {
+                    targets.Add(unit);
+                }
+            }
+        }
+        else
+        {
+            targets.Add(triggeringUnit);
+        }
+
+        foreach (var target in targets)
+        {
+            var appliedDamage = target.ApplyDamage(damage);
+            var result = target.IsDead
+                ? $"{target.UnitName} triggered {trapName}, took {appliedDamage} damage, and was defeated."
+                : $"{target.UnitName} triggered {trapName} and took {appliedDamage} damage.";
+            _hud?.AddCombatLogEntry(result);
+        }
+
         return true;
     }
 
@@ -4299,52 +4534,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             _mapLoader.SetDoorVisual(_currentMapId, cell, IsDoorOpen(door));
         }
-    }
-
-    private bool RotateExplorationPartyOrder(int delta)
-    {
-        if (_flowState != BattleFlowState.Exploration || delta == 0)
-        {
-            return false;
-        }
-
-        var party = new List<Unit>();
-        foreach (var player in _playerUnits)
-        {
-            if (IsUsableUnit(player) && !player.IsDead)
-            {
-                party.Add(player);
-            }
-        }
-
-        if (party.Count <= 1)
-        {
-            return false;
-        }
-
-        var leader = GetExplorerUnit();
-        if (!IsUsableUnit(leader) || leader.IsDead)
-        {
-            return false;
-        }
-
-        var index = party.IndexOf(leader);
-        if (index < 0)
-        {
-            index = 0;
-        }
-
-        var nextIndex = (index + delta) % party.Count;
-        if (nextIndex < 0)
-        {
-            nextIndex += party.Count;
-        }
-
-        _explorerUnit = party[nextIndex];
-        _selectedCharacterUnitId = _explorerUnit.UnitId;
-        CenterViewOnCurrentFocus();
-        QueueRedraw();
-        return true;
     }
 
     private bool CanExplorationLeaderEnterCell(Vector2I cell, HashSet<Unit> partyMembers)

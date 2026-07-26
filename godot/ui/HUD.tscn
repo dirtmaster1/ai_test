@@ -144,6 +144,25 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"
 
+[node name="PartyPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 292.0
+offset_bottom = 382.0
+
+[node name="PartyVBox" type="VBoxContainer" parent="PartyPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PartyHeader" type="Label" parent="PartyPanel/PartyVBox"]
+layout_mode = 2
+text = "Party"
+
+[node name="PartyList" type="VBoxContainer" parent="PartyPanel/PartyVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
 [node name="ActionPanel" type="PanelContainer" parent="."]
 layout_mode = 0
 anchor_top = 1.0

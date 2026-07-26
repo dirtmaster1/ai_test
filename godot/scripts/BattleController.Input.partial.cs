@@ -304,16 +304,6 @@ public partial class BattleController
             return;
         }
 
-        if (keyEvent.Keycode == Key.Q || keyEvent.Keycode == Key.E)
-        {
-            var rotationDelta = keyEvent.Keycode == Key.Q ? -1 : 1;
-            if (RotateExplorationPartyOrder(rotationDelta))
-            {
-                SetStatusHelp();
-            }
-            return;
-        }
-
         var delta = KeyToDelta(keyEvent.Keycode);
         if (delta == Vector2I.Zero)
         {

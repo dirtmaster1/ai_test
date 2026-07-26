@@ -39,6 +39,12 @@ public partial class HudController : Control
     [Signal]
     public delegate void TurnOrderUnitFocusedEventHandler(string unitId);
 
+    [Signal]
+    public delegate void PartyUnitSelectedEventHandler(string unitId);
+
+    [Signal]
+    public delegate void PartyOrderRequestedEventHandler(string sourceUnitId, string targetUnitId);
+
     private const float GridPixelWidth = 20.0f * 64.0f;
     private const float Margin = 12.0f;
     private const float SidebarWidth = 430.0f;
@@ -61,6 +67,9 @@ public partial class HudController : Control
     private Button _characterPrevButton;
     private Button _characterNextButton;
     private Button _characterCloseButton;
+    private PanelContainer _partyPanel;
+    private Label _partyHeader;
+    private VBoxContainer _partyList;
     private MarginContainer _turnOrderDisplay;
     private HBoxContainer _turnOrderIcons;
     private PanelContainer _combatLogPanel;
@@ -115,6 +124,7 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private string _lastLogLine = "";
     private string _turnOrderSignature = "";
+    private string _partyListSignature = "";
     private const int MaxLogEntries = 250;
     private const float TurnOrderIconSize = 48.0f;
     private const float CombatLogTextPadding = 16.0f;
@@ -165,6 +175,9 @@ public partial class HudController : Control
         _characterPrevButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterPrevButton");
         _characterNextButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterNextButton");
         _characterCloseButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterCloseButton");
+        _partyPanel = GetNode<PanelContainer>("PartyPanel");
+        _partyHeader = GetNode<Label>("PartyPanel/PartyVBox/PartyHeader");
+        _partyList = GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
         _turnOrderDisplay = GetNode<MarginContainer>("TurnOrderDisplay");
         _turnOrderIcons = GetNode<HBoxContainer>("TurnOrderDisplay/TurnOrderCenter/TurnOrderIcons");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
@@ -1010,6 +1023,7 @@ public partial class HudController : Control
         StylePanel(_utilityPanel, panelStyle);
         StylePanel(_actionPanel, panelStyle);
         StylePanel(_characterPanel, panelStyle);
+        StylePanel(_partyPanel, panelStyle);
         StylePanel(_combatLogPanel, panelStyle);
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
@@ -1019,6 +1033,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_utilityHeader, headerColor);
         StyleHeaderLabel(_helpHeader, headerColor);
         StyleHeaderLabel(_characterHeader, headerColor);
+        StyleHeaderLabel(_partyHeader, headerColor);
         StyleHeaderLabel(_combatLogHeader, headerColor);
         StyleHeaderLabel(_inventoryHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
@@ -1404,7 +1419,7 @@ public partial class HudController : Control
             "- Help: H\n" +
             "- Save/Load: Utility panel buttons\n" +
             "- Inspect: hover units and interactables\n" +
-            "- Inventory target: click party member portrait\n" +
+            "- Character page: click a party card\n" +
             "- Cycle target: Tab / Shift+Tab or Prev/Next Member\n";
 
         if (flowState == "Exploration")
@@ -1412,7 +1427,7 @@ public partial class HudController : Control
             return common +
                 "\nEXPLORATION\n" +
                 "- Move party: WASD or Arrow keys\n" +
-                "- Reorder party lead: Q / E\n" +
+                "- Marching order: drag party cards\n" +
                 "- Interact: left-click chest/loot while adjacent (range 1)\n" +
                 "- Loot UI: click item to loot, or use Loot All\n" +
                 "- Map transitions: step on glowing edge cells\n" +
@@ -1667,6 +1682,184 @@ public partial class HudController : Control
                 _characterPanel.MoveToFront();
             }
         }
+    }
+
+    public void SetPartyList(Array<Unit> party, string selectedUnitId, bool reorderEnabled)
+    {
+        if (_partyList == null)
+        {
+            return;
+        }
+
+        var signatureBuilder = new StringBuilder($"{selectedUnitId}|{reorderEnabled}");
+        if (party != null)
+        {
+            foreach (var unit in party)
+            {
+                if (unit != null)
+                {
+                    signatureBuilder.Append('|')
+                        .Append(unit.UnitId).Append(':')
+                        .Append(unit.HitPoints).Append('/').Append(unit.MaxHitPoints).Append(':')
+                        .Append(unit.MagicPoints).Append('/').Append(unit.MaxMagicPoints).Append(':')
+                        .Append(unit.IsDead);
+                }
+            }
+        }
+
+        var signature = signatureBuilder.ToString();
+        if (signature == _partyListSignature)
+        {
+            return;
+        }
+
+        _partyListSignature = signature;
+        foreach (var child in _partyList.GetChildren())
+        {
+            child.QueueFree();
+        }
+
+        if (party == null)
+        {
+            return;
+        }
+
+        foreach (var unit in party)
+        {
+            if (unit != null)
+            {
+                _partyList.AddChild(CreatePartyCard(unit, unit.UnitId == selectedUnitId, reorderEnabled));
+            }
+        }
+    }
+
+    private PartyCard CreatePartyCard(Unit unit, bool selected, bool reorderEnabled)
+    {
+        var accent = unit.IsDead
+            ? new Color(0.35f, 0.35f, 0.35f, 1.0f)
+            : new Color(0.72f, 0.58f, 0.3f, 1.0f);
+        var card = new PartyCard
+        {
+            UnitId = unit.UnitId,
+            ReorderEnabled = reorderEnabled && !unit.IsDead,
+            CustomMinimumSize = new Vector2(0.0f, 72.0f),
+            FocusMode = FocusModeEnum.All,
+            MouseDefaultCursorShape = CursorShape.PointingHand,
+            TooltipText = reorderEnabled
+                ? $"Open {unit.UnitName}\nDrag to change marching order"
+                : $"Open {unit.UnitName}"
+        };
+        card.AddThemeStyleboxOverride("normal", CreatePartyCardStyle(new Color(0.055f, 0.06f, 0.065f, 0.97f), accent, selected ? 2 : 1));
+        card.AddThemeStyleboxOverride("hover", CreatePartyCardStyle(new Color(0.09f, 0.095f, 0.1f, 1.0f), new Color(0.88f, 0.73f, 0.4f, 1.0f), 2));
+        card.AddThemeStyleboxOverride("pressed", CreatePartyCardStyle(new Color(0.035f, 0.04f, 0.045f, 1.0f), accent, 2));
+        card.AddThemeStyleboxOverride("focus", CreatePartyCardStyle(new Color(0.075f, 0.08f, 0.085f, 1.0f), new Color(0.95f, 0.82f, 0.5f, 1.0f), 2));
+        card.UnitSelected += unitId => EmitSignal(SignalName.PartyUnitSelected, unitId);
+        card.ReorderRequested += (sourceUnitId, targetUnitId) => EmitSignal(SignalName.PartyOrderRequested, sourceUnitId, targetUnitId);
+
+        var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        row.AddThemeConstantOverride("separation", 8);
+        card.AddChild(row);
+        row.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        row.OffsetLeft = 8.0f;
+        row.OffsetTop = 6.0f;
+        row.OffsetRight = -8.0f;
+        row.OffsetBottom = -6.0f;
+
+        var portrait = new TextureRect
+        {
+            CustomMinimumSize = new Vector2(48.0f, 48.0f),
+            Texture = unit.GetTurnOrderIcon(),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = MouseFilterEnum.Ignore,
+            Modulate = unit.IsDead ? new Color(0.5f, 0.5f, 0.5f, 0.65f) : Colors.White
+        };
+        row.AddChild(portrait);
+
+        var details = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        details.AddThemeConstantOverride("separation", 2);
+        row.AddChild(details);
+
+        var name = new Label
+        {
+            Text = unit.IsDead ? $"{unit.UnitName} (Down)" : unit.UnitName,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        name.AddThemeColorOverride("font_color", unit.IsDead ? new Color(0.55f, 0.55f, 0.55f) : new Color(0.9f, 0.82f, 0.64f));
+        name.AddThemeFontSizeOverride("font_size", 13);
+        details.AddChild(name);
+
+        details.AddChild(CreatePartyResourceRow("HP", unit.HitPoints, unit.MaxHitPoints, new Color(0.7f, 0.13f, 0.13f)));
+        details.AddChild(CreatePartyResourceRow("MP", unit.MagicPoints, unit.MaxMagicPoints, new Color(0.12f, 0.28f, 0.62f)));
+        return card;
+    }
+
+    private static HBoxContainer CreatePartyResourceRow(string label, int value, int maximum, Color fillColor)
+    {
+        var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        row.AddThemeConstantOverride("separation", 5);
+
+        var valueLabel = new Label
+        {
+            Text = $"{label} {value}/{maximum}",
+            CustomMinimumSize = new Vector2(62.0f, 0.0f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        valueLabel.AddThemeColorOverride("font_color", new Color(0.76f, 0.73f, 0.66f));
+        valueLabel.AddThemeFontSizeOverride("font_size", 10);
+        row.AddChild(valueLabel);
+
+        var bar = new ProgressBar
+        {
+            MinValue = 0,
+            MaxValue = Mathf.Max(1, maximum),
+            Value = Mathf.Clamp(value, 0, Mathf.Max(1, maximum)),
+            ShowPercentage = false,
+            CustomMinimumSize = new Vector2(0.0f, 8.0f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        bar.AddThemeStyleboxOverride("background", CreateResourceBarStyle(new Color(0.015f, 0.018f, 0.022f, 0.9f)));
+        bar.AddThemeStyleboxOverride("fill", CreateResourceBarStyle(fillColor));
+        row.AddChild(bar);
+        return row;
+    }
+
+    private static StyleBoxFlat CreatePartyCardStyle(Color background, Color border, int borderWidth)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = background,
+            BorderColor = border,
+            BorderWidthLeft = borderWidth,
+            BorderWidthTop = borderWidth,
+            BorderWidthRight = borderWidth,
+            BorderWidthBottom = borderWidth,
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomRight = 6,
+            CornerRadiusBottomLeft = 6,
+            ContentMarginLeft = 7.0f,
+            ContentMarginTop = 6.0f,
+            ContentMarginRight = 7.0f,
+            ContentMarginBottom = 6.0f
+        };
+    }
+
+    private static StyleBoxFlat CreateResourceBarStyle(Color color)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = color,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        };
     }
 
     public void ToggleCharacterVisible()
@@ -2132,7 +2325,7 @@ public partial class HudController : Control
                 TextureNormal = unit.GetTurnOrderIcon(),
                 IgnoreTextureSize = true,
                 StretchMode = TextureButton.StretchModeEnum.Scale,
-                TooltipText = $"{unit.UnitName} - {unit.Team}\nDouble-click to focus",
+                TooltipText = $"{unit.UnitName} - {unit.Team}\nClick to focus",
                 FocusMode = FocusModeEnum.None,
                 MouseDefaultCursorShape = CursorShape.PointingHand
             };
@@ -2149,8 +2342,7 @@ public partial class HudController : Control
     {
         if (inputEvent is not InputEventMouseButton mouseButton
             || mouseButton.ButtonIndex != MouseButton.Left
-            || !mouseButton.Pressed
-            || !mouseButton.DoubleClick)
+            || !mouseButton.Pressed)
         {
             return;
         }

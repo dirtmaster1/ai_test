@@ -611,6 +611,12 @@ public partial class MapLoader : Node
                             prop["gold_amount"] = goldAmount;
                         }
 
+                        if (propType == "trap")
+                        {
+                            prop["damage"] = Mathf.Max(0, GetTileInt(markerLayer, tileData, "damage", 0));
+                            prop["target_scope"] = GetTileString(markerLayer, tileData, "target_scope", "triggering_unit");
+                        }
+
                         props.Add(prop);
                         break;
                     }
