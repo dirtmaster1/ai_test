@@ -36,6 +36,9 @@ public partial class HudController : Control
     [Signal]
     public delegate void LoadRequestedEventHandler();
 
+    [Signal]
+    public delegate void TurnOrderUnitFocusedEventHandler(string unitId);
+
     private const float GridPixelWidth = 20.0f * 64.0f;
     private const float Margin = 12.0f;
     private const float SidebarWidth = 430.0f;
@@ -58,7 +61,8 @@ public partial class HudController : Control
     private Button _characterPrevButton;
     private Button _characterNextButton;
     private Button _characterCloseButton;
-    private PanelContainer _turnQueuePanel;
+    private MarginContainer _turnOrderDisplay;
+    private HBoxContainer _turnOrderIcons;
     private PanelContainer _combatLogPanel;
     private Label _activeUnitLabel;
     private Button _abilityButton1;
@@ -67,11 +71,8 @@ public partial class HudController : Control
     private Button _endTurnButton;
     private Button _inventoryButton;
     private Button _characterButton;
-    private Label _turnQueueHeader;
     private Label _combatLogHeader;
-    private RichTextLabel _turnQueueLabel;
     private ItemList _combatLog;
-    private Button _turnQueueResizeHandle;
     private Button _combatLogResizeHandle;
     private PanelContainer _inventoryPanel;
     private Label _inventoryHeader;
@@ -113,7 +114,9 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private string _lastLogLine = "";
+    private string _turnOrderSignature = "";
     private const int MaxLogEntries = 250;
+    private const float TurnOrderIconSize = 48.0f;
     private const float CombatLogTextPadding = 16.0f;
     private const float CombatLogMaxWrapWidth = 420.0f;
 
@@ -162,7 +165,8 @@ public partial class HudController : Control
         _characterPrevButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterPrevButton");
         _characterNextButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterNextButton");
         _characterCloseButton = GetNode<Button>("CharacterPanel/CharacterVBox/CharacterCycleButtons/CharacterCloseButton");
-        _turnQueuePanel = GetNode<PanelContainer>("TurnQueuePanel");
+        _turnOrderDisplay = GetNode<MarginContainer>("TurnOrderDisplay");
+        _turnOrderIcons = GetNode<HBoxContainer>("TurnOrderDisplay/TurnOrderCenter/TurnOrderIcons");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _activeUnitLabel = GetNode<Label>("ActionPanel/ActionVBox/ActiveUnitLabel");
         var actionHeader = GetNode<Label>("ActionPanel/ActionVBox/ActionHeader");
@@ -172,14 +176,8 @@ public partial class HudController : Control
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
-        _turnQueueHeader = GetNode<Label>("TurnQueuePanel/TurnQueueVBox/TurnQueueHeader");
-        _turnQueueLabel = GetNode<RichTextLabel>("TurnQueuePanel/TurnQueueVBox/TurnQueueLabel");
-        _turnQueueLabel.BbcodeEnabled = true;
-        _turnQueueLabel.SelectionEnabled = false;
-        _turnQueueLabel.ScrollActive = true;
         _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeader");
         _combatLog = GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog");
-        _turnQueueResizeHandle = GetNode<Button>("TurnQueuePanel/TurnQueueVBox/TurnQueueResizeRow/TurnQueueResizeHandle");
         _combatLogResizeHandle = GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogResizeRow/CombatLogResizeHandle");
         _inventoryPanel = GetNode<PanelContainer>("InventoryPanel");
         _inventoryHeader = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryHeader");
@@ -252,12 +250,10 @@ public partial class HudController : Control
         RegisterDraggable(_helpHeader, _helpPanel);
         RegisterDraggable(_characterHeader, _characterPanel);
         RegisterDraggable(actionHeader, _actionPanel);
-        RegisterDraggable(_turnQueueHeader, _turnQueuePanel);
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryHeader, _inventoryPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
         RegisterDraggable(_vendorHeader, _vendorPanel);
-        RegisterResizable(_turnQueueResizeHandle, _turnQueuePanel);
         RegisterResizable(_combatLogResizeHandle, _combatLogPanel);
 
         EnsureFullscreenLayout();
@@ -805,21 +801,18 @@ public partial class HudController : Control
         const float utilityHeight = 20.0f;
         const float characterHeight = 218.0f;
         const float helpHeight = 220.0f;
-        const float turnQueueHeight = 198.0f;
         const float actionHeight = 68.0f;
 
         var utilityTop = Margin;
         var actionTop = utilityTop + utilityHeight + panelGap + 50.0f;
-        var turnQueueTop = actionTop + actionHeight + panelGap + 30.0f;
-        var detailsTop = turnQueueTop + turnQueueHeight + panelGap;
-        var combatTop = turnQueueTop + turnQueueHeight + panelGap;
+        var detailsTop = actionTop + actionHeight + panelGap + 30.0f;
+        var combatTop = detailsTop;
         var combatHeight = 100.0f;
 
         ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
         ApplyPanelRect(_actionPanel, new Rect2(new Vector2(sidebarLeft, actionTop), new Vector2(sidebarRight - sidebarLeft, actionHeight)), size);
         ApplyPanelRect(_characterPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, characterHeight)), size);
         ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, helpHeight)), size);
-        ApplyPanelRect(_turnQueuePanel, new Rect2(new Vector2(sidebarLeft, turnQueueTop), new Vector2(sidebarRight - sidebarLeft, turnQueueHeight)), size);
         ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, combatTop), new Vector2(sidebarRight - sidebarLeft, combatHeight)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
         ApplyPanelRect(_vendorPanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 480.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 440.0f) * 0.5f)), new Vector2(480.0f, 440.0f)), size);
@@ -977,7 +970,7 @@ public partial class HudController : Control
             ? overriddenSize
             : baseRect.Size;
 
-        var isResizablePanel = panel == _turnQueuePanel || panel == _combatLogPanel;
+        var isResizablePanel = panel == _combatLogPanel;
         var minWidth = isResizablePanel ? MinResizablePanelWidth : 1.0f;
         var minHeight = isResizablePanel ? MinResizablePanelHeight : 1.0f;
 
@@ -1017,7 +1010,6 @@ public partial class HudController : Control
         StylePanel(_utilityPanel, panelStyle);
         StylePanel(_actionPanel, panelStyle);
         StylePanel(_characterPanel, panelStyle);
-        StylePanel(_turnQueuePanel, panelStyle);
         StylePanel(_combatLogPanel, panelStyle);
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
@@ -1027,7 +1019,6 @@ public partial class HudController : Control
         StyleHeaderLabel(_utilityHeader, headerColor);
         StyleHeaderLabel(_helpHeader, headerColor);
         StyleHeaderLabel(_characterHeader, headerColor);
-        StyleHeaderLabel(_turnQueueHeader, headerColor);
         StyleHeaderLabel(_combatLogHeader, headerColor);
         StyleHeaderLabel(_inventoryHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
@@ -1036,7 +1027,6 @@ public partial class HudController : Control
         StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
         StyleBodyLabel(_characterStatusLabel, mutedBodyColor, 13);
-        StyleBodyRichText(_turnQueueLabel, bodyColor, mutedBodyColor, 14);
         StyleBodyLabel(_helpBody, bodyColor, 14);
         StyleBodyLabel(_inventoryUnitLabel, bodyColor, 14);
         StyleBodyLabel(_inventoryEquippedSummaryLabel, mutedBodyColor, 13);
@@ -2060,45 +2050,113 @@ public partial class HudController : Control
         return $"{prefix}{name} - {type}";
     }
 
-    public void SetTurnQueue(Array<Unit> queue, Unit activeUnit)
+    public void SetTurnOrder(Array<Unit> turnOrder, Unit activeUnit)
     {
-        if (_turnQueueLabel == null)
+        if (_turnOrderDisplay == null || _turnOrderIcons == null)
         {
             return;
         }
 
-        if (queue == null || queue.Count == 0)
+        if (turnOrder == null || turnOrder.Count == 0)
         {
-            _turnQueueLabel.Text = "-";
+            _turnOrderDisplay.Visible = false;
+            _turnOrderSignature = "";
+            foreach (var child in _turnOrderIcons.GetChildren())
+            {
+                child.QueueFree();
+            }
             return;
         }
 
-        var builder = new StringBuilder();
-        foreach (var unit in queue)
+        var signatureBuilder = new StringBuilder(activeUnit?.UnitId ?? "");
+        foreach (var unit in turnOrder)
+        {
+            if (unit != null && !unit.IsDead)
+            {
+                signatureBuilder.Append('|').Append(unit.UnitId);
+            }
+        }
+
+        var signature = signatureBuilder.ToString();
+        if (_turnOrderDisplay.Visible && signature == _turnOrderSignature)
+        {
+            return;
+        }
+
+        _turnOrderSignature = signature;
+        foreach (var child in _turnOrderIcons.GetChildren())
+        {
+            child.QueueFree();
+        }
+
+        foreach (var unit in turnOrder)
         {
             if (unit == null || unit.IsDead)
             {
                 continue;
             }
 
-            var row = $"{unit.UnitName} ({unit.Team})  HP {unit.HitPoints}/{unit.MaxHitPoints}  MP {unit.MagicPoints}/{unit.MaxMagicPoints}";
-            if (unit == activeUnit)
+            var isActive = unit == activeUnit;
+            var frameColor = unit.Team == "enemy"
+                ? new Color(0.82f, 0.22f, 0.2f, 1.0f)
+                : new Color(0.2f, 0.68f, 0.34f, 1.0f);
+            if (isActive)
             {
-                builder.Append("[bgcolor=#2d4657]");
-                builder.Append("[color=#f5fbff]");
-                builder.Append(row);
-                builder.Append("[/color][/bgcolor]");
-            }
-            else
-            {
-                builder.Append(row);
+                frameColor = new Color(1.0f, 0.82f, 0.3f, 1.0f);
             }
 
-            builder.Append('\n');
+            var frameStyle = new StyleBoxFlat
+            {
+                BgColor = new Color(0.05f, 0.07f, 0.09f, 0.94f),
+                BorderColor = frameColor,
+                BorderWidthLeft = isActive ? 3 : 2,
+                BorderWidthTop = isActive ? 3 : 2,
+                BorderWidthRight = isActive ? 3 : 2,
+                BorderWidthBottom = isActive ? 3 : 2,
+                CornerRadiusTopLeft = 4,
+                CornerRadiusTopRight = 4,
+                CornerRadiusBottomRight = 4,
+                CornerRadiusBottomLeft = 4,
+                ContentMarginLeft = 3.0f,
+                ContentMarginTop = 3.0f,
+                ContentMarginRight = 3.0f,
+                ContentMarginBottom = 3.0f
+            };
+
+            var frame = new PanelContainer();
+            frame.AddThemeStyleboxOverride("panel", frameStyle);
+
+            var icon = new TextureButton
+            {
+                CustomMinimumSize = new Vector2(TurnOrderIconSize, TurnOrderIconSize),
+                TextureNormal = unit.GetTurnOrderIcon(),
+                IgnoreTextureSize = true,
+                StretchMode = TextureButton.StretchModeEnum.Scale,
+                TooltipText = $"{unit.UnitName} - {unit.Team}\nDouble-click to focus",
+                FocusMode = FocusModeEnum.None,
+                MouseDefaultCursorShape = CursorShape.PointingHand
+            };
+            var unitId = unit.UnitId;
+            icon.GuiInput += inputEvent => OnTurnOrderIconInput(inputEvent, unitId);
+            frame.AddChild(icon);
+            _turnOrderIcons.AddChild(frame);
         }
 
-        _turnQueueLabel.Text = builder.ToString().TrimEnd();
-        _turnQueueLabel.ScrollToLine(0);
+        _turnOrderDisplay.Visible = _turnOrderIcons.GetChildCount() > 0;
+    }
+
+    private void OnTurnOrderIconInput(InputEvent inputEvent, string unitId)
+    {
+        if (inputEvent is not InputEventMouseButton mouseButton
+            || mouseButton.ButtonIndex != MouseButton.Left
+            || !mouseButton.Pressed
+            || !mouseButton.DoubleClick)
+        {
+            return;
+        }
+
+        EmitSignal(SignalName.TurnOrderUnitFocused, unitId);
+        AcceptEvent();
     }
 
     public void AddCombatLogEntry(string text)

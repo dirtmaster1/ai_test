@@ -66,6 +66,8 @@ public partial class Unit : Node2D
     public bool IsActive { get; private set; }
     private Sprite2D _sprite;
     private Texture2D _unitAtlas;
+    private Color _focusHighlightColor = Colors.Transparent;
+    private int _focusHighlightVersion;
     private readonly Dictionary<string, int> _abilityCooldownRemaining = new();
     private readonly System.Collections.Generic.Dictionary<string, StatusEffectState> _statusEffects = new();
     private int _statusEffectSequence;
@@ -728,6 +730,50 @@ public partial class Unit : Node2D
         RefreshVisualState();
     }
 
+    public Texture2D GetTurnOrderIcon()
+    {
+        _unitAtlas ??= GD.Load<Texture2D>(UnitAtlasPath);
+        if (_unitAtlas == null)
+        {
+            return null;
+        }
+
+        var atlasCell = ResolveAtlasCell();
+        return new AtlasTexture
+        {
+            Atlas = _unitAtlas,
+            Region = new Rect2(
+                atlasCell.X * AtlasTileSize,
+                atlasCell.Y * AtlasTileSize,
+                AtlasTileSize,
+                AtlasTileSize
+            )
+        };
+    }
+
+    public async void FlashFocusHighlight(Color color, float durationSeconds = 0.65f)
+    {
+        _focusHighlightVersion += 1;
+        var version = _focusHighlightVersion;
+        _focusHighlightColor = color;
+        QueueRedraw();
+
+        var tree = GetTree();
+        if (tree == null)
+        {
+            return;
+        }
+
+        await ToSignal(tree.CreateTimer(Mathf.Max(0.05f, durationSeconds)), SceneTreeTimer.SignalName.Timeout);
+        if (!GodotObject.IsInstanceValid(this) || version != _focusHighlightVersion)
+        {
+            return;
+        }
+
+        _focusHighlightColor = Colors.Transparent;
+        QueueRedraw();
+    }
+
     public int ApplyDamage(int amount)
     {
         if (IsDead)
@@ -796,9 +842,9 @@ public partial class Unit : Node2D
 
     public override void _Draw()
     {
-        if (IsActive)
+        if (_focusHighlightColor.A > 0.0f)
         {
-            DrawArc(Vector2.Zero, 30.0f, 0.0f, Mathf.Tau, 36, new Color(1.0f, 0.95f, 0.6f), 3.0f);
+            DrawArc(Vector2.Zero, 32.0f, 0.0f, Mathf.Tau, 40, _focusHighlightColor, 5.0f);
         }
 
         if (IsDead)
@@ -1056,7 +1102,7 @@ public partial class Unit : Node2D
         return false;
     }
 
-    private static Array<Vector2I> GetLinePoints(Vector2I start, Vector2I end)
+    internal static Array<Vector2I> GetLinePoints(Vector2I start, Vector2I end)
     {
         var points = new Array<Vector2I>();
 

@@ -367,8 +367,6 @@ public partial class MapLoader : Node
             && atlasSource.HasTile(atlasCoords);
     }
 
-    private static Vector2I GetFloorAtlasCell(MapTerrainDef terrain) => new(terrain.FloorAtlasX, terrain.FloorAtlasY);
-
     private static Vector2I GetWallAtlasCell(MapTerrainDef terrain) => new(terrain.WallAtlasX, terrain.WallAtlasY);
 
     private static Vector2I GetDoorAtlasCell(MapTerrainDef terrain) => new(terrain.DoorAtlasX, terrain.DoorAtlasY);
@@ -378,29 +376,6 @@ public partial class MapLoader : Node
     private static MapTerrainDef ResolveTerrainDefinition(string mapId)
     {
         return MapTokenCatalog.Maps.TryGetValue(mapId, out var definition) ? definition.Terrain ?? new MapTerrainDef() : new MapTerrainDef();
-    }
-
-    private bool HasAuthoredBaseLayer(string mapId)
-    {
-        return TryGetDirectBaseLayer(mapId, out var layer)
-            && layer.GetUsedRect().Size.X > 0
-            && layer.GetUsedRect().Size.Y > 0;
-    }
-
-    private bool TryGetDirectBaseLayer(string mapId, out TileMapLayer layer)
-    {
-        layer = null;
-        if (_mapLayersById.Count == 0)
-        {
-            CacheMapLayers();
-        }
-
-        if (_mapLayersById.TryGetValue(mapId + BaseSuffix, out layer) && layer != null)
-        {
-            return true;
-        }
-
-        return _mapLayersById.TryGetValue(mapId, out layer) && layer != null;
     }
 
     private bool TryGetBaseLayer(string mapId, out TileMapLayer layer)
@@ -1768,19 +1743,6 @@ public partial class MapLoader : Node
         }
 
         return _gameData.GetDefaultPartyTemplates();
-    }
-
-    private static Array<Dictionary> UpdatePartyGridPosition(Array<Dictionary> defaultParty, Vector2I leaderCell)
-    {
-        var players = new Array<Dictionary>();
-        for (var i = 0; i < defaultParty.Count; i++)
-        {
-            var player = CopyDictionary(defaultParty[i]);
-            player["grid_pos"] = leaderCell + GetPartyFormationOffset(i);
-            players.Add(player);
-        }
-
-        return players;
     }
 
     private static Vector2I GetPartyFormationOffset(int index)

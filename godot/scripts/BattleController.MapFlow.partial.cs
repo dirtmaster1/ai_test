@@ -25,6 +25,7 @@ public partial class BattleController
 
         if (!string.IsNullOrEmpty(statusText))
         {
+            SyncHudFromGameState();
         }
         else
         {

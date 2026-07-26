@@ -104,7 +104,7 @@ public partial class BattleController
             }
 
             var actionProfile = ResolveActionProfile(active, selectedAbilityId);
-            if (!CanCastAction(active, actionProfile, true))
+            if (!CanCastAction(active, actionProfile))
             {
                 return;
             }

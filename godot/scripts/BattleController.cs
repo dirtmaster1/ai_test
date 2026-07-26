@@ -72,7 +72,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private string _selectedCharacterUnitId = "";
     private int _partyGold = 25;
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
-    private string _lastActionSummary = "";
     private readonly Array<Vector2I> _movementPreviewPath = new();
     private bool _hasMovementHoverCell;
     private Vector2I _movementHoverCell = new(-1, -1);
@@ -118,7 +117,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         public static CombatActionResult Failed => new(false, false, false);
         public static CombatActionResult MoveResolved => new(true, false, false);
         public static CombatActionResult MoveAndEndTurnResolved => new(true, true, false);
-        public static CombatActionResult PassResolved => new(true, true, false);
         public static CombatActionResult AttackResolved => new(true, false, false);
         public static CombatActionResult CombatResolvedResult => new(true, false, true);
     }
@@ -178,6 +176,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.LootConfirmRequested += OnHudLootConfirmRequested;
             _hud.VendorBuyRequested += OnHudVendorBuyRequested;
             _hud.VendorSellRequested += OnHudVendorSellRequested;
+            _hud.TurnOrderUnitFocused += OnHudTurnOrderUnitFocused;
         }
 
         EnsureDefaultVendorState();
@@ -210,6 +209,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
             _hud.VendorBuyRequested -= OnHudVendorBuyRequested;
             _hud.VendorSellRequested -= OnHudVendorSellRequested;
+            _hud.TurnOrderUnitFocused -= OnHudTurnOrderUnitFocused;
         }
 
         _persistence.PersistSaveGame(false);
@@ -309,7 +309,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
-            TryRequestEndTurn(activeUnit, manualInput: false);
+            AdvanceTurnAfterStartOfTurnDeath(activeUnit);
             return;
         }
 
@@ -323,6 +323,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             SetStatusHelp();
         }
+    }
+
+    private async void AdvanceTurnAfterStartOfTurnDeath(Unit deadUnit)
+    {
+        var tree = GetTree();
+        if (tree == null)
+        {
+            return;
+        }
+
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        if (_flowState != BattleFlowState.Combat
+            || !IsUsableUnit(deadUnit)
+            || !deadUnit.IsDead
+            || !IsCurrentActiveUnit(deadUnit))
+        {
+            return;
+        }
+
+        TryRequestEndTurn(deadUnit, manualInput: false);
     }
 
     private void OnHudAbilityPressed(string abilityId)
@@ -358,7 +378,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var actionProfile = ResolveActionProfile(active, abilityId);
-        if (!CanCastAction(active, actionProfile, true))
+        if (!CanCastAction(active, actionProfile))
         {
             return;
         }
@@ -401,6 +421,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ClearMovementPreviewPath();
             QueueRedraw();
         }
+    }
+
+    private void OnHudTurnOrderUnitFocused(string unitId)
+    {
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return;
+        }
+
+        var unit = FindUnitById(unitId);
+        if (!IsUsableUnit(unit) || unit.IsDead)
+        {
+            return;
+        }
+
+        CenterViewOnCell(unit.GridPos);
+        var highlightColor = unit.Team == "enemy"
+            ? new Color(0.95f, 0.18f, 0.16f, 1.0f)
+            : new Color(0.18f, 0.9f, 0.36f, 1.0f);
+        unit.FlashFocusHighlight(highlightColor);
     }
 
     private void OnHudEquipItemRequested(string itemId)
@@ -531,7 +571,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (!CanCastAction(active, actionProfile, true))
+        if (!CanCastAction(active, actionProfile))
         {
             return;
         }
@@ -1010,7 +1050,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
-        if (!CanCastAction(actor, actionProfile, true))
+        if (!CanCastAction(actor, actionProfile))
         {
             return CombatActionResult.Failed;
         }
@@ -1094,7 +1134,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!CanCastAction(attacker, new ActionProfile(actionId, actionName, "attack", range, damage, 0, cooldownTurns, magicPointCost, isMagical), true))
+        if (!CanCastAction(attacker, new ActionProfile(actionId, actionName, "attack", range, damage, 0, cooldownTurns, magicPointCost, isMagical)))
         {
             return false;
         }
@@ -1154,7 +1194,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
-        _lastActionSummary = resultText;
         _hud?.AddCombatLogEntry(resultText);
         return true;
     }
@@ -1166,7 +1205,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
-        if (!CanCastAction(actor, actionProfile, true))
+        if (!CanCastAction(actor, actionProfile))
         {
             return CombatActionResult.Failed;
         }
@@ -1179,7 +1218,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionProfile.ActionId, actor.UnitId);
         var resultText = $"{actor.UnitName} defends, reducing incoming damage by {Unit.DefendDamageReductionPercent}% until their next turn.";
-        _lastActionSummary = resultText;
         _hud?.AddCombatLogEntry(resultText);
         SyncHudFromGameState();
         QueueRedraw();
@@ -1249,7 +1287,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!CanCastAction(actor, new ActionProfile(actionId, actionName, "heal", range, 0, healAmount, cooldownTurns, magicPointCost, isMagical), true))
+        if (!CanCastAction(actor, new ActionProfile(actionId, actionName, "heal", range, 0, healAmount, cooldownTurns, magicPointCost, isMagical)))
         {
             return false;
         }
@@ -1278,7 +1316,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             resultText += $" (MP -{magicPointCost})";
         }
-        _lastActionSummary = resultText;
         _hud?.AddCombatLogEntry(resultText);
         return true;
     }
@@ -1377,6 +1414,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _flowState = BattleFlowState.Defeat;
             ClearCombatOnlyDebuffsForParty();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
+            SyncHudFromGameState();
             _persistence.PersistSaveGame(false);
             return true;
         }
@@ -1648,7 +1686,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool HasClearLineOfSight(Vector2I from, Vector2I to)
     {
-        var points = BuildLinePoints(from, to);
+        var points = Unit.GetLinePoints(from, to);
         for (var i = 1; i < points.Count - 1; i++)
         {
             if (IsBlockedCell(points[i]))
@@ -1658,45 +1696,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return true;
-    }
-
-    private static Array<Vector2I> BuildLinePoints(Vector2I start, Vector2I end)
-    {
-        var points = new Array<Vector2I>();
-        var x0 = start.X;
-        var y0 = start.Y;
-        var x1 = end.X;
-        var y1 = end.Y;
-
-        var dx = Mathf.Abs(x1 - x0);
-        var dy = Mathf.Abs(y1 - y0);
-        var sx = x0 < x1 ? 1 : -1;
-        var sy = y0 < y1 ? 1 : -1;
-        var err = dx - dy;
-
-        while (true)
-        {
-            points.Add(new Vector2I(x0, y0));
-            if (x0 == x1 && y0 == y1)
-            {
-                break;
-            }
-
-            var e2 = 2 * err;
-            if (e2 > -dy)
-            {
-                err -= dy;
-                x0 += sx;
-            }
-
-            if (e2 < dx)
-            {
-                err += dx;
-                y0 += sy;
-            }
-        }
-
-        return points;
     }
 
     private ActionProfile ResolveActionProfile(Unit actor, string abilityId = null)
@@ -1755,7 +1754,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return new ActionProfile(abilityId, actionName, actionType, range, damage, healAmount, cooldownTurns, mpCost, isMagical);
     }
 
-    private bool CanCastAction(Unit actor, ActionProfile actionProfile, bool reportStatus)
+    private bool CanCastAction(Unit actor, ActionProfile actionProfile)
     {
         if (actor == null)
         {
@@ -1805,7 +1804,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 message += ".";
                 _hud?.AddCombatLogEntry(message);
-                _lastActionSummary = message;
             }
         }
 
@@ -1973,7 +1971,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.CanUseAbility(abilityId) && CanCastAction(unit, ResolveActionProfile(unit, abilityId), false))
+            if (unit.CanUseAbility(abilityId) && CanCastAction(unit, ResolveActionProfile(unit, abilityId)))
             {
                 return true;
             }
@@ -2014,7 +2012,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 : $"Cooldown: {profile.CooldownTurns} turn{(profile.CooldownTurns == 1 ? "" : "s")}";
             var stateLabel = cooldownRemaining > 0
                 ? $"Status: on cooldown ({cooldownRemaining} remaining)"
-                : !CanCastAction(unit, profile, false)
+                : !CanCastAction(unit, profile)
                     ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
                 : "Status: ready";
             entries.Add(new Dictionary
@@ -2220,8 +2218,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             new Vector2(CellSize, CellSize)
         );
 
-        canvas.DrawRect(rect, new Color(0.2f, 0.9f, 0.3f, 0.2f), true);
-        canvas.DrawRect(rect, new Color(0.35f, 1.0f, 0.45f, 0.9f), false, 3.0f);
+        var isEnemyTurn = _flowState == BattleFlowState.Combat && highlightedUnit.Team == "enemy";
+        var fillColor = isEnemyTurn
+            ? new Color(0.95f, 0.16f, 0.14f, 0.22f)
+            : new Color(0.2f, 0.9f, 0.3f, 0.2f);
+        var borderColor = isEnemyTurn
+            ? new Color(1.0f, 0.24f, 0.2f, 0.95f)
+            : new Color(0.35f, 1.0f, 0.45f, 0.9f);
+
+        canvas.DrawRect(rect, fillColor, true);
+        canvas.DrawRect(rect, borderColor, false, 3.0f);
     }
 
     private void DrawHoveredUnitTooltip()
@@ -2817,17 +2823,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return gridRect.HasPoint(globalPoint);
     }
 
-    private bool IsPointInsideGrid(Vector2 localPoint)
-    {
-        var worldBounds = GetWorldPixelBounds();
-        var maxX = worldBounds.Position.X + worldBounds.Size.X;
-        var maxY = worldBounds.Position.Y + worldBounds.Size.Y;
-        return localPoint.X >= worldBounds.Position.X
-            && localPoint.Y >= worldBounds.Position.Y
-            && localPoint.X < maxX
-            && localPoint.Y < maxY;
-    }
-
     private void SetViewPositionClamped(Vector2 targetPosition)
     {
         Position = GetClampedViewPosition(targetPosition);
@@ -3312,16 +3307,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private void UnequipAllItemsForUnit(Unit unit)
-    {
-        if (unit == null || string.IsNullOrEmpty(unit.UnitId))
-        {
-            return;
-        }
-
-        _equippedItemsByUnitId.Remove(unit.UnitId);
-    }
-
     private bool UnequipSlotForUnit(Unit unit, string slotKey)
     {
         if (unit == null || string.IsNullOrEmpty(unit.UnitId) || string.IsNullOrEmpty(slotKey))
@@ -3485,7 +3470,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private Array<Unit> BuildTurnQueueForHud()
+    private Array<Unit> BuildTurnOrderForHud()
     {
         if (_flowState != BattleFlowState.Combat)
         {

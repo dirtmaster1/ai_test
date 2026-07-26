@@ -11,7 +11,7 @@ public partial class BattleController
         _hud.SetHelpText(_hud.BuildHelpText(_flowState.ToString()));
 
         var active = _turnManager?.GetActiveUnit();
-        _hud.SetTurnQueue(BuildTurnQueueForHud(), active);
+        _hud.SetTurnOrder(BuildTurnOrderForHud(), active);
         _hud.SetActiveUnit(_flowState == BattleFlowState.Combat ? active : null);
 
         var characterUnit = GetSelectedCharacterUnit();
@@ -91,15 +91,6 @@ public partial class BattleController
         {
             return;
         }
-
-        var selectedAbilityId = GetSelectedAbilityId(active);
-        var selectedProfile = ResolveActionProfile(active, selectedAbilityId);
-        var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedProfile.ActionId);
-        var abilityState = !active.CanUseAbilityThisTurn()
-            ? "used"
-            : cooldownRemaining > 0
-                ? $"cooldown ({cooldownRemaining})"
-                : "ready";
 
         SyncHudFromGameState();
     }
