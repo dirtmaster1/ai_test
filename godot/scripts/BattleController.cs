@@ -127,23 +127,29 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         public string ActionName { get; }
         public string ActionType { get; }
         public int Range { get; }
+        public int AreaRadius { get; }
         public int Damage { get; }
         public int HealAmount { get; }
         public int CooldownTurns { get; }
         public int MagicPointCost { get; }
         public bool IsMagical { get; }
+        public bool IgnoresActionCost { get; }
+        public bool RequiresRangedWeapon { get; }
 
-        public ActionProfile(string actionId, string actionName, string actionType, int range, int damage, int healAmount, int cooldownTurns, int magicPointCost, bool isMagical)
+        public ActionProfile(string actionId, string actionName, string actionType, int range, int areaRadius, int damage, int healAmount, int cooldownTurns, int magicPointCost, bool isMagical, bool ignoresActionCost, bool requiresRangedWeapon)
         {
             ActionId = actionId;
             ActionName = actionName;
             ActionType = actionType;
             Range = range;
+            AreaRadius = areaRadius;
             Damage = damage;
             HealAmount = healAmount;
             CooldownTurns = cooldownTurns;
             MagicPointCost = magicPointCost;
             IsMagical = isMagical;
+            IgnoresActionCost = ignoresActionCost;
+            RequiresRangedWeapon = requiresRangedWeapon;
         }
     }
 
@@ -304,6 +310,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         activeUnit.ResetTurnResources();
+        var shouldSkipTurn = activeUnit.TryGetTurnSkippingStatusName(out var skipStatusName);
         ApplyStartOfTurnStatusEffects(activeUnit);
         if (activeUnit.IsDead)
         {
@@ -314,6 +321,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             AdvanceTurnAfterStartOfTurnDeath(activeUnit);
+            return;
+        }
+
+        if (shouldSkipTurn)
+        {
+            var statusLabel = string.IsNullOrEmpty(skipStatusName) ? "an effect" : skipStatusName.ToLowerInvariant();
+            _hud?.AddCombatLogEntry($"{activeUnit.UnitName} is affected by {statusLabel} and skips the turn.");
+            ScheduleTurnSkipForStatus(activeUnit);
+            SyncHudFromGameState();
+            QueueRedraw();
             return;
         }
 
@@ -349,6 +366,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         TryRequestEndTurn(deadUnit, manualInput: false);
     }
 
+    private async void ScheduleTurnSkipForStatus(Unit skippedUnit)
+    {
+        var tree = GetTree();
+        if (tree == null)
+        {
+            return;
+        }
+
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        if (_flowState != BattleFlowState.Combat || !IsUsableUnit(skippedUnit) || !IsCurrentActiveUnit(skippedUnit))
+        {
+            return;
+        }
+
+        TryRequestEndTurn(skippedUnit, manualInput: false);
+    }
+
     private void OnHudAbilityPressed(string abilityId)
     {
         if (_flowState != BattleFlowState.Combat)
@@ -362,13 +396,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (!active.CanUseAbilityThisTurn())
+        if (string.IsNullOrEmpty(abilityId) || !active.HasAbility(abilityId))
         {
             SetStatusHelp();
             return;
         }
 
-        if (string.IsNullOrEmpty(abilityId) || !active.HasAbility(abilityId))
+        var actionProfile = ResolveActionProfile(active, abilityId);
+        if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
         {
             SetStatusHelp();
             return;
@@ -381,7 +416,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        var actionProfile = ResolveActionProfile(active, abilityId);
         if (!CanCastAction(active, actionProfile))
         {
             return;
@@ -392,6 +426,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (actionProfile.ActionType == "defend")
         {
             var result = TryDefend(active, actionProfile);
+            ApplyActionResult(result);
+            _awaitingPlayerAttackDirection = false;
+            ClearMovementPreviewPath();
+            SyncHudFromGameState();
+            QueueRedraw();
+            return;
+        }
+
+        if (actionProfile.ActionType == "protection")
+        {
+            if (!TryUseProtectionAura(active, actionProfile))
+            {
+                return;
+            }
+
+            var result = ResolveSuccessfulAction(actionProfile.ActionType);
             ApplyActionResult(result);
             _awaitingPlayerAttackDirection = false;
             ClearMovementPreviewPath();
@@ -623,13 +673,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
-        if (!active.CanUseAbilityThisTurn())
+        var selectedAbilityId = GetSelectedAbilityId(active);
+        var actionProfile = ResolveActionProfile(active, selectedAbilityId);
+
+        if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
         {
             return;
         }
 
-        var selectedAbilityId = GetSelectedAbilityId(active);
-        var actionProfile = ResolveActionProfile(active, selectedAbilityId);
         if (active.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
         {
             return;
@@ -642,6 +693,58 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (actionProfile.ActionType == "defend")
         {
+            return;
+        }
+
+        if (actionProfile.ActionType == "protection")
+        {
+            if (!TryUseProtectionAura(active, actionProfile))
+            {
+                return;
+            }
+
+            var result = ResolveSuccessfulAction(actionProfile.ActionType);
+            ApplyActionResult(result);
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
+        if (actionProfile.ActionType == "sleep")
+        {
+            if (!TryCastSleepAtCell(active, targetCell, actionProfile))
+            {
+                return;
+            }
+
+            var result = ResolveSuccessfulAction(actionProfile.ActionType);
+            ApplyActionResult(result);
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
+        if (actionProfile.ActionType == "charge")
+        {
+            if (!TryUseCharge(active, targetCell, actionProfile))
+            {
+                return;
+            }
+
+            var result = ResolveSuccessfulAction("attack");
+            ApplyActionResult(result);
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
+        if (actionProfile.ActionType == "pin")
+        {
+            if (!TryUsePinShot(active, targetCell, actionProfile))
+            {
+                return;
+            }
+
+            var result = ResolveSuccessfulAction("attack");
+            ApplyActionResult(result);
+            BeginPostPlayerActionMouseMoveLock();
             return;
         }
 
@@ -696,6 +799,279 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         else
         {
         }
+    }
+
+    private bool TryUseProtectionAura(Unit caster, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var radius = Mathf.Max(0, GetInt(actionData, "area_radius", 3));
+        var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 2));
+        var armorClassBonus = Mathf.Max(1, GetInt(actionData, "armor_class_bonus", 2));
+        var buffedUnits = new List<string>();
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != caster.Team)
+            {
+                continue;
+            }
+
+            if (!Unit.IsWithinRange(caster.GridPos, unit.GridPos, radius))
+            {
+                continue;
+            }
+
+            unit.ApplyStatusEffect(
+                "protection",
+                "Protected",
+                true,
+                durationTurns,
+                startDelayTurns: 0,
+                damagePerTurn: 0,
+                stackingMode: "refresh",
+                maxStacks: 1,
+                stackAmount: 1,
+                scope: "combat_only",
+                skipTurn: false,
+                preventMovement: false,
+                preventActions: false,
+                wakeOnDamage: false,
+                armorClassBonus: armorClassBonus
+            );
+            buffedUnits.Add(unit.UnitName);
+        }
+
+        caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
+
+        if (buffedUnits.Count > 0)
+        {
+            _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", buffedUnits)} gain +{armorClassBonus} armor class for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}." + (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+        }
+        else
+        {
+            _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}, but no allies are in range." + (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+        }
+
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryCastSleepAtCell(Unit caster, Vector2I centerCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        if (!IsInBounds(centerCell) || !Unit.IsWithinRange(caster.GridPos, centerCell, actionProfile.Range) || !HasClearLineOfSight(caster.GridPos, centerCell))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var radius = Mathf.Max(0, GetInt(actionData, "area_radius", actionProfile.AreaRadius));
+        var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 2));
+        var sleptUnits = new List<string>();
+        var immuneUnits = new List<string>();
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, radius))
+            {
+                continue;
+            }
+
+            if (IsUndead(unit))
+            {
+                immuneUnits.Add(unit.UnitName);
+                continue;
+            }
+
+            unit.ApplyStatusEffect(
+                "sleep",
+                "Asleep",
+                false,
+                durationTurns,
+                startDelayTurns: 0,
+                damagePerTurn: 0,
+                stackingMode: "refresh",
+                maxStacks: 1,
+                stackAmount: 1,
+                scope: "combat_only",
+                skipTurn: true,
+                preventMovement: true,
+                preventActions: true,
+                wakeOnDamage: true,
+                armorClassBonus: 0
+            );
+            sleptUnits.Add(unit.UnitName);
+        }
+
+        if (sleptUnits.Count == 0)
+        {
+            return false;
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
+
+        var log = $"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", sleptUnits)} fall asleep for {durationTurns} turns.";
+        if (immuneUnits.Count > 0)
+        {
+            log += $" Undead are immune: {string.Join(", ", immuneUnits)}.";
+        }
+
+        if (actionProfile.MagicPointCost > 0)
+        {
+            log += $" (MP -{actionProfile.MagicPointCost})";
+        }
+
+        _hud?.AddCombatLogEntry(log);
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryUseCharge(Unit attacker, Vector2I targetCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(attacker) || attacker.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        var target = GetLivingEnemyAtCell(attacker.Team, targetCell);
+        if (!IsUsableUnit(target) || target.IsDead)
+        {
+            return false;
+        }
+
+        var maxChargeRange = Mathf.Max(1, actionProfile.Range);
+        if (!Unit.IsWithinRange(attacker.GridPos, target.GridPos, maxChargeRange))
+        {
+            return false;
+        }
+
+        if (!TryFindChargeDestination(attacker, target, maxChargeRange, out var destinationCell, out var cellsUsed))
+        {
+            return false;
+        }
+
+        if (destinationCell != attacker.GridPos)
+        {
+            if (!TryMoveUnit(attacker, destinationCell))
+            {
+                return false;
+            }
+
+            if (ResolveCombatTraps(attacker, out var combatEnded))
+            {
+                if (combatEnded || attacker.IsDead)
+                {
+                    return false;
+                }
+            }
+        }
+
+        var cellsUnused = Mathf.Max(0, maxChargeRange - cellsUsed);
+        var chargeDamage = 2 * cellsUnused;
+        return TryAttackTarget(attacker, target, chargeDamage, 1, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: false);
+    }
+
+    private bool TryFindChargeDestination(Unit attacker, Unit target, int maxChargeRange, out Vector2I destinationCell, out int cellsUsed)
+    {
+        destinationCell = attacker.GridPos;
+        cellsUsed = -1;
+
+        foreach (var direction in AttackDirections)
+        {
+            var candidate = target.GridPos + direction;
+            if (!IsInBounds(candidate) || IsBlockedCell(candidate) || (candidate != attacker.GridPos && IsOccupied(candidate, attacker)))
+            {
+                continue;
+            }
+
+            var steps = candidate == attacker.GridPos
+                ? 0
+                : FindPath(attacker, attacker.GridPos, candidate, maxChargeRange).Count;
+
+            if (candidate != attacker.GridPos && steps <= 0)
+            {
+                continue;
+            }
+
+            if (steps > maxChargeRange)
+            {
+                continue;
+            }
+
+            if (cellsUsed == -1 || steps < cellsUsed)
+            {
+                cellsUsed = steps;
+                destinationCell = candidate;
+            }
+        }
+
+        return cellsUsed >= 0;
+    }
+
+    private bool TryUsePinShot(Unit attacker, Vector2I targetCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(attacker) || attacker.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        var target = GetLivingEnemyAtCell(attacker.Team, targetCell);
+        if (!IsUsableUnit(target) || target.IsDead)
+        {
+            return false;
+        }
+
+        if (!TryAttackTarget(attacker, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: false))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 1));
+        target.ApplyStatusEffect(
+            "pinned",
+            "Pinned",
+            false,
+            durationTurns,
+            startDelayTurns: 0,
+            damagePerTurn: 0,
+            stackingMode: "refresh",
+            maxStacks: 1,
+            stackAmount: 1,
+            scope: "combat_only",
+            skipTurn: false,
+            preventMovement: true,
+            preventActions: false,
+            wakeOnDamage: false,
+            armorClassBonus: 0
+        );
+        _hud?.AddCombatLogEntry($"{target.UnitName} is pinned and cannot move for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}. ");
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
     }
 
     private void BeginPostPlayerActionMouseMoveLock()
@@ -1103,12 +1479,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
-        if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
+        var actionProfile = ResolveActionProfile(actor, GetSelectedAbilityId(actor));
+        if (_flowState == BattleFlowState.Combat && !actionProfile.IgnoresActionCost && !actor.CanUseAbilityThisTurn())
         {
             return CombatActionResult.Failed;
         }
 
-        var actionProfile = ResolveActionProfile(actor, GetSelectedAbilityId(actor));
         if (actor.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
         {
             return CombatActionResult.Failed;
@@ -1195,9 +1571,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
     }
 
-    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack", string actionName = "Attack", int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false)
+    private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack", string actionName = "Attack", int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)
     {
-        if (_flowState == BattleFlowState.Combat && !attacker.CanUseAbilityThisTurn())
+        if (_flowState == BattleFlowState.Combat && consumeAction && !attacker.CanUseAbilityThisTurn())
         {
             return false;
         }
@@ -1212,7 +1588,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!CanCastAction(attacker, new ActionProfile(actionId, actionName, "attack", range, damage, 0, cooldownTurns, magicPointCost, isMagical)))
+        if (!CanCastAction(attacker, new ActionProfile(actionId, actionName, "attack", range, 0, damage, 0, cooldownTurns, magicPointCost, isMagical, !consumeAction, false)))
         {
             return false;
         }
@@ -1226,14 +1602,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var mitigatedDamage = target.ApplyDamage(preDefenseDamage);
         if (_flowState == BattleFlowState.Combat)
         {
-            attacker.MarkAbilityUsed(actionId, cooldownTurns);
+            if (consumeAction)
+            {
+                attacker.MarkAbilityUsed(actionId, cooldownTurns);
+            }
+            else
+            {
+                attacker.MarkAbilityCooldownOnly(actionId, cooldownTurns);
+            }
         }
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, attacker, actionId, target.UnitId);
 
         var resultText = isMagical
             ? $"{attacker.UnitName} casts {actionName} on {target.UnitName}, dealing {mitigatedDamage} damage."
-            : $"{attacker.UnitName} hits {target.UnitName} for {mitigatedDamage}.";
+            : actionId == "attack" || actionId == "melee" || actionId == "ranged"
+                ? $"{attacker.UnitName} hits {target.UnitName} for {mitigatedDamage}."
+                : $"{attacker.UnitName} uses {actionName} on {target.UnitName}, dealing {mitigatedDamage} damage.";
         if (!isMagical && target.ArmorClass > 0)
         {
             var reducedBy = Mathf.Max(0, damage - preDefenseDamage);
@@ -1255,6 +1640,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (mitigatedDamage > 0 && !target.IsDead)
         {
+            var awakenedEffects = target.ClearWakeOnDamageStatusEffects();
+            if (awakenedEffects.Count > 0)
+            {
+                resultText += $" {target.UnitName} wakes up.";
+            }
+
             var onHitStatusText = TryApplyOnHitStatusEffects(attacker, target);
             if (!string.IsNullOrEmpty(onHitStatusText))
             {
@@ -1348,9 +1739,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return $"Party gains {xpReward} XP ({xpShare} each).";
     }
 
-    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false)
+    private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)
     {
-        if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
+        if (_flowState == BattleFlowState.Combat && consumeAction && !actor.CanUseAbilityThisTurn())
         {
             return false;
         }
@@ -1365,7 +1756,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!CanCastAction(actor, new ActionProfile(actionId, actionName, "heal", range, 0, healAmount, cooldownTurns, magicPointCost, isMagical)))
+        if (!CanCastAction(actor, new ActionProfile(actionId, actionName, "heal", range, 0, 0, healAmount, cooldownTurns, magicPointCost, isMagical, !consumeAction, false)))
         {
             return false;
         }
@@ -1383,7 +1774,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (_flowState == BattleFlowState.Combat)
         {
-            actor.MarkAbilityUsed(actionId, cooldownTurns);
+            if (consumeAction)
+            {
+                actor.MarkAbilityUsed(actionId, cooldownTurns);
+            }
+            else
+            {
+                actor.MarkAbilityCooldownOnly(actionId, cooldownTurns);
+            }
         }
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionId, target.UnitId);
@@ -1780,7 +2178,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (actor == null)
         {
-            return new ActionProfile("attack", "Attack", "attack", 1, 0, 0, 0, 0, false);
+            return new ActionProfile("attack", "Attack", "attack", 1, 0, 0, 0, 0, 0, false, false, false);
         }
 
         abilityId = string.IsNullOrEmpty(abilityId) ? GetSelectedAbilityId(actor) : abilityId;
@@ -1789,7 +2187,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             abilityId = actor.PrimaryAbilityId;
         }
 
-        var fallback = new ActionProfile(abilityId, abilityId, "attack", actor.AttackRange, actor.AttackDamage, 0, 0, 0, false);
+        var fallback = new ActionProfile(abilityId, abilityId, "attack", actor.AttackRange, 0, actor.AttackDamage, 0, 0, 0, false, false, false);
         if (_gameData == null || string.IsNullOrEmpty(abilityId))
         {
             return fallback;
@@ -1813,9 +2211,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var configuredRange = GetInt(actionData, "range", actor.AttackRange);
         var configuredDamage = GetInt(actionData, "damage", actor.AttackDamage);
+        var areaRadius = Mathf.Max(0, GetInt(actionData, "area_radius", 0));
+        var ignoresActionCost = GetBool(actionData, "ignores_action_cost", false);
+        var requiresRangedWeapon = GetBool(actionData, "requires_ranged_weapon", false);
 
         // Physical attacks commonly use 0 in data as a placeholder for "use unit stats".
-        var shouldUseActorCombatStats = actionType == "attack" && !isMagical;
+        var shouldUseActorCombatStats = (actionType == "attack" || actionType == "pin") && !isMagical;
         var range = shouldUseActorCombatStats && configuredRange <= 0
             ? actor.AttackRange
             : configuredRange;
@@ -1823,18 +2224,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ? actor.AttackDamage
             : configuredDamage;
 
-        range = actionType == "defend" ? 0 : Mathf.Max(1, range);
+        range = actionType is "defend" or "protection" ? 0 : Mathf.Max(1, range);
         damage = Mathf.Max(0, damage);
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
         var cooldownTurns = Mathf.Max(0, GetInt(actionData, "cooldown", 0));
         var mpCost = Mathf.Max(0, GetInt(actionData, "mp_cost", 0));
 
-        return new ActionProfile(abilityId, actionName, actionType, range, damage, healAmount, cooldownTurns, mpCost, isMagical);
+        return new ActionProfile(abilityId, actionName, actionType, range, areaRadius, damage, healAmount, cooldownTurns, mpCost, isMagical, ignoresActionCost, requiresRangedWeapon);
     }
 
     private bool CanCastAction(Unit actor, ActionProfile actionProfile)
     {
         if (actor == null)
+        {
+            return false;
+        }
+
+        if (actionProfile.RequiresRangedWeapon && !CanUseRangedWeaponAbility(actor))
         {
             return false;
         }
@@ -1847,6 +2253,40 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (actor.HasEnoughMagicPoints(actionProfile.MagicPointCost))
         {
             return true;
+        }
+
+        return false;
+    }
+
+    private bool CanUseRangedWeaponAbility(Unit actor)
+    {
+        if (!IsUsableUnit(actor) || _gameData == null || string.IsNullOrEmpty(actor.UnitId))
+        {
+            return false;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(actor.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var itemId in equippedBySlot.Values)
+        {
+            var itemData = _gameData.GetItem(itemId);
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            if (GetString(itemData, "type", "") != "weapon")
+            {
+                continue;
+            }
+
+            if (GetInt(itemData, "range", 0) > 1)
+            {
+                return true;
+            }
         }
 
         return false;
@@ -1881,6 +2321,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 message += ".";
+
+                var awakenedEffects = activeUnit.ClearWakeOnDamageStatusEffects();
+                if (awakenedEffects.Count > 0)
+                {
+                    message += $" {activeUnit.UnitName} wakes up.";
+                }
+
                 _hud?.AddCombatLogEntry(message);
             }
         }
@@ -2037,7 +2484,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool CanUnitUseAnyAbilityNow(Unit unit)
     {
-        if (unit == null || unit.IsDead || !unit.CanUseAbilityThisTurn() || unit.AbilityIds == null)
+        if (unit == null || unit.IsDead || unit.AbilityIds == null)
         {
             return false;
         }
@@ -2049,7 +2496,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.CanUseAbility(abilityId) && CanCastAction(unit, ResolveActionProfile(unit, abilityId)))
+            var profile = ResolveActionProfile(unit, abilityId);
+            if (!profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn())
+            {
+                continue;
+            }
+
+            if (unit.GetAbilityCooldownRemaining(abilityId) <= 0 && CanCastAction(unit, profile))
             {
                 return true;
             }
@@ -2081,23 +2534,39 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 ? $"Heal: {profile.HealAmount}"
                 : profile.ActionType == "defend"
                     ? $"Effect: damage taken -{Unit.DefendDamageReductionPercent}%"
-                    : $"Damage: {profile.Damage}";
+                    : profile.ActionType == "sleep"
+                        ? $"Effect: sleep ({profile.AreaRadius}-cell radius)"
+                        : profile.ActionType == "protection"
+                            ? $"Effect: +armor class aura ({profile.AreaRadius}-cell radius)"
+                            : profile.ActionType == "charge"
+                                ? "Effect: charge attack (free action)"
+                                : profile.ActionType == "pin"
+                                    ? "Effect: pin target for 1 turn"
+                                    : $"Damage: {profile.Damage}";
             var mpCostLabel = profile.MagicPointCost <= 0
                 ? "MP Cost: none"
                 : $"MP Cost: {profile.MagicPointCost}";
             var cooldownLabel = profile.CooldownTurns <= 0
                 ? "Cooldown: none"
                 : $"Cooldown: {profile.CooldownTurns} turn{(profile.CooldownTurns == 1 ? "" : "s")}";
+            var actionCostLabel = profile.IgnoresActionCost
+                ? "Action Cost: free"
+                : "Action Cost: uses action";
+            var requirementLabel = profile.RequiresRangedWeapon
+                ? "Requirement: ranged weapon equipped"
+                : "Requirement: none";
             var stateLabel = cooldownRemaining > 0
                 ? $"Status: on cooldown ({cooldownRemaining} remaining)"
-                : !CanCastAction(unit, profile)
-                    ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
-                : "Status: ready";
+                : profile.RequiresRangedWeapon && !CanUseRangedWeaponAbility(unit)
+                    ? "Status: requires a ranged weapon"
+                    : !CanCastAction(unit, profile)
+                        ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
+                        : "Status: ready";
             entries.Add(new Dictionary
             {
                 { "id", abilityId },
                 { "label", actionName },
-                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\n{valueText}\n{mpCostLabel}\n{cooldownLabel}\n{stateLabel}" },
+                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\nArea Radius: {profile.AreaRadius}\n{valueText}\n{mpCostLabel}\n{cooldownLabel}\n{actionCostLabel}\n{requirementLabel}\n{stateLabel}" },
                 { "cooldown_remaining", cooldownRemaining },
                 { "is_selected", abilityId == selectedId ? 1 : 0 }
             });
@@ -2122,6 +2591,35 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return actionData.Count == 0
             ? actionId
             : GetString(actionData, "name", actionId);
+    }
+
+    private Dictionary GetActionData(string actionId, out bool isSpell)
+    {
+        isSpell = false;
+        if (string.IsNullOrEmpty(actionId) || _gameData == null)
+        {
+            return new Dictionary();
+        }
+
+        var actionData = _gameData.GetAbility(actionId);
+        if (actionData.Count > 0)
+        {
+            return actionData;
+        }
+
+        actionData = _gameData.GetSpell(actionId);
+        isSpell = actionData.Count > 0;
+        return actionData;
+    }
+
+    private static bool IsUndead(Unit unit)
+    {
+        if (!IsUsableUnit(unit))
+        {
+            return false;
+        }
+
+        return string.Equals(unit.Race, "undead", System.StringComparison.OrdinalIgnoreCase);
     }
 
     private static int GetInt(Dictionary dict, string key, int fallback)
@@ -2855,6 +3353,32 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool TryGetDirectionalActionTargetCell(Unit active, Vector2I direction, ActionProfile actionProfile, out Vector2I targetCell)
     {
         targetCell = active.GridPos + direction;
+
+        if (actionProfile.ActionType == "sleep")
+        {
+            var furthestInBounds = targetCell;
+            var foundAny = false;
+            for (var distance = 1; distance <= actionProfile.Range; distance++)
+            {
+                var cell = active.GridPos + direction * distance;
+                if (!IsInBounds(cell))
+                {
+                    break;
+                }
+
+                furthestInBounds = cell;
+                foundAny = true;
+            }
+
+            if (!foundAny)
+            {
+                return false;
+            }
+
+            targetCell = furthestInBounds;
+            return true;
+        }
+
         for (var distance = 1; distance <= actionProfile.Range; distance++)
         {
             var cell = active.GridPos + direction * distance;
@@ -4120,8 +4644,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     break;
                 }
 
-                if (TryHandleMapTransition())
+                var transitionOutcome = await TryHandleMapTransitionAsync();
+                if (transitionOutcome == MapTransitionOutcome.Transitioned)
                 {
+                    return;
+                }
+
+                if (transitionOutcome == MapTransitionOutcome.Stayed)
+                {
+                    SetStatusHelp();
+                    TryStartCombatFromAggro();
                     return;
                 }
 
@@ -4459,6 +4991,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var result = target.IsDead
                 ? $"{target.UnitName} triggered {trapName}, took {appliedDamage} damage, and was defeated."
                 : $"{target.UnitName} triggered {trapName} and took {appliedDamage} damage.";
+
+            if (appliedDamage > 0)
+            {
+                var awakenedEffects = target.ClearWakeOnDamageStatusEffects();
+                if (awakenedEffects.Count > 0)
+                {
+                    result += $" {target.UnitName} wakes up.";
+                }
+            }
+
             _hud?.AddCombatLogEntry(result);
         }
 

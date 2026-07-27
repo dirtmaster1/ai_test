@@ -12,6 +12,11 @@ public partial class Unit : Node2D
         public int RemainingTurns;
         public int StartDelayTurns;
         public int DamagePerTurn;
+        public bool SkipTurn;
+        public bool PreventMovement;
+        public bool PreventActions;
+        public bool WakeOnDamage;
+        public int ArmorClassBonus;
         public int Stacks = 1;
         public int MaxStacks = 1;
         public string StackingMode = "refresh";
@@ -56,7 +61,7 @@ public partial class Unit : Node2D
             ? Mathf.Max(1, BaseUnarmedDamage)
             : 0;
     public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
-    public int ArmorClass => Mathf.Max(0, ArmorClassBonus);
+    public int ArmorClass => Mathf.Max(0, ArmorClassBonus + GetActiveArmorClassBonusFromStatuses());
     public int ExperienceToNextLevel => Mathf.Max(100, Level * 25);
     public int MovementPerTurn { get; private set; } = MaxMovementPerTurn;
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
@@ -151,7 +156,7 @@ public partial class Unit : Node2D
 
     public bool CanMoveThisTurn()
     {
-        return RemainingMovement > 0;
+        return RemainingMovement > 0 && !HasMovementPreventingStatusEffect();
     }
 
     public bool TrySpendMovement(int amount = 1)
@@ -168,7 +173,7 @@ public partial class Unit : Node2D
 
     public bool CanUseAbilityThisTurn()
     {
-        return !HasUsedAbilityThisTurn;
+        return !HasUsedAbilityThisTurn && !HasActionPreventingStatusEffect();
     }
 
     public bool HasAbility(string abilityId)
@@ -290,7 +295,7 @@ public partial class Unit : Node2D
         return true;
     }
 
-    public Dictionary ApplyStatusEffect(string statusId, string displayName, bool isBuff, int durationTurns, int startDelayTurns = 0, int damagePerTurn = 0, string stackingMode = "refresh", int maxStacks = 1, int stackAmount = 1, string scope = "persistent")
+    public Dictionary ApplyStatusEffect(string statusId, string displayName, bool isBuff, int durationTurns, int startDelayTurns = 0, int damagePerTurn = 0, string stackingMode = "refresh", int maxStacks = 1, int stackAmount = 1, string scope = "persistent", bool skipTurn = false, bool preventMovement = false, bool preventActions = false, bool wakeOnDamage = false, int armorClassBonus = 0)
     {
         var result = new Dictionary
         {
@@ -335,6 +340,11 @@ public partial class Unit : Node2D
                 RemainingTurns = safeDuration,
                 StartDelayTurns = safeDelay,
                 DamagePerTurn = safeDamage,
+                SkipTurn = skipTurn,
+                PreventMovement = preventMovement,
+                PreventActions = preventActions,
+                WakeOnDamage = wakeOnDamage,
+                ArmorClassBonus = armorClassBonus,
                 Stacks = safeStackAmount,
                 MaxStacks = safeMaxStacks,
                 StackingMode = normalizedMode,
@@ -363,6 +373,11 @@ public partial class Unit : Node2D
                 RemainingTurns = safeDuration,
                 StartDelayTurns = safeDelay,
                 DamagePerTurn = safeDamage,
+                SkipTurn = skipTurn,
+                PreventMovement = preventMovement,
+                PreventActions = preventActions,
+                WakeOnDamage = wakeOnDamage,
+                ArmorClassBonus = armorClassBonus,
                 Stacks = safeStackAmount,
                 MaxStacks = safeMaxStacks,
                 StackingMode = normalizedMode,
@@ -386,6 +401,11 @@ public partial class Unit : Node2D
         effect.MaxStacks = Mathf.Max(effect.MaxStacks, safeMaxStacks);
         effect.StackingMode = normalizedMode;
         effect.DamagePerTurn = Mathf.Max(effect.DamagePerTurn, safeDamage);
+        effect.SkipTurn = effect.SkipTurn || skipTurn;
+        effect.PreventMovement = effect.PreventMovement || preventMovement;
+        effect.PreventActions = effect.PreventActions || preventActions;
+        effect.WakeOnDamage = effect.WakeOnDamage || wakeOnDamage;
+        effect.ArmorClassBonus = Mathf.Max(effect.ArmorClassBonus, armorClassBonus);
 
         if (normalizedMode == "intensity")
         {
@@ -567,6 +587,103 @@ public partial class Unit : Node2D
         return levelsGained;
     }
 
+    public bool HasStatusEffect(string baseStatusId)
+    {
+        if (string.IsNullOrWhiteSpace(baseStatusId) || _statusEffects.Count == 0)
+        {
+            return false;
+        }
+
+        var trimmed = baseStatusId.Trim();
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (effect.RemainingTurns <= 0)
+            {
+                continue;
+            }
+
+            if (effect.BaseStatusId == trimmed)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool TryGetTurnSkippingStatusName(out string statusName)
+    {
+        statusName = "";
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (effect.RemainingTurns <= 0 || !effect.SkipTurn)
+            {
+                continue;
+            }
+
+            statusName = string.IsNullOrEmpty(effect.DisplayName) ? effect.BaseStatusId : effect.DisplayName;
+            return true;
+        }
+
+        return false;
+    }
+
+    public int RemoveStatusEffectByBaseId(string baseStatusId)
+    {
+        if (string.IsNullOrWhiteSpace(baseStatusId) || _statusEffects.Count == 0)
+        {
+            return 0;
+        }
+
+        var removed = 0;
+        var trimmed = baseStatusId.Trim();
+        var keys = new Array<string>();
+        foreach (var pair in _statusEffects)
+        {
+            if (pair.Value.BaseStatusId == trimmed)
+            {
+                keys.Add(pair.Key);
+            }
+        }
+
+        foreach (var key in keys)
+        {
+            if (_statusEffects.Remove(key))
+            {
+                removed += 1;
+            }
+        }
+
+        return removed;
+    }
+
+    public Array<string> ClearWakeOnDamageStatusEffects()
+    {
+        var removedNames = new Array<string>();
+        if (_statusEffects.Count == 0)
+        {
+            return removedNames;
+        }
+
+        var keys = new Array<string>();
+        foreach (var pair in _statusEffects)
+        {
+            if (pair.Value.WakeOnDamage)
+            {
+                keys.Add(pair.Key);
+                var label = string.IsNullOrEmpty(pair.Value.DisplayName) ? pair.Value.BaseStatusId : pair.Value.DisplayName;
+                removedNames.Add(label);
+            }
+        }
+
+        foreach (var key in keys)
+        {
+            _statusEffects.Remove(key);
+        }
+
+        return removedNames;
+    }
+
     public void MarkAbilityUsed(string abilityId, int cooldownTurns = 0)
     {
         HasUsedAbilityThisTurn = true;
@@ -574,6 +691,16 @@ public partial class Unit : Node2D
         {
             _abilityCooldownRemaining[abilityId] = Mathf.Max(0, cooldownTurns);
         }
+    }
+
+    public void MarkAbilityCooldownOnly(string abilityId, int cooldownTurns = 0)
+    {
+        if (string.IsNullOrEmpty(abilityId))
+        {
+            return;
+        }
+
+        _abilityCooldownRemaining[abilityId] = Mathf.Max(0, cooldownTurns);
     }
 
     public void MarkDefending()
@@ -613,6 +740,11 @@ public partial class Unit : Node2D
                 { "remaining_turns", effect.RemainingTurns },
                 { "start_delay_turns", effect.StartDelayTurns },
                 { "damage_per_turn", effect.DamagePerTurn },
+                { "skip_turn", effect.SkipTurn },
+                { "prevent_movement", effect.PreventMovement },
+                { "prevent_actions", effect.PreventActions },
+                { "wake_on_damage", effect.WakeOnDamage },
+                { "armor_class_bonus", effect.ArmorClassBonus },
                 { "stacks", effect.Stacks },
                 { "max_stacks", effect.MaxStacks },
                 { "stacking_mode", effect.StackingMode },
@@ -701,6 +833,11 @@ public partial class Unit : Node2D
                 RemainingTurns = remainingTurns,
                 StartDelayTurns = Mathf.Max(0, GetInt(entry, "start_delay_turns", 0)),
                 DamagePerTurn = Mathf.Max(0, GetInt(entry, "damage_per_turn", 0)),
+                SkipTurn = GetBool(entry, "skip_turn", false),
+                PreventMovement = GetBool(entry, "prevent_movement", false),
+                PreventActions = GetBool(entry, "prevent_actions", false),
+                WakeOnDamage = GetBool(entry, "wake_on_damage", false),
+                ArmorClassBonus = Mathf.Max(0, GetInt(entry, "armor_class_bonus", 0)),
                 Stacks = Mathf.Max(1, GetInt(entry, "stacks", 1)),
                 MaxStacks = Mathf.Max(1, GetInt(entry, "max_stacks", 1)),
                 StackingMode = NormalizeStackingMode(GetString(entry, "stacking_mode", "refresh")),
@@ -1071,6 +1208,48 @@ public partial class Unit : Node2D
         HitPoints = Mathf.Min(MaxHitPoints, HitPoints + 2);
         MaxMagicPoints += 1;
         MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + 1);
+    }
+
+    private bool HasMovementPreventingStatusEffect()
+    {
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (effect.RemainingTurns > 0 && effect.PreventMovement)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasActionPreventingStatusEffect()
+    {
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (effect.RemainingTurns > 0 && effect.PreventActions)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int GetActiveArmorClassBonusFromStatuses()
+    {
+        var total = 0;
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (effect.RemainingTurns <= 0 || effect.StartDelayTurns > 0 || effect.ArmorClassBonus <= 0)
+            {
+                continue;
+            }
+
+            total += effect.ArmorClassBonus * Mathf.Max(1, effect.Stacks);
+        }
+
+        return total;
     }
 
     private bool IsCellBlockingLineOfSight(Vector2I cell, Unit target, Array<Unit> allUnits)

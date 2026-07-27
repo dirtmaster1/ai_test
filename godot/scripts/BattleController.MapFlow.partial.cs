@@ -1,8 +1,16 @@
 using Godot;
 using Godot.Collections;
+using System.Threading.Tasks;
 
 public partial class BattleController
 {
+    private enum MapTransitionOutcome
+    {
+        None,
+        Stayed,
+        Transitioned
+    }
+
     // Architecture: Map/encounter orchestration only.
     private void EnterExplorationMode(string statusText = null)
     {
@@ -177,26 +185,90 @@ public partial class BattleController
         }
     }
 
-    private bool TryHandleMapTransition()
+    private async Task<MapTransitionOutcome> TryHandleMapTransitionAsync()
     {
         if (_flowState != BattleFlowState.Exploration)
         {
-            return false;
+            return MapTransitionOutcome.None;
         }
 
         var explorer = GetExplorerUnit();
         if (explorer == null)
         {
-            return false;
+            return MapTransitionOutcome.None;
         }
 
         if (_mapLoader != null && _mapLoader.TryGetTransitionForCell(_mapTransitions, explorer.GridPos, _currentMapId, out var toMap, out var spawnCell))
         {
+            var shouldTransition = await ConfirmMapTransitionAsync(toMap);
+            if (!shouldTransition)
+            {
+                return MapTransitionOutcome.Stayed;
+            }
+
             TransitionToMap(toMap, spawnCell);
-            return true;
+            return MapTransitionOutcome.Transitioned;
         }
 
-        return false;
+        return MapTransitionOutcome.None;
+    }
+
+    private async Task<bool> ConfirmMapTransitionAsync(string toMapId)
+    {
+        var mapName = GetMapDisplayName(toMapId);
+        var confirmation = new ConfirmationDialog
+        {
+            Title = "Map Transition",
+            DialogText = $"Travel to {mapName}?"
+        };
+
+        confirmation.GetOkButton().Text = "Travel";
+        confirmation.AddCancelButton("Stay");
+        AddChild(confirmation);
+
+        var completion = new TaskCompletionSource<bool>();
+
+        void HandleConfirmed()
+        {
+            completion.TrySetResult(true);
+        }
+
+        void HandleCanceled()
+        {
+            completion.TrySetResult(false);
+        }
+
+        confirmation.Confirmed += HandleConfirmed;
+        confirmation.Canceled += HandleCanceled;
+        confirmation.CloseRequested += HandleCanceled;
+
+        try
+        {
+            confirmation.PopupCentered();
+            return await completion.Task;
+        }
+        finally
+        {
+            confirmation.Confirmed -= HandleConfirmed;
+            confirmation.Canceled -= HandleCanceled;
+            confirmation.CloseRequested -= HandleCanceled;
+            confirmation.QueueFree();
+        }
+    }
+
+    private static string GetMapDisplayName(string mapId)
+    {
+        if (string.IsNullOrWhiteSpace(mapId))
+        {
+            return "Unknown";
+        }
+
+        if (MapTokenCatalog.Maps.TryGetValue(mapId, out var definition) && !string.IsNullOrWhiteSpace(definition.Name))
+        {
+            return definition.Name;
+        }
+
+        return mapId.Replace("-", " ");
     }
 
     private void TransitionToMap(string toMapId, Vector2I spawnCell)

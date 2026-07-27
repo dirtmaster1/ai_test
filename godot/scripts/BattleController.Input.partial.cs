@@ -86,13 +86,14 @@ public partial class BattleController
 
         if (keyEvent.Keycode == Key.F)
         {
-            if (!active.CanUseAbilityThisTurn())
+            var selectedAbilityId = GetSelectedAbilityId(active);
+            if (string.IsNullOrEmpty(selectedAbilityId) || !active.HasAbility(selectedAbilityId))
             {
                 return;
             }
 
-            var selectedAbilityId = GetSelectedAbilityId(active);
-            if (string.IsNullOrEmpty(selectedAbilityId) || !active.HasAbility(selectedAbilityId))
+            var actionProfile = ResolveActionProfile(active, selectedAbilityId);
+            if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
             {
                 return;
             }
@@ -103,7 +104,6 @@ public partial class BattleController
                 return;
             }
 
-            var actionProfile = ResolveActionProfile(active, selectedAbilityId);
             if (!CanCastAction(active, actionProfile))
             {
                 return;
@@ -112,6 +112,22 @@ public partial class BattleController
             if (actionProfile.ActionType == "defend")
             {
                 // Defend is activated only via explicit HUD button click.
+                return;
+            }
+
+            if (actionProfile.ActionType == "protection")
+            {
+                if (!TryUseProtectionAura(active, actionProfile))
+                {
+                    return;
+                }
+
+                var result = ResolveSuccessfulAction(actionProfile.ActionType);
+                ApplyActionResult(result);
+                _awaitingPlayerAttackDirection = false;
+                ClearMovementPreviewPath();
+                SyncHudFromGameState();
+                QueueRedraw();
                 return;
             }
 
@@ -291,7 +307,7 @@ public partial class BattleController
         return _hud != null && _hud.ShouldBlockWorldMouseInput();
     }
 
-    private void HandleExplorationInput(InputEventKey keyEvent)
+    private async void HandleExplorationInput(InputEventKey keyEvent)
     {
         if (_isExplorationAutoMoving)
         {
@@ -315,7 +331,8 @@ public partial class BattleController
             return;
         }
 
-        if (TryHandleMapTransition())
+        var transitionOutcome = await TryHandleMapTransitionAsync();
+        if (transitionOutcome == MapTransitionOutcome.Transitioned)
         {
             return;
         }
