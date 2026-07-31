@@ -210,10 +210,10 @@
   },
   "characters": {
 	"default_party": [
-	  "wizard",
 	  "warrior",
+	  "ranger",
 	  "cleric",
-	  "ranger"
+	  "wizard"
 	],
 	"templates": {
 	  "wizard": {

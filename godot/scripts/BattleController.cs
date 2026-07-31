@@ -290,6 +290,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         PruneInvalidUnitReferences();
 
+        // Always reset to movement-ready input when turn ownership changes.
+        _mouseMoveInputLockedUntilMs = 0;
         _awaitingPlayerAttackDirection = false;
         ClearMovementPreviewPath();
         QueueRedraw();
@@ -2671,7 +2673,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         var center = CellCenter(active.GridPos);
-    canvas.DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
+        canvas.DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
         for (var dx = -actionProfile.Range; dx <= actionProfile.Range; dx++)
         {
@@ -2700,6 +2702,55 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 canvas.DrawRect(cellRect, edge, false, 2.0f);
             }
         }
+
+        if (!TryGetAreaPreviewCenterCell(active, actionProfile, out var areaCenter))
+        {
+            return;
+        }
+
+        DrawAreaPreviewOverlay(canvas, areaCenter, actionProfile.AreaRadius);
+    }
+
+    private bool TryGetAreaPreviewCenterCell(Unit active, ActionProfile actionProfile, out Vector2I centerCell)
+    {
+        centerCell = new Vector2I(-1, -1);
+
+        if (actionProfile.Range <= 0 || actionProfile.AreaRadius <= 0)
+        {
+            return false;
+        }
+
+        var hoveredCell = WorldToCell(ToLocal(GetGlobalMousePosition()));
+        if (!IsInBounds(hoveredCell) || !Unit.IsWithinRange(active.GridPos, hoveredCell, actionProfile.Range))
+        {
+            return false;
+        }
+
+        centerCell = hoveredCell;
+        return true;
+    }
+
+    private void DrawAreaPreviewOverlay(CanvasItem canvas, Vector2I centerCell, int radius)
+    {
+        for (var dx = -radius; dx <= radius; dx++)
+        {
+            for (var dy = -radius; dy <= radius; dy++)
+            {
+                var cell = centerCell + new Vector2I(dx, dy);
+                if (!IsInBounds(cell) || !Unit.IsWithinRange(centerCell, cell, radius))
+                {
+                    continue;
+                }
+
+                var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
+                canvas.DrawRect(cellRect, new Color(0.45f, 0.75f, 1.0f, 0.2f), true);
+                canvas.DrawRect(cellRect, new Color(0.62f, 0.9f, 1.0f, 0.95f), false, 2.0f);
+            }
+        }
+
+        var centerRect = new Rect2(new Vector2(centerCell.X * CellSize, centerCell.Y * CellSize), new Vector2(CellSize, CellSize));
+        canvas.DrawRect(centerRect, new Color(0.85f, 0.95f, 1.0f, 0.2f), true);
+        canvas.DrawRect(centerRect, new Color(0.95f, 1.0f, 1.0f, 1.0f), false, 3.0f);
     }
 
     private void DrawMovementPreviewOverlay(CanvasItem canvas)

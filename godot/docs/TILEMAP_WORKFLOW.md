@@ -64,7 +64,7 @@ Set these custom data keys on a tile or tile alternative:
 - `marker_type`: `player_spawn`
 - `party_slot`: zero-based index in `characters.default_party` from `resources/game_data.json`
 
-The current default party uses slot `0` for the warrior, `1` for the cleric, `2` for the ranger, and `3` for the wizard. Paint one marker for each member you want to position. The tile's `template_id` and artwork do not choose the party member; `party_slot` controls that assignment.
+The current default party uses slot `0` for the warrior, `1` for the ranger, `2` for the cleric, and `3` for the wizard. Paint one marker for each member you want to position. The tile's `template_id` and artwork do not choose the party member; `party_slot` controls that assignment.
 
 If `party_slot` is omitted or negative, the marker becomes the fallback party-leader spawn. Any party member without an explicit slot marker is placed near that leader using the default formation offsets.
 
