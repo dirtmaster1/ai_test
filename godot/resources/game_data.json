@@ -232,6 +232,7 @@
 		"max_hit_points": 10,
 		"magic_points": 5,
 		"max_magic_points": 5,
+		"magic_point_regen_per_turn": 2,
 		"intelligence": 10,
 		"strength": 5,
 		"wisdom": 5,
@@ -281,6 +282,7 @@
 		"magic_points": 5,
 		"max_magic_points": 5,
 		"intelligence": 5,
+		"magic_point_regen_per_turn": 2,
 		"strength": 5,
 		"wisdom": 10,
 		"dexterity": 5,
@@ -511,6 +513,45 @@
 		"wisdom": 2,
 		"dexterity": 8,
 		"constitution": 6
+	  },
+	  "cave-spider": {
+		"id": "cave-spider",
+		"name": "Cave Spider",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee",
+		  "poison"
+		],
+		"base_unarmed_damage": 2,
+		"initiative": 13,
+		"hit_points": 7,
+		"max_hit_points": 7,
+		"intelligence": 1,
+		"strength": 5,
+		"wisdom": 2,
+		"dexterity": 9,
+		"constitution": 4
+	  },
+	  "spider-queen": {
+		"id": "spider-queen",
+		"name": "Spider Queen",
+		"team": "enemy",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee",
+		  "poison",
+		  "charge"
+		],
+		"base_unarmed_damage": 5,
+		"initiative": 11,
+		"hit_points": 32,
+		"max_hit_points": 32,
+		"intelligence": 5,
+		"strength": 11,
+		"wisdom": 6,
+		"dexterity": 7,
+		"constitution": 12
 	  },
 	  "dire-wolf": {
 		"id": "dire-wolf",

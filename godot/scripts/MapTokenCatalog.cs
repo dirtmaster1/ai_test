@@ -58,6 +58,11 @@ public static class MapTokenCatalog
                 Id = "goblin-cave",
                 Name = "Goblin Cave"
             },
+            ["spider-mines"] = new TokenMapDef
+            {
+                Id = "spider-mines",
+                Name = "Spider Mines"
+            },
             ["graveyard"] = new TokenMapDef
             {
                 Id = "graveyard",
