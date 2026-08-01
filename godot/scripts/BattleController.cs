@@ -901,6 +901,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
+            sleptUnits.Add(unit.UnitName);
+        }
+
+        if (sleptUnits.Count == 0)
+        {
+            return false;
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, radius) || IsUndead(unit))
+            {
+                continue;
+            }
+
             unit.ApplyStatusEffect(
                 "sleep",
                 "Asleep",
@@ -918,17 +938,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 wakeOnDamage: true,
                 armorClassBonus: 0
             );
-            sleptUnits.Add(unit.UnitName);
-        }
-
-        if (sleptUnits.Count == 0)
-        {
-            return false;
-        }
-
-        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
-        {
-            return false;
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
@@ -975,6 +984,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
+        if (cellsUsed <= 0)
+        {
+            return false;
+        }
+
         if (destinationCell != attacker.GridPos)
         {
             if (!TryMoveUnit(attacker, destinationCell))
@@ -991,8 +1005,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
-        var cellsUnused = Mathf.Max(0, maxChargeRange - cellsUsed);
-        var chargeDamage = 2 * cellsUnused;
+        var chargeDamage = 2 * cellsUsed;
         return TryAttackTarget(attacker, target, chargeDamage, 1, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: false);
     }
 
@@ -1053,11 +1066,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var actionData = GetActionData(actionProfile.ActionId, out _);
         var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 1));
+        var effectiveDurationTurns = durationTurns + 1;
         target.ApplyStatusEffect(
             "pinned",
             "Pinned",
             false,
-            durationTurns,
+            effectiveDurationTurns,
             startDelayTurns: 0,
             damagePerTurn: 0,
             stackingMode: "refresh",
@@ -1103,7 +1117,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
-            var actionBeforeMove = TryUsePrimaryAction(enemyUnit);
+            var actionBeforeMove = TryExecuteAiAction(enemyUnit);
             if (actionBeforeMove.Success)
             {
                 ApplyActionResult(actionBeforeMove);
@@ -1119,16 +1133,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
             }
 
-            // Enemies can spend up to their movement budget and use one primary ability each turn.
+            // Enemies can spend up to their movement budget while pathing toward a usable attack position.
             while (_flowState == BattleFlowState.Combat && IsCurrentActiveUnit(enemyUnit) && enemyUnit.CanMoveThisTurn())
             {
-                var target = _aiDirector.ChooseTarget(enemyUnit, _playerUnits);
-                if (target == null)
+                if (!_aiDirector.TryChooseStepTowardActionRange(
+                    enemyUnit,
+                    _playerUnits,
+                    BuildAiActionOptions(enemyUnit),
+                    target => IsValidAttackTarget(enemyUnit, target),
+                    cell => IsInBounds(cell) && !IsBlockedCell(cell) && !IsOccupied(cell, enemyUnit),
+                    HasClearLineOfSight,
+                    goal => FindPath(enemyUnit, enemyUnit.GridPos, goal, enemyUnit.RemainingMovement),
+                    out var step))
                 {
                     break;
                 }
 
-                var step = _aiDirector.ChooseStepTowardTarget(enemyUnit, target);
                 if (step == enemyUnit.GridPos)
                 {
                     break;
@@ -1152,7 +1172,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
-            var actionAfterMove = TryUsePrimaryAction(enemyUnit);
+            var actionAfterMove = TryExecuteAiAction(enemyUnit);
             if (actionAfterMove.Success)
             {
                 ApplyActionResult(actionAfterMove);
@@ -1473,47 +1493,24 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
-    private CombatActionResult TryUsePrimaryAction(Unit actor)
+    private CombatActionResult TryExecuteAiAction(Unit actor)
     {
-        // This method is for enemy AI automation only.
-        if (actor == null || actor.Team != "enemy")
+        if (actor == null || actor.Team != "enemy" || actor.AbilityIds == null)
         {
             return CombatActionResult.Failed;
         }
 
-        var actionProfile = ResolveActionProfile(actor, GetSelectedAbilityId(actor));
-        if (_flowState == BattleFlowState.Combat && !actionProfile.IgnoresActionCost && !actor.CanUseAbilityThisTurn())
+        var choice = _aiDirector.ChooseAction(actor, BuildAiActionOptions(actor), _allUnits, CanAiActionTarget);
+        if (!choice.HasChoice || choice.Target == null)
         {
             return CombatActionResult.Failed;
         }
 
-        if (actor.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
-        {
-            return CombatActionResult.Failed;
-        }
-
-        if (!CanCastAction(actor, actionProfile))
-        {
-            return CombatActionResult.Failed;
-        }
-
-        if (actionProfile.ActionType == "defend")
-        {
-            return TryDefend(actor, actionProfile);
-        }
-
-        Unit target = actionProfile.ActionType == "heal"
-            ? FindMostInjuredAllyInRange(actor, actionProfile.Range)
-            : FindNearestEnemyInRange(actor, actionProfile.Range);
-
-        if (target == null)
-        {
-            return CombatActionResult.Failed;
-        }
-
+        var actionProfile = ResolveActionProfile(actor, choice.AbilityId);
+        SetSelectedAbilityId(actor, choice.AbilityId);
         var actionSuccess = actionProfile.ActionType == "heal"
-            ? TryHealTarget(actor, target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical)
-            : TryAttackTarget(actor, target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical);
+            ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical)
+            : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical);
 
         if (!actionSuccess)
         {
@@ -1521,6 +1518,46 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return ResolveSuccessfulAction(actionProfile.ActionType);
+    }
+
+    private List<AiDirector.ActionOption> BuildAiActionOptions(Unit actor)
+    {
+        var options = new List<AiDirector.ActionOption>();
+        if (!IsUsableUnit(actor) || actor.AbilityIds == null)
+        {
+            return options;
+        }
+
+        foreach (var abilityId in actor.AbilityIds)
+        {
+            if (IsPassiveAbilityId(abilityId))
+            {
+                continue;
+            }
+
+            var profile = ResolveActionProfile(actor, abilityId);
+            var canUseNow = CanUseActionProfileNow(actor, profile);
+            var canPlanFromMovement = profile.ActionType == "attack"
+                && actor.GetAbilityCooldownRemaining(profile.ActionId) <= 0
+                && CanCastAction(actor, profile);
+            options.Add(new AiDirector.ActionOption(abilityId, profile.ActionType, profile.Range, canUseNow, canPlanFromMovement));
+        }
+
+        return options;
+    }
+
+    private bool CanAiActionTarget(Unit actor, Unit target, AiDirector.ActionOption option)
+    {
+        if (option.ActionType == "heal")
+        {
+            return IsValidAllyTarget(actor, target)
+                && actor.CanHealTarget(target, option.Range, _allUnits)
+                && HasClearLineOfSight(actor.GridPos, target.GridPos);
+        }
+
+        return IsValidAttackTarget(actor, target)
+            && actor.CanAttackTarget(target, option.Range, _allUnits)
+            && HasClearLineOfSight(actor.GridPos, target.GridPos);
     }
 
     private CombatActionResult ResolveSuccessfulAction(string actionType)
@@ -1763,8 +1800,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var healed = target.ApplyHealing(healAmount);
-        if (healed <= 0)
+        var healable = Mathf.Min(Mathf.Max(0, healAmount), Mathf.Max(0, target.MaxHitPoints - target.HitPoints));
+        if (healable <= 0)
         {
             return false;
         }
@@ -1773,6 +1810,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             return false;
         }
+
+        var healed = target.ApplyHealing(healAmount);
 
         if (_flowState == BattleFlowState.Combat)
         {
@@ -2260,6 +2299,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
+    private bool CanUseActionProfileNow(Unit actor, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(actor) || actor.IsDead)
+        {
+            return false;
+        }
+
+        if (!actionProfile.IgnoresActionCost && !actor.CanUseAbilityThisTurn())
+        {
+            return false;
+        }
+
+        if (actor.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
+        {
+            return false;
+        }
+
+        return CanCastAction(actor, actionProfile);
+    }
+
     private bool CanUseRangedWeaponAbility(Unit actor)
     {
         if (!IsUsableUnit(actor) || _gameData == null || string.IsNullOrEmpty(actor.UnitId))
@@ -2557,10 +2616,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var requirementLabel = profile.RequiresRangedWeapon
                 ? "Requirement: ranged weapon equipped"
                 : "Requirement: none";
+            var isEnabled = CanUseActionProfileNow(unit, profile);
             var stateLabel = cooldownRemaining > 0
                 ? $"Status: on cooldown ({cooldownRemaining} remaining)"
                 : profile.RequiresRangedWeapon && !CanUseRangedWeaponAbility(unit)
                     ? "Status: requires a ranged weapon"
+                    : !profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn()
+                        ? "Status: action already used"
                     : !CanCastAction(unit, profile)
                         ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
                         : "Status: ready";
@@ -2570,6 +2632,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 { "label", actionName },
                 { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\nArea Radius: {profile.AreaRadius}\n{valueText}\n{mpCostLabel}\n{cooldownLabel}\n{actionCostLabel}\n{requirementLabel}\n{stateLabel}" },
                 { "cooldown_remaining", cooldownRemaining },
+                { "is_enabled", isEnabled ? 1 : 0 },
                 { "is_selected", abilityId == selectedId ? 1 : 0 }
             });
         }

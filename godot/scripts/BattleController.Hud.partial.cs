@@ -38,9 +38,10 @@ public partial class BattleController
         _hud.SetCharacterStatusSummary(_hud.BuildCharacterStatusSummary(characterUnit));
 
         var activePlayer = GetActivePlayerUnit();
-        var abilityEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
-        _hud.SetActionButtonsEnabled(abilityEnabled, _flowState == BattleFlowState.Combat);
-        _hud.SetAbilityButtons(BuildAbilityEntriesForHud(activePlayer), abilityEnabled);
+        var mainActionEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
+        var abilityPanelEnabled = _flowState == BattleFlowState.Combat && activePlayer != null;
+        _hud.SetActionButtonsEnabled(mainActionEnabled, _flowState == BattleFlowState.Combat);
+        _hud.SetAbilityButtons(BuildAbilityEntriesForHud(activePlayer), abilityPanelEnabled);
         _hud.SetInventoryGold(_partyGold);
 
         var inventoryTarget = GetInventoryTargetUnit();

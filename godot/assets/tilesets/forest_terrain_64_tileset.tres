@@ -20,9 +20,9 @@ texture_region_size = Vector2i(64, 64)
 0:2/0 = 0
 0:2/0/custom_data_0 = "floor"
 1:2/0 = 0
-1:2/0/custom_data_0 = "door"
+1:2/0/custom_data_0 = "floor"
 2:2/0 = 0
-2:2/0/custom_data_0 = "door"
+2:2/0/custom_data_0 = "floor"
 
 [resource]
 tile_size = Vector2i(64, 64)

@@ -1506,6 +1506,7 @@ public partial class HudController : Control
             var label = GetString(entry, "label", abilityId);
             var detail = GetString(entry, "detail", label);
             var cooldownRemaining = GetInt(entry, "cooldown_remaining", 0);
+            var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
             var isSelected = GetInt(entry, "is_selected", 0) == 1;
 
             button.Visible = true;
@@ -1513,7 +1514,7 @@ public partial class HudController : Control
                 ? $"{label} (CD {cooldownRemaining})"
                 : label;
             button.TooltipText = detail;
-            button.Disabled = !canUseAnyAbility || cooldownRemaining > 0;
+            button.Disabled = !canUseAnyAbility || !isEnabled || cooldownRemaining > 0;
             _abilityIdsByButton[button] = abilityId;
 
             if (isSelected)
