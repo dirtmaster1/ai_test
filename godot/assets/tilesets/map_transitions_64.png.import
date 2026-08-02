@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://drrpg4jcrdidx"
-path="res://.godot/imported/mine_cave_units_64.png-cbb09bdd6951ee4414b1532aca9912c0.ctex"
+uid="uid://ci12ii7f6pdji"
+path="res://.godot/imported/map_transitions_64.png-8302fc79e0cc312d24771e2f1f87db8f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/tilesets/mine_cave_units_64.png"
-dest_files=["res://.godot/imported/mine_cave_units_64.png-cbb09bdd6951ee4414b1532aca9912c0.ctex"]
+source_file="res://assets/tilesets/map_transitions_64.png"
+dest_files=["res://.godot/imported/map_transitions_64.png-8302fc79e0cc312d24771e2f1f87db8f.ctex"]
 
 [params]
 

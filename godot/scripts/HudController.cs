@@ -187,6 +187,10 @@ public partial class HudController : Control
         _abilityButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton2");
         _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton3");
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
+        _abilityButton1.FocusMode = FocusModeEnum.None;
+        _abilityButton2.FocusMode = FocusModeEnum.None;
+        _abilityButton3.FocusMode = FocusModeEnum.None;
+        _endTurnButton.FocusMode = FocusModeEnum.None;
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
         _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeader");
