@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://ctawppt8rta0s" path="res://assets/tilesets/general_items_64.png" id="2_items"]
 [ext_resource type="Texture2D" uid="uid://bo6u137rgyj7b" path="res://assets/tilesets/mine_cave_props_64.png" id="3_0hw3x"]
 [ext_resource type="Texture2D" uid="uid://ci12ii7f6pdji" path="res://assets/tilesets/map_transitions_64.png" id="4_mjv3m"]
+[ext_resource type="Texture2D" uid="uid://ju8ou0ix40g4" path="res://assets/tilesets/units_3_64.png" id="5_rgcrq"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_markers"]
 texture = ExtResource("1_units")
@@ -41,9 +42,6 @@ texture_region_size = Vector2i(64, 64)
 0:2/0/custom_data_0 = "goblin-archer"
 0:2/0/custom_data_7 = "goblin-chieftain"
 0:1/0 = 0
-0:1/0/custom_data_0 = "npc"
-0:1/0/custom_data_9 = "Milo the Vendor"
-0:1/0/custom_data_15 = "Milo the vendor is here."
 4:0/0 = 0
 5:0/0 = 0
 1:3/next_alternative_id = 7
@@ -362,6 +360,50 @@ texture_region_size = Vector2i(64, 64)
 7:8/0 = 0
 8:8/0 = 0
 
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_6ngyb"]
+texture = ExtResource("5_rgcrq")
+texture_region_size = Vector2i(64, 64)
+0:0/0 = 0
+0:0/0/custom_data_0 = "npc"
+0:0/0/custom_data_9 = "Milo the Vendor"
+0:0/0/custom_data_15 = "Milo the vendor is here"
+0:0/0/custom_data_19 = true
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+2:5/0 = 0
+3:5/0 = 0
+4:5/0 = 0
+5:5/0 = 0
+
 [resource]
 tile_size = Vector2i(64, 64)
 custom_data_layer_0/name = "marker_type"
@@ -414,3 +456,4 @@ sources/0 = SubResource("TileSetAtlasSource_markers")
 sources/1 = SubResource("TileSetAtlasSource_items")
 sources/2 = SubResource("TileSetAtlasSource_mjv3m")
 sources/4 = SubResource("TileSetAtlasSource_rgcrq")
+sources/5 = SubResource("TileSetAtlasSource_6ngyb")

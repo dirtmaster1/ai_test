@@ -396,7 +396,7 @@ theme_override_constants/separation = 6
 
 [node name="VendorHeader" type="Label" parent="VendorPanel/VendorVBox"]
 layout_mode = 2
-text = "Mira the Vendor"
+text = "Vendor"
 
 [node name="VendorDialogueLabel" type="Label" parent="VendorPanel/VendorVBox"]
 layout_mode = 2
@@ -452,7 +452,7 @@ text = "Sell"
 [node name="VendorStatusLabel" type="Label" parent="VendorPanel/VendorVBox"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Party: 25 gp | Mira: 100 gp"
+text = "Party: 25 gp | Vendor: 100 gp"
 
 [node name="VendorButtons" type="HBoxContainer" parent="VendorPanel/VendorVBox"]
 layout_mode = 2

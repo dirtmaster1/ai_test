@@ -79,6 +79,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private int _movementHoverCost = -1;
     private bool _hasActiveLootCell;
     private Vector2I _activeLootCell = new(-1, -1);
+    private string _activeVendorId = "milo";
     private ulong _lastManualEndTurnAtMs;
     private bool _isEndingTurn;
     private bool _isEnemyTurnProcessing;
@@ -3106,6 +3107,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        _activeVendorId = vendorId;
         EnsureDefaultVendorState();
         _hud?.SetLootPanelVisible(false);
         _hud?.OpenVendorPanel(GetVendorDisplayName(vendorId));
@@ -3114,16 +3116,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void OnHudVendorBuyRequested(string itemId)
     {
-        var message = TryBuyVendorItem("mira", itemId);
-        RefreshVendorHud("mira", message);
+        var message = TryBuyVendorItem(_activeVendorId, itemId);
+        RefreshVendorHud(_activeVendorId, message);
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
     }
 
     private void OnHudVendorSellRequested(string itemId)
     {
-        var message = TrySellVendorItem("mira", itemId);
-        RefreshVendorHud("mira", message);
+        var message = TrySellVendorItem(_activeVendorId, itemId);
+        RefreshVendorHud(_activeVendorId, message);
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
     }
@@ -3133,7 +3135,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         EnsureDefaultVendorState();
         if (string.IsNullOrEmpty(itemId) || !_vendorInventoryItemIdsById.TryGetValue(vendorId, out var vendorInventory) || !vendorInventory.Contains(itemId))
         {
-            return "Mira does not have that item in stock.";
+            return $"{GetVendorDisplayName(vendorId)} does not have that item in stock.";
         }
 
         var price = GetItemBuyPrice(itemId);
@@ -3162,7 +3164,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var vendorGold = GetVendorGold(vendorId);
         if (vendorGold < price)
         {
-            return $"Mira only has {vendorGold} gp.";
+            return $"{GetVendorDisplayName(vendorId)} only has {vendorGold} gp.";
         }
 
         _partyInventoryItemIds.Remove(itemId);
@@ -3235,14 +3237,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void EnsureDefaultVendorState()
     {
-        if (!_vendorGoldById.ContainsKey("mira"))
+        EnsureVendorState("milo");
+        EnsureVendorState("mira");
+    }
+
+    private void EnsureVendorState(string vendorId)
+    {
+        if (string.IsNullOrEmpty(vendorId))
         {
-            _vendorGoldById["mira"] = 100;
+            return;
         }
 
-        if (!_vendorInventoryItemIdsById.ContainsKey("mira"))
+        if (!_vendorGoldById.ContainsKey(vendorId))
         {
-            _vendorInventoryItemIdsById["mira"] = new List<string>
+            _vendorGoldById[vendorId] = 100;
+        }
+
+        if (!_vendorInventoryItemIdsById.ContainsKey(vendorId))
+        {
+            _vendorInventoryItemIdsById[vendorId] = new List<string>
             {
                 "leather-armor",
                 "leather-armor",
@@ -3272,7 +3285,28 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private static string GetVendorDisplayName(string vendorId)
     {
-        return string.Equals(vendorId, "mira", System.StringComparison.OrdinalIgnoreCase) ? "Mira the Vendor" : "Vendor";
+        if (string.IsNullOrEmpty(vendorId))
+        {
+            return "Vendor";
+        }
+
+        if (string.Equals(vendorId, "milo", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return "Milo the Vendor";
+        }
+
+        if (string.Equals(vendorId, "mira", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return "Mira the Vendor";
+        }
+
+        var normalized = vendorId.Replace('-', ' ').Replace('_', ' ').Trim();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return "Vendor";
+        }
+
+        return char.ToUpperInvariant(normalized[0]) + normalized.Substring(1) + " the Vendor";
     }
 
     private static System.Collections.Generic.Dictionary<string, int> CountItems(IEnumerable<string> itemIds)

@@ -658,7 +658,7 @@ public partial class HudController : Control
     {
         if (_vendorDialogueLabel != null)
         {
-            _vendorDialogueLabel.Text = "Take a look. Mira buys and sells for gold.";
+            _vendorDialogueLabel.Text = "Take a look. The vendor buys and sells for gold.";
         }
 
         if (_vendorStoreTabs != null)
@@ -2109,7 +2109,7 @@ public partial class HudController : Control
 
     public void SetVendorItems(Array<Dictionary> buyItems, Array<Dictionary> sellItems)
     {
-        SetVendorList(_vendorBuyList, _vendorBuyItemsById, buyItems, "Mira has nothing left to sell.");
+        SetVendorList(_vendorBuyList, _vendorBuyItemsById, buyItems, "Vendor has nothing left to sell.");
         SetVendorList(_vendorSellList, _vendorSellItemsById, sellItems, "No shared inventory items to sell.");
 
         if (_vendorBuyButton != null)

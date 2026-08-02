@@ -189,7 +189,14 @@ public partial class MapLoader : Node
         foreach (var cell in markerLayer.GetUsedCells())
         {
             var tileData = ResolveCellTileData(markerLayer, cell);
-            if (tileData == null || !GetTileBool(markerLayer, tileData, "uses_tile_visual", false))
+            if (tileData == null)
+            {
+                continue;
+            }
+
+            var markerType = GetTileString(markerLayer, tileData, "marker_type", "").ToLowerInvariant();
+            var usesTileVisual = GetTileBool(markerLayer, tileData, "uses_tile_visual", markerType == "npc");
+            if (!usesTileVisual)
             {
                 continue;
             }
@@ -588,7 +595,10 @@ public partial class MapLoader : Node
                             { "type", propType },
                             { "name", GetTileString(markerLayer, tileData, "name", fallbackName) },
                             { "grid_pos", cell },
-                            { "uses_tile_visual", GetTileBool(markerLayer, tileData, "uses_tile_visual", false) }
+                            { "marker_source_id", markerLayer.GetCellSourceId(cell) },
+                            { "marker_atlas_coords", markerLayer.GetCellAtlasCoords(cell) },
+                            { "marker_alternative_tile", markerLayer.GetCellAlternativeTile(cell) },
+                            { "uses_tile_visual", GetTileBool(markerLayer, tileData, "uses_tile_visual", propType == "npc") }
                         };
 
                         var interactionText = GetTileString(markerLayer, tileData, "interaction_text", "");
@@ -999,12 +1009,7 @@ public partial class MapLoader : Node
             if (propType == "npc")
             {
                 canvas.DrawRect(rect, new Color(0.08f, 0.12f, 0.11f, 0.25f), true);
-                var texture = GetUnitsTexture();
-                if (texture != null)
-                {
-                    var sourceRect = new Rect2(new Vector2(0.0f, UnitTileSize), new Vector2(UnitTileSize, UnitTileSize));
-                    canvas.DrawTextureRectRegion(texture, rect, sourceRect);
-                }
+                TryDrawPropMarkerTile(canvas, rect, prop);
                 canvas.DrawRect(rect, new Color(0.48f, 0.78f, 0.62f, 0.95f), false, 2.0f);
                 continue;
             }
@@ -1178,9 +1183,10 @@ public partial class MapLoader : Node
 
             if (propType == "npc")
             {
+                var vendorId = InferVendorIdFromProp(prop);
                 entries.Add(new Dictionary
                 {
-                    { "id", "vendor:mira" },
+                    { "id", $"vendor:{vendorId}" },
                     { "label", propName },
                     { "detail", $"Talk or browse {propName}'s store." },
                     { "source_title", propName }
@@ -1282,6 +1288,100 @@ public partial class MapLoader : Node
         }
 
         return _unitsTexture;
+    }
+
+    private bool TryDrawPropMarkerTile(CanvasItem canvas, Rect2 targetRect, Dictionary prop)
+    {
+        if (canvas == null || prop == null)
+        {
+            return false;
+        }
+
+        var sourceId = GetInt(prop, "marker_source_id", -1);
+        if (sourceId < 0)
+        {
+            return false;
+        }
+
+        var atlasCoords = GetVector2I(prop, "marker_atlas_coords", new Vector2I(-1, -1));
+        if (atlasCoords.X < 0 || atlasCoords.Y < 0)
+        {
+            return false;
+        }
+
+        foreach (var pair in _mapLayersById)
+        {
+            if (!pair.Key.EndsWith(MarkerSuffix, System.StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var tileSet = pair.Value?.TileSet;
+            if (tileSet?.GetSource(sourceId) is not TileSetAtlasSource atlasSource)
+            {
+                continue;
+            }
+
+            var texture = atlasSource.Texture;
+            if (texture == null)
+            {
+                return false;
+            }
+
+            var sourceRect = new Rect2(
+                atlasCoords.X * UnitTileSize,
+                atlasCoords.Y * UnitTileSize,
+                UnitTileSize,
+                UnitTileSize
+            );
+            canvas.DrawTextureRectRegion(texture, targetRect, sourceRect);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string InferVendorIdFromProp(Dictionary prop)
+    {
+        var explicitId = GetString(prop, "vendor_id", "");
+        if (!string.IsNullOrWhiteSpace(explicitId))
+        {
+            return NormalizeVendorId(explicitId);
+        }
+
+        var propId = GetString(prop, "id", "");
+        if (!string.IsNullOrWhiteSpace(propId) && !propId.Contains("-npc-"))
+        {
+            return NormalizeVendorId(propId);
+        }
+
+        var name = GetString(prop, "name", "");
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var firstToken = name.Split(' ')[0];
+            if (!string.IsNullOrWhiteSpace(firstToken))
+            {
+                return NormalizeVendorId(firstToken);
+            }
+        }
+
+        return "milo";
+    }
+
+    private static string NormalizeVendorId(string raw)
+    {
+        var lowered = raw.ToLowerInvariant().Trim();
+        var chars = new List<char>(lowered.Length);
+        foreach (var ch in lowered)
+        {
+            if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_')
+            {
+                chars.Add(ch);
+            }
+        }
+
+        var normalized = new string(chars.ToArray());
+        return string.IsNullOrEmpty(normalized) ? "milo" : normalized;
     }
 
     public bool TryResolveExplorationInteractionById(Unit explorer, string interactionId, Array<Dictionary> mapProps, Array<Dictionary> lootBags, HashSet<string> openedPropIds, HashSet<string> lootedBagIds, List<string> partyInventoryItemIds, ref int partyGold, GameData gameData, RandomNumberGenerator lootRng, out string statusText, out string logText, out bool changedState)
