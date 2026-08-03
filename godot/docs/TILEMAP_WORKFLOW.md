@@ -38,6 +38,12 @@ On tiles in each `*-base` layer, set custom data keys in the TileSet.
 - Unique string id for persistence (example: `map-a-east-door`)
 - If omitted, the game auto-generates an id from map and cell coordinates
 
+### `open_door_atlas` (optional, door tiles only)
+
+- Atlas coordinates for the tile shown when this specific door is open
+- Accepts either a `Vector2i` custom-data value or a string in `x,y` format (example: `3,2`)
+- If omitted, the map terrain default `OpenDoorAtlasX/OpenDoorAtlasY` is used
+
 ### Door interaction behavior
 
 - Closed doors are impassable and block line of sight

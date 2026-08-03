@@ -12,6 +12,7 @@ public partial class MapLoader : Node
     private const string ItemVisualSuffix = "-item-visuals";
     private const string TerrainTypeKey = "terrain_type";
     private const string DoorIdKey = "door_id";
+    private const string OpenDoorAtlasKey = "open_door_atlas";
 
     private GameData _gameData;
     private Array<Dictionary> _defaultParty = new();
@@ -27,6 +28,7 @@ public partial class MapLoader : Node
         public int AlternativeTile { get; init; }
         public string TerrainType { get; init; } = "floor";
         public string DoorId { get; init; } = "";
+        public Vector2I? OpenDoorAtlasCoords { get; init; }
     }
 
     private sealed class BaseLayerSnapshot
@@ -226,7 +228,8 @@ public partial class MapLoader : Node
         }
 
         var terrain = ResolveTerrainDefinition(mapId);
-        var atlas = isOpen ? GetOpenDoorAtlasCell(terrain) : authoredCell.AtlasCoords;
+        var openDoorAtlas = authoredCell.OpenDoorAtlasCoords ?? GetOpenDoorAtlasCell(terrain);
+        var atlas = isOpen ? openDoorAtlas : authoredCell.AtlasCoords;
         if (!HasAtlasTile(baseLayer, authoredCell.SourceId, atlas))
         {
             return false;
@@ -322,7 +325,12 @@ public partial class MapLoader : Node
                     AtlasCoords = baseLayer.GetCellAtlasCoords(cell),
                     AlternativeTile = baseLayer.GetCellAlternativeTile(cell),
                     TerrainType = ResolveTerrainType(mapId, baseLayer, cell),
-                    DoorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId)
+                    DoorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId),
+                    OpenDoorAtlasCoords = tileData == null
+                        ? null
+                        : TryGetOpenDoorAtlasCoords(baseLayer, tileData, out var openDoorAtlasCoords)
+                            ? openDoorAtlasCoords
+                            : null
                 };
             }
         }
@@ -808,6 +816,57 @@ public partial class MapLoader : Node
         }
 
         return result;
+    }
+
+    private static bool TryGetOpenDoorAtlasCoords(TileMapLayer layer, TileData tileData, out Vector2I atlasCoords)
+    {
+        atlasCoords = Vector2I.Zero;
+        if (!HasCustomDataLayer(layer, OpenDoorAtlasKey))
+        {
+            return false;
+        }
+
+        var value = tileData.GetCustomData(OpenDoorAtlasKey);
+        if (value.VariantType == Variant.Type.Nil)
+        {
+            return false;
+        }
+
+        if (value.VariantType == Variant.Type.Vector2I)
+        {
+            var fromVector = (Vector2I)value;
+            if (fromVector.X < 0 || fromVector.Y < 0)
+            {
+                return false;
+            }
+
+            atlasCoords = fromVector;
+            return true;
+        }
+
+        if (value.VariantType != Variant.Type.String && value.VariantType != Variant.Type.StringName)
+        {
+            return false;
+        }
+
+        var text = value.AsString().Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        var parts = text.Split(',', System.StringSplitOptions.TrimEntries | System.StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], out var atlasX)
+            || !int.TryParse(parts[1], out var atlasY)
+            || atlasX < 0
+            || atlasY < 0)
+        {
+            return false;
+        }
+
+        atlasCoords = new Vector2I(atlasX, atlasY);
+        return true;
     }
 
     private static bool HasCustomDataLayer(TileMapLayer layer, string key)
