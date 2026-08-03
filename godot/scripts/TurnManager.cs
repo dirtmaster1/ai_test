@@ -29,7 +29,7 @@ public partial class TurnManager : Node
 
         ordered.Sort((a, b) =>
         {
-            var byInitiative = b.Initiative.CompareTo(a.Initiative);
+            var byInitiative = b.EffectiveInitiative.CompareTo(a.EffectiveInitiative);
             if (byInitiative != 0)
             {
                 return byInitiative;

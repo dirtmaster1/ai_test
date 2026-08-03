@@ -1366,7 +1366,7 @@ public partial class HudController : Control
             $"\n" +
             $"Attack Damage: {unit.AttackDamage}\n" +
             $"Attack Range: {unit.AttackRange}\n" +
-                $"Initiative: {unit.Initiative}";
+                $"Initiative: {unit.EffectiveInitiative} (base {unit.Initiative})";
     }
 
     public string BuildCharacterStatusSummary(Unit unit)

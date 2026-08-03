@@ -55,14 +55,34 @@ public partial class Unit : Node2D
     public int WeaponAttackRangeBonus { get; private set; }
     public int ArmorClassBonus { get; private set; }
 
-    public int AttackDamage => WeaponAttackDamageBonus > 0
-        ? WeaponAttackDamageBonus
-        : HasAbility("melee")
-            ? Mathf.Max(1, BaseUnarmedDamage)
-            : 0;
+    public int AttackDamage
+    {
+        get
+        {
+            var baseDamage = WeaponAttackDamageBonus > 0
+                ? WeaponAttackDamageBonus
+                : HasAbility("melee")
+                    ? Mathf.Max(1, BaseUnarmedDamage)
+                    : 0;
+
+            if (baseDamage <= 0)
+            {
+                return 0;
+            }
+
+            return Mathf.Max(1, baseDamage + StrengthModifier);
+        }
+    }
     public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
-    public int ArmorClass => Mathf.Max(0, ArmorClassBonus + GetActiveArmorClassBonusFromStatuses());
+    public int ArmorClass => Mathf.Max(0, ArmorClassBonus + DexterityModifier + GetActiveArmorClassBonusFromStatuses());
     public int ExperienceToNextLevel => Mathf.Max(100, Level * 25);
+    public int StrengthModifier => GetStatModifier(Strength);
+    public int DexterityModifier => GetStatModifier(Dexterity);
+    public int ConstitutionModifier => GetStatModifier(Constitution);
+    public int IntelligenceModifier => GetStatModifier(Intelligence);
+    public int WisdomModifier => GetStatModifier(Wisdom);
+    public int EffectiveInitiative => Initiative + DexterityModifier;
+    public int ScaledMagicPointRegenPerTurn => Mathf.Max(0, MagicPointRegenPerTurn + GetMagicPointRegenScalingBonus());
     public int MovementPerTurn { get; private set; } = MaxMovementPerTurn;
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
@@ -134,7 +154,7 @@ public partial class Unit : Node2D
         RemainingMovement = MovementPerTurn;
         HasUsedAbilityThisTurn = false;
         IsDefending = false;
-        MagicPoints = Mathf.Clamp(MagicPoints + Mathf.Max(0, MagicPointRegenPerTurn), 0, MaxMagicPoints);
+        MagicPoints = Mathf.Clamp(MagicPoints + ScaledMagicPointRegenPerTurn, 0, MaxMagicPoints);
 
         var keys = new Array<string>();
         foreach (var pair in _abilityCooldownRemaining)
@@ -1179,6 +1199,16 @@ public partial class Unit : Node2D
         };
     }
 
+    private static int GetStatModifier(int stat)
+    {
+        return Mathf.FloorToInt((stat - 10) / 2.0f);
+    }
+
+    private int GetMagicPointRegenScalingBonus()
+    {
+        return Mathf.Max(0, IntelligenceModifier) + Mathf.Max(0, WisdomModifier);
+    }
+
     private string FindStatusEffectKeyByBaseId(string baseStatusId)
     {
         if (string.IsNullOrEmpty(baseStatusId))
@@ -1204,10 +1234,14 @@ public partial class Unit : Node2D
 
     private void ApplyLevelUpGains()
     {
-        MaxHitPoints += 2;
-        HitPoints = Mathf.Min(MaxHitPoints, HitPoints + 2);
-        MaxMagicPoints += 1;
-        MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + 1);
+        var hitPointGain = 2 + Mathf.Max(0, ConstitutionModifier);
+        var magicPointGain = 1 + Mathf.Max(0, IntelligenceModifier);
+
+        MaxHitPoints += hitPointGain;
+        HitPoints = Mathf.Min(MaxHitPoints, HitPoints + hitPointGain);
+        MaxMagicPoints += magicPointGain;
+        MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + magicPointGain);
+        MagicPointRegenPerTurn += 1;
     }
 
     private bool HasMovementPreventingStatusEffect()
