@@ -1929,6 +1929,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (_playerUnits.Count == 0)
         {
+            _hud?.ShowCombatBanner("COMBAT ENDED - DEFEAT", new Color(0.9f, 0.28f, 0.25f, 1.0f));
+            _hud?.AddCombatLogEntry("Combat ended. The party was defeated.");
             _flowState = BattleFlowState.Defeat;
             ClearCombatOnlyDebuffsForParty();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
@@ -1939,6 +1941,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (_enemyUnits.Count == 0)
         {
+            _hud?.ShowCombatBanner("COMBAT ENDED - VICTORY", new Color(0.42f, 0.88f, 0.56f, 1.0f));
+            _hud?.AddCombatLogEntry("Combat ended. Encounter cleared.");
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             EnterExplorationMode("Encounter cleared. Exploration resumed.");
             _persistence.PersistSaveGame(false);
@@ -1947,6 +1951,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!HasLivingActiveCombatEnemies())
         {
+            _hud?.ShowCombatBanner("COMBAT ENDED - VICTORY", new Color(0.42f, 0.88f, 0.56f, 1.0f));
+            _hud?.AddCombatLogEntry("Combat ended. Encounter cleared.");
             MarkClearedEncounterIdsForActiveCombat();
             SaveClearedEncounterStateForCurrentMap();
             _activeEncounterId = "";

@@ -72,6 +72,9 @@ public partial class HudController : Control
     private VBoxContainer _partyList;
     private MarginContainer _turnOrderDisplay;
     private HBoxContainer _turnOrderIcons;
+    private PanelContainer _combatBannerPanel;
+    private Label _combatBannerLabel;
+    private Tween _combatBannerTween;
     private PanelContainer _combatLogPanel;
     private Label _activeUnitLabel;
     private Button _abilityButton1;
@@ -180,6 +183,8 @@ public partial class HudController : Control
         _partyList = GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
         _turnOrderDisplay = GetNode<MarginContainer>("TurnOrderDisplay");
         _turnOrderIcons = GetNode<HBoxContainer>("TurnOrderDisplay/TurnOrderCenter/TurnOrderIcons");
+        _combatBannerPanel = GetNode<PanelContainer>("CombatBanner");
+        _combatBannerLabel = GetNode<Label>("CombatBanner/CombatBannerLabel");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _activeUnitLabel = GetNode<Label>("ActionPanel/ActionVBox/ActiveUnitLabel");
         var actionHeader = GetNode<Label>("ActionPanel/ActionVBox/ActionHeader");
@@ -1033,6 +1038,7 @@ public partial class HudController : Control
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
         StylePanel(_vendorPanel, panelStyle);
+        StylePanel(_combatBannerPanel, panelStyle);
 
         StyleHeaderLabel(_utilityHeader, headerColor);
         StyleHeaderLabel(_helpHeader, headerColor);
@@ -1042,6 +1048,15 @@ public partial class HudController : Control
         StyleHeaderLabel(_inventoryHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
         StyleHeaderLabel(_vendorHeader, headerColor);
+
+        if (_combatBannerLabel != null)
+        {
+            _combatBannerLabel.AddThemeColorOverride("font_color", new Color(0.98f, 0.93f, 0.78f, 1.0f));
+            _combatBannerLabel.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.55f));
+            _combatBannerLabel.AddThemeConstantOverride("shadow_offset_x", 1);
+            _combatBannerLabel.AddThemeConstantOverride("shadow_offset_y", 1);
+            _combatBannerLabel.AddThemeFontSizeOverride("font_size", 28);
+        }
 
         StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
@@ -2381,6 +2396,63 @@ public partial class HudController : Control
 
         _combatLog.Select(_combatLog.ItemCount - 1);
         _combatLog.EnsureCurrentIsVisible();
+    }
+
+    public void ShowCombatBanner(string text, Color accentColor)
+    {
+        if (_combatBannerPanel == null || _combatBannerLabel == null || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        _combatBannerTween?.Kill();
+
+        var panelStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.04f, 0.06f, 0.08f, 0.92f),
+            BorderColor = accentColor,
+            BorderWidthTop = 2,
+            BorderWidthRight = 2,
+            BorderWidthBottom = 2,
+            BorderWidthLeft = 2,
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomRight = 6,
+            CornerRadiusBottomLeft = 6,
+            ContentMarginTop = 6,
+            ContentMarginRight = 8,
+            ContentMarginBottom = 6,
+            ContentMarginLeft = 8,
+            ShadowColor = new Color(0.0f, 0.0f, 0.0f, 0.45f),
+            ShadowSize = 3
+        };
+
+        _combatBannerPanel.AddThemeStyleboxOverride("panel", panelStyle);
+        _combatBannerLabel.Text = text;
+        _combatBannerLabel.AddThemeColorOverride("font_color", accentColor.Lightened(0.15f));
+
+        _combatBannerPanel.Visible = true;
+        _combatBannerPanel.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+        _combatBannerPanel.Scale = new Vector2(0.93f, 0.93f);
+        _combatBannerPanel.PivotOffset = _combatBannerPanel.Size * 0.5f;
+
+        _combatBannerTween = CreateTween();
+        _combatBannerTween.SetTrans(Tween.TransitionType.Sine);
+        _combatBannerTween.SetEase(Tween.EaseType.Out);
+        _combatBannerTween.TweenProperty(_combatBannerPanel, "modulate:a", 1.0f, 0.16f);
+        _combatBannerTween.Parallel().TweenProperty(_combatBannerPanel, "scale", Vector2.One, 0.16f);
+        _combatBannerTween.TweenInterval(0.9f);
+        _combatBannerTween.SetEase(Tween.EaseType.In);
+        _combatBannerTween.TweenProperty(_combatBannerPanel, "modulate:a", 0.0f, 0.32f);
+        _combatBannerTween.Parallel().TweenProperty(_combatBannerPanel, "scale", new Vector2(1.03f, 1.03f), 0.32f);
+        _combatBannerTween.Finished += () =>
+        {
+            if (_combatBannerPanel != null)
+            {
+                _combatBannerPanel.Visible = false;
+                _combatBannerPanel.Scale = Vector2.One;
+            }
+        };
     }
 
     public void SetWorldHoverTooltip(

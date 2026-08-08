@@ -129,6 +129,10 @@ public partial class BattleController
         }
 
         _turnManager.SetupTurnOrder(combatUnits);
+        _hud?.ShowCombatBanner("COMBAT START", new Color(0.95f, 0.42f, 0.32f, 1.0f));
+        var enemyCount = _activeCombatEnemyUnitIds.Count;
+        var enemyUnitLabel = enemyCount == 1 ? "enemy" : "enemies";
+        _hud?.AddCombatLogEntry($"Combat started. {enemyCount} {enemyUnitLabel} engaged.");
         SetStatusHelp();
         CenterViewOnCurrentFocus();
     }
