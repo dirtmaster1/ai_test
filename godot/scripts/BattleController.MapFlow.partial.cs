@@ -260,6 +260,48 @@ public partial class BattleController
         }
     }
 
+    private async Task<bool> ConfirmRestPointAsync(string restPointName)
+    {
+        var confirmation = new ConfirmationDialog
+        {
+            Title = "Rest Point",
+            DialogText = $"Rest at {restPointName} and restore the party to full health and magic?"
+        };
+
+        confirmation.GetOkButton().Text = "Rest";
+        confirmation.AddCancelButton("Not now");
+        AddChild(confirmation);
+
+        var completion = new TaskCompletionSource<bool>();
+
+        void HandleConfirmed()
+        {
+            completion.TrySetResult(true);
+        }
+
+        void HandleCanceled()
+        {
+            completion.TrySetResult(false);
+        }
+
+        confirmation.Confirmed += HandleConfirmed;
+        confirmation.Canceled += HandleCanceled;
+        confirmation.CloseRequested += HandleCanceled;
+
+        try
+        {
+            confirmation.PopupCentered();
+            return await completion.Task;
+        }
+        finally
+        {
+            confirmation.Confirmed -= HandleConfirmed;
+            confirmation.Canceled -= HandleCanceled;
+            confirmation.CloseRequested -= HandleCanceled;
+            confirmation.QueueFree();
+        }
+    }
+
     private static string GetMapDisplayName(string mapId)
     {
         if (string.IsNullOrWhiteSpace(mapId))

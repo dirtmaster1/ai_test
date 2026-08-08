@@ -593,6 +593,7 @@ public partial class MapLoader : Node
                     case "sign":
                     case "npc":
                     case "trap":
+                    case "rest_point":
                     {
                         var propType = markerType;
                         var propId = GetTileString(markerLayer, tileData, "id", $"{mapId}-{propType}-{cell.X}-{cell.Y}");
@@ -1126,20 +1127,34 @@ public partial class MapLoader : Node
                 continue;
             }
 
-            if (GetString(prop, "type", "prop") == "sign")
+            var propType = GetString(prop, "type", "prop");
+            if (propType == "sign")
             {
                 continue;
             }
 
             var propId = GetString(prop, "id", "prop");
+            var propName = GetString(prop, "name", "Prop");
+            var interactionText = GetString(prop, "interaction_text", "");
+            if (propType == "rest_point")
+            {
+                entries.Add(new Dictionary
+                {
+                    { "id", $"rest:{propId}" },
+                    { "label", $"Rest at {propName}" },
+                    { "detail", string.IsNullOrEmpty(interactionText)
+                        ? $"Rest at {propName} and restore HP/MP."
+                        : interactionText }
+                });
+                continue;
+            }
+
             var hasLoot = HasLootConfig(prop);
             if (hasLoot && openedPropIds.Contains(propId))
             {
                 continue;
             }
 
-            var propName = GetString(prop, "name", "Prop");
-            var interactionText = GetString(prop, "interaction_text", "");
             var verb = hasLoot ? "Open" : "Inspect";
             var detail = hasLoot
                 ? $"Open {propName} at ({propCell.X}, {propCell.Y})."
@@ -1249,6 +1264,19 @@ public partial class MapLoader : Node
                     { "label", propName },
                     { "detail", $"Talk or browse {propName}'s store." },
                     { "source_title", propName }
+                });
+                break;
+            }
+
+            if (propType == "rest_point")
+            {
+                entries.Add(new Dictionary
+                {
+                    { "id", $"rest:{propId}" },
+                    { "label", $"Rest at {propName}" },
+                    { "detail", string.IsNullOrEmpty(interactionText)
+                        ? $"Rest at {propName} and restore HP/MP."
+                        : interactionText }
                 });
                 break;
             }

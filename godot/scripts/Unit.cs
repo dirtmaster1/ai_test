@@ -969,6 +969,18 @@ public partial class Unit : Node2D
         return actualHealed;
     }
 
+    public void RestoreFromRest()
+    {
+        if (IsDead)
+        {
+            return;
+        }
+
+        HitPoints = MaxHitPoints;
+        MagicPoints = MaxMagicPoints;
+        QueueRedraw();
+    }
+
     private void RefreshVisualState()
     {
         // Keep living active units on top when multiple units overlap in a cell.

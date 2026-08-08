@@ -647,6 +647,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (!string.IsNullOrEmpty(interactionId) && interactionId.StartsWith("rest:"))
+        {
+            _hasActiveLootCell = false;
+            _activeLootCell = new Vector2I(-1, -1);
+            _hud?.SetLootPanelVisible(false);
+            BeginRestPointInteraction(interactionId.Substring(5));
+            return;
+        }
+
         if (!TryExecuteExplorationInteractionById(explorer, interactionId))
         {
         }
@@ -3080,6 +3089,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return true;
             }
 
+            if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("rest:"))
+            {
+                _hasActiveLootCell = false;
+                _activeLootCell = new Vector2I(-1, -1);
+                _hud?.SetLootPanelVisible(false);
+                BeginRestPointInteraction(firstInteractionId.Substring(5));
+                return true;
+            }
+
             if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("prop:"))
             {
                 if (TryExecuteExplorationInteractionById(explorer, firstInteractionId))
@@ -3104,6 +3122,64 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return true;
+    }
+
+    private async void BeginRestPointInteraction(string propId)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
+        var restPointName = GetRestPointNameById(propId);
+        var shouldRest = await ConfirmRestPointAsync(restPointName);
+        if (!shouldRest || _flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
+        var restoredCount = 0;
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead)
+            {
+                continue;
+            }
+
+            unit.RestoreFromRest();
+            restoredCount++;
+        }
+
+        if (restoredCount <= 0)
+        {
+            return;
+        }
+
+        _hud?.ShowCombatBanner("The weary party rests...", new Color(0.64f, 0.88f, 0.78f, 1.0f));
+        _hud?.AddCombatLogEntry("The weary party rests and restores health and magic.");
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+    }
+
+    private string GetRestPointNameById(string propId)
+    {
+        if (string.IsNullOrEmpty(propId))
+        {
+            return "Rest Point";
+        }
+
+        foreach (var prop in _mapProps)
+        {
+            if (GetString(prop, "id", "") != propId)
+            {
+                continue;
+            }
+
+            return GetString(prop, "name", "Rest Point");
+        }
+
+        return "Rest Point";
     }
 
     private void OpenVendor(string vendorId)
