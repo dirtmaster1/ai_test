@@ -122,7 +122,7 @@
 	  "name": "Short Bow",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 4,
+	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 3
 	},
@@ -164,9 +164,9 @@
 	  "name": "Long Bow",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 6,
+	  "base_damage": 7,
 	  "bonus_damage": 0,
-	  "range": 4
+	  "range": 5
 	},
 	"chain-mail": {
 	  "id": "chain-mail",
@@ -230,8 +230,8 @@
 		"initiative": 10,
 		"hit_points": 10,
 		"max_hit_points": 10,
-		"magic_points": 5,
-		"max_magic_points": 5,
+		"magic_points": 8,
+		"max_magic_points": 8,
 		"magic_point_regen_per_turn": 2,
 		"intelligence": 10,
 		"strength": 5,
