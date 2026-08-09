@@ -47,6 +47,13 @@ public partial class BattleController
             return;
         }
 
+        if (keyEvent.Keycode == Key.R)
+        {
+            _hud?.ToggleReserveVisible();
+            SyncHudFromGameState();
+            return;
+        }
+
         if (keyEvent.Keycode == Key.Tab && _hud != null && _hud.IsInventoryVisible())
         {
             CycleInventoryTarget(keyEvent.ShiftPressed ? -1 : 1);

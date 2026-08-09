@@ -124,7 +124,7 @@
 	  "slot": "2-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 3
+	  "range": 4
 	},
 	"leather-armor": {
 	  "id": "leather-armor",
@@ -206,6 +206,84 @@
 	  "name": "Fireball Scroll",
 	  "type": "consumable",
 	  "slot": "none"
+	}
+  },
+  "dialogues": {
+	"forest-elder": {
+	  "id": "forest-elder",
+	  "title": "Elder Rowan",
+	  "pages": [
+		{
+		  "text": "Welcome, traveler. Our roads are less safe each night.",
+		  "choices": [
+			{
+			  "label": "What happened here?",
+			  "next_page": 1
+			},
+			{
+			  "label": "Any advice for us?",
+			  "next_page": 2
+			},
+			{
+			  "label": "Farewell",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "The necromancer raised the graveyard dead. Keep your cleric close.",
+		  "choices": [
+			{
+			  "label": "Back",
+			  "next_page": 0
+			},
+			{
+			  "label": "Thanks",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "Carry spare armor and do not fight every battle head-on.",
+		  "choices": [
+			{
+			  "label": "Back",
+			  "next_page": 0
+			},
+			{
+			  "label": "Understood",
+			  "end": true
+			}
+		  ]
+		}
+	  ]
+	}
+  },
+  "vendors": {
+	"milo": {
+	  "id": "milo",
+	  "display_name": "Milo the Armorer",
+	  "starting_gold": 120,
+	  "buy_price_multiplier": 1.0,
+	  "sell_price_multiplier": 1.0,
+	  "starting_inventory_item_ids": [
+		"leather-armor",
+		"leather-armor",
+		"small-shield",
+		"short-sword"
+	  ]
+	},
+	"mira": {
+	  "id": "mira",
+	  "display_name": "Mira the Curio Trader",
+	  "starting_gold": 90,
+	  "buy_price_multiplier": 1.15,
+	  "sell_price_multiplier": 0.9,
+	  "starting_inventory_item_ids": [
+		"cloth-robe",
+		"mages-amulet",
+		"fireball-scroll"
+	  ]
 	}
   },
   "characters": {

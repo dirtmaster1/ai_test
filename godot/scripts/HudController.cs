@@ -45,6 +45,12 @@ public partial class HudController : Control
     [Signal]
     public delegate void PartyOrderRequestedEventHandler(string sourceUnitId, string targetUnitId);
 
+    [Signal]
+    public delegate void ReserveStoreRequestedEventHandler(string partyUnitId);
+
+    [Signal]
+    public delegate void ReserveBringRequestedEventHandler(string reserveUnitId, string replacePartyUnitId);
+
     private const float GridPixelWidth = 20.0f * 64.0f;
     private const float Margin = 12.0f;
     private const float SidebarWidth = 430.0f;
@@ -83,6 +89,7 @@ public partial class HudController : Control
     private Button _endTurnButton;
     private Button _inventoryButton;
     private Button _characterButton;
+    private Button _reserveButton;
     private Label _combatLogHeader;
     private ItemList _combatLog;
     private Button _combatLogResizeHandle;
@@ -117,6 +124,14 @@ public partial class HudController : Control
     private Button _vendorSellButton;
     private Label _vendorStatusLabel;
     private Button _closeVendorButton;
+    private PanelContainer _reservePanel;
+    private Label _reserveHeader;
+    private ItemList _reserveActivePartyList;
+    private ItemList _reserveRosterList;
+    private Label _reserveDetailsLabel;
+    private Button _storeToReserveButton;
+    private Button _bringFromReserveButton;
+    private Button _closeReserveButton;
     private string _lootAllInteractionId = "";
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _lootEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _vendorBuyItemsById = new();
@@ -124,6 +139,8 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryEquippedEntriesBySlot = new();
     private readonly System.Collections.Generic.HashSet<string> _equippedItemIds = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveActiveEntriesById = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveRosterEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private string _lastLogLine = "";
     private string _turnOrderSignature = "";
@@ -198,6 +215,7 @@ public partial class HudController : Control
         _endTurnButton.FocusMode = FocusModeEnum.None;
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
+        _reserveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/ReserveButton");
         _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeader");
         _combatLog = GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog");
         _combatLogResizeHandle = GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogResizeRow/CombatLogResizeHandle");
@@ -232,12 +250,21 @@ public partial class HudController : Control
         _vendorSellButton = GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Sell/SellButton");
         _vendorStatusLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorStatusLabel");
         _closeVendorButton = GetNode<Button>("VendorPanel/VendorVBox/VendorButtons/CloseVendorButton");
+        _reservePanel = GetNode<PanelContainer>("ReservePanel");
+        _reserveHeader = GetNode<Label>("ReservePanel/ReserveVBox/ReserveHeader");
+        _reserveActivePartyList = GetNode<ItemList>("ReservePanel/ReserveVBox/ReserveActivePartyList");
+        _reserveRosterList = GetNode<ItemList>("ReservePanel/ReserveVBox/ReserveRosterList");
+        _reserveDetailsLabel = GetNode<Label>("ReservePanel/ReserveVBox/ReserveDetailsLabel");
+        _storeToReserveButton = GetNode<Button>("ReservePanel/ReserveVBox/ReserveButtons/StoreToReserveButton");
+        _bringFromReserveButton = GetNode<Button>("ReservePanel/ReserveVBox/ReserveButtons/BringFromReserveButton");
+        _closeReserveButton = GetNode<Button>("ReservePanel/ReserveVBox/ReserveButtons/CloseReserveButton");
         _confirmLootButton.Text = "Loot All";
 
         ApplyFantasyHudStyling();
 
         _inventoryPanel.MouseFilter = MouseFilterEnum.Stop;
         _vendorPanel.MouseFilter = MouseFilterEnum.Stop;
+        _reservePanel.MouseFilter = MouseFilterEnum.Stop;
 
         _abilityButton1.Pressed += OnAbilityButton1Pressed;
         _abilityButton2.Pressed += OnAbilityButton2Pressed;
@@ -245,6 +272,7 @@ public partial class HudController : Control
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
         _characterButton.Pressed += OnCharacterButtonPressed;
+        _reserveButton.Pressed += OnReserveButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
         _saveButton.Pressed += OnSaveButtonPressed;
         _loadButton.Pressed += OnLoadButtonPressed;
@@ -267,6 +295,11 @@ public partial class HudController : Control
         _vendorBuyButton.Pressed += OnVendorBuyButtonPressed;
         _vendorSellButton.Pressed += OnVendorSellButtonPressed;
         _closeVendorButton.Pressed += OnCloseVendorButtonPressed;
+        _reserveActivePartyList.ItemSelected += OnReserveActivePartySelected;
+        _reserveRosterList.ItemSelected += OnReserveRosterSelected;
+        _storeToReserveButton.Pressed += OnStoreToReserveButtonPressed;
+        _bringFromReserveButton.Pressed += OnBringFromReserveButtonPressed;
+        _closeReserveButton.Pressed += OnCloseReserveButtonPressed;
 
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
@@ -276,6 +309,7 @@ public partial class HudController : Control
         RegisterDraggable(_inventoryHeader, _inventoryPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
         RegisterDraggable(_vendorHeader, _vendorPanel);
+        RegisterDraggable(_reserveHeader, _reservePanel);
         RegisterResizable(_combatLogResizeHandle, _combatLogPanel);
 
         EnsureFullscreenLayout();
@@ -319,6 +353,11 @@ public partial class HudController : Control
         if (_characterButton != null)
         {
             _characterButton.Pressed -= OnCharacterButtonPressed;
+        }
+
+        if (_reserveButton != null)
+        {
+            _reserveButton.Pressed -= OnReserveButtonPressed;
         }
 
         if (_helpButton != null)
@@ -430,6 +469,31 @@ public partial class HudController : Control
         {
             _closeVendorButton.Pressed -= OnCloseVendorButtonPressed;
         }
+
+        if (_reserveActivePartyList != null)
+        {
+            _reserveActivePartyList.ItemSelected -= OnReserveActivePartySelected;
+        }
+
+        if (_reserveRosterList != null)
+        {
+            _reserveRosterList.ItemSelected -= OnReserveRosterSelected;
+        }
+
+        if (_storeToReserveButton != null)
+        {
+            _storeToReserveButton.Pressed -= OnStoreToReserveButtonPressed;
+        }
+
+        if (_bringFromReserveButton != null)
+        {
+            _bringFromReserveButton.Pressed -= OnBringFromReserveButtonPressed;
+        }
+
+        if (_closeReserveButton != null)
+        {
+            _closeReserveButton.Pressed -= OnCloseReserveButtonPressed;
+        }
     }
 
     private void OnAbilityButton1Pressed()
@@ -475,6 +539,11 @@ public partial class HudController : Control
     private void OnCharacterButtonPressed()
     {
         ToggleCharacterVisible();
+    }
+
+    private void OnReserveButtonPressed()
+    {
+        ToggleReserveVisible();
     }
 
     private void OnHelpButtonPressed()
@@ -687,6 +756,106 @@ public partial class HudController : Control
         SetVendorPanelVisible(false);
     }
 
+    private void OnReserveActivePartySelected(long index)
+    {
+        if (_reserveActivePartyList == null || _reserveDetailsLabel == null)
+        {
+            return;
+        }
+
+        if (_reserveRosterList != null)
+        {
+            _reserveRosterList.DeselectAll();
+        }
+
+        var metadata = _reserveActivePartyList.GetItemMetadata((int)index);
+        var unitId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (!string.IsNullOrEmpty(unitId) && _reserveActiveEntriesById.TryGetValue(unitId, out var entry))
+        {
+            _reserveDetailsLabel.Text = GetString(entry, "detail", _reserveActivePartyList.GetItemText((int)index));
+        }
+    }
+
+    private void OnReserveRosterSelected(long index)
+    {
+        if (_reserveRosterList == null || _reserveDetailsLabel == null)
+        {
+            return;
+        }
+
+        if (_reserveActivePartyList != null)
+        {
+            _reserveActivePartyList.DeselectAll();
+        }
+
+        var metadata = _reserveRosterList.GetItemMetadata((int)index);
+        var unitId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (!string.IsNullOrEmpty(unitId) && _reserveRosterEntriesById.TryGetValue(unitId, out var entry))
+        {
+            _reserveDetailsLabel.Text = GetString(entry, "detail", _reserveRosterList.GetItemText((int)index));
+        }
+    }
+
+    private void OnStoreToReserveButtonPressed()
+    {
+        if (_reserveActivePartyList == null)
+        {
+            return;
+        }
+
+        var selected = _reserveActivePartyList.GetSelectedItems();
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        var metadata = _reserveActivePartyList.GetItemMetadata(selected[0]);
+        var unitId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (!string.IsNullOrWhiteSpace(unitId))
+        {
+            EmitSignal(SignalName.ReserveStoreRequested, unitId);
+        }
+    }
+
+    private void OnBringFromReserveButtonPressed()
+    {
+        if (_reserveRosterList == null)
+        {
+            return;
+        }
+
+        var selectedReserve = _reserveRosterList.GetSelectedItems();
+        if (selectedReserve.Length == 0)
+        {
+            return;
+        }
+
+        var reserveMetadata = _reserveRosterList.GetItemMetadata(selectedReserve[0]);
+        var reserveUnitId = reserveMetadata.VariantType == Variant.Type.String ? reserveMetadata.AsString() : "";
+        if (string.IsNullOrWhiteSpace(reserveUnitId))
+        {
+            return;
+        }
+
+        var replacePartyUnitId = "";
+        if (_reserveActivePartyList != null)
+        {
+            var selectedParty = _reserveActivePartyList.GetSelectedItems();
+            if (selectedParty.Length > 0)
+            {
+                var partyMetadata = _reserveActivePartyList.GetItemMetadata(selectedParty[0]);
+                replacePartyUnitId = partyMetadata.VariantType == Variant.Type.String ? partyMetadata.AsString() : "";
+            }
+        }
+
+        EmitSignal(SignalName.ReserveBringRequested, reserveUnitId, replacePartyUnitId);
+    }
+
+    private void OnCloseReserveButtonPressed()
+    {
+        SetReservePanelVisible(false);
+    }
+
     private void EmitSelectedVendorItem(ItemList list, System.Collections.Generic.Dictionary<string, Dictionary> entriesById, StringName signalName)
     {
         if (list == null)
@@ -838,6 +1007,7 @@ public partial class HudController : Control
         ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, combatTop), new Vector2(sidebarRight - sidebarLeft, combatHeight)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
         ApplyPanelRect(_vendorPanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 480.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 440.0f) * 0.5f)), new Vector2(480.0f, 440.0f)), size);
+        ApplyPanelRect(_reservePanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 520.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 480.0f) * 0.5f)), new Vector2(520.0f, 480.0f)), size);
     }
 
     private void RegisterDraggable(Control handle, Control panel)
@@ -1038,6 +1208,7 @@ public partial class HudController : Control
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
         StylePanel(_vendorPanel, panelStyle);
+        StylePanel(_reservePanel, panelStyle);
         StylePanel(_combatBannerPanel, panelStyle);
 
         StyleHeaderLabel(_utilityHeader, headerColor);
@@ -1048,6 +1219,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_inventoryHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
         StyleHeaderLabel(_vendorHeader, headerColor);
+        StyleHeaderLabel(_reserveHeader, headerColor);
 
         if (_combatBannerLabel != null)
         {
@@ -1069,12 +1241,14 @@ public partial class HudController : Control
         StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
         StyleBodyLabel(_vendorDialogueLabel, bodyColor, 14);
         StyleBodyLabel(_vendorStatusLabel, mutedBodyColor, 13);
+        StyleBodyLabel(_reserveDetailsLabel, mutedBodyColor, 13);
 
         StyleButton(_inventoryButton, false);
         StyleButton(_helpButton, false);
         StyleButton(_saveButton, false);
         StyleButton(_loadButton, false);
         StyleButton(_characterButton, false);
+        StyleButton(_reserveButton, false);
         StyleButton(_characterPrevButton, false);
         StyleButton(_characterNextButton, false);
         StyleButton(_characterCloseButton, false);
@@ -1095,6 +1269,9 @@ public partial class HudController : Control
         StyleButton(_vendorBuyButton, true);
         StyleButton(_vendorSellButton, true);
         StyleButton(_closeVendorButton, false);
+        StyleButton(_storeToReserveButton, false);
+        StyleButton(_bringFromReserveButton, true);
+        StyleButton(_closeReserveButton, false);
 
         StyleItemList(_combatLog, bodyColor, mutedBodyColor);
         StyleItemList(_inventoryEquippedItemList, bodyColor, mutedBodyColor);
@@ -1102,6 +1279,8 @@ public partial class HudController : Control
         StyleItemList(_lootItemList, bodyColor, mutedBodyColor);
         StyleItemList(_vendorBuyList, bodyColor, mutedBodyColor);
         StyleItemList(_vendorSellList, bodyColor, mutedBodyColor);
+        StyleItemList(_reserveActivePartyList, bodyColor, mutedBodyColor);
+        StyleItemList(_reserveRosterList, bodyColor, mutedBodyColor);
 
         var characterInnerPanel = GetNodeOrNull<PanelContainer>("CharacterPanel/CharacterVBox/CharacterDetailsPanel");
         if (characterInnerPanel != null)
@@ -1435,6 +1614,7 @@ public partial class HudController : Control
         var common =
             "CONTROLS\n" +
             "- Inventory: I\n" +
+            "- Reserves: R\n" +
             "- Help: H\n" +
             "- Save/Load: Utility panel buttons\n" +
             "- Inspect: hover units and interactables\n" +
@@ -1902,6 +2082,47 @@ public partial class HudController : Control
         }
     }
 
+    public void ToggleReserveVisible()
+    {
+        if (_reservePanel != null)
+        {
+            SetReservePanelVisible(!_reservePanel.Visible);
+        }
+    }
+
+    public void SetReservePanelVisible(bool visible)
+    {
+        if (_reservePanel != null)
+        {
+            _reservePanel.Visible = visible;
+            if (visible)
+            {
+                _reservePanel.MoveToFront();
+            }
+        }
+    }
+
+    public void SetReserveEntries(Array<Dictionary> activePartyEntries, Array<Dictionary> reserveEntries)
+    {
+        SetReserveList(_reserveActivePartyList, _reserveActiveEntriesById, activePartyEntries, "No active party members.");
+        SetReserveList(_reserveRosterList, _reserveRosterEntriesById, reserveEntries, "No reserve members.");
+
+        if (_storeToReserveButton != null)
+        {
+            _storeToReserveButton.Disabled = _reserveActivePartyList == null || _reserveActivePartyList.ItemCount == 0;
+        }
+
+        if (_bringFromReserveButton != null)
+        {
+            _bringFromReserveButton.Disabled = _reserveRosterList == null || _reserveRosterList.ItemCount == 0;
+        }
+
+        if (_reserveDetailsLabel != null)
+        {
+            _reserveDetailsLabel.Text = "Select an active member to send to reserves, or select a reserve member to bring back.";
+        }
+    }
+
     public void SetHelpVisible(bool visible)
     {
         if (_helpPanel != null)
@@ -2169,6 +2390,43 @@ public partial class HudController : Control
             entriesById[itemId] = item;
             list.AddItem(label);
             list.SetItemMetadata(list.ItemCount - 1, itemId);
+        }
+
+        if (list.ItemCount > 0)
+        {
+            list.Select(0);
+        }
+    }
+
+    private static void SetReserveList(ItemList list, System.Collections.Generic.Dictionary<string, Dictionary> entriesById, Array<Dictionary> items, string emptyText)
+    {
+        if (list == null)
+        {
+            return;
+        }
+
+        list.Clear();
+        entriesById.Clear();
+
+        if (items == null || items.Count == 0)
+        {
+            list.AddItem(emptyText);
+            list.SetItemDisabled(0, true);
+            return;
+        }
+
+        foreach (var item in items)
+        {
+            var unitId = GetString(item, "id", "");
+            if (string.IsNullOrWhiteSpace(unitId))
+            {
+                continue;
+            }
+
+            var label = GetString(item, "label", unitId);
+            entriesById[unitId] = item;
+            list.AddItem(label);
+            list.SetItemMetadata(list.ItemCount - 1, unitId);
         }
 
         if (list.ItemCount > 0)

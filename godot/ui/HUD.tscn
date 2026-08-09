@@ -58,6 +58,11 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Character (C)"
 
+[node name="ReserveButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reserves (R)"
+
 [node name="HelpPanel" type="PanelContainer" parent="."]
 visible = false
 layout_mode = 0
@@ -479,6 +484,64 @@ text = "Party: 25 gp | Vendor: 100 gp"
 layout_mode = 2
 
 [node name="CloseVendorButton" type="Button" parent="VendorPanel/VendorVBox/VendorButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
+
+[node name="ReservePanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 380.0
+offset_top = 140.0
+offset_right = 900.0
+offset_bottom = 620.0
+
+[node name="ReserveVBox" type="VBoxContainer" parent="ReservePanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ReserveHeader" type="Label" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+text = "Party Reserves"
+
+[node name="ReserveActiveLabel" type="Label" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+text = "Active Party"
+
+[node name="ReserveActivePartyList" type="ItemList" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 110)
+allow_reselect = true
+
+[node name="ReserveStoredLabel" type="Label" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+text = "Reserve Members"
+
+[node name="ReserveRosterList" type="ItemList" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+
+[node name="ReserveDetailsLabel" type="Label" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Move members between active party and reserves during exploration."
+
+[node name="ReserveButtons" type="HBoxContainer" parent="ReservePanel/ReserveVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StoreToReserveButton" type="Button" parent="ReservePanel/ReserveVBox/ReserveButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Send To Reserve"
+
+[node name="BringFromReserveButton" type="Button" parent="ReservePanel/ReserveVBox/ReserveButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Bring To Party"
+
+[node name="CloseReserveButton" type="Button" parent="ReservePanel/ReserveVBox/ReserveButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"

@@ -116,6 +116,9 @@ public sealed class GamePersistence
         }
 
         var unitSnapshots = _host.BuildUnitSnapshots();
+        var partyRoster = _host.BuildPartyRoster();
+        var reserveRoster = _host.BuildReserveRoster();
+        var recruitedNpcIds = _host.BuildRecruitedNpcIds();
 
         return new Dictionary
         {
@@ -137,6 +140,9 @@ public sealed class GamePersistence
             { "defeated_enemy_ids_by_map", BuildSetMapSnapshot(_host.DefeatedEnemyIdsByMap) },
             { "looted_bag_ids_by_map", BuildSetMapSnapshot(_host.LootedBagIdsByMap) },
             { "loot_bags_by_map", BuildLootBagsByMapSnapshot(_host.LootBagsByMap) },
+            { "party_roster", partyRoster },
+            { "reserve_roster", reserveRoster },
+            { "recruited_npc_ids", recruitedNpcIds },
             { "unit_snapshots", unitSnapshots },
         };
     }
@@ -166,8 +172,11 @@ public sealed class GamePersistence
         RestoreSetMapSnapshot(GetDictionary(saveData, "defeated_enemy_ids_by_map"), _host.DefeatedEnemyIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "looted_bag_ids_by_map"), _host.LootedBagIdsByMap);
         RestoreLootBagsByMapSnapshot(GetDictionary(saveData, "loot_bags_by_map"), _host.LootBagsByMap);
+        _host.RestoreRecruitedNpcIds(GetStringArray(saveData, "recruited_npc_ids"));
 
         _host.SpawnMapEncounter(_host.CurrentMapId);
+        _host.RestorePartyRoster(GetDictionaryArray(saveData, "party_roster"));
+        _host.RestoreReserveRoster(GetDictionaryArray(saveData, "reserve_roster"));
 
         // Spawn seeds default map/config equipment; clear it so save data is the single source of truth.
         _host.PartyInventoryItemIds.Clear();

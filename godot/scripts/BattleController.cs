@@ -1,6 +1,7 @@
 using Godot;
 using Godot.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 public partial class BattleController : Node2D, IGamePersistenceHost
 {
@@ -8,6 +9,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const int DefaultGridWidth = 20;
     private const int DefaultGridHeight = 15;
     private const int CellSize = 64;
+    private const int MaxPartyMembers = 5;
     private const int DefaultAggroTriggerRange = 4;
     private const float GridLineThickness = 2.0f;
     private const ulong ManualEndTurnDebounceMs = 220;
@@ -44,8 +46,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> _equippedItemsByUnitId = new();
     private readonly List<string> _partyInventoryItemIds = new();
+    private readonly Array<Dictionary> _reservePartyRoster = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _vendorGoldById = new();
     private readonly System.Collections.Generic.Dictionary<string, List<string>> _vendorInventoryItemIdsById = new();
+    private readonly HashSet<string> _recruitedNpcIds = new();
     private readonly HashSet<string> _clearedEncounterIds = new();
     private readonly HashSet<string> _activeCombatEnemyUnitIds = new();
     private readonly HashSet<string> _activeCombatEncounterIds = new();
@@ -183,6 +187,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.LootConfirmRequested += OnHudLootConfirmRequested;
             _hud.VendorBuyRequested += OnHudVendorBuyRequested;
             _hud.VendorSellRequested += OnHudVendorSellRequested;
+            _hud.ReserveStoreRequested += OnHudReserveStoreRequested;
+            _hud.ReserveBringRequested += OnHudReserveBringRequested;
             _hud.TurnOrderUnitFocused += OnHudTurnOrderUnitFocused;
             _hud.PartyUnitSelected += OnHudPartyUnitSelected;
             _hud.PartyOrderRequested += OnHudPartyOrderRequested;
@@ -218,6 +224,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
             _hud.VendorBuyRequested -= OnHudVendorBuyRequested;
             _hud.VendorSellRequested -= OnHudVendorSellRequested;
+            _hud.ReserveStoreRequested -= OnHudReserveStoreRequested;
+            _hud.ReserveBringRequested -= OnHudReserveBringRequested;
             _hud.TurnOrderUnitFocused -= OnHudTurnOrderUnitFocused;
             _hud.PartyUnitSelected -= OnHudPartyUnitSelected;
             _hud.PartyOrderRequested -= OnHudPartyOrderRequested;
@@ -558,6 +566,61 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         SyncHudFromGameState();
         CenterViewOnCurrentFocus();
         QueueRedraw();
+    }
+
+    private void OnHudReserveStoreRequested(string partyUnitId)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(partyUnitId))
+        {
+            return;
+        }
+
+        if (_playerUnits.Count <= 1)
+        {
+            _hud?.AddCombatLogEntry("At least one member must remain in the active party.");
+            return;
+        }
+
+        var unit = FindUnitById(partyUnitId);
+        if (!IsUsableUnit(unit) || unit.Team != "player")
+        {
+            return;
+        }
+
+        AddOrUpdateReserveUnit(unit);
+        RemovePartyUnit(unit, movedToReserve: true);
+        var explorer = GetExplorerUnit();
+        if (explorer == null)
+        {
+            _explorerUnit = _playerUnits.Count > 0 ? _playerUnits[0] : null;
+        }
+
+        _hud?.AddCombatLogEntry($"{unit.UnitName} moved to reserves.");
+        SyncHudFromGameState();
+        SaveMapInteractionStateForCurrentMap();
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+    }
+
+    private void OnHudReserveBringRequested(string reserveUnitId, string replacePartyUnitId)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
+        var explorer = GetExplorerUnit();
+        if (!IsUsableUnit(explorer))
+        {
+            return;
+        }
+
+        BeginReserveRecruitInteraction(explorer, reserveUnitId, replacePartyUnitId);
     }
 
     private void OnHudEquipItemRequested(string itemId)
@@ -1340,6 +1403,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _enemyUnits.Clear();
             _equippedItemsByUnitId.Clear();
             _partyInventoryItemIds.Clear();
+            _reservePartyRoster.Clear();
             _partyGold = 25;
             _vendorGoldById.Clear();
             _vendorInventoryItemIdsById.Clear();
@@ -2708,6 +2772,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return dict.ContainsKey(key) ? (int)((Variant)dict[key]) : fallback;
     }
 
+    private static float GetFloat(Dictionary dict, string key, float fallback)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return fallback;
+        }
+
+        var value = (Variant)dict[key];
+        if (value.VariantType == Variant.Type.Float)
+        {
+            return (float)value;
+        }
+
+        if (value.VariantType == Variant.Type.Int)
+        {
+            return (int)value;
+        }
+
+        return float.TryParse(value.AsString(), out var parsed) ? parsed : fallback;
+    }
+
     // UI helpers
 
     private static bool GetBool(Dictionary dict, string key, bool fallback)
@@ -2726,6 +2811,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _ => bool.TryParse(value.AsString(), out var parsed) ? parsed : fallback
         };
     }
+
     private void CancelAttackMode(bool restoreHelpText = true)
     {
         _awaitingPlayerAttackDirection = false;
@@ -3076,6 +3162,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
+        AppendReserveEntriesForRestCell(clickedCell, entries);
+
         if (!string.IsNullOrEmpty(statusText))
         {
         }
@@ -3083,26 +3171,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (entries.Count > 0)
         {
             var firstInteractionId = GetString(entries[0], "id", "");
-            if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("vendor:"))
+            if (entries.Count == 1 && !string.IsNullOrEmpty(firstInteractionId))
             {
-                OpenVendor(firstInteractionId.Substring(7));
-                return true;
-            }
+                if (firstInteractionId.StartsWith("vendor:"))
+                {
+                    OpenVendor(firstInteractionId.Substring(7));
+                    return true;
+                }
 
-            if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("rest:"))
-            {
-                _hasActiveLootCell = false;
-                _activeLootCell = new Vector2I(-1, -1);
-                _hud?.SetLootPanelVisible(false);
-                BeginRestPointInteraction(firstInteractionId.Substring(5));
-                return true;
-            }
+                if (firstInteractionId.StartsWith("rest:"))
+                {
+                    _hasActiveLootCell = false;
+                    _activeLootCell = new Vector2I(-1, -1);
+                    _hud?.SetLootPanelVisible(false);
+                    BeginRestPointInteraction(firstInteractionId.Substring(5));
+                    return true;
+                }
 
-            if (!string.IsNullOrEmpty(firstInteractionId) && firstInteractionId.StartsWith("prop:"))
-            {
                 if (TryExecuteExplorationInteractionById(explorer, firstInteractionId))
                 {
                     _mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, _mapProps, _lootBags, _openedPropIds, _gameData, out entries, out _);
+                    AppendReserveEntriesForRestCell(clickedCell, entries);
                 }
             }
 
@@ -3220,7 +3309,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return $"{GetVendorDisplayName(vendorId)} does not have that item in stock.";
         }
 
-        var price = GetItemBuyPrice(itemId);
+        var price = GetItemBuyPrice(vendorId, itemId);
         if (_partyGold < price)
         {
             return $"Not enough gold. {GetItemName(itemId)} costs {price} gp.";
@@ -3242,7 +3331,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return "That item is not available to sell.";
         }
 
-        var price = GetItemSellPrice(itemId);
+        var price = GetItemSellPrice(vendorId, itemId);
         var vendorGold = GetVendorGold(vendorId);
         if (vendorGold < price)
         {
@@ -3259,7 +3348,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void RefreshVendorHud(string vendorId, string message)
     {
-        _hud?.SetVendorItems(BuildVendorBuyItemsForHud(vendorId), BuildVendorSellItemsForHud());
+        _hud?.SetVendorItems(BuildVendorBuyItemsForHud(vendorId), BuildVendorSellItemsForHud(vendorId));
         _hud?.SetVendorStatus($"Party: {_partyGold} gp | {GetVendorDisplayName(vendorId)}: {GetVendorGold(vendorId)} gp");
         if (!string.IsNullOrEmpty(message))
         {
@@ -3280,14 +3369,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             itemData["quantity"] = entry.Value;
-            itemData["price"] = GetItemBuyPrice(entry.Key);
+            itemData["price"] = GetItemBuyPrice(vendorId, entry.Key);
             result.Add(itemData);
         }
 
         return result;
     }
 
-    private Array<Dictionary> BuildVendorSellItemsForHud()
+    private Array<Dictionary> BuildVendorSellItemsForHud(string vendorId)
     {
         var result = new Array<Dictionary>();
         var sellable = new List<string>();
@@ -3310,7 +3399,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             itemData["quantity"] = entry.Value;
-            itemData["price"] = GetItemSellPrice(entry.Key);
+            itemData["price"] = GetItemSellPrice(vendorId, entry.Key);
             result.Add(itemData);
         }
 
@@ -3319,6 +3408,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void EnsureDefaultVendorState()
     {
+        if (_gameData?.Vendors != null)
+        {
+            foreach (var vendorKey in _gameData.Vendors.Keys)
+            {
+                var vendorId = ((Variant)vendorKey).AsString();
+                if (!string.IsNullOrWhiteSpace(vendorId))
+                {
+                    EnsureVendorState(vendorId);
+                }
+            }
+        }
+
         EnsureVendorState("milo");
         EnsureVendorState("mira");
     }
@@ -3330,20 +3431,34 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        var profile = _gameData?.GetVendorProfile(vendorId) ?? new Dictionary();
+
         if (!_vendorGoldById.ContainsKey(vendorId))
         {
-            _vendorGoldById[vendorId] = 100;
+            _vendorGoldById[vendorId] = Mathf.Max(0, GetInt(profile, "starting_gold", 100));
         }
 
         if (!_vendorInventoryItemIdsById.ContainsKey(vendorId))
         {
-            _vendorInventoryItemIdsById[vendorId] = new List<string>
+            var configuredInventory = TryGetStringArray(profile, "starting_inventory_item_ids");
+            var inventory = new List<string>();
+            foreach (var itemId in configuredInventory)
             {
-                "leather-armor",
-                "leather-armor",
-                "small-shield",
-                "short-sword"
-            };
+                if (!string.IsNullOrWhiteSpace(itemId))
+                {
+                    inventory.Add(itemId);
+                }
+            }
+
+            if (inventory.Count == 0)
+            {
+                inventory.Add("leather-armor");
+                inventory.Add("leather-armor");
+                inventory.Add("small-shield");
+                inventory.Add("short-sword");
+            }
+
+            _vendorInventoryItemIdsById[vendorId] = inventory;
         }
     }
 
@@ -3365,11 +3480,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return _vendorGoldById.TryGetValue(vendorId, out var gold) ? Mathf.Max(0, gold) : 0;
     }
 
-    private static string GetVendorDisplayName(string vendorId)
+    private string GetVendorDisplayName(string vendorId)
     {
         if (string.IsNullOrEmpty(vendorId))
         {
             return "Vendor";
+        }
+
+        var profile = _gameData?.GetVendorProfile(vendorId) ?? new Dictionary();
+        var configuredName = GetString(profile, "display_name", "");
+        if (!string.IsNullOrWhiteSpace(configuredName))
+        {
+            return configuredName;
         }
 
         if (string.Equals(vendorId, "milo", System.StringComparison.OrdinalIgnoreCase))
@@ -3407,7 +3529,33 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return counts;
     }
 
-    private int GetItemBuyPrice(string itemId)
+    private float GetVendorBuyMultiplier(string vendorId)
+    {
+        var profile = _gameData?.GetVendorProfile(vendorId) ?? new Dictionary();
+        return Mathf.Max(0.1f, GetFloat(profile, "buy_price_multiplier", 1.0f));
+    }
+
+    private float GetVendorSellMultiplier(string vendorId)
+    {
+        var profile = _gameData?.GetVendorProfile(vendorId) ?? new Dictionary();
+        return Mathf.Max(0.1f, GetFloat(profile, "sell_price_multiplier", 1.0f));
+    }
+
+    private int GetItemBuyPrice(string vendorId, string itemId)
+    {
+        var basePrice = GetBaseItemBuyPrice(itemId);
+        var multiplier = GetVendorBuyMultiplier(vendorId);
+        return Mathf.Max(1, Mathf.RoundToInt(basePrice * multiplier));
+    }
+
+    private int GetItemSellPrice(string vendorId, string itemId)
+    {
+        var baseSellPrice = Mathf.Max(1, GetBaseItemBuyPrice(itemId) / 2);
+        var multiplier = GetVendorSellMultiplier(vendorId);
+        return Mathf.Max(1, Mathf.RoundToInt(baseSellPrice * multiplier));
+    }
+
+    private int GetBaseItemBuyPrice(string itemId)
     {
         return itemId switch
         {
@@ -3426,11 +3574,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             "chieftain-club" => 45,
             _ => 10
         };
-    }
-
-    private int GetItemSellPrice(string itemId)
-    {
-        return Mathf.Max(1, GetItemBuyPrice(itemId) / 2);
     }
 
     private string GetItemName(string itemId)
@@ -3482,6 +3625,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool TryExecuteExplorationInteractionById(Unit explorer, string interactionId)
     {
+        if (TryHandleReserveInteractionById(explorer, interactionId))
+        {
+            return true;
+        }
+
+        if (TryHandleNpcInteractionById(explorer, interactionId))
+        {
+            return true;
+        }
+
         if (_mapLoader == null)
         {
             return false;
@@ -3510,6 +3663,649 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return true;
+    }
+
+    private bool TryHandleReserveInteractionById(Unit explorer, string interactionId)
+    {
+        if (string.IsNullOrWhiteSpace(interactionId) || explorer == null)
+        {
+            return false;
+        }
+
+        if (interactionId.StartsWith("reserve-recruit:"))
+        {
+            BeginReserveRecruitInteraction(explorer, interactionId.Substring(16));
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryHandleNpcInteractionById(Unit explorer, string interactionId)
+    {
+        if (string.IsNullOrEmpty(interactionId) || explorer == null)
+        {
+            return false;
+        }
+
+        if (interactionId.StartsWith("npc-dialogue:"))
+        {
+            BeginNpcDialogueInteraction(interactionId.Substring(13));
+            return true;
+        }
+
+        if (interactionId.StartsWith("npc-recruit:"))
+        {
+            BeginNpcRecruitInteraction(explorer, interactionId.Substring(12));
+            return true;
+        }
+
+        return false;
+    }
+
+    private async void BeginNpcDialogueInteraction(string npcId)
+    {
+        if (_flowState != BattleFlowState.Exploration || string.IsNullOrWhiteSpace(npcId))
+        {
+            return;
+        }
+
+        if (!TryGetNpcPropById(npcId, out var npcProp))
+        {
+            return;
+        }
+
+        var speakerName = GetString(npcProp, "name", "Traveler");
+        var fallbackLine = GetString(npcProp, "interaction_text", "...");
+        var dialogueId = GetString(npcProp, "dialogue_id", "");
+
+        if (string.IsNullOrWhiteSpace(dialogueId))
+        {
+            await ShowSimpleDialoguePageAsync(speakerName, fallbackLine, false);
+            return;
+        }
+
+        var dialogue = _gameData?.GetDialogue(dialogueId) ?? new Dictionary();
+        var pages = TryGetDictionaryArray(dialogue, "pages");
+        if (pages.Count == 0)
+        {
+            var fallbackText = GetString(dialogue, "text", fallbackLine);
+            await ShowSimpleDialoguePageAsync(speakerName, fallbackText, false);
+            return;
+        }
+
+        var title = GetString(dialogue, "title", speakerName);
+        var pageIndex = 0;
+        while (pageIndex >= 0 && pageIndex < pages.Count)
+        {
+            var page = pages[pageIndex];
+            var pageText = GetString(page, "text", fallbackLine);
+            var choices = TryGetDictionaryArray(page, "choices");
+
+            if (choices.Count == 0)
+            {
+                var hasNext = pageIndex < pages.Count - 1;
+                var shouldAdvance = await ShowSimpleDialoguePageAsync(title, pageText, hasNext);
+                if (!shouldAdvance)
+                {
+                    break;
+                }
+
+                pageIndex++;
+                continue;
+            }
+
+            var selectedChoiceIndex = await ShowDialogueChoicesAsync(title, pageText, choices);
+            if (selectedChoiceIndex < 0 || selectedChoiceIndex >= choices.Count)
+            {
+                break;
+            }
+
+            var selectedChoice = choices[selectedChoiceIndex];
+            if (GetBool(selectedChoice, "end", false))
+            {
+                break;
+            }
+
+            var nextPage = GetInt(selectedChoice, "next_page", pageIndex + 1);
+            if (nextPage == pageIndex)
+            {
+                nextPage++;
+            }
+
+            pageIndex = Mathf.Clamp(nextPage, 0, pages.Count);
+        }
+    }
+
+    private async void BeginNpcRecruitInteraction(Unit explorer, string npcId)
+    {
+        if (_flowState != BattleFlowState.Exploration || explorer == null || string.IsNullOrWhiteSpace(npcId))
+        {
+            return;
+        }
+
+        if (!TryGetNpcPropById(npcId, out var npcProp))
+        {
+            return;
+        }
+
+        var recruitTemplateId = GetString(npcProp, "recruit_template_id", "");
+        if (string.IsNullOrWhiteSpace(recruitTemplateId))
+        {
+            _hud?.AddCombatLogEntry("This NPC is not recruitable.");
+            return;
+        }
+
+        var recruitOnce = GetBool(npcProp, "recruit_once", true);
+        var recruitUnitId = BuildNpcRecruitUnitId(npcId, recruitTemplateId);
+        var alreadyInParty = false;
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && unit.UnitId == recruitUnitId)
+            {
+                alreadyInParty = true;
+                break;
+            }
+        }
+
+        if (alreadyInParty)
+        {
+            _hud?.AddCombatLogEntry($"{GetString(npcProp, "name", "This ally")} is already in your party.");
+            return;
+        }
+
+        if (recruitOnce && _recruitedNpcIds.Contains(npcId))
+        {
+            _hud?.AddCombatLogEntry($"{GetString(npcProp, "name", "This ally")} has already joined before.");
+            return;
+        }
+
+        Unit replacedUnit = null;
+        if (_playerUnits.Count >= MaxPartyMembers)
+        {
+            var replacementIndex = await ShowPartyReplacementChoiceAsync($"Your party is full ({MaxPartyMembers}). Choose someone to send to reserves.");
+            if (replacementIndex < 0 || replacementIndex >= _playerUnits.Count)
+            {
+                _hud?.AddCombatLogEntry("Recruit cancelled.");
+                return;
+            }
+
+            replacedUnit = _playerUnits[replacementIndex];
+            AddOrUpdateReserveUnit(replacedUnit);
+            RemovePartyUnit(replacedUnit, movedToReserve: true);
+        }
+
+        var template = CopyDictionary(_gameData?.GetCharacterTemplate(recruitTemplateId) ?? new Dictionary());
+        if (template.Count == 0)
+        {
+            _hud?.AddCombatLogEntry($"Recruit template '{recruitTemplateId}' was not found.");
+            return;
+        }
+
+        var spawnNear = GetVector2I(npcProp, "grid_pos", explorer.GridPos);
+        if (!TryFindRecruitSpawnCell(spawnNear, out var recruitCell))
+        {
+            recruitCell = explorer.GridPos;
+        }
+
+        template["id"] = recruitUnitId;
+        template["team"] = "player";
+        template["grid_pos"] = recruitCell;
+        template["name"] = GetString(npcProp, "name", GetString(template, "name", "Ally"));
+
+        SpawnUnit(template);
+        _recruitedNpcIds.Add(npcId);
+
+        var recruitedName = GetString(template, "name", "Ally");
+        if (replacedUnit != null)
+        {
+            var removedName = replacedUnit.UnitName;
+            _hud?.AddCombatLogEntry($"{recruitedName} joined. {removedName} was moved to reserves.");
+        }
+        else
+        {
+            _hud?.AddCombatLogEntry($"{recruitedName} joined the party.");
+        }
+
+        SyncHudFromGameState();
+        SaveMapInteractionStateForCurrentMap();
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+    }
+
+    private async void BeginReserveRecruitInteraction(Unit explorer, string unitId, string preferredReplaceUnitId = "")
+    {
+        if (_flowState != BattleFlowState.Exploration || explorer == null || string.IsNullOrWhiteSpace(unitId))
+        {
+            return;
+        }
+
+        if (!TryTakeReserveUnit(unitId, out var reserveConfig))
+        {
+            _hud?.AddCombatLogEntry("That reserve member is no longer available.");
+            return;
+        }
+
+        Unit replacedUnit = null;
+        if (_playerUnits.Count >= MaxPartyMembers)
+        {
+            var replacementIndex = -1;
+            if (!string.IsNullOrWhiteSpace(preferredReplaceUnitId))
+            {
+                for (var i = 0; i < _playerUnits.Count; i++)
+                {
+                    if (_playerUnits[i]?.UnitId == preferredReplaceUnitId)
+                    {
+                        replacementIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (replacementIndex < 0)
+            {
+                replacementIndex = await ShowPartyReplacementChoiceAsync($"Your party is full ({MaxPartyMembers}). Choose someone to send to reserves.");
+            }
+
+            if (replacementIndex < 0 || replacementIndex >= _playerUnits.Count)
+            {
+                AddOrUpdateReserveUnit(reserveConfig);
+                _hud?.AddCombatLogEntry("Reserve recruitment cancelled.");
+                return;
+            }
+
+            replacedUnit = _playerUnits[replacementIndex];
+            AddOrUpdateReserveUnit(replacedUnit);
+            RemovePartyUnit(replacedUnit, movedToReserve: true);
+        }
+
+        if (!TryFindRecruitSpawnCell(explorer.GridPos, out var recruitCell))
+        {
+            recruitCell = explorer.GridPos;
+        }
+
+        reserveConfig["team"] = "player";
+        reserveConfig["grid_pos"] = recruitCell;
+        SpawnUnit(CopyDictionary(reserveConfig));
+
+        var recruitedName = GetString(reserveConfig, "name", "Ally");
+        if (replacedUnit != null)
+        {
+            _hud?.AddCombatLogEntry($"{recruitedName} rejoined. {replacedUnit.UnitName} moved to reserves.");
+        }
+        else
+        {
+            _hud?.AddCombatLogEntry($"{recruitedName} rejoined from reserves.");
+        }
+
+        SyncHudFromGameState();
+        SaveMapInteractionStateForCurrentMap();
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+    }
+
+    private bool TryGetNpcPropById(string npcId, out Dictionary npcProp)
+    {
+        foreach (var prop in _mapProps)
+        {
+            if (GetString(prop, "type", "") != "npc")
+            {
+                continue;
+            }
+
+            var candidateId = GetString(prop, "npc_id", GetString(prop, "id", ""));
+            if (candidateId == npcId)
+            {
+                npcProp = prop;
+                return true;
+            }
+        }
+
+        npcProp = null;
+        return false;
+    }
+
+    private static string BuildNpcRecruitUnitId(string npcId, string templateId)
+    {
+        return $"npc-recruit:{npcId}:{templateId}";
+    }
+
+    private bool TryFindRecruitSpawnCell(Vector2I preferredCell, out Vector2I spawnCell)
+    {
+        var candidates = new List<Vector2I>
+        {
+            preferredCell,
+            preferredCell + new Vector2I(0, -1),
+            preferredCell + new Vector2I(0, 1),
+            preferredCell + new Vector2I(-1, 0),
+            preferredCell + new Vector2I(1, 0),
+            preferredCell + new Vector2I(-1, -1),
+            preferredCell + new Vector2I(1, -1),
+            preferredCell + new Vector2I(-1, 1),
+            preferredCell + new Vector2I(1, 1)
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (!IsInBounds(candidate) || IsBlockedCell(candidate) || IsOccupied(candidate))
+            {
+                continue;
+            }
+
+            spawnCell = candidate;
+            return true;
+        }
+
+        spawnCell = preferredCell;
+        return false;
+    }
+
+    private void AppendReserveEntriesForRestCell(Vector2I clickedCell, Array<Dictionary> entries)
+    {
+        if (entries == null || _reservePartyRoster.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary restPoint = null;
+        foreach (var prop in _mapProps)
+        {
+            if (GetString(prop, "type", "") == "rest_point"
+                && GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999)) == clickedCell)
+            {
+                restPoint = prop;
+                break;
+            }
+        }
+
+        if (restPoint == null)
+        {
+            return;
+        }
+
+        var sourceTitle = GetString(restPoint, "name", "Rest Point");
+        foreach (var reserveUnit in _reservePartyRoster)
+        {
+            var unitId = GetString(reserveUnit, "id", "");
+            if (string.IsNullOrWhiteSpace(unitId))
+            {
+                continue;
+            }
+
+            var unitName = GetString(reserveUnit, "name", "Companion");
+            entries.Add(new Dictionary
+            {
+                { "id", $"reserve-recruit:{unitId}" },
+                { "label", $"Invite {unitName} from reserves" },
+                { "detail", $"Ask {unitName} to rejoin your active party." },
+                { "source_title", sourceTitle }
+            });
+        }
+    }
+
+    private Dictionary BuildUnitRosterEntry(Unit unit)
+    {
+        var abilityIds = new Array<string>();
+        foreach (var abilityId in unit.AbilityIds)
+        {
+            if (!string.IsNullOrWhiteSpace(abilityId))
+            {
+                abilityIds.Add(abilityId);
+            }
+        }
+
+        return new Dictionary
+        {
+            { "id", unit.UnitId },
+            { "name", unit.UnitName },
+            { "race", unit.Race },
+            { "team", "player" },
+            { "grid_pos", unit.GridPos },
+            { "primary_ability_id", unit.PrimaryAbilityId },
+            { "ability_ids", abilityIds },
+            { "initiative", unit.Initiative },
+            { "hit_points", unit.HitPoints },
+            { "max_hit_points", unit.MaxHitPoints },
+            { "magic_points", unit.MagicPoints },
+            { "max_magic_points", unit.MaxMagicPoints },
+            { "magic_point_regen_per_turn", unit.MagicPointRegenPerTurn },
+            { "intelligence", unit.Intelligence },
+            { "strength", unit.Strength },
+            { "wisdom", unit.Wisdom },
+            { "dexterity", unit.Dexterity },
+            { "constitution", unit.Constitution },
+            { "level", unit.Level },
+            { "experience", unit.Experience },
+            { "base_unarmed_damage", unit.BaseUnarmedDamage },
+            { "weapon_attack_damage_bonus", unit.WeaponAttackDamageBonus },
+            { "weapon_attack_range_bonus", unit.WeaponAttackRangeBonus },
+            { "armor_class_bonus", unit.ArmorClassBonus },
+            { "movement_per_turn", unit.MovementPerTurn },
+        };
+    }
+
+    private void AddOrUpdateReserveUnit(Unit unit)
+    {
+        if (!IsUsableUnit(unit) || string.IsNullOrWhiteSpace(unit.UnitId))
+        {
+            return;
+        }
+
+        AddOrUpdateReserveUnit(BuildUnitRosterEntry(unit));
+    }
+
+    private void AddOrUpdateReserveUnit(Dictionary reserveConfig)
+    {
+        if (reserveConfig == null || reserveConfig.Count == 0)
+        {
+            return;
+        }
+
+        var unitId = GetString(reserveConfig, "id", "");
+        if (string.IsNullOrWhiteSpace(unitId))
+        {
+            return;
+        }
+
+        for (var i = 0; i < _reservePartyRoster.Count; i++)
+        {
+            if (GetString(_reservePartyRoster[i], "id", "") != unitId)
+            {
+                continue;
+            }
+
+            _reservePartyRoster[i] = CopyDictionary(reserveConfig);
+            return;
+        }
+
+        _reservePartyRoster.Add(CopyDictionary(reserveConfig));
+    }
+
+    private bool TryTakeReserveUnit(string unitId, out Dictionary reserveConfig)
+    {
+        for (var i = 0; i < _reservePartyRoster.Count; i++)
+        {
+            if (GetString(_reservePartyRoster[i], "id", "") != unitId)
+            {
+                continue;
+            }
+
+            reserveConfig = CopyDictionary(_reservePartyRoster[i]);
+            _reservePartyRoster.RemoveAt(i);
+            return true;
+        }
+
+        reserveConfig = null;
+        return false;
+    }
+
+    private void RemovePartyUnit(Unit unit, bool movedToReserve = false)
+    {
+        if (!IsUsableUnit(unit))
+        {
+            return;
+        }
+
+        _playerUnits.Remove(unit);
+        _allUnits.Remove(unit);
+        _selectedAbilityIdByUnitId.Remove(unit.UnitId);
+        _equippedItemsByUnitId.Remove(unit.UnitId);
+
+        if (!movedToReserve && unit.UnitId.StartsWith("npc-recruit:"))
+        {
+            var split = unit.UnitId.Split(':');
+            if (split.Length >= 3)
+            {
+                _recruitedNpcIds.Remove(split[1]);
+            }
+        }
+
+        if (_selectedCharacterUnitId == unit.UnitId)
+        {
+            _selectedCharacterUnitId = "";
+        }
+
+        if (_explorerUnit == unit)
+        {
+            _explorerUnit = null;
+        }
+
+        unit.QueueFree();
+    }
+
+    private async Task<bool> ShowSimpleDialoguePageAsync(string title, string bodyText, bool hasNext)
+    {
+        var dialog = new ConfirmationDialog
+        {
+            Title = title,
+            DialogText = bodyText,
+            Exclusive = true
+        };
+
+        dialog.GetOkButton().Text = hasNext ? "Next" : "Close";
+        if (hasNext)
+        {
+            dialog.AddCancelButton("End");
+        }
+
+        AddChild(dialog);
+
+        var completion = new TaskCompletionSource<bool>();
+
+        void HandleConfirmed()
+        {
+            completion.TrySetResult(true);
+        }
+
+        void HandleCanceled()
+        {
+            completion.TrySetResult(false);
+        }
+
+        dialog.Confirmed += HandleConfirmed;
+        dialog.Canceled += HandleCanceled;
+        dialog.CloseRequested += HandleCanceled;
+
+        try
+        {
+            dialog.PopupCentered();
+            var confirmed = await completion.Task;
+            return hasNext && confirmed;
+        }
+        finally
+        {
+            dialog.Confirmed -= HandleConfirmed;
+            dialog.Canceled -= HandleCanceled;
+            dialog.CloseRequested -= HandleCanceled;
+            dialog.QueueFree();
+        }
+    }
+
+    private async Task<int> ShowDialogueChoicesAsync(string title, string bodyText, Array<Dictionary> choices)
+    {
+        var dialog = new ConfirmationDialog
+        {
+            Title = title,
+            DialogText = bodyText,
+            Exclusive = true
+        };
+
+        var optionList = new OptionButton
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+
+        for (var i = 0; i < choices.Count; i++)
+        {
+            var label = GetString(choices[i], "label", $"Choice {i + 1}");
+            optionList.AddItem(label, i);
+        }
+
+        dialog.AddChild(optionList);
+        dialog.GetOkButton().Text = "Choose";
+        dialog.AddCancelButton("End");
+        AddChild(dialog);
+
+        var completion = new TaskCompletionSource<int>();
+
+        void HandleConfirmed()
+        {
+            completion.TrySetResult((int)optionList.GetSelectedId());
+        }
+
+        void HandleCanceled()
+        {
+            completion.TrySetResult(-1);
+        }
+
+        dialog.Confirmed += HandleConfirmed;
+        dialog.Canceled += HandleCanceled;
+        dialog.CloseRequested += HandleCanceled;
+
+        try
+        {
+            dialog.PopupCentered(new Vector2I(560, 240));
+            return await completion.Task;
+        }
+        finally
+        {
+            dialog.Confirmed -= HandleConfirmed;
+            dialog.Canceled -= HandleCanceled;
+            dialog.CloseRequested -= HandleCanceled;
+            dialog.QueueFree();
+        }
+    }
+
+    private async Task<int> ShowPartyReplacementChoiceAsync(string prompt)
+    {
+        var choices = new Array<Dictionary>();
+        for (var i = 0; i < _playerUnits.Count; i++)
+        {
+            var unit = _playerUnits[i];
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            choices.Add(new Dictionary
+            {
+                { "label", $"{unit.UnitName} (HP {unit.HitPoints}/{unit.MaxHitPoints})" },
+                { "index", i }
+            });
+        }
+
+        if (choices.Count == 0)
+        {
+            return -1;
+        }
+
+        var selected = await ShowDialogueChoicesAsync("Party Full", prompt, choices);
+        if (selected < 0 || selected >= choices.Count)
+        {
+            return -1;
+        }
+
+        return GetInt(choices[selected], "index", -1);
     }
 
     private void SetMovementPreviewPath(Array<Vector2I> path)
@@ -3845,6 +4641,54 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return items;
+    }
+
+    private Array<Dictionary> BuildActivePartyReserveEntriesForHud()
+    {
+        var entries = new Array<Dictionary>();
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            entries.Add(new Dictionary
+            {
+                { "id", unit.UnitId },
+                { "label", $"{unit.UnitName} (HP {unit.HitPoints}/{unit.MaxHitPoints}, MP {unit.MagicPoints}/{unit.MaxMagicPoints})" },
+                { "detail", $"Send {unit.UnitName} to reserves." }
+            });
+        }
+
+        return entries;
+    }
+
+    private Array<Dictionary> BuildReserveRosterEntriesForHud()
+    {
+        var entries = new Array<Dictionary>();
+        foreach (var unit in _reservePartyRoster)
+        {
+            var unitId = GetString(unit, "id", "");
+            if (string.IsNullOrWhiteSpace(unitId))
+            {
+                continue;
+            }
+
+            var name = GetString(unit, "name", "Companion");
+            var hp = GetInt(unit, "hit_points", 0);
+            var maxHp = Mathf.Max(1, GetInt(unit, "max_hit_points", 1));
+            var mp = GetInt(unit, "magic_points", 0);
+            var maxMp = Mathf.Max(0, GetInt(unit, "max_magic_points", 0));
+            entries.Add(new Dictionary
+            {
+                { "id", unitId },
+                { "label", $"{name} (HP {hp}/{maxHp}, MP {mp}/{maxMp})" },
+                { "detail", $"Bring {name} back into the active party." }
+            });
+        }
+
+        return entries;
     }
 
     private Unit GetInventoryTargetUnit()
@@ -4379,6 +5223,138 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _enemyUnits.Clear();
+    }
+
+    private void ClearPlayerUnitsFromScene()
+    {
+        for (var i = _allUnits.Count - 1; i >= 0; i--)
+        {
+            var unit = _allUnits[i];
+            if (!IsUsableUnit(unit))
+            {
+                _allUnits.RemoveAt(i);
+                continue;
+            }
+
+            if (unit.Team != "player")
+            {
+                continue;
+            }
+
+            unit.QueueFree();
+            _allUnits.RemoveAt(i);
+        }
+
+        _playerUnits.Clear();
+    }
+
+    private Array<Dictionary> BuildPartyRosterSnapshot()
+    {
+        var roster = new Array<Dictionary>();
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            roster.Add(BuildUnitRosterEntry(unit));
+        }
+
+        return roster;
+    }
+
+    private void RestorePartyRosterSnapshot(Array<Dictionary> roster)
+    {
+        if (roster == null || roster.Count == 0)
+        {
+            return;
+        }
+
+        ClearPlayerUnitsFromScene();
+        _selectedCharacterUnitId = "";
+        _explorerUnit = null;
+
+        foreach (var config in roster)
+        {
+            if (config == null || config.Count == 0)
+            {
+                continue;
+            }
+
+            var entry = CopyDictionary(config);
+            entry["team"] = "player";
+            SpawnUnit(entry);
+        }
+
+        PruneInvalidUnitReferences();
+    }
+
+    private Array<string> BuildRecruitedNpcIdSnapshot()
+    {
+        var ids = new Array<string>();
+        foreach (var npcId in _recruitedNpcIds)
+        {
+            if (!string.IsNullOrWhiteSpace(npcId))
+            {
+                ids.Add(npcId);
+            }
+        }
+
+        return ids;
+    }
+
+    private Array<Dictionary> BuildReserveRosterSnapshot()
+    {
+        var snapshot = new Array<Dictionary>();
+        foreach (var entry in _reservePartyRoster)
+        {
+            snapshot.Add(CopyDictionary(entry));
+        }
+
+        return snapshot;
+    }
+
+    private void RestoreRecruitedNpcIdSnapshot(Array<string> recruitedNpcIds)
+    {
+        _recruitedNpcIds.Clear();
+        if (recruitedNpcIds == null)
+        {
+            return;
+        }
+
+        foreach (var npcId in recruitedNpcIds)
+        {
+            if (!string.IsNullOrWhiteSpace(npcId))
+            {
+                _recruitedNpcIds.Add(npcId);
+            }
+        }
+    }
+
+    private void RestoreReserveRosterSnapshot(Array<Dictionary> reserveRoster)
+    {
+        _reservePartyRoster.Clear();
+        if (reserveRoster == null)
+        {
+            return;
+        }
+
+        foreach (var entry in reserveRoster)
+        {
+            if (entry == null || entry.Count == 0)
+            {
+                continue;
+            }
+
+            var unitId = GetString(entry, "id", "");
+            if (string.IsNullOrWhiteSpace(unitId))
+            {
+                continue;
+            }
+
+            _reservePartyRoster.Add(CopyDictionary(entry));
+        }
     }
 
     private int GetEncounterAggroRange(string encounterId)
@@ -5395,6 +6371,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     void IGamePersistenceHost.SetExplorerUnitById(string unitId) => _explorerUnit = FindUnitById(unitId);
     void IGamePersistenceHost.SaveClearedEncounterStateForCurrentMap() => SaveClearedEncounterStateForCurrentMap();
     void IGamePersistenceHost.SpawnMapEncounter(string mapId) => SpawnMapEncounter(mapId, preserveParty: false, leadSpawnCell: default, preserveCurrentMapState: false);
+    Array<Dictionary> IGamePersistenceHost.BuildPartyRoster() => BuildPartyRosterSnapshot();
+    void IGamePersistenceHost.RestorePartyRoster(Array<Dictionary> roster) => RestorePartyRosterSnapshot(roster);
+    Array<Dictionary> IGamePersistenceHost.BuildReserveRoster() => BuildReserveRosterSnapshot();
+    void IGamePersistenceHost.RestoreReserveRoster(Array<Dictionary> reserveRoster) => RestoreReserveRosterSnapshot(reserveRoster);
+    Array<string> IGamePersistenceHost.BuildRecruitedNpcIds() => BuildRecruitedNpcIdSnapshot();
+    void IGamePersistenceHost.RestoreRecruitedNpcIds(Array<string> recruitedNpcIds) => RestoreRecruitedNpcIdSnapshot(recruitedNpcIds);
 
     Array<Dictionary> IGamePersistenceHost.BuildUnitSnapshots()
     {

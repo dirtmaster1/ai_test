@@ -9,6 +9,8 @@ public partial class GameData : Node
     public Dictionary Abilities { get; private set; } = new();
     public Dictionary Spells { get; private set; } = new();
     public Dictionary Items { get; private set; } = new();
+    public Dictionary Dialogues { get; private set; } = new();
+    public Dictionary Vendors { get; private set; } = new();
     public Dictionary Characters { get; private set; } = new();
 
     public override void _Ready()
@@ -22,6 +24,8 @@ public partial class GameData : Node
         Abilities = TryGetDictionary(RawData, "abilities");
         Spells = TryGetDictionary(RawData, "spells");
         Items = TryGetDictionary(RawData, "items");
+        Dialogues = TryGetDictionary(RawData, "dialogues");
+        Vendors = TryGetDictionary(RawData, "vendors");
         Characters = TryGetDictionary(RawData, "characters");
     }
 
@@ -71,6 +75,36 @@ public partial class GameData : Node
     public Dictionary GetItem(string id)
     {
         return TryGetDictionary(Items, id);
+    }
+
+    public Dictionary GetDialogue(string id)
+    {
+        return TryGetDictionary(Dialogues, id);
+    }
+
+    public Dictionary GetVendorProfile(string id)
+    {
+        return TryGetDictionary(Vendors, id);
+    }
+
+    public int GetVendorStartingGold(string id, int fallback = 100)
+    {
+        return GetInt(GetVendorProfile(id), "starting_gold", fallback);
+    }
+
+    public Array<string> GetVendorStartingInventory(string id)
+    {
+        return TryGetStringArray(GetVendorProfile(id), "starting_inventory_item_ids");
+    }
+
+    public float GetVendorBuyMultiplier(string id, float fallback = 1.0f)
+    {
+        return Mathf.Max(0.1f, GetFloat(GetVendorProfile(id), "buy_price_multiplier", fallback));
+    }
+
+    public float GetVendorSellMultiplier(string id, float fallback = 1.0f)
+    {
+        return Mathf.Max(0.1f, GetFloat(GetVendorProfile(id), "sell_price_multiplier", fallback));
     }
 
     public Dictionary GetCharacterTemplate(string id)
@@ -123,6 +157,48 @@ public partial class GameData : Node
         }
 
         return result;
+    }
+
+    private static int GetInt(Dictionary dict, string key, int fallback)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return fallback;
+        }
+
+        var value = (Variant)dict[key];
+        if (value.VariantType == Variant.Type.Int)
+        {
+            return (int)value;
+        }
+
+        if (value.VariantType == Variant.Type.Float)
+        {
+            return Mathf.RoundToInt((float)value);
+        }
+
+        return int.TryParse(value.AsString(), out var parsed) ? parsed : fallback;
+    }
+
+    private static float GetFloat(Dictionary dict, string key, float fallback)
+    {
+        if (!dict.ContainsKey(key))
+        {
+            return fallback;
+        }
+
+        var value = (Variant)dict[key];
+        if (value.VariantType == Variant.Type.Float)
+        {
+            return (float)value;
+        }
+
+        if (value.VariantType == Variant.Type.Int)
+        {
+            return (int)value;
+        }
+
+        return float.TryParse(value.AsString(), out var parsed) ? parsed : fallback;
     }
 
     private static Dictionary CopyDictionary(Dictionary source)

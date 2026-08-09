@@ -62,10 +62,12 @@ public partial class BattleController
         {
             var explorer = GetExplorerUnit();
             _hud.SetLootEntries(BuildNearbyLootEntries(explorer));
+            _hud.SetReserveEntries(BuildActivePartyReserveEntriesForHud(), BuildReserveRosterEntriesForHud());
         }
         else
         {
             _hud.SetLootPanelVisible(false);
+            _hud.SetReservePanelVisible(false);
         }
     }
 

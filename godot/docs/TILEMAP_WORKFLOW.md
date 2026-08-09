@@ -93,12 +93,35 @@ Enemies with the same `encounter_id` enter combat and persist as one encounter. 
 Set these custom data keys on a tile or tile alternative:
 
 - `marker_type`: `npc`
+- `npc_role`: `vendor`, `dialogue`, `recruit`, or `hybrid` (defaults to `vendor`)
+- `npc_id`: stable NPC id used by dialogue/recruit interactions
 - `id`: optional stable interaction ID; otherwise generated from the map and cell
 - `name`: NPC name shown by the interaction UI
 - `interaction_text`: text shown when the NPC is inspected
+- `dialogue_id`: optional dialogue definition id in `resources/game_data.json` under `dialogues`
+- `recruit_template_id`: optional character template id for recruitable NPCs
+- `recruit_once`: optional bool; if true (default), the NPC can only join once per session unless dismissed
+- `vendor_id`: optional vendor profile id in `resources/game_data.json` under `vendors`
 - `uses_tile_visual`: set to `true` to keep the authored atlas tile as the runtime visual
 
-NPC markers create static interactable props, not combat units. They do not use party slots, initiative, HP, or encounter grouping.
+NPC markers create static interactable props, not combat units. They do not use enemy encounter grouping.
+
+Role behavior:
+
+- `vendor`: opens vendor panel (backward-compatible default)
+- `dialogue`: opens a modal dialogue with paging and choices
+- `recruit`: offers recruitment into the party
+- `hybrid`: shows multiple actions (talk/recruit/trade) in the interaction list
+
+## Party Reserves UI
+
+Use the reserve panel to manage active and reserve members during exploration:
+
+- Open/close: `R` key or the `Reserves (R)` utility button
+- `Send To Reserve`: moves the selected active party member into reserves
+- `Bring To Party`: brings the selected reserve member back into the active party
+
+If the active party is at max size, bringing a reserve member requires selecting a replacement. Reserve and active rosters are persisted in save data.
 
 ### Placement steps
 

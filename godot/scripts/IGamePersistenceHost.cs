@@ -26,6 +26,12 @@ public interface IGamePersistenceHost
     void SetExplorerUnitById(string unitId);
     void SaveClearedEncounterStateForCurrentMap();
     void SpawnMapEncounter(string mapId);
+    Array<Dictionary> BuildPartyRoster();
+    void RestorePartyRoster(Array<Dictionary> roster);
+    Array<Dictionary> BuildReserveRoster();
+    void RestoreReserveRoster(Array<Dictionary> reserveRoster);
+    Array<string> BuildRecruitedNpcIds();
+    void RestoreRecruitedNpcIds(Array<string> recruitedNpcIds);
     Array<Dictionary> BuildUnitSnapshots();
     void ApplyUnitSnapshots(Array<Dictionary> snapshots);
     void RestoreFlowState(string flowStateToken);
