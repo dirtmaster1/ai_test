@@ -726,7 +726,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var refreshedEntries = new Array<Dictionary>();
         if (_hasActiveLootCell && _mapLoader != null)
         {
-            _mapLoader.TryBuildExplorationClickLootEntries(explorer, _activeLootCell, _mapProps, _lootBags, _openedPropIds, _gameData, out refreshedEntries, out _);
+            _mapLoader.TryBuildExplorationClickLootEntries(explorer, _activeLootCell, BuildVisibleMapProps(), _lootBags, _openedPropIds, _gameData, out refreshedEntries, out _);
         }
 
         if (refreshedEntries.Count > 0)
@@ -849,7 +849,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     return;
                 }
 
-                var result = ResolveSuccessfulAction(actionProfile.ActionType);
+                var resolvedActionType = actionProfile.ActionType == "poison_strike" ? "attack" : actionProfile.ActionType;
+                var result = ResolveSuccessfulAction(resolvedActionType);
                 ApplyActionResult(result);
                 BeginPostPlayerActionMouseMoveLock();
                 return;
@@ -1764,6 +1765,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 resultText += $" {onHitStatusText}";
             }
+
+            var actionStatusText = TryApplyActionStatusEffect(actionId, target);
+            if (!string.IsNullOrEmpty(actionStatusText))
+            {
+                resultText += $" {actionStatusText}";
+            }
         }
 
         if (target.IsDead)
@@ -2337,7 +2344,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var requiresRangedWeapon = GetBool(actionData, "requires_ranged_weapon", false);
 
         // Physical attacks commonly use 0 in data as a placeholder for "use unit stats".
-        var shouldUseActorCombatStats = (actionType == "attack" || actionType == "pin") && !isMagical;
+        var shouldUseActorCombatStats = (actionType == "attack" || actionType == "pin" || actionType == "poison_strike") && !isMagical;
         var range = shouldUseActorCombatStats && configuredRange <= 0
             ? actor.AttackRange
             : configuredRange;
@@ -2545,6 +2552,58 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return appliedMessages.Count == 0 ? "" : string.Join(" ", appliedMessages);
     }
 
+    private string TryApplyActionStatusEffect(string actionId, Unit target)
+    {
+        if (!IsUsableUnit(target) || target.IsDead || _gameData == null || string.IsNullOrWhiteSpace(actionId))
+        {
+            return "";
+        }
+
+        var actionData = GetActionData(actionId, out _);
+        if (actionData.Count == 0)
+        {
+            return "";
+        }
+
+        var effectId = GetString(actionData, "effect_id", "");
+        if (string.IsNullOrWhiteSpace(effectId))
+        {
+            return "";
+        }
+
+        var effectName = GetString(actionData, "effect_name", effectId);
+        var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 1));
+        var startDelayTurns = Mathf.Max(0, GetInt(actionData, "start_delay_turns", 0));
+        var damagePerTurn = Mathf.Max(0, GetInt(actionData, "damage_per_turn", 0));
+        var effectKind = GetString(actionData, "effect_kind", "debuff").ToLowerInvariant();
+        var isBuff = effectKind == "buff";
+        var stackingMode = GetString(actionData, "stacking_mode", "refresh");
+        var maxStacks = Mathf.Max(1, GetInt(actionData, "max_stacks", 1));
+        var stackAmount = Mathf.Max(1, GetInt(actionData, "stack_amount", 1));
+        var effectScope = GetString(actionData, "effect_scope", "persistent");
+
+        var applied = target.ApplyStatusEffect(effectId, effectName, isBuff, durationTurns, startDelayTurns, damagePerTurn, stackingMode, maxStacks, stackAmount, effectScope);
+        if (!GetBool(applied, "applied", false))
+        {
+            return "";
+        }
+
+        var message = $"{target.UnitName} is {effectName.ToLowerInvariant()}";
+        if (durationTurns > 0)
+        {
+            message += $" for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}";
+        }
+
+        var stacks = Mathf.Max(1, GetInt(applied, "stacks", 1));
+        if (stacks > 1)
+        {
+            message += $" ({stacks} stacks)";
+        }
+
+        message += ".";
+        return message;
+    }
+
     private bool IsPassiveAbilityId(string abilityId)
     {
         if (string.IsNullOrEmpty(abilityId) || _gameData == null)
@@ -2683,6 +2742,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                                 ? "Effect: charge attack (free action)"
                                 : profile.ActionType == "pin"
                                     ? "Effect: pin target for 1 turn"
+                                    : profile.ActionType == "poison_strike"
+                                        ? "Effect: weapon damage + poison for 2 turns"
                                     : $"Damage: {profile.Damage}";
             var mpCostLabel = profile.MagicPointCost <= 0
                 ? "MP Cost: none"
@@ -2981,7 +3042,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void DrawMapInteractablesOverlay(CanvasItem canvas)
     {
-        _mapLoader?.DrawMapInteractablesOverlay(canvas, _mapProps, _lootBags, _openedPropIds, CellSize);
+        _mapLoader?.DrawMapInteractablesOverlay(canvas, BuildVisibleMapProps(), _lootBags, _openedPropIds, CellSize);
     }
 
     private void DrawFocusedUnitCellHighlight(CanvasItem canvas)
@@ -3063,6 +3124,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var prop in _mapProps)
         {
+            if (ShouldHideNpcProp(prop))
+            {
+                continue;
+            }
+
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             if (propCell != cell)
             {
@@ -3071,8 +3137,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             var propId = GetString(prop, "id", "prop");
             var propName = GetString(prop, "name", "Chest");
-            var propType = GetString(prop, "type", "prop");
-            var interactionText = GetString(prop, "interaction_text", "");
             var hasLoot = TryGetStringArray(prop, "loot_item_ids").Count > 0
                 || !string.IsNullOrEmpty(GetString(prop, "loot_item_id", ""))
                 || GetInt(prop, "gold_amount", 0) > 0;
@@ -3080,14 +3144,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (hasLoot)
             {
                 details = _openedPropIds.Contains(propId)
-                    ? $"{propType} (loot)\nEmpty"
-                    : $"{propType} (loot)\nClosed";
+                    ? "Empty"
+                    : "Closed";
             }
             else
             {
-                details = string.IsNullOrEmpty(interactionText)
-                    ? $"{propType}\nInteract"
-                    : $"{propType}\n{interactionText}";
+                details = BuildPropHoverDetailText(prop);
             }
             break;
         }
@@ -3144,6 +3206,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         );
     }
 
+    private static string BuildPropHoverDetailText(Dictionary prop)
+    {
+        var interactionText = GetString(prop, "interaction_text", "");
+        if (!string.IsNullOrWhiteSpace(interactionText))
+        {
+            return interactionText;
+        }
+
+        var propType = GetString(prop, "type", "prop").ToLowerInvariant();
+        return propType switch
+        {
+            "npc" => "Interact",
+            "rest_point" => "Rest",
+            "sign" => "Read",
+            "trap" => "Caution",
+            _ => "Interact"
+        };
+    }
+
     private bool TryOpenExplorationInteractionAtCell(Vector2I clickedCell)
     {
         if (_flowState != BattleFlowState.Exploration)
@@ -3157,7 +3238,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, _mapProps, _lootBags, _openedPropIds, _gameData, out var entries, out var statusText))
+        var visibleMapProps = BuildVisibleMapProps();
+        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, visibleMapProps, _lootBags, _openedPropIds, _gameData, out var entries, out var statusText))
         {
             return false;
         }
@@ -3170,6 +3252,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (entries.Count > 0)
         {
+            var prioritizedRecruitInteractionId = "";
+            foreach (var entry in entries)
+            {
+                var entryId = GetString(entry, "id", "");
+                if (entryId.StartsWith("npc-recruit:"))
+                {
+                    prioritizedRecruitInteractionId = entryId;
+                    break;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(prioritizedRecruitInteractionId))
+            {
+                _hasActiveLootCell = false;
+                _activeLootCell = new Vector2I(-1, -1);
+                _hud?.SetLootPanelVisible(false);
+                TryExecuteExplorationInteractionById(explorer, prioritizedRecruitInteractionId);
+                return true;
+            }
+
             var firstInteractionId = GetString(entries[0], "id", "");
             if (entries.Count == 1 && !string.IsNullOrEmpty(firstInteractionId))
             {
@@ -3190,7 +3292,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 if (TryExecuteExplorationInteractionById(explorer, firstInteractionId))
                 {
-                    _mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, _mapProps, _lootBags, _openedPropIds, _gameData, out entries, out _);
+                    _mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, BuildVisibleMapProps(), _lootBags, _openedPropIds, _gameData, out entries, out _);
                     AppendReserveEntriesForRestCell(clickedCell, entries);
                 }
             }
@@ -3620,7 +3722,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return new Array<Dictionary>();
         }
 
-        return _mapLoader.BuildNearbyLootEntries(explorer, _mapProps, _lootBags, _openedPropIds, _gameData);
+        return _mapLoader.BuildNearbyLootEntries(explorer, BuildVisibleMapProps(), _lootBags, _openedPropIds, _gameData);
     }
 
     private bool TryExecuteExplorationInteractionById(Unit explorer, string interactionId)
@@ -3640,7 +3742,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!_mapLoader.TryResolveExplorationInteractionById(explorer, interactionId, _mapProps, _lootBags, _openedPropIds, _lootedBagIds, _partyInventoryItemIds, ref _partyGold, _gameData, _lootRng, out var statusText, out var logText, out var changedState))
+        if (!_mapLoader.TryResolveExplorationInteractionById(explorer, interactionId, BuildVisibleMapProps(), _lootBags, _openedPropIds, _lootedBagIds, _partyInventoryItemIds, ref _partyGold, _gameData, _lootRng, out var statusText, out var logText, out var changedState))
         {
             return false;
         }
@@ -3796,6 +3898,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        recruitTemplateId = recruitTemplateId.Trim();
+        var aliasApplied = false;
+        if (string.Equals(recruitTemplateId, "theif", System.StringComparison.OrdinalIgnoreCase))
+        {
+            recruitTemplateId = "thief";
+            aliasApplied = true;
+        }
+
+        var template = CopyDictionary(_gameData?.GetCharacterTemplate(recruitTemplateId) ?? new Dictionary());
+        if (template.Count == 0)
+        {
+            _hud?.AddCombatLogEntry($"Recruit template '{recruitTemplateId}' was not found.");
+            return;
+        }
+
         var recruitOnce = GetBool(npcProp, "recruit_once", true);
         var recruitUnitId = BuildNpcRecruitUnitId(npcId, recruitTemplateId);
         var alreadyInParty = false;
@@ -3820,6 +3937,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        var recruitName = GetString(npcProp, "name", GetString(template, "name", "Ally"));
+        var shouldRecruit = await ConfirmNpcRecruitAsync(recruitName, recruitTemplateId);
+        if (!shouldRecruit || _flowState != BattleFlowState.Exploration)
+        {
+            return;
+        }
+
         Unit replacedUnit = null;
         if (_playerUnits.Count >= MaxPartyMembers)
         {
@@ -3835,13 +3959,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             RemovePartyUnit(replacedUnit, movedToReserve: true);
         }
 
-        var template = CopyDictionary(_gameData?.GetCharacterTemplate(recruitTemplateId) ?? new Dictionary());
-        if (template.Count == 0)
-        {
-            _hud?.AddCombatLogEntry($"Recruit template '{recruitTemplateId}' was not found.");
-            return;
-        }
-
         var spawnNear = GetVector2I(npcProp, "grid_pos", explorer.GridPos);
         if (!TryFindRecruitSpawnCell(spawnNear, out var recruitCell))
         {
@@ -3855,16 +3972,29 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         SpawnUnit(template);
         _recruitedNpcIds.Add(npcId);
+        if (recruitOnce)
+        {
+            RemoveNpcPropByNpcId(npcId);
+        }
+
+        _hasActiveLootCell = false;
+        _activeLootCell = new Vector2I(-1, -1);
+        _hud?.SetLootPanelVisible(false);
 
         var recruitedName = GetString(template, "name", "Ally");
+        var recruitedTemplateName = GetString(template, "id", recruitTemplateId);
+        if (aliasApplied)
+        {
+            _hud?.AddCombatLogEntry("Recruit template alias resolved: 'theif' -> 'thief'.");
+        }
         if (replacedUnit != null)
         {
             var removedName = replacedUnit.UnitName;
-            _hud?.AddCombatLogEntry($"{recruitedName} joined. {removedName} was moved to reserves.");
+            _hud?.AddCombatLogEntry($"{recruitedName} ({recruitedTemplateName}) joined. {removedName} was moved to reserves.");
         }
         else
         {
-            _hud?.AddCombatLogEntry($"{recruitedName} joined the party.");
+            _hud?.AddCombatLogEntry($"{recruitedName} ({recruitedTemplateName}) joined the party.");
         }
 
         SyncHudFromGameState();
@@ -3968,6 +4098,89 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private static string BuildNpcRecruitUnitId(string npcId, string templateId)
     {
         return $"npc-recruit:{npcId}:{templateId}";
+    }
+
+    private void RemoveNpcPropByNpcId(string npcId)
+    {
+        if (string.IsNullOrWhiteSpace(npcId))
+        {
+            return;
+        }
+
+        var removedCells = new HashSet<Vector2I>();
+
+        for (var i = _mapProps.Count - 1; i >= 0; i--)
+        {
+            var prop = _mapProps[i];
+            if (GetString(prop, "type", "") != "npc")
+            {
+                continue;
+            }
+
+            var candidateId = GetString(prop, "npc_id", GetString(prop, "id", ""));
+            if (candidateId != npcId)
+            {
+                continue;
+            }
+
+            if (GetBool(prop, "uses_tile_visual", false))
+            {
+                removedCells.Add(GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999)));
+            }
+
+            _mapProps.RemoveAt(i);
+        }
+
+        if (_mapLoader == null || string.IsNullOrWhiteSpace(_currentMapId))
+        {
+            return;
+        }
+
+        foreach (var cell in removedCells)
+        {
+            if (cell.X < 0 || cell.Y < 0)
+            {
+                continue;
+            }
+
+            _mapLoader.ClearItemVisualAtCell(_currentMapId, cell);
+        }
+    }
+
+    private Array<Dictionary> BuildVisibleMapProps()
+    {
+        var visible = new Array<Dictionary>();
+        foreach (var prop in _mapProps)
+        {
+            if (!ShouldHideNpcProp(prop))
+            {
+                visible.Add(prop);
+            }
+        }
+
+        return visible;
+    }
+
+    private bool ShouldHideNpcProp(Dictionary prop)
+    {
+        if (prop == null || prop.Count == 0 || GetString(prop, "type", "") != "npc")
+        {
+            return false;
+        }
+
+        var npcRole = GetString(prop, "npc_role", "vendor").ToLowerInvariant();
+        if (npcRole != "recruit")
+        {
+            return false;
+        }
+
+        if (!GetBool(prop, "recruit_once", true))
+        {
+            return false;
+        }
+
+        var npcId = GetString(prop, "npc_id", GetString(prop, "id", ""));
+        return !string.IsNullOrWhiteSpace(npcId) && _recruitedNpcIds.Contains(npcId);
     }
 
     private bool TryFindRecruitSpawnCell(Vector2I preferredCell, out Vector2I spawnCell)
@@ -4178,9 +4391,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var dialog = new ConfirmationDialog
         {
             Title = title,
-            DialogText = bodyText,
+            DialogText = "",
             Exclusive = true
         };
+
+        dialog.AddChild(CreateScrollableDialogBody(bodyText, new Vector2(560.0f, 200.0f)));
 
         dialog.GetOkButton().Text = hasNext ? "Next" : "Close";
         if (hasNext)
@@ -4208,7 +4423,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         try
         {
-            dialog.PopupCentered();
+            dialog.PopupCentered(new Vector2I(620, 340));
             var confirmed = await completion.Task;
             return hasNext && confirmed;
         }
@@ -4226,9 +4441,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var dialog = new ConfirmationDialog
         {
             Title = title,
-            DialogText = bodyText,
+            DialogText = "",
             Exclusive = true
         };
+
+        dialog.AddChild(CreateScrollableDialogBody(bodyText, new Vector2(560.0f, 180.0f)));
 
         var optionList = new OptionButton
         {
@@ -4264,7 +4481,65 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         try
         {
-            dialog.PopupCentered(new Vector2I(560, 240));
+            dialog.PopupCentered(new Vector2I(640, 380));
+            return await completion.Task;
+        }
+        finally
+        {
+            dialog.Confirmed -= HandleConfirmed;
+            dialog.Canceled -= HandleCanceled;
+            dialog.CloseRequested -= HandleCanceled;
+            dialog.QueueFree();
+        }
+    }
+
+    private static RichTextLabel CreateScrollableDialogBody(string bodyText, Vector2 size)
+    {
+        return new RichTextLabel
+        {
+            Text = bodyText ?? "",
+            CustomMinimumSize = size,
+            FitContent = false,
+            ScrollActive = true,
+            SelectionEnabled = false,
+            BbcodeEnabled = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+    }
+
+    private async Task<bool> ConfirmNpcRecruitAsync(string recruitName, string templateId)
+    {
+        var dialog = new ConfirmationDialog
+        {
+            Title = "Recruit Companion",
+            DialogText = $"{recruitName} wants to join your party as a {templateId}.\nRecruit now?",
+            Exclusive = true
+        };
+
+        dialog.GetOkButton().Text = "Recruit";
+        dialog.AddCancelButton("Not now");
+        AddChild(dialog);
+
+        var completion = new TaskCompletionSource<bool>();
+
+        void HandleConfirmed()
+        {
+            completion.TrySetResult(true);
+        }
+
+        void HandleCanceled()
+        {
+            completion.TrySetResult(false);
+        }
+
+        dialog.Confirmed += HandleConfirmed;
+        dialog.Canceled += HandleCanceled;
+        dialog.CloseRequested += HandleCanceled;
+
+        try
+        {
+            dialog.PopupCentered(new Vector2I(560, 220));
             return await completion.Task;
         }
         finally

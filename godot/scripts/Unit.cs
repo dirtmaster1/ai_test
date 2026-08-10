@@ -1079,6 +1079,7 @@ public partial class Unit : Node2D
         if (ContainsAny(key, "zombie")) return new Vector2I(3, 2);
         if (ContainsAny(key, "necromancer")) return new Vector2I(4, 2);
         if (ContainsAny(key, "wizard")) return new Vector2I(0, 0);
+        if (ContainsAny(key, "thief")) return new Vector2I(4, 0);
         if (ContainsAny(key, "ranger")) return new Vector2I(3, 0);
         if (ContainsAny(key, "goblin")) return new Vector2I(3, 1);
         if (ContainsAny(key, "warrior")) return new Vector2I(1, 0);
@@ -1093,6 +1094,7 @@ public partial class Unit : Node2D
     {
         var key = NormalizeToken(UnitId + " " + UnitName);
 
+        if (ContainsAny(key, "thief", "rogue")) return "human";
         if (ContainsAny(key, "warrior")) return "dwarf";
         if (ContainsAny(key, "ranger")) return "elf";
         if (ContainsAny(key, "goblin", "goblinarcher", "goblinshaman", "goblinchieftain", "chieftain")) return "goblin";
@@ -1213,7 +1215,23 @@ public partial class Unit : Node2D
 
     private static int GetStatModifier(int stat)
     {
-        return Mathf.FloorToInt((stat - 10) / 2.0f);
+        if (stat >= 12)
+        {
+            return Mathf.FloorToInt((stat - 10) / 2.0f);
+        }
+
+        if (stat >= 5)
+        {
+            return 0;
+        }
+
+        return stat switch
+        {
+            <= 1 => -3,
+            2 => -2,
+            3 => -2,
+            _ => -1
+        };
     }
 
     private int GetMagicPointRegenScalingBonus()

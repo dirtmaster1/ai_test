@@ -239,6 +239,22 @@ public partial class MapLoader : Node
         return true;
     }
 
+    public bool ClearItemVisualAtCell(string mapId, Vector2I cell)
+    {
+        if (string.IsNullOrWhiteSpace(mapId))
+        {
+            return false;
+        }
+
+        if (!_itemVisualLayersByMapId.TryGetValue(mapId, out var visualLayer) || visualLayer == null)
+        {
+            return false;
+        }
+
+        visualLayer.EraseCell(cell);
+        return true;
+    }
+
     private bool TryBuildGeometryFromBaseLayer(string mapId, out Array<Vector2I> wallCells, out Array<Dictionary> doors, out Array<Vector2I> walkableCells, out int width, out int height)
     {
         wallCells = new Array<Vector2I>();
@@ -1262,6 +1278,8 @@ public partial class MapLoader : Node
 
         var clickedInteractable = false;
 
+        Dictionary fallbackProp = null;
+
         foreach (var prop in mapProps)
         {
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
@@ -1306,23 +1324,37 @@ public partial class MapLoader : Node
                 break;
             }
 
+            if (fallbackProp == null)
+            {
+                fallbackProp = prop;
+            }
+        }
+
+        if (entries.Count == 0 && fallbackProp != null)
+        {
+            var propCell = GetVector2I(fallbackProp, "grid_pos", new Vector2I(-9999, -9999));
+            var propId = GetString(fallbackProp, "id", "prop");
+            var propName = GetString(fallbackProp, "name", "Prop");
+            var hasLoot = HasLootConfig(fallbackProp);
+            var interactionText = GetString(fallbackProp, "interaction_text", "");
+
             if (hasLoot && openedPropIds.Contains(propId))
             {
                 statusText = $"{propName} is empty.";
-                break;
             }
-
-            entries.Add(new Dictionary
+            else
             {
-                { "id", $"prop:{propId}" },
-                { "label", hasLoot ? $"Open {propName}" : $"Inspect {propName}" },
-                { "detail", hasLoot
-                    ? $"Open {propName} at ({propCell.X}, {propCell.Y})."
-                    : string.IsNullOrEmpty(interactionText)
-                        ? $"Inspect {propName} at ({propCell.X}, {propCell.Y})."
-                        : interactionText }
-            });
-            break;
+                entries.Add(new Dictionary
+                {
+                    { "id", $"prop:{propId}" },
+                    { "label", hasLoot ? $"Open {propName}" : $"Inspect {propName}" },
+                    { "detail", hasLoot
+                        ? $"Open {propName} at ({propCell.X}, {propCell.Y})."
+                        : string.IsNullOrEmpty(interactionText)
+                            ? $"Inspect {propName} at ({propCell.X}, {propCell.Y})."
+                            : interactionText }
+                });
+            }
         }
 
         if (entries.Count == 0)

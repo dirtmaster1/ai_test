@@ -1902,6 +1902,7 @@ public partial class HudController : Control
                         .Append(unit.UnitId).Append(':')
                         .Append(unit.HitPoints).Append('/').Append(unit.MaxHitPoints).Append(':')
                         .Append(unit.MagicPoints).Append('/').Append(unit.MaxMagicPoints).Append(':')
+                        .Append(unit.ArmorClass).Append(':')
                         .Append(unit.IsDead);
                 }
             }
@@ -1995,7 +1996,21 @@ public partial class HudController : Control
 
         details.AddChild(CreatePartyResourceRow("HP", unit.HitPoints, unit.MaxHitPoints, new Color(0.7f, 0.13f, 0.13f)));
         details.AddChild(CreatePartyResourceRow("MP", unit.MagicPoints, unit.MaxMagicPoints, new Color(0.12f, 0.28f, 0.62f)));
+        details.AddChild(CreatePartyStatRow($"AC {unit.ArmorClass}"));
         return card;
+    }
+
+    private static Label CreatePartyStatRow(string text)
+    {
+        var label = new Label
+        {
+            Text = text,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+
+        label.AddThemeColorOverride("font_color", new Color(0.76f, 0.73f, 0.66f));
+        label.AddThemeFontSizeOverride("font_size", 10);
+        return label;
     }
 
     private static HBoxContainer CreatePartyResourceRow(string label, int value, int maximum, Color fillColor)

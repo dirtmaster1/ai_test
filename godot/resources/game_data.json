@@ -41,6 +41,25 @@
 	  "ignores_action_cost": true,
 	  "requires_ranged_weapon": true
 	},
+	"poison-strike": {
+	  "id": "poison-strike",
+	  "name": "Poison Strike",
+	  "type": "poison_strike",
+	  "range": 0,
+	  "damage": 0,
+	  "cooldown": 2,
+	  "ignores_action_cost": true,
+	  "effect_id": "poison",
+	  "effect_name": "Poisoned",
+	  "effect_kind": "debuff",
+	  "effect_scope": "combat_only",
+	  "stacking_mode": "intensity",
+	  "max_stacks": 3,
+	  "stack_amount": 1,
+	  "duration_turns": 2,
+	  "start_delay_turns": 1,
+	  "damage_per_turn": 2
+	},
 	"poison": {
 	  "id": "poison",
 	  "name": "Poisoned",
@@ -108,12 +127,30 @@
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0
 	},
+	"dagger": {
+	  "id": "dagger",
+	  "name": "Dagger",
+	  "type": "weapon",
+	  "slot": "1-handed",
+	  "base_damage": 4,
+	  "bonus_damage": 0,
+	  "range": 1
+	},
 	"short-sword": {
 	  "id": "short-sword",
 	  "name": "Short Sword",
 	  "type": "weapon",
 	  "slot": "1-handed",
-	  "base_damage": 4,
+	  "base_damage": 6,
+	  "bonus_damage": 0,
+	  "range": 1
+	},
+	"long-sword": {
+	  "id": "long-sword",
+	  "name": "Long Sword",
+	  "type": "weapon",
+	  "slot": "1-handed",
+	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1
 	},
@@ -155,7 +192,7 @@
 	  "name": "War Axe",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 8,
+	  "base_damage": 10,
 	  "bonus_damage": 0,
 	  "range": 1
 	},
@@ -164,7 +201,7 @@
 	  "name": "Long Bow",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 7,
+	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 5
 	},
@@ -197,7 +234,7 @@
 	  "name": "Chieftain Club",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 9,
+	  "base_damage": 12,
 	  "bonus_damage": 0,
 	  "range": 1
 	},
@@ -214,7 +251,7 @@
 	  "title": "Elder Rowan",
 	  "pages": [
 		{
-		  "text": "Welcome, traveler. Our roads are less safe each night.",
+		  "text": "Welcome, traveler. Our roads are less safe each night with bandits and goblins. A powerful necromancer has taken up residence in the graveyard to the north. We need your help.",
 		  "choices": [
 			{
 			  "label": "What happened here?",
@@ -231,7 +268,7 @@
 		  ]
 		},
 		{
-		  "text": "The necromancer raised the graveyard dead. Keep your cleric close.",
+		  "text": "The necromancer has raised the dead from our very own graveyard and is draining the power from the land. I cannot face him as I need to preserve my strength to keep this land from falling into darkness. Please destroy him and his minions!",
 		  "choices": [
 			{
 			  "label": "Back",
@@ -244,7 +281,7 @@
 		  ]
 		},
 		{
-		  "text": "Carry spare armor and do not fight every battle head-on.",
+		  "text": "Start by facing the goblins and bandits that roam the forest. They are weak, but they travel in groups. Use your wits and your weapons to defeat them. Once you have cleared the forest, you will find the graveyard to the north.",
 		  "choices": [
 			{
 			  "label": "Back",
@@ -306,8 +343,8 @@
 		  "defend"
 		],
 		"initiative": 10,
-		"hit_points": 10,
-		"max_hit_points": 10,
+		"hit_points": 8,
+		"max_hit_points": 8,
 		"magic_points": 8,
 		"max_magic_points": 8,
 		"magic_point_regen_per_turn": 2,
@@ -382,8 +419,8 @@
 		  "defend"
 		],
 		"initiative": 14,
-		"hit_points": 9,
-		"max_hit_points": 9,
+		"hit_points": 10,
+		"max_hit_points": 10,
 		"movement_per_turn": 4,
 		"intelligence": 6,
 		"strength": 6,
@@ -392,6 +429,31 @@
 		"starting_equipment": [
 		  "short-bow",
 		  "leather-armor"
+		]
+	  },
+	  "thief": {
+		"id": "thief",
+		"name": "Thief",
+		"team": "player",
+		"primary_ability_id": "melee",
+		"ability_ids": [
+		  "melee",
+		  "poison-strike",
+		  "defend"
+		],
+		"initiative": 15,
+		"hit_points": 9,
+		"max_hit_points": 9,
+		"magic_points": 0,
+		"max_magic_points": 0,
+		"movement_per_turn": 5,
+		"intelligence": 6,
+		"strength": 6,
+		"wisdom": 6,
+		"dexterity": 12,
+		"starting_equipment": [
+		  "leather-armor",
+		  "dagger"
 		]
 	  },
 	  "goblin-shaman": {
