@@ -319,9 +319,12 @@ public partial class BattleController
 
     private void TransitionToMap(string toMapId, Vector2I spawnCell)
     {
+        var mapName = GetMapDisplayName(toMapId);
         SaveClearedEncounterStateForCurrentMap();
         SpawnMapEncounter(toMapId, preserveParty: true, leadSpawnCell: spawnCell);
-        EnterExplorationMode($"Transitioned to {toMapId}. Keep exploring.");
+        _hud?.ShowCombatBanner($"ZONE: {mapName}", new Color(0.36f, 0.8f, 1.0f, 1.0f));
+        _hud?.AddCombatLogEntry($"Entered {mapName}.");
+        EnterExplorationMode($"Transitioned to {mapName}. Keep exploring.");
         _persistence.PersistSaveGame(false);
         QueueRedraw();
     }

@@ -246,6 +246,15 @@
 	}
   },
   "dialogues": {
+	"old-miner": {
+	  "id": "old-miner",
+	  "title": "Old Miner",
+	  "pages": [
+		{
+		  "text": "Them darn youngin's dug too deep and dug into a spiders nest! Now the mines are swarming with poisonous spiders killing the half of us! Don't go going in there if you like livin' boy!"
+		}
+	  ]
+	},
 	"forest-elder": {
 	  "id": "forest-elder",
 	  "title": "Elder Rowan",

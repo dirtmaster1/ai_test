@@ -844,7 +844,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var attackTarget = GetLivingEnemyAtCell(active.Team, targetCell);
             if (attackTarget != null)
             {
-                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical))
+                if (!TryAttackTarget(active, attackTarget, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost))
                 {
                     return;
                 }
@@ -1584,8 +1584,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var actionProfile = ResolveActionProfile(actor, choice.AbilityId);
         SetSelectedAbilityId(actor, choice.AbilityId);
         var actionSuccess = actionProfile.ActionType == "heal"
-            ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical)
-            : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical);
+            ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost)
+            : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost);
 
         if (!actionSuccess)
         {
@@ -2352,6 +2352,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ? actor.AttackDamage
             : configuredDamage;
 
+        if (abilityId == "melee")
+        {
+            range = 1;
+        }
+
         range = actionType is "defend" or "protection" ? 0 : Mathf.Max(1, range);
         damage = Mathf.Max(0, damage);
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
@@ -2364,6 +2369,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool CanCastAction(Unit actor, ActionProfile actionProfile)
     {
         if (actor == null)
+        {
+            return false;
+        }
+
+        if (actionProfile.ActionId == "melee" && !CanUseMeleeAbility(actor))
         {
             return false;
         }
@@ -2438,6 +2448,42 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return false;
+    }
+
+    private bool CanUseMeleeAbility(Unit actor)
+    {
+        if (!IsUsableUnit(actor) || _gameData == null || string.IsNullOrEmpty(actor.UnitId))
+        {
+            return true;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(actor.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
+        {
+            return true;
+        }
+
+        var hasAnyWeaponEquipped = false;
+        foreach (var itemId in equippedBySlot.Values)
+        {
+            var itemData = _gameData.GetItem(itemId);
+            if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            if (GetString(itemData, "type", "") != "weapon")
+            {
+                continue;
+            }
+
+            hasAnyWeaponEquipped = true;
+            if (GetInt(itemData, "range", 0) <= 1)
+            {
+                return true;
+            }
+        }
+
+        return !hasAnyWeaponEquipped;
     }
 
     private void ApplyStartOfTurnStatusEffects(Unit activeUnit)
@@ -2756,12 +2802,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 : "Action Cost: uses action";
             var requirementLabel = profile.RequiresRangedWeapon
                 ? "Requirement: ranged weapon equipped"
+                : abilityId == "melee"
+                    ? "Requirement: melee weapon equipped (or no weapon equipped)"
                 : "Requirement: none";
             var isEnabled = CanUseActionProfileNow(unit, profile);
             var stateLabel = cooldownRemaining > 0
                 ? $"Status: on cooldown ({cooldownRemaining} remaining)"
                 : profile.RequiresRangedWeapon && !CanUseRangedWeaponAbility(unit)
                     ? "Status: requires a ranged weapon"
+                    : abilityId == "melee" && !CanUseMeleeAbility(unit)
+                        ? "Status: requires a melee weapon"
                     : !profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn()
                         ? "Status: action already used"
                     : !CanCastAction(unit, profile)
@@ -3278,6 +3328,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 if (firstInteractionId.StartsWith("vendor:"))
                 {
                     OpenVendor(firstInteractionId.Substring(7));
+                    return true;
+                }
+
+                if (firstInteractionId.StartsWith("npc-dialogue:"))
+                {
+                    _hasActiveLootCell = false;
+                    _activeLootCell = new Vector2I(-1, -1);
+                    _hud?.SetLootPanelVisible(false);
+                    TryExecuteExplorationInteractionById(explorer, firstInteractionId);
                     return true;
                 }
 
