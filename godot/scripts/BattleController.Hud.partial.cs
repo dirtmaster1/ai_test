@@ -48,6 +48,14 @@ public partial class BattleController
         if (inventoryTarget != null)
         {
             _hud.SetInventoryUnitName(inventoryTarget.UnitName);
+            _hud.SetInventoryCharacterSummary(
+                _hud.BuildCharacterSummary(
+                    inventoryTarget,
+                    GetActionDisplayName(GetSelectedAbilityId(inventoryTarget)),
+                    GetActionDisplayName(inventoryTarget.PrimaryAbilityId)
+                )
+            );
+            _hud.SetInventoryAbilities(BuildAbilityEntriesForHud(inventoryTarget));
             _hud.SetInventoryEquippedSummary(BuildInventoryEquippedSummary(inventoryTarget));
             _hud.SetInventoryEquippedItems(BuildInventoryEquippedEntries(inventoryTarget));
             _hud.SetInventoryItems(BuildInventoryItemsForHud(), GetEquippedItemIds(inventoryTarget));

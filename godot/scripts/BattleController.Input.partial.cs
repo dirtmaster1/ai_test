@@ -158,6 +158,13 @@ public partial class BattleController
     {
         if (_isExplorationAutoMoving)
         {
+            if (_flowState == BattleFlowState.Exploration &&
+                !mouseEvent.Pressed &&
+                mouseEvent.ButtonIndex == MouseButton.Left &&
+                !ShouldIgnoreWorldMouseInput())
+            {
+                BeginExplorationClickMove(WorldToCell(ToLocal(mouseEvent.GlobalPosition)));
+            }
             return;
         }
 
@@ -316,11 +323,6 @@ public partial class BattleController
 
     private async void HandleExplorationInput(InputEventKey keyEvent)
     {
-        if (_isExplorationAutoMoving)
-        {
-            return;
-        }
-
         var explorer = GetExplorerUnit();
         if (explorer == null)
         {
@@ -330,6 +332,12 @@ public partial class BattleController
         var delta = KeyToDelta(keyEvent.Keycode);
         if (delta == Vector2I.Zero)
         {
+            return;
+        }
+
+        if (_isExplorationAutoMoving)
+        {
+            QueueExplorationManualMove(delta);
             return;
         }
 

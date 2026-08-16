@@ -116,6 +116,17 @@
 	  "armor_class_bonus": 2,
 	  "mp_cost": 3,
 	  "cooldown": 2
+	},
+	"fireball": {
+	  "id": "fireball",
+	  "name": "Fireball",
+	  "type": "area_attack",
+	  "damage_type": "fire",
+	  "range": 6,
+	  "area_radius": 2,
+	  "damage": 10,
+	  "mp_cost": 10,
+	  "cooldown": 0
 	}
   },
   "items": {
@@ -241,8 +252,17 @@
 	"fireball-scroll": {
 	  "id": "fireball-scroll",
 	  "name": "Fireball Scroll",
-	  "type": "consumable",
-	  "slot": "none"
+	  "type": "scroll",
+	  "slot": "none",
+	  "description": "Teaches the Fireball spell. The scroll is consumed when learned.",
+	  "allowed_classes": [
+		"wizard"
+	  ],
+	  "use_effect": {
+		"type": "learn_spell",
+		"spell_id": "fireball"
+	  },
+	  "consumed_on_use": true
 	}
   },
   "dialogues": {
@@ -342,6 +362,7 @@
 	"templates": {
 	  "wizard": {
 		"id": "wizard",
+		"class_id": "wizard",
 		"name": "Wizard",
 		"team": "player",
 		"primary_ability_id": "melee",
@@ -354,8 +375,8 @@
 		"initiative": 10,
 		"hit_points": 8,
 		"max_hit_points": 8,
-		"magic_points": 8,
-		"max_magic_points": 8,
+		"magic_points": 10,
+		"max_magic_points": 10,
 		"magic_point_regen_per_turn": 2,
 		"intelligence": 10,
 		"strength": 5,
@@ -367,6 +388,7 @@
 	  },
 	  "warrior": {
 		"id": "warrior",
+		"class_id": "warrior",
 		"name": "Warrior",
 		"team": "player",
 		"primary_ability_id": "melee",
@@ -391,6 +413,7 @@
 	  },
 	  "cleric": {
 		"id": "cleric",
+		"class_id": "cleric",
 		"name": "Cleric",
 		"team": "player",
 		"primary_ability_id": "lesser-heal",
@@ -418,6 +441,7 @@
 	  },
 	  "ranger": {
 		"id": "ranger",
+		"class_id": "ranger",
 		"name": "Elven Ranger",
 		"team": "player",
 		"primary_ability_id": "ranged",
@@ -442,6 +466,7 @@
 	  },
 	  "thief": {
 		"id": "thief",
+		"class_id": "thief",
 		"name": "Thief",
 		"team": "player",
 		"primary_ability_id": "melee",

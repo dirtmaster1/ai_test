@@ -31,6 +31,7 @@ public partial class Unit : Node2D
 
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
+    public string ClassId { get; private set; } = "";
     public string Race { get; private set; } = "human";
     public string Team { get; private set; } = "player";
     public Vector2I GridPos { get; private set; } = Vector2I.Zero;
@@ -118,6 +119,7 @@ public partial class Unit : Node2D
     {
         UnitId = GetString(config, "id", "unit");
         UnitName = GetString(config, "name", "Unit");
+        ClassId = GetString(config, "class_id", UnitId).Trim().ToLowerInvariant();
         Race = GetString(config, "race", ResolveRace());
         Team = GetString(config, "team", "player");
         EncounterId = GetString(config, "encounter_id", "");
@@ -212,6 +214,17 @@ public partial class Unit : Node2D
         }
 
         return false;
+    }
+
+    public bool LearnAbility(string abilityId)
+    {
+        if (string.IsNullOrWhiteSpace(abilityId) || HasAbility(abilityId))
+        {
+            return false;
+        }
+
+        AbilityIds.Add(abilityId.Trim());
+        return true;
     }
 
     public int GetAbilityCooldownRemaining(string abilityId)
@@ -775,6 +788,7 @@ public partial class Unit : Node2D
         return new Dictionary
         {
             { "unit_id", UnitId },
+            { "class_id", ClassId },
             { "race", Race },
             { "grid_pos", GridPos },
             { "hit_points", HitPoints },
@@ -803,6 +817,7 @@ public partial class Unit : Node2D
 
         MaxHitPoints = Mathf.Max(1, GetInt(snapshot, "max_hit_points", MaxHitPoints));
         HitPoints = Mathf.Clamp(GetInt(snapshot, "hit_points", HitPoints), 0, MaxHitPoints);
+        ClassId = GetString(snapshot, "class_id", ClassId);
         Race = GetString(snapshot, "race", Race);
         MaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", MaxMagicPoints));
         MagicPoints = Mathf.Clamp(GetInt(snapshot, "magic_points", MagicPoints), 0, MaxMagicPoints);

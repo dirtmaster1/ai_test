@@ -88,6 +88,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool _isEndingTurn;
     private bool _isEnemyTurnProcessing;
     private bool _isExplorationAutoMoving;
+    private int _explorationMoveRequestId;
+    private bool _hasPendingExplorationClickMove;
+    private Vector2I _pendingExplorationClickTarget;
+    private bool _hasPendingExplorationManualMove;
+    private Vector2I _pendingExplorationManualDelta;
     private bool _isPanningView;
     private bool _leftMouseClickCandidate;
     private ulong _mouseMoveInputLockedUntilMs;
@@ -182,6 +187,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.AbilityPressed += OnHudAbilityPressed;
             _hud.EndTurnPressed += OnHudEndTurnPressed;
             _hud.EquipItemRequested += OnHudEquipItemRequested;
+            _hud.UseItemRequested += OnHudUseItemRequested;
             _hud.UnequipItemRequested += OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested += OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested += OnHudLootConfirmRequested;
@@ -219,6 +225,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.AbilityPressed -= OnHudAbilityPressed;
             _hud.EndTurnPressed -= OnHudEndTurnPressed;
             _hud.EquipItemRequested -= OnHudEquipItemRequested;
+            _hud.UseItemRequested -= OnHudUseItemRequested;
             _hud.UnequipItemRequested -= OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested -= OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
@@ -651,6 +658,70 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _persistence.PersistSaveGame(false);
     }
 
+    private void OnHudUseItemRequested(string itemId)
+    {
+        var target = GetInventoryTargetUnit();
+        if (!IsUsableUnit(target) || string.IsNullOrEmpty(itemId) || _gameData == null)
+        {
+            return;
+        }
+
+        var itemData = _gameData.GetItem(itemId);
+        if (itemData.Count == 0 || !_partyInventoryItemIds.Contains(itemId))
+        {
+            return;
+        }
+
+        var useEffect = GetDictionary(itemData, "use_effect");
+        var effectType = GetString(useEffect, "type", "");
+        if (effectType != "learn_spell")
+        {
+            _hud?.AddCombatLogEntry($"{GetString(itemData, "name", itemId)} cannot be used yet.");
+            return;
+        }
+
+        var allowedClasses = TryGetStringArray(itemData, "allowed_classes");
+        var classAllowed = allowedClasses.Count == 0;
+        foreach (var allowedClass in allowedClasses)
+        {
+            if (string.Equals(allowedClass, target.ClassId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                classAllowed = true;
+                break;
+            }
+        }
+
+        var itemName = GetString(itemData, "name", itemId);
+        if (!classAllowed)
+        {
+            _hud?.AddCombatLogEntry($"{target.UnitName} cannot use {itemName}. Required class: {string.Join(", ", allowedClasses)}.");
+            return;
+        }
+
+        var spellId = GetString(useEffect, "spell_id", "");
+        if (string.IsNullOrEmpty(spellId) || _gameData.GetSpell(spellId).Count == 0)
+        {
+            _hud?.AddCombatLogEntry($"{itemName} does not contain a valid spell.");
+            return;
+        }
+
+        if (!target.LearnAbility(spellId))
+        {
+            _hud?.AddCombatLogEntry($"{target.UnitName} already knows {GetActionDisplayName(spellId)}.");
+            return;
+        }
+
+        if (GetBool(itemData, "consumed_on_use", true))
+        {
+            _partyInventoryItemIds.Remove(itemId);
+        }
+
+        SetSelectedAbilityId(target, spellId);
+        _hud?.AddCombatLogEntry($"{target.UnitName} consumes {itemName} and learns {GetActionDisplayName(spellId)}.");
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+    }
+
     private void OnHudUnequipItemRequested(string equippedSlotKey)
     {
         var target = GetInventoryTargetUnit();
@@ -793,6 +864,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             var result = ResolveSuccessfulAction(actionProfile.ActionType);
             ApplyActionResult(result);
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
+        if (actionProfile.ActionType == "area_attack")
+        {
+            if (!TryCastAreaAttackAtCell(active, targetCell, actionProfile))
+            {
+                return;
+            }
+
+            var result = ResolveSuccessfulAction("attack");
+            if (!result.CombatEnded && active.IsDead)
+            {
+                TryRequestEndTurn(active, manualInput: false);
+            }
+            else
+            {
+                ApplyActionResult(result);
+            }
             BeginPostPlayerActionMouseMoveLock();
             return;
         }
@@ -1031,6 +1122,59 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _hud?.AddCombatLogEntry(log);
         SyncHudFromGameState();
         QueueRedraw();
+        return true;
+    }
+
+    private bool TryCastAreaAttackAtCell(Unit caster, Vector2I centerCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        if (!IsInBounds(centerCell)
+            || !Unit.IsWithinRange(caster.GridPos, centerCell, actionProfile.Range)
+            || !HasClearLineOfSight(caster.GridPos, centerCell))
+        {
+            return false;
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var damageType = GetString(actionData, "damage_type", "magic");
+        var affected = new List<string>();
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, actionProfile.AreaRadius))
+            {
+                continue;
+            }
+
+            var damageDealt = unit.ApplyDamage(actionProfile.Damage);
+            var outcome = unit.IsDead ? " and is defeated" : "";
+            affected.Add($"{unit.UnitName} takes {damageDealt}{outcome}");
+
+            if (damageDealt > 0 && !unit.IsDead)
+            {
+                unit.ClearWakeOnDamageStatusEffects();
+            }
+        }
+
+        caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, centerCell.ToString());
+
+        var affectedText = affected.Count == 0
+            ? "No units were caught in the blast."
+            : string.Join("; ", affected) + ".";
+        _hud?.AddCombatLogEntry(
+            $"{caster.UnitName} casts {actionProfile.ActionName}, dealing {actionProfile.Damage} {damageType} damage in a radius of {actionProfile.AreaRadius}. " +
+            affectedText +
+            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : "")
+        );
         return true;
     }
 
@@ -2784,6 +2928,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                         ? $"Effect: sleep ({profile.AreaRadius}-cell radius)"
                         : profile.ActionType == "protection"
                             ? $"Effect: +armor class aura ({profile.AreaRadius}-cell radius)"
+                            : profile.ActionType == "area_attack"
+                                ? $"Damage: {profile.Damage} to all units ({profile.AreaRadius}-cell radius)"
                             : profile.ActionType == "charge"
                                 ? "Effect: charge attack (free action)"
                                 : profile.ActionType == "pin"
@@ -2904,6 +3050,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return float.TryParse(value.AsString(), out var parsed) ? parsed : fallback;
     }
 
+    private static Dictionary GetDictionary(Dictionary dict, string key)
+    {
+        if (dict == null || !dict.ContainsKey(key))
+        {
+            return new Dictionary();
+        }
+
+        var value = (Variant)dict[key];
+        return value.VariantType == Variant.Type.Dictionary ? (Dictionary)value : new Dictionary();
+    }
+
     // UI helpers
 
     private static bool GetBool(Dictionary dict, string key, bool fallback)
@@ -2970,7 +3127,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 var target = actionProfile.ActionType == "heal"
                     ? GetLivingAllyAtCell(active.Team, cell)
                     : GetLivingEnemyAtCell(active.Team, cell);
-                var valid = target != null && active.CanUseActionAtRange(target, actionProfile.Range, _allUnits);
+                var valid = actionProfile.ActionType == "area_attack"
+                    ? HasClearLineOfSight(active.GridPos, cell)
+                    : target != null && active.CanUseActionAtRange(target, actionProfile.Range, _allUnits);
 
                 var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
                 var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
@@ -3150,14 +3309,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var titleColor = unit.Team == "enemy"
             ? new Color(1.0f, 0.78f, 0.78f, 1.0f)
             : new Color(0.78f, 0.95f, 1.0f, 1.0f);
+        var teamLabel = unit.Team == "enemy" ? "ENEMY" : "ALLY";
         _hud?.SetWorldHoverTooltip(
             GetGlobalMousePosition(),
-            $"{unit.UnitName} [{unit.Team}]",
-            $"HP: {unit.HitPoints}/{unit.MaxHitPoints}\nMP: {unit.MagicPoints}/{unit.MaxMagicPoints}\nArmor Class: {unit.ArmorClass} | Atk: {unit.AttackDamage} | Range: {unit.AttackRange}",
-            new Color(0.05f, 0.05f, 0.08f, 0.86f),
-            new Color(0.82f, 0.86f, 0.94f, 0.95f),
+            unit.UnitName,
+            $"{teamLabel}  |  Level {unit.Level}\n" +
+            $"Health       {unit.HitPoints} / {unit.MaxHitPoints}\n" +
+            $"Magic        {unit.MagicPoints} / {unit.MaxMagicPoints}\n" +
+            $"Attack  {unit.AttackDamage}     Armor  {unit.ArmorClass}\n" +
+            $"Range   {unit.AttackRange}     Initiative  {unit.EffectiveInitiative}",
+            new Color(0.045f, 0.047f, 0.045f, 0.96f),
+            unit.Team == "enemy" ? new Color(0.62f, 0.22f, 0.18f, 1.0f) : TacticalTheme.Brass,
             titleColor,
-            new Color(0.95f, 0.98f, 1.0f, 1.0f)
+            TacticalTheme.Parchment
         );
     }
 
@@ -4330,6 +4494,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             { "id", unit.UnitId },
             { "name", unit.UnitName },
+            { "class_id", unit.ClassId },
             { "race", unit.Race },
             { "team", "player" },
             { "grid_pos", unit.GridPos },
@@ -4714,7 +4879,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         targetCell = active.GridPos + direction;
 
-        if (actionProfile.ActionType == "sleep")
+        if (actionProfile.ActionType is "sleep" or "area_attack")
         {
             var furthestInBounds = targetCell;
             var foundAny = false;
@@ -5116,12 +5281,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var itemData = _gameData.GetItem(itemId);
             var itemName = itemData.Count == 0 ? itemId : GetString(itemData, "name", itemId);
             var slotLabel = slot.Replace("-a", " A").Replace("-b", " B");
-            entries.Add(new Dictionary
-            {
-                { "slot_key", slot },
-                { "label", $"{slotLabel}: {itemName}" },
-                { "detail", $"Equipped in {slotLabel}. Select Unequip to return it to shared inventory." }
-            });
+            var entry = itemData.Duplicate();
+            entry["slot_key"] = slot;
+            entry["label"] = $"{slotLabel}: {itemName}";
+            entry["detail"] = $"Equipped in {slotLabel}. Select Unequip to return it to shared inventory.";
+            entries.Add(entry);
         }
 
         return entries;
@@ -6151,6 +6315,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (_isExplorationAutoMoving)
+        {
+            _explorationMoveRequestId++;
+            _hasPendingExplorationClickMove = true;
+            _pendingExplorationClickTarget = targetCell;
+            _hasPendingExplorationManualMove = false;
+            return;
+        }
+
+        var requestId = ++_explorationMoveRequestId;
         _isExplorationAutoMoving = true;
         try
         {
@@ -6174,7 +6348,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             foreach (var step in path)
             {
-                if (_flowState != BattleFlowState.Exploration)
+                if (_flowState != BattleFlowState.Exploration || requestId != _explorationMoveRequestId)
                 {
                     break;
                 }
@@ -6184,9 +6358,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     break;
                 }
 
+                if (requestId != _explorationMoveRequestId)
+                {
+                    break;
+                }
+
                 var transitionOutcome = await TryHandleMapTransitionAsync();
                 if (transitionOutcome == MapTransitionOutcome.Transitioned)
                 {
+                    _explorationMoveRequestId++;
+                    _hasPendingExplorationClickMove = false;
+                    _hasPendingExplorationManualMove = false;
                     return;
                 }
 
@@ -6208,12 +6390,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         finally
         {
             _isExplorationAutoMoving = false;
+            ContinuePendingExplorationMove();
         }
     }
 
     private bool CanBeginExplorationClickMove(Vector2I targetCell)
     {
-        if (_flowState != BattleFlowState.Exploration || _isExplorationAutoMoving)
+        if (_flowState != BattleFlowState.Exploration)
         {
             return false;
         }
@@ -6230,6 +6413,56 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return true;
+    }
+
+    private void QueueExplorationManualMove(Vector2I delta)
+    {
+        _explorationMoveRequestId++;
+        _hasPendingExplorationManualMove = true;
+        _pendingExplorationManualDelta = delta;
+        _hasPendingExplorationClickMove = false;
+    }
+
+    private void ContinuePendingExplorationMove()
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            _hasPendingExplorationClickMove = false;
+            _hasPendingExplorationManualMove = false;
+            return;
+        }
+
+        if (_hasPendingExplorationManualMove)
+        {
+            var delta = _pendingExplorationManualDelta;
+            _hasPendingExplorationManualMove = false;
+            ContinueExplorationManualMove(delta);
+            return;
+        }
+
+        if (_hasPendingExplorationClickMove)
+        {
+            var targetCell = _pendingExplorationClickTarget;
+            _hasPendingExplorationClickMove = false;
+            BeginExplorationClickMove(targetCell);
+        }
+    }
+
+    private async void ContinueExplorationManualMove(Vector2I delta)
+    {
+        if (!TryMoveExplorationParty(delta))
+        {
+            return;
+        }
+
+        var transitionOutcome = await TryHandleMapTransitionAsync();
+        if (transitionOutcome == MapTransitionOutcome.Transitioned)
+        {
+            return;
+        }
+
+        SetStatusHelp();
+        TryStartCombatFromAggro();
     }
 
     private List<Unit> BuildExplorationPartyOrdered(Unit leader)
