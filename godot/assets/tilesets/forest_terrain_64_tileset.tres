@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://bheor1xgfsvoq" path="res://assets/tilesets/town_terrain_64.png" id="2_qovww"]
 [ext_resource type="Texture2D" uid="uid://djktwvw3xeajj" path="res://assets/tilesets/haunted_forest_town_terrain_64.png" id="3_gyy8v"]
 [ext_resource type="Texture2D" uid="uid://bjgx0gnrj2vtv" path="res://assets/tilesets/terrain_forest_lake_bridge_64.png" id="4_86goa"]
+[ext_resource type="Texture2D" uid="uid://cfm4op61sbjnj" path="res://assets/tilesets/terrain_grass_water_64.png" id="5_eb3ql"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_forest"]
 texture = ExtResource("1_forest")
@@ -374,6 +375,42 @@ texture_region_size = Vector2i(64, 64)
 7:7/0 = 0
 7:7/0/custom_data_0 = "floor"
 
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_5gw13"]
+texture = ExtResource("5_eb3ql")
+texture_region_size = Vector2i(64, 64)
+0:0/0 = 0
+0:0/0/custom_data_0 = "floor"
+1:0/0 = 0
+1:0/0/custom_data_0 = "floor"
+2:0/0 = 0
+2:0/0/custom_data_0 = "floor"
+3:0/0 = 0
+3:0/0/custom_data_0 = "floor"
+0:1/0 = 0
+0:1/0/custom_data_0 = "floor"
+1:1/0 = 0
+1:1/0/custom_data_0 = "floor"
+2:1/0 = 0
+2:1/0/custom_data_0 = "floor"
+3:1/0 = 0
+3:1/0/custom_data_0 = "floor"
+0:2/0 = 0
+0:2/0/custom_data_0 = "floor"
+1:2/0 = 0
+1:2/0/custom_data_0 = "floor"
+2:2/0 = 0
+2:2/0/custom_data_0 = "floor"
+3:2/0 = 0
+3:2/0/custom_data_0 = "floor"
+0:3/0 = 0
+0:3/0/custom_data_0 = "floor"
+1:3/0 = 0
+1:3/0/custom_data_0 = "floor"
+2:3/0 = 0
+2:3/0/custom_data_0 = "floor"
+3:3/0 = 0
+3:3/0/custom_data_0 = "floor"
+
 [resource]
 tile_size = Vector2i(64, 64)
 custom_data_layer_0/name = "terrain_type"
@@ -384,3 +421,4 @@ sources/0 = SubResource("TileSetAtlasSource_forest")
 sources/1 = SubResource("TileSetAtlasSource_gyy8v")
 sources/2 = SubResource("TileSetAtlasSource_86goa")
 sources/3 = SubResource("TileSetAtlasSource_eb3ql")
+sources/6 = SubResource("TileSetAtlasSource_5gw13")
