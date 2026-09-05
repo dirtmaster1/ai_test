@@ -65,7 +65,7 @@ public partial class BattleController
                 continue;
             }
 
-            var aggroRange = GetEncounterAggroRange(encounterId);
+            var aggroRange = enemy.AggroRange;
 
             foreach (var player in _playerUnits)
             {
@@ -100,7 +100,7 @@ public partial class BattleController
 
         _activeCombatEnemyUnitIds.Clear();
         _activeCombatEncounterIds.Clear();
-        AddChainedAggroEnemies(triggeringEnemy, 4);
+        AddChainedAggroEnemies(triggeringEnemy);
 
         if (_activeCombatEnemyUnitIds.Count == 0)
         {
@@ -150,7 +150,7 @@ public partial class BattleController
         }
     }
 
-    private void AddChainedAggroEnemies(Unit triggeringEnemy, int chainRange)
+    private void AddChainedAggroEnemies(Unit triggeringEnemy)
     {
         var queue = new System.Collections.Generic.Queue<Unit>();
         _activeCombatEnemyUnitIds.Add(triggeringEnemy.UnitId);
@@ -163,6 +163,7 @@ public partial class BattleController
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
+            var chainRange = current.AggroRange;
             foreach (var candidate in _enemyUnits)
             {
                 if (!IsUsableUnit(candidate) || candidate.IsDead || candidate.Team != "enemy" || string.IsNullOrEmpty(candidate.UnitId))

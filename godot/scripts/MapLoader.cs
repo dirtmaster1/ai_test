@@ -588,6 +588,7 @@ public partial class MapLoader : Node
                         enemy["name"] = tileData == null ? fallbackEnemyName : GetTileString(markerLayer, tileData, "name", fallbackEnemyName);
                         enemy["team"] = "enemy";
                         enemy["grid_pos"] = cell;
+                        enemy["aggro_range"] = tileData == null ? 4 : GetTileInt(markerLayer, tileData, "aggro_range", 4);
                         enemy["primary_ability_id"] = tileData == null ? fallbackPrimaryAbility : GetTileString(markerLayer, tileData, "primary_ability_id", fallbackPrimaryAbility);
                         enemy["initiative"] = tileData == null ? fallbackInitiative : GetTileInt(markerLayer, tileData, "initiative", fallbackInitiative);
                         enemy["hit_points"] = tileData == null ? fallbackHp : GetTileInt(markerLayer, tileData, "hit_points", fallbackHp);

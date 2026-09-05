@@ -91,7 +91,7 @@
 	  "id": "magic-missile",
 	  "name": "Magic Missile",
 	  "type": "attack",
-	  "range": 3,
+	  "range": 5,
 	  "damage": 4,
 	  "mp_cost": 3,
 	  "cooldown": 1

@@ -48,6 +48,7 @@ public partial class Unit : Node2D
     public string PrimaryAbilityId { get; private set; } = "";
     public Array<string> AbilityIds { get; private set; } = new();
     public string EncounterId { get; private set; } = "";
+    public int AggroRange { get; private set; } = 4;
     public int Initiative { get; private set; } = 10;
     public int Level { get; private set; } = 1;
     public int Experience { get; private set; }
@@ -123,6 +124,7 @@ public partial class Unit : Node2D
         Race = GetString(config, "race", ResolveRace());
         Team = GetString(config, "team", "player");
         EncounterId = GetString(config, "encounter_id", "");
+        AggroRange = Mathf.Max(0, GetInt(config, "aggro_range", 4));
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
         MaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));

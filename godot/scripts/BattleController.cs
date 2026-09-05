@@ -1369,7 +1369,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     target => IsValidAttackTarget(enemyUnit, target),
                     cell => IsInBounds(cell) && !IsBlockedCell(cell) && !IsOccupied(cell, enemyUnit),
                     HasClearLineOfSight,
-                    goal => FindPath(enemyUnit, enemyUnit.GridPos, goal, enemyUnit.RemainingMovement),
+                    goal => FindPath(enemyUnit, enemyUnit.GridPos, goal, Mathf.Max(_walkableCells.Count, _gridWidth * _gridHeight)),
                     out var step))
                 {
                     break;
@@ -1663,6 +1663,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 enemyConfig["encounter_id"] = encounterId;
+                enemyConfig["aggro_range"] = GetInt(enemyConfig, "aggro_range", aggroRange);
                 SpawnUnit(enemyConfig);
             }
         }
