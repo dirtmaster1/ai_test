@@ -2417,7 +2417,7 @@ public partial class HudController : Control
         }
     }
 
-    public void PositionLootPanelAboveCell(Vector2I cell, int cellSize)
+    public void PositionLootPanelNearScreenCell(Vector2 cellCenter, int cellSize)
     {
         if (_lootPanel == null || cellSize <= 0)
         {
@@ -2440,10 +2440,13 @@ public partial class HudController : Control
             panelSize = new Vector2(420.0f, 274.0f);
         }
 
-        var cellTopLeft = new Vector2(cell.X * cellSize, cell.Y * cellSize);
-        var cellCenterX = cellTopLeft.X + (cellSize * 0.5f);
-        var targetX = cellCenterX - (panelSize.X * 0.5f);
-        var targetY = cellTopLeft.Y - panelSize.Y - 8.0f;
+        const float panelGap = 8.0f;
+        var targetX = cellCenter.X - (panelSize.X * 0.5f);
+        var targetY = cellCenter.Y - (cellSize * 0.5f) - panelSize.Y - panelGap;
+        if (targetY < 0.0f)
+        {
+            targetY = cellCenter.Y + (cellSize * 0.5f) + panelGap;
+        }
 
         var maxX = Mathf.Max(0.0f, viewportSize.X - panelSize.X);
         var maxY = Mathf.Max(0.0f, viewportSize.Y - panelSize.Y);

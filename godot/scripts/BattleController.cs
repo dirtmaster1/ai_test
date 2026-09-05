@@ -803,7 +803,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (refreshedEntries.Count > 0)
         {
             _hud?.SetLootEntries(refreshedEntries);
-            _hud?.PositionLootPanelAboveCell(_activeLootCell, CellSize);
+            _hud?.PositionLootPanelNearScreenCell(ToGlobal(CellCenter(_activeLootCell)), CellSize);
             _hud?.SetLootPanelVisible(true);
         }
         else
@@ -3531,7 +3531,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hasActiveLootCell = true;
             _activeLootCell = clickedCell;
             _hud?.SetLootEntries(entries);
-            _hud?.PositionLootPanelAboveCell(clickedCell, CellSize);
+            _hud?.PositionLootPanelNearScreenCell(ToGlobal(CellCenter(clickedCell)), CellSize);
             _hud?.SetLootPanelVisible(true);
         }
 
