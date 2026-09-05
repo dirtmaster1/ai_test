@@ -29,6 +29,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private AiDirector _aiDirector;
     private MapLoader _mapLoader;
     private HudController _hud;
+    private CombatEffectsDirector _combatEffectsDirector;
     private EventBus _eventBus;
     private GameData _gameData;
     private GamePersistence _persistence;
@@ -171,6 +172,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _aiDirector = GetNode<AiDirector>("AiDirector");
         _mapLoader = GetNodeOrNull<MapLoader>("MapLoader");
         _hud = GetNodeOrNull<HudController>("HUD");
+        _combatEffectsDirector = GetNodeOrNull<CombatEffectsDirector>("CombatEffectsDirector");
         if (_hud != null)
         {
             _hud.Visible = true;
@@ -1015,10 +1017,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 wakeOnDamage: false,
                 armorClassBonus: armorClassBonus
             );
+            _combatEffectsDirector?.PlayStatus(unit, new Color("72c7ff"), "PROTECTED");
             buffedUnits.Add(unit.UnitName);
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(caster.Position, radius * CellSize, new Color("5aaeff"));
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
 
         if (buffedUnits.Count > 0)
@@ -1103,9 +1107,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 wakeOnDamage: true,
                 armorClassBonus: 0
             );
+            _combatEffectsDirector?.PlayStatus(unit, new Color("a88cff"), "ASLEEP");
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("8f72e8"), "SLEEP");
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
 
         var log = $"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", sleptUnits)} fall asleep for {durationTurns} turns.";
@@ -1147,6 +1153,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var actionData = GetActionData(actionProfile.ActionId, out _);
         var damageType = GetString(actionData, "damage_type", "magic");
         var affected = new List<string>();
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant());
         foreach (var unit in _allUnits)
         {
             if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, actionProfile.AreaRadius))
@@ -1155,6 +1162,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var damageDealt = unit.ApplyDamage(actionProfile.Damage);
+            _combatEffectsDirector?.PlayDamageResult(unit, damageDealt, new Color("ff6847"));
             var outcome = unit.IsDead ? " and is defeated" : "";
             affected.Add($"{unit.UnitName} takes {damageDealt}{outcome}");
 
@@ -1858,6 +1866,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var preDefenseDamage = isMagical ? damage : Mathf.Max(0, damage - target.ArmorClass);
         var mitigatedDamage = target.ApplyDamage(preDefenseDamage);
+        _combatEffectsDirector?.PlayAttack(attacker, target, actionId, isMagical, mitigatedDamage);
         if (_flowState == BattleFlowState.Combat)
         {
             if (consumeAction)
@@ -1944,6 +1953,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         actor.MarkDefending();
+        _combatEffectsDirector?.PlayDefend(actor);
         if (_flowState == BattleFlowState.Combat)
         {
             actor.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
@@ -2037,6 +2047,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var healed = target.ApplyHealing(healAmount);
+        _combatEffectsDirector?.PlayHeal(actor, target, healed);
 
         if (_flowState == BattleFlowState.Combat)
         {

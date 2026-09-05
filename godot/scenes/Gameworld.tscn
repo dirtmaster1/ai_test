@@ -10,6 +10,7 @@
 [ext_resource type="TileSet" uid="uid://bqmm413f5xdun" path="res://assets/tilesets/dungeon_terrain_64_tileset.tres" id="8_dungeon_tiles"]
 [ext_resource type="TileSet" uid="uid://dhcruyyeji64j" path="res://assets/tilesets/map_markers_64_tileset.tres" id="9_marker_tiles"]
 [ext_resource type="TileSet" uid="uid://c2h7fc4dvwdhq" path="res://assets/tilesets/cave_terrain_64_tileset.tres" id="10_cave_tiles"]
+[ext_resource type="Script" uid="uid://ctcy7812d7345" path="res://scripts/CombatEffectsDirector.cs" id="11_effects"]
 
 [node name="Gameworld" type="Node2D" unique_id=2037545694]
 script = ExtResource("1_btl")
@@ -76,6 +77,9 @@ tile_set = ExtResource("9_marker_tiles")
 
 [node name="Overlay" type="Node2D" parent="." unique_id=1338610266]
 script = ExtResource("6_overlay")
+
+[node name="CombatEffectsDirector" type="Node2D" parent="." unique_id=119811878]
+script = ExtResource("11_effects")
 
 [node name="Units" type="Node2D" parent="." unique_id=1282182662]
 
