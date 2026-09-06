@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://dedd7cs8oxd1p"]
 
-[ext_resource type="Script" path="res://scripts/StartScreen.cs" id="1_start"]
+[ext_resource type="Script" uid="uid://b5wp51ig1tnuc" path="res://scripts/StartScreen.cs" id="1_start"]
 
-[node name="StartScreen" type="Control"]
+[node name="StartScreen" type="Control" unique_id=1107443827]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -11,7 +11,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_start")
 
-[node name="Backdrop" type="ColorRect" parent="."]
+[node name="Backdrop" type="ColorRect" parent="." unique_id=525415705]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -20,7 +20,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.06, 0.08, 0.1, 1)
 
-[node name="CenterPanel" type="PanelContainer" parent="."]
+[node name="CenterPanel" type="PanelContainer" parent="." unique_id=2016523168]
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
@@ -31,52 +31,51 @@ offset_top = -200.0
 offset_right = 260.0
 offset_bottom = 200.0
 
-[node name="VBox" type="VBoxContainer" parent="CenterPanel"]
+[node name="VBox" type="VBoxContainer" parent="CenterPanel" unique_id=1205153785]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Title" type="Label" parent="CenterPanel/VBox"]
+[node name="Title" type="Label" parent="CenterPanel/VBox" unique_id=1888842437]
 layout_mode = 2
-horizontal_alignment = 1
 text = "Dark Dungeon Tactics"
-
-[node name="Subtitle" type="Label" parent="CenterPanel/VBox"]
-layout_mode = 2
 horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="CenterPanel/VBox" unique_id=2037424549]
+layout_mode = 2
 text = "Choose how to begin"
-
-[node name="SaveExistsLabel" type="Label" parent="CenterPanel/VBox"]
-layout_mode = 2
 horizontal_alignment = 1
-text = "Save status: checking"
 
-[node name="SavePathLabel" type="Label" parent="CenterPanel/VBox"]
+[node name="SaveExistsLabel" type="Label" parent="CenterPanel/VBox" unique_id=1671662549]
 layout_mode = 2
-autowrap_mode = 3
-text = "Save path:"
+text = "Save status: checking"
+horizontal_alignment = 1
 
-[node name="Buttons" type="VBoxContainer" parent="CenterPanel/VBox"]
+[node name="SavePathLabel" type="Label" parent="CenterPanel/VBox" unique_id=312133708]
+layout_mode = 2
+text = "Save path:"
+autowrap_mode = 3
+
+[node name="Buttons" type="VBoxContainer" parent="CenterPanel/VBox" unique_id=353503514]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="NewGameButton" type="Button" parent="CenterPanel/VBox/Buttons"]
+[node name="NewGameButton" type="Button" parent="CenterPanel/VBox/Buttons" unique_id=201764371]
 layout_mode = 2
 text = "New Game"
 
-[node name="LoadGameButton" type="Button" parent="CenterPanel/VBox/Buttons"]
+[node name="LoadGameButton" type="Button" parent="CenterPanel/VBox/Buttons" unique_id=52083677]
 layout_mode = 2
 text = "Load Game"
 
-[node name="DeleteSaveButton" type="Button" parent="CenterPanel/VBox/Buttons"]
+[node name="DeleteSaveButton" type="Button" parent="CenterPanel/VBox/Buttons" unique_id=802654233]
 layout_mode = 2
 text = "Delete Save"
 
-[node name="QuitButton" type="Button" parent="CenterPanel/VBox/Buttons"]
+[node name="QuitButton" type="Button" parent="CenterPanel/VBox/Buttons" unique_id=1514038511]
 layout_mode = 2
 text = "Quit"
 
-[node name="StatusLabel" type="Label" parent="CenterPanel/VBox"]
+[node name="StatusLabel" type="Label" parent="CenterPanel/VBox" unique_id=1095880254]
 layout_mode = 2
 horizontal_alignment = 1
 autowrap_mode = 3
-text = ""

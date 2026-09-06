@@ -1,9 +1,18 @@
-[gd_scene format=4 uid="uid://drnpbb46tf1ga"]
+[gd_scene format=3 uid="uid://drnpbb46tf1ga"]
 
 [ext_resource type="PackedScene" uid="uid://bx7nq8lg2rdsy" path="res://scenes/Gameworld.tscn" id="1_7ji8r"]
 
 [node name="Main" type="Node" unique_id=1486620461]
 
 [node name="Gameworld" parent="." unique_id=2068761317 instance=ExtResource("1_7ji8r")]
+
+[node name="forest-town-base" parent="Gameworld/Maps" parent_id_path=PackedInt32Array(2068761317, 608043437) index="0" unique_id=16009227]
+visible = true
+
+[node name="forest-path-base" parent="Gameworld/Maps" parent_id_path=PackedInt32Array(2068761317, 608043437) index="2" unique_id=778405682]
+visible = false
+
+[node name="forest-path-markers" parent="Gameworld/Maps" parent_id_path=PackedInt32Array(2068761317, 608043437) index="3" unique_id=1195714966]
+visible = false
 
 [editable path="Gameworld"]
