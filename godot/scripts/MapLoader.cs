@@ -490,14 +490,6 @@ public partial class MapLoader : Node
                 var markerType = tileData == null
                     ? ""
                     : GetTileString(markerLayer, tileData, "marker_type", "").ToLowerInvariant();
-                if (string.IsNullOrEmpty(markerType))
-                {
-                    var inferredTemplateId = InferEnemyTemplateIdFromAtlas(atlasCoords);
-                    if (!string.IsNullOrEmpty(inferredTemplateId))
-                    {
-                        markerType = "enemy_spawn";
-                    }
-                }
 
                 if (string.IsNullOrEmpty(markerType))
                 {
@@ -551,10 +543,6 @@ public partial class MapLoader : Node
                         var templateId = tileData == null
                             ? ""
                             : GetTileString(markerLayer, tileData, "template_id", "").Trim();
-                        if (string.IsNullOrEmpty(templateId))
-                        {
-                            templateId = InferEnemyTemplateIdFromAtlas(atlasCoords);
-                        }
 
                         var enemy = new Dictionary();
                         if (!string.IsNullOrEmpty(templateId) && _gameData != null)
@@ -568,7 +556,7 @@ public partial class MapLoader : Node
 
                         if (string.IsNullOrEmpty(templateId))
                         {
-                            GD.PushWarning($"MapLoader enemy marker at {mapId} ({cell.X},{cell.Y}) has no template_id and no atlas inference match. atlas={atlasCoords} alt={markerLayer.GetCellAlternativeTile(cell)}");
+                            GD.PushWarning($"MapLoader enemy marker at {mapId} ({cell.X},{cell.Y}) has no template_id. atlas={atlasCoords} alt={markerLayer.GetCellAlternativeTile(cell)}");
                         }
                         else if (enemy.Count == 0)
                         {
@@ -583,6 +571,8 @@ public partial class MapLoader : Node
                         var fallbackInitiative = GetInt(enemy, "initiative", 10);
                         var fallbackHp = GetInt(enemy, "hit_points", 8);
                         var fallbackMaxHp = GetInt(enemy, "max_hit_points", fallbackHp);
+                        var fallbackExperience = Mathf.Max(1, GetInt(enemy, "experience", 10));
+                        var markerExperience = tileData == null ? fallbackExperience : GetTileInt(markerLayer, tileData, "experience", fallbackExperience);
 
                         enemy["id"] = tileData == null ? fallbackEnemyId : GetTileString(markerLayer, tileData, "id", fallbackEnemyId);
                         enemy["name"] = tileData == null ? fallbackEnemyName : GetTileString(markerLayer, tileData, "name", fallbackEnemyName);
@@ -593,6 +583,7 @@ public partial class MapLoader : Node
                         enemy["initiative"] = tileData == null ? fallbackInitiative : GetTileInt(markerLayer, tileData, "initiative", fallbackInitiative);
                         enemy["hit_points"] = tileData == null ? fallbackHp : GetTileInt(markerLayer, tileData, "hit_points", fallbackHp);
                         enemy["max_hit_points"] = tileData == null ? fallbackMaxHp : GetTileInt(markerLayer, tileData, "max_hit_points", fallbackMaxHp);
+                        enemy["experience"] = markerExperience > 0 ? markerExperience : fallbackExperience;
 
                         var startingEquipment = tileData == null ? new Array<string>() : GetTileStringArray(markerLayer, tileData, "starting_equipment");
                         if (startingEquipment.Count > 0)
@@ -995,25 +986,6 @@ public partial class MapLoader : Node
         }
 
         return atlasSource.GetTileData(atlasCoords, 0);
-    }
-
-    private static string InferEnemyTemplateIdFromAtlas(Vector2I atlasCoords)
-    {
-        return atlasCoords switch
-        {
-            var c when c == new Vector2I(0, 3) => "dire-wolf",
-            var c when c == new Vector2I(1, 3) => "giant-spider",
-            var c when c == new Vector2I(3, 2) => "ghoul",
-            var c when c == new Vector2I(4, 2) => "necromancer",
-            var c when c == new Vector2I(5, 2) => "spectre",
-            var c when c == new Vector2I(3, 1) => "goblin-warrior",
-            var c when c == new Vector2I(4, 1) => "goblin-archer",
-            var c when c == new Vector2I(5, 1) => "goblin-shaman",
-            var c when c == new Vector2I(0, 2) => "goblin-chieftain",
-            var c when c == new Vector2I(1, 2) => "skeleton-warrior",
-            var c when c == new Vector2I(2, 2) => "skeleton-mage",
-            _ => ""
-        };
     }
 
     public void DrawMapFeaturesOverlay(

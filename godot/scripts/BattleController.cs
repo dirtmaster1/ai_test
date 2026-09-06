@@ -1994,12 +1994,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return "";
         }
 
-        var xpReward = Mathf.Max(1, defeatedTarget.MaxHitPoints + defeatedTarget.MaxMagicPoints);
-        var xpShare = Mathf.Max(1, xpReward / livingParty.Count);
+        var xpReward = Mathf.Max(1, defeatedTarget.Experience);
         var levelUpNames = new List<string>();
         foreach (var unit in livingParty)
         {
-            var levelsGained = unit.GrantExperience(xpShare);
+            var levelsGained = unit.GrantExperience(xpReward);
             if (levelsGained > 0)
             {
                 levelUpNames.Add($"{unit.UnitName} to level {unit.Level}");
@@ -2008,10 +2007,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (levelUpNames.Count > 0)
         {
-            return $"Party gains {xpReward} XP ({xpShare} each). Level up: {string.Join(", ", levelUpNames)}!";
+            return $"Each living party member gains {xpReward} XP. Level up: {string.Join(", ", levelUpNames)}!";
         }
 
-        return $"Party gains {xpReward} XP ({xpShare} each).";
+        return $"Each living party member gains {xpReward} XP.";
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)
@@ -6773,6 +6772,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         foreach (var target in targets)
         {
             var appliedDamage = target.ApplyDamage(damage);
+            _combatEffectsDirector?.PlayDamageResult(target, appliedDamage, new Color("ff6847"));
             var result = target.IsDead
                 ? $"{target.UnitName} triggered {trapName}, took {appliedDamage} damage, and was defeated."
                 : $"{target.UnitName} triggered {trapName} and took {appliedDamage} damage.";

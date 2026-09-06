@@ -203,7 +203,7 @@
 	  "name": "War Axe",
 	  "type": "weapon",
 	  "slot": "2-handed",
-	  "base_damage": 10,
+	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1
 	},
@@ -494,6 +494,7 @@
 		"id": "goblin-shaman",
 		"name": "Goblin Shaman",
 		"team": "enemy",
+		"experience": 25,
 		"primary_ability_id": "magic-missile",
 		"ability_ids": [
 		  "magic-missile",
@@ -513,15 +514,16 @@
 		"id": "goblin-chieftain",
 		"name": "Goblin Chieftain",
 		"team": "enemy",
+		"experience": 60,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
 		],
 		"initiative": 12,
-		"hit_points": 14,
-		"max_hit_points": 14,
+		"hit_points": 35,
+		"max_hit_points": 35,
 		"intelligence": 5,
-		"strength": 10,
+		"strength": 16,
 		"wisdom": 5,
 		"dexterity": 6,
 		"constitution": 9,
@@ -533,6 +535,7 @@
 		"id": "skeleton-warrior",
 		"name": "Skeleton Warrior",
 		"team": "enemy",
+		"experience": 18,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
@@ -553,6 +556,7 @@
 		"id": "skeleton-mage",
 		"name": "Skeleton Mage",
 		"team": "enemy",
+		"experience": 25,
 		"primary_ability_id": "magic-missile",
 		"ability_ids": [
 		  "magic-missile",
@@ -572,6 +576,7 @@
 		"id": "zombie",
 		"name": "Zombie",
 		"team": "enemy",
+		"experience": 18,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
@@ -590,6 +595,7 @@
 		"id": "necromancer",
 		"name": "Necromancer",
 		"team": "enemy",
+		"experience": 45,
 		"primary_ability_id": "magic-missile",
 		"ability_ids": [
 		  "magic-missile",
@@ -612,6 +618,7 @@
 		"id": "goblin-warrior",
 		"name": "Goblin Warrior",
 		"team": "enemy",
+		"experience": 15,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
@@ -632,6 +639,7 @@
 		"id": "goblin-archer",
 		"name": "Goblin Archer",
 		"team": "enemy",
+		"experience": 18,
 		"primary_ability_id": "ranged",
 		"ability_ids": [
 		  "ranged",
@@ -653,6 +661,7 @@
 		"id": "goblin-brute",
 		"name": "Goblin Brute",
 		"team": "enemy",
+		"experience": 25,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
@@ -673,6 +682,7 @@
 		"id": "giant-spider",
 		"name": "Giant Spider",
 		"team": "enemy",
+		"experience": 22,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee",
@@ -692,6 +702,7 @@
 		"id": "cave-spider",
 		"name": "Cave Spider",
 		"team": "enemy",
+		"experience": 12,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee",
@@ -711,6 +722,7 @@
 		"id": "spider-queen",
 		"name": "Spider Queen",
 		"team": "enemy",
+		"experience": 65,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee",
@@ -731,6 +743,7 @@
 		"id": "dire-wolf",
 		"name": "Dire Wolf",
 		"team": "enemy",
+		"experience": 18,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
@@ -749,6 +762,7 @@
 		"id": "ghoul",
 		"name": "Ghoul",
 		"team": "enemy",
+		"experience": 22,
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee"
@@ -767,6 +781,7 @@
 		"id": "spectre",
 		"name": "Spectre",
 		"team": "enemy",
+		"experience": 30,
 		"primary_ability_id": "magic-missile",
 		"ability_ids": [
 		  "magic-missile",

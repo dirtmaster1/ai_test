@@ -138,7 +138,7 @@ public partial class Unit : Node2D
         Constitution = GetInt(config, "constitution", 5);
         Initiative = GetInt(config, "initiative", 10);
         Level = Mathf.Max(1, GetInt(config, "level", 1));
-        Experience = Mathf.Max(0, GetInt(config, "experience", 0));
+        Experience = Mathf.Max(0, GetInt(config, "experience", Team == "enemy" ? 10 : 0));
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
         BaseUnarmedDamage = Mathf.Max(1, GetInt(config, "base_unarmed_damage", 1));

@@ -82,11 +82,12 @@ Set these custom data keys on a tile or tile alternative:
 - `template_id`: character template ID from `characters.templates` in `resources/game_data.json`
 - `encounter_id`: shared ID used to group enemies into one encounter
 - `aggro_range`: optional detection range; defaults to `4`
+- `experience`: XP granted to each living party member when defeated; defaults to the enemy template value
 - `id`: optional stable enemy ID; otherwise generated from the map, encounter, template, and cell
 - `name`, `primary_ability_id`, `initiative`, `hit_points`, and `max_hit_points`: optional per-marker overrides
 - `starting_equipment`: optional comma-separated item IDs
 
-Enemies with the same `encounter_id` enter combat and persist as one encounter. Use a unique encounter ID for a separate fight. Some unit atlas cells infer `template_id` from their artwork, but setting it explicitly on a tile alternative is safer for custom enemies.
+Enemies with the same `encounter_id` enter combat and persist as one encounter. Use a unique encounter ID for a separate fight. Every enemy marker must define `template_id`; artwork does not determine gameplay data. For a new enemy type, create a tile alternative with `marker_type = enemy_spawn` and its `template_id` rather than adding a code mapping.
 
 ### NPC markers
 
