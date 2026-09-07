@@ -41,6 +41,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly Array<Vector2I> _wallCells = new();
     private readonly HashSet<Vector2I> _walkableCells = new();
     private readonly Array<Dictionary> _mapDoors = new();
+    private readonly HashSet<Vector2I> _wallCellSet = new();
+    private readonly System.Collections.Generic.Dictionary<Vector2I, Dictionary> _mapDoorByCell = new();
     private readonly Array<Dictionary> _mapTransitions = new();
     private readonly Array<Dictionary> _mapProps = new();
     private readonly Array<Dictionary> _lootBags = new();
@@ -1362,6 +1364,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             // Enemies can spend up to their movement budget while pathing toward a usable attack position.
             while (_flowState == BattleFlowState.Combat && IsCurrentActiveUnit(enemyUnit) && enemyUnit.CanMoveThisTurn())
             {
+                var findPathFromCurrentCell = CreatePathFinder(
+                    enemyUnit,
+                    enemyUnit.GridPos,
+                    Mathf.Max(_walkableCells.Count, _gridWidth * _gridHeight));
                 if (!_aiDirector.TryChooseStepTowardActionRange(
                     enemyUnit,
                     _playerUnits,
@@ -1369,7 +1375,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     target => IsValidAttackTarget(enemyUnit, target),
                     cell => IsInBounds(cell) && !IsBlockedCell(cell) && !IsOccupied(cell, enemyUnit),
                     HasClearLineOfSight,
-                    goal => FindPath(enemyUnit, enemyUnit.GridPos, goal, Mathf.Max(_walkableCells.Count, _gridWidth * _gridHeight)),
+                    findPathFromCurrentCell,
                     out var step))
                 {
                     break;
@@ -1564,8 +1570,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _wallCells.Clear();
+        _wallCellSet.Clear();
         _walkableCells.Clear();
         _mapDoors.Clear();
+        _mapDoorByCell.Clear();
         _mapTransitions.Clear();
         _mapProps.Clear();
         _lootBags.Clear();
@@ -1587,6 +1595,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         foreach (var wallCell in walls)
         {
             _wallCells.Add(wallCell);
+            _wallCellSet.Add(wallCell);
         }
 
         var walkableCells = TryGetVector2IArray(mapData, "walkable_cells");
@@ -1600,6 +1609,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             var copiedDoor = CopyDictionary(door);
             _mapDoors.Add(copiedDoor);
+            _mapDoorByCell[GetVector2I(copiedDoor, "cell", new Vector2I(-9999, -9999))] = copiedDoor;
 
             var doorId = GetString(copiedDoor, "id", "");
             if (!string.IsNullOrEmpty(doorId) && GetBool(copiedDoor, "is_open", false))
@@ -2230,12 +2240,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool IsBlockedCell(Vector2I cell)
     {
-        foreach (var wall in _wallCells)
+        if (_wallCellSet.Contains(cell))
         {
-            if (wall == cell)
-            {
-                return true;
-            }
+            return true;
         }
 
         if (TryGetDoorAtCell(cell, out var door) && !IsDoorOpen(door))
@@ -2248,20 +2255,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool TryGetDoorAtCell(Vector2I cell, out Dictionary door)
     {
-        foreach (var entry in _mapDoors)
-        {
-            var doorCell = GetVector2I(entry, "cell", new Vector2I(-9999, -9999));
-            if (doorCell != cell)
-            {
-                continue;
-            }
-
-            door = entry;
-            return true;
-        }
-
-        door = null;
-        return false;
+        return _mapDoorByCell.TryGetValue(cell, out door);
     }
 
     private bool IsDoorOpen(Dictionary door)
@@ -2361,12 +2355,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Array<Vector2I> FindPath(Unit mover, Vector2I start, Vector2I goal, int maxSteps)
     {
         var path = new Array<Vector2I>();
-        if (maxSteps <= 0 || start == goal)
-        {
-            return path;
-        }
-
-        if (!IsInBounds(goal) || IsBlockedCell(goal) || IsOccupied(goal, mover))
+        if (maxSteps <= 0 || start == goal || !IsInBounds(goal) || IsBlockedCell(goal) || IsOccupied(goal, mover))
         {
             return path;
         }
@@ -2374,7 +2363,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var frontier = new Queue<Vector2I>();
         var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
         var distance = new System.Collections.Generic.Dictionary<Vector2I, int>();
-
         frontier.Enqueue(start);
         distance[start] = 0;
 
@@ -2395,12 +2383,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             foreach (var dir in AttackDirections)
             {
                 var next = current + dir;
-                if (!IsInBounds(next) || IsBlockedCell(next) || IsOccupied(next, mover))
-                {
-                    continue;
-                }
-
-                if (distance.ContainsKey(next))
+                if (!IsInBounds(next) || IsBlockedCell(next) || IsOccupied(next, mover) || distance.ContainsKey(next))
                 {
                     continue;
                 }
@@ -2416,11 +2399,69 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return path;
         }
 
+        return BuildPath(start, goal, cameFrom);
+    }
+
+    private System.Func<Vector2I, Array<Vector2I>> CreatePathFinder(Unit mover, Vector2I start, int maxSteps)
+    {
+        var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
+        var distance = new System.Collections.Generic.Dictionary<Vector2I, int>();
+
+        if (maxSteps > 0 && IsInBounds(start))
+        {
+            var frontier = new Queue<Vector2I>();
+            frontier.Enqueue(start);
+            distance[start] = 0;
+
+            while (frontier.Count > 0)
+            {
+                var current = frontier.Dequeue();
+                var currentDistance = distance[current];
+                if (currentDistance >= maxSteps)
+                {
+                    continue;
+                }
+
+                foreach (var dir in AttackDirections)
+                {
+                    var next = current + dir;
+                    if (!IsInBounds(next) || IsBlockedCell(next) || IsOccupied(next, mover) || distance.ContainsKey(next))
+                    {
+                        continue;
+                    }
+
+                    distance[next] = currentDistance + 1;
+                    cameFrom[next] = current;
+                    frontier.Enqueue(next);
+                }
+            }
+        }
+
+        return goal =>
+        {
+            if (goal == start || !IsInBounds(goal) || IsBlockedCell(goal) || IsOccupied(goal, mover) || !distance.ContainsKey(goal))
+            {
+                return new Array<Vector2I>();
+            }
+
+            return BuildPath(start, goal, cameFrom);
+        };
+    }
+
+    private static Array<Vector2I> BuildPath(Vector2I start, Vector2I goal, System.Collections.Generic.Dictionary<Vector2I, Vector2I> cameFrom)
+    {
+        var path = new Array<Vector2I>();
+        var reversedPath = new Stack<Vector2I>();
         var cursor = goal;
         while (cursor != start)
         {
-            path.Insert(0, cursor);
+            reversedPath.Push(cursor);
             cursor = cameFrom[cursor];
+        }
+
+        while (reversedPath.Count > 0)
+        {
+            path.Add(reversedPath.Pop());
         }
 
         return path;

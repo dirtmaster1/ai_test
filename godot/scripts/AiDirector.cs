@@ -187,6 +187,7 @@ public partial class AiDirector : Node
     private static Array<Vector2I> GetCandidateActionCellsForTarget(Unit actor, Unit target, IEnumerable<ActionOption> options, Func<Vector2I, bool> canStandAtCell, Func<Vector2I, Vector2I, bool> hasLineOfSight)
     {
         var candidates = new Array<Vector2I>();
+        var candidateSet = new HashSet<Vector2I>();
         if (actor == null || target == null || options == null)
         {
             return candidates;
@@ -204,7 +205,7 @@ public partial class AiDirector : Node
                 for (var dy = -option.Range; dy <= option.Range; dy++)
                 {
                     var candidate = target.GridPos + new Vector2I(dx, dy);
-                    if (candidate == actor.GridPos || candidates.Contains(candidate))
+                    if (candidate == actor.GridPos || candidateSet.Contains(candidate))
                     {
                         continue;
                     }
@@ -220,6 +221,7 @@ public partial class AiDirector : Node
                     }
 
                     candidates.Add(candidate);
+                    candidateSet.Add(candidate);
                 }
             }
         }
