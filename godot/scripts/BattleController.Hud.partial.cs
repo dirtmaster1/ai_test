@@ -13,7 +13,7 @@ public partial class BattleController
         var active = _turnManager?.GetActiveUnit();
         _hud.SetTurnOrder(BuildTurnOrderForHud(), active);
         _hud.SetActiveUnit(_flowState == BattleFlowState.Combat ? active : null);
-        _hud.SetPartyList(_playerUnits, _selectedCharacterUnitId, _flowState == BattleFlowState.Exploration);
+        _hud.SetPartyList(_playerUnits, _selectedCharacterUnitId, _flowState == BattleFlowState.Exploration, BuildPendingLevelUpUnitIds());
 
         var characterUnit = GetSelectedCharacterUnit();
         if (characterUnit == null)
@@ -77,6 +77,17 @@ public partial class BattleController
             _hud.SetLootPanelVisible(false);
             _hud.SetReservePanelVisible(false);
         }
+    }
+
+    private Godot.Collections.Array<string> BuildPendingLevelUpUnitIds()
+    {
+        var unitIds = new Godot.Collections.Array<string>();
+        foreach (var unitId in _pendingLevelUpNoticesByUnitId.Keys)
+        {
+            unitIds.Add(unitId);
+        }
+
+        return unitIds;
     }
 
     private void SetStatusHelp()

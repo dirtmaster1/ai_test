@@ -77,7 +77,9 @@ public partial class Unit : Node2D
     }
     public int AttackRange => Mathf.Max(1, WeaponAttackRangeBonus);
     public int ArmorClass => Mathf.Max(0, ArmorClassBonus + DexterityModifier + GetActiveArmorClassBonusFromStatuses());
-    public int ExperienceToNextLevel => Mathf.Max(100, Level * 25);
+    public int ExperienceToNextLevel => Level >= 26
+        ? int.MaxValue
+        : 100 << Mathf.Max(0, Level - 1);
     public int StrengthModifier => GetStatModifier(Strength);
     public int DexterityModifier => GetStatModifier(Dexterity);
     public int ConstitutionModifier => GetStatModifier(Constitution);
@@ -736,6 +738,11 @@ public partial class Unit : Node2D
         }
 
         _abilityCooldownRemaining[abilityId] = Mathf.Max(0, cooldownTurns);
+    }
+
+    public void ClearAbilityCooldowns()
+    {
+        _abilityCooldownRemaining.Clear();
     }
 
     public void MarkDefending()

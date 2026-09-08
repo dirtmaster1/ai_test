@@ -92,7 +92,7 @@
 	  "name": "Magic Missile",
 	  "type": "attack",
 	  "range": 5,
-	  "damage": 4,
+	  "damage": 6,
 	  "mp_cost": 3,
 	  "cooldown": 1
 	},
@@ -688,7 +688,7 @@
 		  "melee",
 		  "poison"
 		],
-		"base_unarmed_damage": 3,
+		"base_unarmed_damage": 6,
 		"initiative": 12,
 		"hit_points": 11,
 		"max_hit_points": 11,

@@ -49,6 +49,9 @@ public partial class HudController : Control
     public delegate void PartyOrderRequestedEventHandler(string sourceUnitId, string targetUnitId);
 
     [Signal]
+    public delegate void LevelUpRequestedEventHandler(string unitId);
+
+    [Signal]
     public delegate void ReserveStoreRequestedEventHandler(string partyUnitId);
 
     [Signal]
@@ -84,6 +87,7 @@ public partial class HudController : Control
     private PanelContainer _combatBannerPanel;
     private Label _combatBannerLabel;
     private Tween _combatBannerTween;
+    private readonly Queue<(string Text, Color Accent)> _combatBannerQueue = new();
     private PanelContainer _combatLogPanel;
     private Label _activeUnitLabel;
     private Button _abilityButton1;
@@ -2090,7 +2094,7 @@ public partial class HudController : Control
         }
     }
 
-    public void SetPartyList(Array<Unit> party, string selectedUnitId, bool reorderEnabled)
+    public void SetPartyList(Array<Unit> party, string selectedUnitId, bool reorderEnabled, Array<string> pendingLevelUpUnitIds)
     {
         if (_partyList == null)
         {
@@ -2098,6 +2102,13 @@ public partial class HudController : Control
         }
 
         var signatureBuilder = new StringBuilder($"{selectedUnitId}|{reorderEnabled}");
+        if (pendingLevelUpUnitIds != null)
+        {
+            foreach (var unitId in pendingLevelUpUnitIds)
+            {
+                signatureBuilder.Append("|level-up:").Append(unitId);
+            }
+        }
         if (party != null)
         {
             foreach (var unit in party)
@@ -2135,12 +2146,13 @@ public partial class HudController : Control
         {
             if (unit != null)
             {
-                _partyList.AddChild(CreatePartyCard(unit, unit.UnitId == selectedUnitId, reorderEnabled));
+                var hasPendingLevelUp = pendingLevelUpUnitIds?.Contains(unit.UnitId) ?? false;
+                _partyList.AddChild(CreatePartyCard(unit, unit.UnitId == selectedUnitId, reorderEnabled, hasPendingLevelUp));
             }
         }
     }
 
-    private PartyCard CreatePartyCard(Unit unit, bool selected, bool reorderEnabled)
+    private PartyCard CreatePartyCard(Unit unit, bool selected, bool reorderEnabled, bool hasPendingLevelUp)
     {
         var accent = unit.IsDead
             ? new Color(0.35f, 0.35f, 0.35f, 1.0f)
@@ -2172,16 +2184,42 @@ public partial class HudController : Control
         row.OffsetRight = -8.0f;
         row.OffsetBottom = -6.0f;
 
-        var portrait = new TextureRect
+        var portraitContainer = new Control
         {
             CustomMinimumSize = new Vector2(48.0f, 48.0f),
+            MouseFilter = MouseFilterEnum.Pass
+        };
+        row.AddChild(portraitContainer);
+
+        var portrait = new TextureRect
+        {
             Texture = unit.GetTurnOrderIcon(),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = MouseFilterEnum.Ignore,
             Modulate = unit.IsDead ? new Color(0.5f, 0.5f, 0.5f, 0.65f) : Colors.White
         };
-        row.AddChild(portrait);
+        portraitContainer.AddChild(portrait);
+        portrait.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+
+        if (hasPendingLevelUp)
+        {
+            var levelUpButton = new Button
+            {
+                Text = "+",
+                TooltipText = $"View {unit.UnitName}'s level-up gains",
+                CustomMinimumSize = new Vector2(24.0f, 24.0f),
+                Position = new Vector2(28.0f, -4.0f),
+                FocusMode = FocusModeEnum.None,
+                MouseDefaultCursorShape = CursorShape.PointingHand,
+                MouseFilter = MouseFilterEnum.Stop
+            };
+            TacticalTheme.ApplyButton(levelUpButton, fontSize: 16);
+            levelUpButton.AddThemeColorOverride("font_color", TacticalTheme.BrassBright);
+            levelUpButton.AddThemeColorOverride("font_hover_color", Colors.White);
+            levelUpButton.Pressed += () => EmitSignal(SignalName.LevelUpRequested, unit.UnitId);
+            portraitContainer.AddChild(levelUpButton);
+        }
 
         var details = new VBoxContainer
         {
@@ -3067,7 +3105,17 @@ public partial class HudController : Control
             return;
         }
 
-        _combatBannerTween?.Kill();
+        if (_combatBannerTween != null && _combatBannerTween.IsRunning())
+        {
+            _combatBannerQueue.Enqueue((text, accentColor));
+            return;
+        }
+
+        PlayCombatBanner(text, accentColor);
+    }
+
+    private void PlayCombatBanner(string text, Color accentColor)
+    {
 
         var panelStyle = new StyleBoxFlat
         {
@@ -3114,7 +3162,63 @@ public partial class HudController : Control
                 _combatBannerPanel.Visible = false;
                 _combatBannerPanel.Scale = Vector2.One;
             }
+
+            _combatBannerTween = null;
+            if (_combatBannerQueue.Count > 0)
+            {
+                var next = _combatBannerQueue.Dequeue();
+                PlayCombatBanner(next.Text, next.Accent);
+            }
         };
+    }
+
+    public void ShowLevelUpDialog(Dictionary notice)
+    {
+        if (notice == null || notice.Count == 0)
+        {
+            return;
+        }
+
+        var unitName = GetString(notice, "unit_name", "Hero");
+        var level = GetInt(notice, "level", 1);
+        var dialog = new AcceptDialog
+        {
+            Title = $"{unitName} - Level {level}",
+            DialogText = "",
+            Exclusive = true,
+            MinSize = new Vector2I(440, 360)
+        };
+
+        var content = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(400.0f, 270.0f)
+        };
+        content.AddThemeStyleboxOverride("panel", TacticalTheme.CreatePanel(false, 18));
+
+        var details = new Label
+        {
+            Text =
+                $"LEVEL {GetInt(notice, "previous_level", level - 1)}  >  LEVEL {level}\n\n" +
+                $"MAXIMUM HEALTH     +{GetInt(notice, "max_hp_gain", 0)}\n" +
+                $"MAXIMUM MAGIC      +{GetInt(notice, "max_mp_gain", 0)}\n" +
+                $"MAGIC REGEN        +{GetInt(notice, "mp_regen_gain", 0)} per turn\n\n" +
+                $"STR  {GetInt(notice, "strength", 0)}     DEX  {GetInt(notice, "dexterity", 0)}     CON  {GetInt(notice, "constitution", 0)}\n" +
+                $"INT  {GetInt(notice, "intelligence", 0)}     WIS  {GetInt(notice, "wisdom", 0)}",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        TacticalTheme.ApplyLabel(details, TacticalTheme.Parchment, 16);
+        content.AddChild(details);
+        dialog.AddChild(content);
+        AddChild(dialog);
+
+        var closeButton = dialog.GetOkButton();
+        closeButton.Text = "Close";
+        TacticalTheme.ApplyButton(closeButton, primary: true);
+        dialog.Confirmed += dialog.QueueFree;
+        dialog.CloseRequested += dialog.QueueFree;
+        dialog.PopupCentered(new Vector2I(460, 380));
     }
 
     public void SetWorldHoverTooltip(

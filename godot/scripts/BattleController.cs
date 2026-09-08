@@ -66,6 +66,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _defeatedEnemyIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _pendingLevelUpNoticesByUnitId = new();
     private readonly RandomNumberGenerator _lootRng = new();
 
     private int _gridWidth = DefaultGridWidth;
@@ -202,6 +203,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.TurnOrderUnitFocused += OnHudTurnOrderUnitFocused;
             _hud.PartyUnitSelected += OnHudPartyUnitSelected;
             _hud.PartyOrderRequested += OnHudPartyOrderRequested;
+            _hud.LevelUpRequested += OnHudLevelUpRequested;
         }
 
         EnsureDefaultVendorState();
@@ -240,6 +242,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.TurnOrderUnitFocused -= OnHudTurnOrderUnitFocused;
             _hud.PartyUnitSelected -= OnHudPartyUnitSelected;
             _hud.PartyOrderRequested -= OnHudPartyOrderRequested;
+            _hud.LevelUpRequested -= OnHudLevelUpRequested;
         }
 
         _persistence.PersistSaveGame(false);
@@ -530,6 +533,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _selectedCharacterUnitId = unit.UnitId;
         SyncHudFromGameState();
         _hud?.SetCharacterVisible(true);
+    }
+
+    private void OnHudLevelUpRequested(string unitId)
+    {
+        if (string.IsNullOrWhiteSpace(unitId) || !_pendingLevelUpNoticesByUnitId.Remove(unitId, out var notice))
+        {
+            return;
+        }
+
+        _hud?.ShowLevelUpDialog(notice);
+        SyncHudFromGameState();
     }
 
     private void OnHudPartyOrderRequested(string sourceUnitId, string targetUnitId)
@@ -1448,6 +1462,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        SyncHudFromGameState();
+
         if (result.ShouldEndTurn)
         {
             var activeBeforeEnd = _turnManager.GetActiveUnit();
@@ -2008,10 +2024,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var levelUpNames = new List<string>();
         foreach (var unit in livingParty)
         {
+            var previousLevel = unit.Level;
+            var previousMaxHitPoints = unit.MaxHitPoints;
+            var previousMaxMagicPoints = unit.MaxMagicPoints;
+            var previousMagicRegen = unit.MagicPointRegenPerTurn;
             var levelsGained = unit.GrantExperience(xpReward);
             if (levelsGained > 0)
             {
                 levelUpNames.Add($"{unit.UnitName} to level {unit.Level}");
+                RecordLevelUpNotice(
+                    unit,
+                    previousLevel,
+                    levelsGained,
+                    unit.MaxHitPoints - previousMaxHitPoints,
+                    unit.MaxMagicPoints - previousMaxMagicPoints,
+                    unit.MagicPointRegenPerTurn - previousMagicRegen);
+                _hud?.ShowCombatBanner($"LEVEL UP - {unit.UnitName} - LEVEL {unit.Level}", TacticalTheme.BrassBright);
             }
         }
 
@@ -2021,6 +2049,35 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return $"Each living party member gains {xpReward} XP.";
+    }
+
+    private void RecordLevelUpNotice(Unit unit, int previousLevel, int levelsGained, int maxHitPointGain, int maxMagicPointGain, int magicRegenGain)
+    {
+        if (!_pendingLevelUpNoticesByUnitId.TryGetValue(unit.UnitId, out var notice))
+        {
+            notice = new Dictionary
+            {
+                { "unit_id", unit.UnitId },
+                { "unit_name", unit.UnitName },
+                { "previous_level", previousLevel },
+                { "levels_gained", 0 },
+                { "max_hp_gain", 0 },
+                { "max_mp_gain", 0 },
+                { "mp_regen_gain", 0 }
+            };
+            _pendingLevelUpNoticesByUnitId[unit.UnitId] = notice;
+        }
+
+        notice["level"] = unit.Level;
+        notice["levels_gained"] = GetInt(notice, "levels_gained", 0) + levelsGained;
+        notice["max_hp_gain"] = GetInt(notice, "max_hp_gain", 0) + maxHitPointGain;
+        notice["max_mp_gain"] = GetInt(notice, "max_mp_gain", 0) + maxMagicPointGain;
+        notice["mp_regen_gain"] = GetInt(notice, "mp_regen_gain", 0) + magicRegenGain;
+        notice["strength"] = unit.Strength;
+        notice["dexterity"] = unit.Dexterity;
+        notice["constitution"] = unit.Constitution;
+        notice["intelligence"] = unit.Intelligence;
+        notice["wisdom"] = unit.Wisdom;
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)
@@ -2174,6 +2231,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (_playerUnits.Count == 0)
         {
+            ResetPlayerAbilityCooldowns();
             _hud?.ShowCombatBanner("COMBAT ENDED - DEFEAT", new Color(0.9f, 0.28f, 0.25f, 1.0f));
             _hud?.AddCombatLogEntry("Combat ended. The party was defeated.");
             _flowState = BattleFlowState.Defeat;
@@ -2186,6 +2244,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (_enemyUnits.Count == 0)
         {
+            ResetPlayerAbilityCooldowns();
             _hud?.ShowCombatBanner("COMBAT ENDED - VICTORY", new Color(0.42f, 0.88f, 0.56f, 1.0f));
             _hud?.AddCombatLogEntry("Combat ended. Encounter cleared.");
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
@@ -2196,6 +2255,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!HasLivingActiveCombatEnemies())
         {
+            ResetPlayerAbilityCooldowns();
             _hud?.ShowCombatBanner("COMBAT ENDED - VICTORY", new Color(0.42f, 0.88f, 0.56f, 1.0f));
             _hud?.AddCombatLogEntry("Combat ended. Encounter cleared.");
             MarkClearedEncounterIdsForActiveCombat();
@@ -2210,6 +2270,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return false;
+    }
+
+    private void ResetPlayerAbilityCooldowns()
+    {
+        foreach (var unit in _allUnits)
+        {
+            if (IsUsableUnit(unit) && unit.Team == "player")
+            {
+                unit.ClearAbilityCooldowns();
+            }
+        }
     }
 
     private Unit GetActivePlayerUnit()
