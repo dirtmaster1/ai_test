@@ -1,6 +1,13 @@
 [gd_scene format=3 uid="uid://dedd7cs8oxd1p"]
 
 [ext_resource type="Script" uid="uid://b5wp51ig1tnuc" path="res://scripts/StartScreen.cs" id="1_start"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/launch_screen.png" id="2_background"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_menu"]
+content_margin_left = 18.0
+content_margin_top = 18.0
+content_margin_right = 18.0
+content_margin_bottom = 18.0
 
 [node name="StartScreen" type="Control" unique_id=1107443827]
 layout_mode = 3
@@ -11,14 +18,18 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_start")
 
-[node name="Backdrop" type="ColorRect" parent="." unique_id=525415705]
+[node name="Backdrop" type="TextureRect" parent="." unique_id=525415705]
+texture_filter = 1
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.06, 0.08, 0.1, 1)
+mouse_filter = 2
+texture = ExtResource("2_background")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="CenterPanel" type="PanelContainer" parent="." unique_id=2016523168]
 layout_mode = 0
@@ -30,6 +41,7 @@ offset_left = -260.0
 offset_top = -200.0
 offset_right = 260.0
 offset_bottom = 200.0
+theme_override_styles/panel = SubResource("StyleBoxEmpty_menu")
 
 [node name="VBox" type="VBoxContainer" parent="CenterPanel" unique_id=1205153785]
 layout_mode = 2

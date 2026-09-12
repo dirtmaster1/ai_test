@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bheor1xgfsvoq"
-path="res://.godot/imported/town_terrain_64.png-bf8683b6a0674fc7ca98d0bd031ee624.ctex"
+uid="uid://q4q47yskx5wl"
+path="res://.godot/imported/launch_screen.png-3813f56d53f5b380ae2426c10feddfd0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/tilesets/town_terrain_64.png"
-dest_files=["res://.godot/imported/town_terrain_64.png-bf8683b6a0674fc7ca98d0bd031ee624.ctex"]
+source_file="res://assets/tilesets/launch_screen.png"
+dest_files=["res://.godot/imported/launch_screen.png-3813f56d53f5b380ae2426c10feddfd0.ctex"]
 
 [params]
 

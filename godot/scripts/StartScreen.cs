@@ -6,8 +6,6 @@ public partial class StartScreen : Control
     private const string SaveFilePath = "user://dark_dungeon_tactics_save.json";
     private const string MainScenePath = "res://scenes/Main.tscn";
 
-    private ColorRect _backdrop;
-    private PanelContainer _centerPanel;
     private Label _titleLabel;
     private Label _subtitleLabel;
     private Label _statusLabel;
@@ -20,8 +18,6 @@ public partial class StartScreen : Control
 
     public override void _Ready()
     {
-        _backdrop = GetNode<ColorRect>("Backdrop");
-        _centerPanel = GetNode<PanelContainer>("CenterPanel");
         _titleLabel = GetNode<Label>("CenterPanel/VBox/Title");
         _subtitleLabel = GetNode<Label>("CenterPanel/VBox/Subtitle");
         _statusLabel = GetNode<Label>("CenterPanel/VBox/StatusLabel");
@@ -112,16 +108,6 @@ public partial class StartScreen : Control
 
     private void ApplyFantasyMenuStyling()
     {
-        if (_backdrop != null)
-        {
-            _backdrop.Color = TacticalTheme.Backdrop;
-        }
-
-        if (_centerPanel != null)
-        {
-            _centerPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreatePanel(margin: 18));
-        }
-
         TacticalTheme.ApplyLabel(_titleLabel, TacticalTheme.BrassBright, 32);
         TacticalTheme.ApplyLabel(_subtitleLabel, TacticalTheme.Parchment, 16);
         TacticalTheme.ApplyLabel(_saveExistsLabel, TacticalTheme.Parchment, 14);
