@@ -75,6 +75,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private BattleFlowState _flowState = BattleFlowState.Exploration;
     private bool _awaitingPlayerAttackDirection;
     private Unit _explorerUnit;
+    private Unit _selectionHighlightedUnit;
     private string _activeEncounterId = "";
     private string _currentMapId = "forest-town";
     private string _selectedCharacterUnitId = "";
@@ -295,7 +296,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _hud?.ClearWorldHoverTooltip();
         _mapLoader?.DrawMapFeaturesOverlay(canvas, _mapTransitions, _gridWidth, _gridHeight, CellSize);
-        DrawFocusedUnitCellHighlight(canvas);
+        UpdateFocusedUnitCellHighlight();
         DrawMapInteractablesOverlay(canvas);
         DrawMovementPreviewOverlay(canvas);
         DrawAttackPreviewOverlay(canvas);
@@ -3377,7 +3378,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mapLoader?.DrawMapInteractablesOverlay(canvas, BuildVisibleMapProps(), _lootBags, _openedPropIds, CellSize);
     }
 
-    private void DrawFocusedUnitCellHighlight(CanvasItem canvas)
+    private void UpdateFocusedUnitCellHighlight()
     {
         Unit highlightedUnit = null;
 
@@ -3392,27 +3393,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!IsUsableUnit(highlightedUnit) || highlightedUnit.IsDead || !IsInBounds(highlightedUnit.GridPos))
         {
+            highlightedUnit = null;
+        }
+
+        if (_selectionHighlightedUnit == highlightedUnit)
+        {
             return;
         }
 
-        // Use current world position so the highlight stays in sync with tweened movement.
-        var topLeft = highlightedUnit.Position - new Vector2(CellSize * 0.5f, CellSize * 0.5f);
+        if (IsUsableUnit(_selectionHighlightedUnit))
+        {
+            _selectionHighlightedUnit.SetSelectionHighlighted(false);
+        }
 
-        var rect = new Rect2(
-            topLeft,
-            new Vector2(CellSize, CellSize)
-        );
-
-        var isEnemyTurn = _flowState == BattleFlowState.Combat && highlightedUnit.Team == "enemy";
-        var fillColor = isEnemyTurn
-            ? new Color(0.95f, 0.16f, 0.14f, 0.22f)
-            : new Color(0.2f, 0.9f, 0.3f, 0.2f);
-        var borderColor = isEnemyTurn
-            ? new Color(1.0f, 0.24f, 0.2f, 0.95f)
-            : new Color(0.35f, 1.0f, 0.45f, 0.9f);
-
-        canvas.DrawRect(rect, fillColor, true);
-        canvas.DrawRect(rect, borderColor, false, 3.0f);
+        _selectionHighlightedUnit = highlightedUnit;
+        _selectionHighlightedUnit?.SetSelectionHighlighted(true);
     }
 
     private void DrawHoveredUnitTooltip()

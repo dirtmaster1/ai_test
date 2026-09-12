@@ -94,6 +94,7 @@ public partial class Unit : Node2D
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
     private Sprite2D _sprite;
+    private bool _isSelectionHighlighted;
     private Texture2D _unitAtlas;
     private Color _focusHighlightColor = Colors.Transparent;
     private int _focusHighlightVersion;
@@ -911,6 +912,17 @@ public partial class Unit : Node2D
         RefreshVisualState();
     }
 
+    public void SetSelectionHighlighted(bool value)
+    {
+        if (_isSelectionHighlighted == value)
+        {
+            return;
+        }
+
+        _isSelectionHighlighted = value;
+        QueueRedraw();
+    }
+
     public Texture2D GetTurnOrderIcon()
     {
         _unitAtlas ??= GD.Load<Texture2D>(UnitAtlasPath);
@@ -1035,6 +1047,22 @@ public partial class Unit : Node2D
 
     public override void _Draw()
     {
+        if (_isSelectionHighlighted && !IsDead)
+        {
+            var rect = new Rect2(
+                new Vector2(-CellSize * 0.5f, -CellSize * 0.5f),
+                new Vector2(CellSize, CellSize));
+            var fillColor = Team == "enemy"
+                ? new Color(0.95f, 0.16f, 0.14f, 0.22f)
+                : new Color(0.2f, 0.9f, 0.3f, 0.2f);
+            var borderColor = Team == "enemy"
+                ? new Color(1.0f, 0.24f, 0.2f, 0.95f)
+                : new Color(0.35f, 1.0f, 0.45f, 0.9f);
+
+            DrawRect(rect, fillColor, true);
+            DrawRect(rect, borderColor, false, 3.0f);
+        }
+
         if (_focusHighlightColor.A > 0.0f)
         {
             DrawArc(Vector2.Zero, 32.0f, 0.0f, Mathf.Tau, 40, _focusHighlightColor, 5.0f);
