@@ -35,6 +35,7 @@ public partial class Unit : Node2D
     public string Race { get; private set; } = "human";
     public string Team { get; private set; } = "player";
     public Vector2I GridPos { get; private set; } = Vector2I.Zero;
+    public int FootprintSize { get; private set; } = 1;
     public int HitPoints { get; private set; } = 10;
     public int MaxHitPoints { get; private set; } = 10;
     public int MagicPoints { get; private set; }
@@ -96,6 +97,8 @@ public partial class Unit : Node2D
     private Sprite2D _sprite;
     private bool _isSelectionHighlighted;
     private Texture2D _unitAtlas;
+    private Texture2D _customSpriteTexture;
+    private string _spriteTexturePath = "";
     private Color _focusHighlightColor = Colors.Transparent;
     private int _focusHighlightVersion;
     private readonly Dictionary<string, int> _abilityCooldownRemaining = new();
@@ -126,6 +129,9 @@ public partial class Unit : Node2D
         ClassId = GetString(config, "class_id", UnitId).Trim().ToLowerInvariant();
         Race = GetString(config, "race", ResolveRace());
         Team = GetString(config, "team", "player");
+        FootprintSize = Mathf.Clamp(GetInt(config, "footprint_size", 1), 1, 4);
+        _spriteTexturePath = GetString(config, "sprite_texture", "");
+        _customSpriteTexture = string.IsNullOrEmpty(_spriteTexturePath) ? null : GD.Load<Texture2D>(_spriteTexturePath);
         EncounterId = GetString(config, "encounter_id", "");
         AggroRange = Mathf.Max(0, GetInt(config, "aggro_range", 4));
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
@@ -284,7 +290,7 @@ public partial class Unit : Node2D
             return false;
         }
 
-        return IsWithinRange(GridPos, target.GridPos, range) && HasLineOfSightTo(target, allUnits);
+        return DistanceToUnitAt(GridPos, target) <= range && HasLineOfSightTo(target, allUnits);
     }
 
     public bool HasLineOfSightTo(Unit target, Array<Unit> allUnits)
@@ -294,7 +300,8 @@ public partial class Unit : Node2D
             return false;
         }
 
-        var points = GetLinePoints(GridPos, target.GridPos);
+        var fromCell = GetClosestCell(target.GridPos);
+        var points = GetLinePoints(fromCell, target.GetClosestCell(fromCell));
         for (var i = 1; i < points.Count - 1; i++)
         {
             if (IsCellBlockingLineOfSight(points[i], target, allUnits))
@@ -801,6 +808,8 @@ public partial class Unit : Node2D
             { "class_id", ClassId },
             { "race", Race },
             { "grid_pos", GridPos },
+            { "footprint_size", FootprintSize },
+            { "sprite_texture", _spriteTexturePath },
             { "hit_points", HitPoints },
             { "max_hit_points", MaxHitPoints },
             { "magic_points", MagicPoints },
@@ -839,6 +848,10 @@ public partial class Unit : Node2D
         HasUsedAbilityThisTurn = GetBool(snapshot, "has_used_ability_this_turn", HasUsedAbilityThisTurn);
         IsDefending = GetBool(snapshot, "is_defending", IsDefending);
         GridPos = GetVector2I(snapshot, "grid_pos", GridPos);
+        FootprintSize = Mathf.Clamp(GetInt(snapshot, "footprint_size", FootprintSize), 1, 4);
+        _spriteTexturePath = GetString(snapshot, "sprite_texture", _spriteTexturePath);
+        _customSpriteTexture = string.IsNullOrEmpty(_spriteTexturePath) ? null : GD.Load<Texture2D>(_spriteTexturePath);
+        ConfigureSpriteRegion();
 
         _abilityCooldownRemaining.Clear();
         var cooldowns = GetDictionary(snapshot, "cooldowns");
@@ -906,6 +919,48 @@ public partial class Unit : Node2D
         SyncWorldPosition();
     }
 
+    public bool OccupiesCell(Vector2I cell)
+    {
+        return new Rect2I(GridPos, Vector2I.One * FootprintSize).HasPoint(cell);
+    }
+
+    public Array<Vector2I> GetOccupiedCellsAt(Vector2I origin)
+    {
+        var cells = new Array<Vector2I>();
+        for (var offsetY = 0; offsetY < FootprintSize; offsetY++)
+        {
+            for (var offsetX = 0; offsetX < FootprintSize; offsetX++)
+            {
+                cells.Add(origin + new Vector2I(offsetX, offsetY));
+            }
+        }
+
+        return cells;
+    }
+
+    public Vector2I GetClosestCell(Vector2I cell)
+    {
+        return GetClosestCellAt(GridPos, cell);
+    }
+
+    public Vector2I GetClosestCellAt(Vector2I origin, Vector2I cell)
+    {
+        return new Vector2I(
+            Mathf.Clamp(cell.X, origin.X, origin.X + FootprintSize - 1),
+            Mathf.Clamp(cell.Y, origin.Y, origin.Y + FootprintSize - 1));
+    }
+
+    public Vector2 GetWorldCenterAt(Vector2I origin)
+    {
+        return (Vector2)origin * CellSize + Vector2.One * (CellSize * FootprintSize / 2.0f);
+    }
+
+    public int DistanceToUnitAt(Vector2I origin, Unit target)
+    {
+        var fromCell = GetClosestCellAt(origin, target.GridPos);
+        return RangeDistance(fromCell, target.GetClosestCell(fromCell));
+    }
+
     public void SetActive(bool value)
     {
         IsActive = value;
@@ -925,6 +980,11 @@ public partial class Unit : Node2D
 
     public Texture2D GetTurnOrderIcon()
     {
+        if (_customSpriteTexture != null)
+        {
+            return _customSpriteTexture;
+        }
+
         _unitAtlas ??= GD.Load<Texture2D>(UnitAtlasPath);
         if (_unitAtlas == null)
         {
@@ -1039,10 +1099,7 @@ public partial class Unit : Node2D
 
     private void SyncWorldPosition()
     {
-        Position = new Vector2(
-            GridPos.X * CellSize + CellSize / 2.0f,
-            GridPos.Y * CellSize + CellSize / 2.0f
-        );
+        Position = GetWorldCenterAt(GridPos);
     }
 
     public override void _Draw()
@@ -1050,8 +1107,8 @@ public partial class Unit : Node2D
         if (_isSelectionHighlighted && !IsDead)
         {
             var rect = new Rect2(
-                new Vector2(-CellSize * 0.5f, -CellSize * 0.5f),
-                new Vector2(CellSize, CellSize));
+                Vector2.One * (-CellSize * FootprintSize * 0.5f),
+                Vector2.One * (CellSize * FootprintSize));
             var fillColor = Team == "enemy"
                 ? new Color(0.95f, 0.16f, 0.14f, 0.22f)
                 : new Color(0.2f, 0.9f, 0.3f, 0.2f);
@@ -1065,7 +1122,7 @@ public partial class Unit : Node2D
 
         if (_focusHighlightColor.A > 0.0f)
         {
-            DrawArc(Vector2.Zero, 32.0f, 0.0f, Mathf.Tau, 40, _focusHighlightColor, 5.0f);
+            DrawArc(Vector2.Zero, 32.0f * FootprintSize, 0.0f, Mathf.Tau, 40, _focusHighlightColor, 5.0f);
         }
 
         if (IsDead)
@@ -1087,8 +1144,17 @@ public partial class Unit : Node2D
             return;
         }
 
+        if (_customSpriteTexture != null)
+        {
+            _sprite.Texture = _customSpriteTexture;
+            _sprite.RegionEnabled = false;
+            _sprite.Scale = Vector2.One * (FootprintSize * CellSize) / _customSpriteTexture.GetSize();
+            return;
+        }
+
         _sprite.Texture = _unitAtlas;
         _sprite.RegionEnabled = true;
+        _sprite.Scale = Vector2.One * FootprintSize;
 
         var atlasCell = ResolveAtlasCell();
         _sprite.RegionRect = new Rect2(
@@ -1388,7 +1454,7 @@ public partial class Unit : Node2D
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return true;
             }

@@ -18,7 +18,7 @@ public partial class CombatEffectsDirector : Node2D
         }
 
         attacker.FlashFocusHighlight(isMagical ? new Color("8f7cff") : new Color("ffd27a"), 0.28f);
-        var isProjectile = isMagical || Unit.RangeDistance(attacker.GridPos, target.GridPos) > 1 || actionId is "ranged" or "pin";
+        var isProjectile = isMagical || attacker.DistanceToUnitAt(attacker.GridPos, target) > 1 || actionId is "ranged" or "pin";
         if (isProjectile)
         {
             var impactColor = isMagical ? new Color("b5a6ff") : new Color("ffcf73");

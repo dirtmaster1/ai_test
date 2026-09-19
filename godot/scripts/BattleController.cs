@@ -1012,7 +1012,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (!Unit.IsWithinRange(caster.GridPos, unit.GridPos, radius))
+            if (caster.DistanceToUnitAt(caster.GridPos, unit) > radius)
             {
                 continue;
             }
@@ -1076,7 +1076,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, radius))
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius))
             {
                 continue;
             }
@@ -1102,7 +1102,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, radius) || IsUndead(unit))
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius) || IsUndead(unit))
             {
                 continue;
             }
@@ -1173,7 +1173,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant());
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GridPos, actionProfile.AreaRadius))
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), actionProfile.AreaRadius))
             {
                 continue;
             }
@@ -1217,7 +1217,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var maxChargeRange = Mathf.Max(1, actionProfile.Range);
-        if (!Unit.IsWithinRange(attacker.GridPos, target.GridPos, maxChargeRange))
+        if (attacker.DistanceToUnitAt(attacker.GridPos, target) > maxChargeRange)
         {
             return false;
         }
@@ -1257,10 +1257,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         destinationCell = attacker.GridPos;
         cellsUsed = -1;
 
-        foreach (var direction in AttackDirections)
+        var candidates = new HashSet<Vector2I>();
+        foreach (var targetCell in target.GetOccupiedCellsAt(target.GridPos))
         {
-            var candidate = target.GridPos + direction;
-            if (!IsInBounds(candidate) || IsBlockedCell(candidate) || (candidate != attacker.GridPos && IsOccupied(candidate, attacker)))
+            foreach (var direction in AttackDirections)
+            {
+                var adjacentCell = targetCell + direction;
+                if (target.OccupiesCell(adjacentCell))
+                {
+                    continue;
+                }
+
+                foreach (var offset in attacker.GetOccupiedCellsAt(Vector2I.Zero))
+                {
+                    candidates.Add(adjacentCell - offset);
+                }
+            }
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (!CanUnitStandAt(attacker, candidate))
             {
                 continue;
             }
@@ -1388,7 +1405,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     _playerUnits,
                     BuildAiActionOptions(enemyUnit),
                     target => IsValidAttackTarget(enemyUnit, target),
-                    cell => IsInBounds(cell) && !IsBlockedCell(cell) && !IsOccupied(cell, enemyUnit),
+                    cell => CanUnitStandAt(enemyUnit, cell),
                     HasClearLineOfSight,
                     findPathFromCurrentCell,
                     out var step))
@@ -1725,17 +1742,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!IsInBounds(targetCell))
-        {
-            return false;
-        }
-
-        if (IsBlockedCell(targetCell))
-        {
-            return false;
-        }
-
-        if (IsOccupied(targetCell, unit))
+        if (!CanUnitStandAt(unit, targetCell))
         {
             return false;
         }
@@ -1807,12 +1814,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             return IsValidAllyTarget(actor, target)
                 && actor.CanHealTarget(target, option.Range, _allUnits)
-                && HasClearLineOfSight(actor.GridPos, target.GridPos);
+                && HasClearUnitLineOfSight(actor, target);
         }
 
         return IsValidAttackTarget(actor, target)
             && actor.CanAttackTarget(target, option.Range, _allUnits)
-            && HasClearLineOfSight(actor.GridPos, target.GridPos);
+            && HasClearUnitLineOfSight(actor, target);
     }
 
     private CombatActionResult ResolveSuccessfulAction(string actionType)
@@ -1877,7 +1884,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!HasClearLineOfSight(attacker.GridPos, target.GridPos))
+        if (!HasClearUnitLineOfSight(attacker, target))
         {
             return false;
         }
@@ -2093,7 +2100,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!HasClearLineOfSight(actor.GridPos, target.GridPos))
+        if (!HasClearUnitLineOfSight(actor, target))
         {
             return false;
         }
@@ -2346,6 +2353,24 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return GetBool(door, "is_open", false);
     }
 
+    private bool CanUnitStandAt(Unit unit, Vector2I origin)
+    {
+        if (!IsUsableUnit(unit))
+        {
+            return false;
+        }
+
+        foreach (var cell in unit.GetOccupiedCellsAt(origin))
+        {
+            if (!IsInBounds(cell) || IsBlockedCell(cell) || IsOccupied(cell, unit))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private bool IsOccupied(Vector2I cell, Unit ignoreUnit = null)
     {
         foreach (var unit in _allUnits)
@@ -2355,7 +2380,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return true;
             }
@@ -2378,7 +2403,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return unit;
             }
@@ -2396,7 +2421,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return unit;
             }
@@ -2414,7 +2439,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return unit;
             }
@@ -2427,7 +2452,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Array<Vector2I> FindPath(Unit mover, Vector2I start, Vector2I goal, int maxSteps)
     {
         var path = new Array<Vector2I>();
-        if (maxSteps <= 0 || start == goal || !IsInBounds(goal) || IsBlockedCell(goal) || IsOccupied(goal, mover))
+        if (maxSteps <= 0 || start == goal || !CanUnitStandAt(mover, goal))
         {
             return path;
         }
@@ -2455,7 +2480,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             foreach (var dir in AttackDirections)
             {
                 var next = current + dir;
-                if (!IsInBounds(next) || IsBlockedCell(next) || IsOccupied(next, mover) || distance.ContainsKey(next))
+                if (distance.ContainsKey(next) || !CanUnitStandAt(mover, next))
                 {
                     continue;
                 }
@@ -2479,7 +2504,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
         var distance = new System.Collections.Generic.Dictionary<Vector2I, int>();
 
-        if (maxSteps > 0 && IsInBounds(start))
+        if (maxSteps > 0 && CanUnitStandAt(mover, start))
         {
             var frontier = new Queue<Vector2I>();
             frontier.Enqueue(start);
@@ -2497,7 +2522,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 foreach (var dir in AttackDirections)
                 {
                     var next = current + dir;
-                    if (!IsInBounds(next) || IsBlockedCell(next) || IsOccupied(next, mover) || distance.ContainsKey(next))
+                    if (distance.ContainsKey(next) || !CanUnitStandAt(mover, next))
                     {
                         continue;
                     }
@@ -2511,7 +2536,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         return goal =>
         {
-            if (goal == start || !IsInBounds(goal) || IsBlockedCell(goal) || IsOccupied(goal, mover) || !distance.ContainsKey(goal))
+            if (goal == start || !distance.ContainsKey(goal) || !CanUnitStandAt(mover, goal))
             {
                 return new Array<Vector2I>();
             }
@@ -2554,6 +2579,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private static int Manhattan(Vector2I a, Vector2I b)
     {
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
+    }
+
+    private bool HasClearUnitLineOfSight(Unit actor, Unit target)
+    {
+        var fromCell = actor.GetClosestCell(target.GridPos);
+        return HasClearLineOfSight(fromCell, target.GetClosestCell(fromCell));
     }
 
     private bool HasClearLineOfSight(Vector2I from, Vector2I to)
@@ -5449,7 +5480,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || unit.GridPos != cell)
+            if (!IsUsableUnit(unit) || unit.IsDead || !unit.OccupiesCell(cell))
             {
                 continue;
             }
@@ -6818,7 +6849,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         foreach (var prop in _mapProps)
         {
             if (GetString(prop, "type", "") != "trap"
-                || GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999)) != triggeringUnit.GridPos)
+                || !triggeringUnit.OccupiesCell(GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999))))
             {
                 continue;
             }
@@ -6984,7 +7015,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return false;
             }
@@ -7007,7 +7038,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (unit.GridPos == cell)
+            if (unit.OccupiesCell(cell))
             {
                 return false;
             }

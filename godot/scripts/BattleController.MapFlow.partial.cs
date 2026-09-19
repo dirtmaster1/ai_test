@@ -75,8 +75,9 @@ public partial class BattleController
                     continue;
                 }
 
-                if (Manhattan(player.GridPos, enemy.GridPos) <= aggroRange
-                    && HasClearLineOfSight(enemy.GridPos, player.GridPos))
+                var enemyCell = enemy.GetClosestCell(player.GridPos);
+                if (Manhattan(player.GetClosestCell(enemyCell), enemyCell) <= aggroRange
+                    && HasClearUnitLineOfSight(enemy, player))
                 {
                     StartCombat(enemy);
                     return;

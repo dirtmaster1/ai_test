@@ -200,9 +200,9 @@ public partial class AiDirector : Node
                 continue;
             }
 
-            for (var dx = -option.Range; dx <= option.Range; dx++)
+            for (var dx = -option.Range - actor.FootprintSize + 1; dx < option.Range + target.FootprintSize; dx++)
             {
-                for (var dy = -option.Range; dy <= option.Range; dy++)
+                for (var dy = -option.Range - actor.FootprintSize + 1; dy < option.Range + target.FootprintSize; dy++)
                 {
                     var candidate = target.GridPos + new Vector2I(dx, dy);
                     if (candidate == actor.GridPos || candidateSet.Contains(candidate))
@@ -215,7 +215,8 @@ public partial class AiDirector : Node
                         continue;
                     }
 
-                    if (!Unit.IsWithinRange(candidate, target.GridPos, option.Range) || !hasLineOfSight(candidate, target.GridPos))
+                    var fromCell = actor.GetClosestCellAt(candidate, target.GridPos);
+                    if (actor.DistanceToUnitAt(candidate, target) > option.Range || !hasLineOfSight(fromCell, target.GetClosestCell(fromCell)))
                     {
                         continue;
                     }

@@ -383,7 +383,11 @@ public partial class BattleController
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
-        if (!Unit.IsWithinRange(active.GridPos, clickedCell, actionProfile.Range))
+        var target = GetLivingUnitAtCell(clickedCell);
+        var inRange = target != null && actionProfile.AreaRadius == 0
+            ? active.DistanceToUnitAt(active.GridPos, target) <= actionProfile.Range
+            : Unit.IsWithinRange(active.GridPos, clickedCell, actionProfile.Range);
+        if (!inRange)
         {
             return;
         }
