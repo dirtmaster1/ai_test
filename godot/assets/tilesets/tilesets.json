@@ -10,6 +10,15 @@
       "output": "assets/tilesets/dungeon_terrain_64.png",
       "tileSet": "assets/tilesets/dungeon_terrain_64_tileset.tres"
     },
+    {
+      "id": "graveyard-terrain",
+      "mode": "packed",
+      "columns": 5,
+      "rows": 3,
+      "sourceDirectory": "art/tilesets/graveyard-terrain/tiles",
+      "output": "assets/tilesets/graveyard_terrain_64.png",
+      "tileSet": "assets/tilesets/graveyard_terrain_64_tileset.tres"
+    },
     { "id": "cave-terrain", "mode": "external", "columns": 4, "rows": 4, "output": "assets/tilesets/cave_terrain_tileset_1_64.png", "tileSet": "assets/tilesets/cave_terrain_64_tileset.tres" },
     { "id": "forest-terrain", "mode": "external", "columns": 8, "rows": 8, "output": "assets/tilesets/terrain_forest_lake_bridge_64.png", "tileSet": "assets/tilesets/forest_terrain_64_tileset.tres" },
     { "id": "grass-water-terrain", "mode": "external", "columns": 6, "rows": 6, "output": "assets/tilesets/terrain_grass_water_64.png", "tileSet": "assets/tilesets/forest_terrain_64_tileset.tres" },

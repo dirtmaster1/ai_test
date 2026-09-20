@@ -39,6 +39,19 @@ public static class MapTokenCatalog
             OpenDoorAtlasY = 0
         };
 
+        var graveyardTerrain = new MapTerrainDef
+        {
+            AtlasPath = "res://assets/tilesets/graveyard_terrain_64.png",
+            FloorAtlasX = 0,
+            FloorAtlasY = 0,
+            WallAtlasX = 0,
+            WallAtlasY = 1,
+            DoorAtlasX = 0,
+            DoorAtlasY = 2,
+            OpenDoorAtlasX = 1,
+            OpenDoorAtlasY = 2
+        };
+
         return new Dictionary<string, TokenMapDef>(System.StringComparer.OrdinalIgnoreCase)
         {
             ["forest-town"] = new TokenMapDef
@@ -67,7 +80,7 @@ public static class MapTokenCatalog
             {
                 Id = "graveyard",
                 Name = "Graveyard",
-                Terrain = forestTerrain
+                Terrain = graveyardTerrain
             },
             ["necromancers-crypt"] = new TokenMapDef
             {
