@@ -1186,13 +1186,29 @@ public partial class Unit : Node2D
     {
         var key = NormalizeToken(UnitId + " " + UnitName);
 
+        if (ContainsAny(key, "skeletalarcher")) return new Vector2I(2, 3);
+        if (ContainsAny(key, "skeletalknight")) return new Vector2I(3, 3);
+        if (ContainsAny(key, "skeletaleliteswordsman")) return new Vector2I(4, 3);
+        if (ContainsAny(key, "orcwarrior")) return new Vector2I(2, 4);
+        if (ContainsAny(key, "orcarcher")) return new Vector2I(3, 4);
+        if (ContainsAny(key, "orcchieftain")) return new Vector2I(0, 5);
+        if (ContainsAny(key, "giantrat")) return new Vector2I(4, 4);
+        if (ContainsAny(key, "banditwarrior")) return new Vector2I(1, 5);
+        if (ContainsAny(key, "banditarcher")) return new Vector2I(2, 5);
+        if (ContainsAny(key, "banditthief")) return new Vector2I(3, 5);
+        if (ContainsAny(key, "banditsorcerer")) return new Vector2I(4, 5);
+        if (ContainsAny(key, "banditleader")) return new Vector2I(5, 5);
+        if (ContainsAny(key, "cavespider")) return new Vector2I(0, 4);
+        if (ContainsAny(key, "spectre")) return new Vector2I(5, 4);
+        if (ContainsAny(key, "goblinbrute")) return new Vector2I(5, 2);
         if (ContainsAny(key, "goblinarcher")) return new Vector2I(4, 1);
         if (ContainsAny(key, "goblinshaman")) return new Vector2I(5, 1);
         if (ContainsAny(key, "goblinchieftain", "chieftain")) return new Vector2I(0, 2);
         if (ContainsAny(key, "skeletonwarrior")) return new Vector2I(1, 2);
         if (ContainsAny(key, "skeletonmage")) return new Vector2I(2, 2);
         if (ContainsAny(key, "ghoul")) return new Vector2I(3, 2);
-        if (ContainsAny(key, "direwolf", "wolf")) return new Vector2I(0, 3);
+        if (ContainsAny(key, "direwolf")) return new Vector2I(1, 4);
+        if (ContainsAny(key, "wolf")) return new Vector2I(0, 3);
         if (ContainsAny(key, "giantspider", "spider")) return new Vector2I(1, 3);
         if (ContainsAny(key, "zombie")) return new Vector2I(3, 2);
         if (ContainsAny(key, "necromancer")) return new Vector2I(4, 2);
