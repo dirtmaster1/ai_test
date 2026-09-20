@@ -5095,8 +5095,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool IsPointInsideVisibleGrid(Vector2 globalPoint)
     {
         var worldBounds = GetWorldPixelBounds();
-        var gridRect = new Rect2(GlobalPosition + worldBounds.Position, worldBounds.Size);
-        return gridRect.HasPoint(globalPoint);
+        return worldBounds.HasPoint(ToLocal(globalPoint));
     }
 
     private void SetViewPositionClamped(Vector2 targetPosition)
@@ -5108,10 +5107,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         var viewportSize = GetViewportRect().Size;
         var worldBounds = GetWorldPixelBounds();
-        var worldLeft = worldBounds.Position.X;
-        var worldTop = worldBounds.Position.Y;
-        var worldRight = worldLeft + worldBounds.Size.X;
-        var worldBottom = worldTop + worldBounds.Size.Y;
+        var worldLeft = worldBounds.Position.X * Scale.X;
+        var worldTop = worldBounds.Position.Y * Scale.Y;
+        var worldRight = worldLeft + worldBounds.Size.X * Scale.X;
+        var worldBottom = worldTop + worldBounds.Size.Y * Scale.Y;
 
         var minX = viewportSize.X - worldRight;
         var maxX = -worldLeft;
@@ -5226,8 +5225,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         var viewportSize = GetViewportRect().Size;
         return new Vector2(
-            viewportSize.X * 0.5f - (cell.X * CellSize + CellSize * 0.5f),
-            viewportSize.Y * 0.5f - (cell.Y * CellSize + CellSize * 0.5f)
+            viewportSize.X * 0.5f - (cell.X * CellSize + CellSize * 0.5f) * Scale.X,
+            viewportSize.Y * 0.5f - (cell.Y * CellSize + CellSize * 0.5f) * Scale.Y
         );
     }
 
@@ -6755,8 +6754,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             tween.Parallel().TweenProperty(pair.Key, "position", pair.Value, ExplorationStepSeconds);
         }
 
-        var cameraTarget = GetClampedViewPosition(GetCenteredViewTargetForCell(leaderNextCell));
-        tween.Parallel().TweenProperty(this, "position", cameraTarget, ExplorationStepSeconds);
+        var viewStartCenter = (GetViewportRect().Size * 0.5f - Position) / Scale;
+        tween.Parallel().TweenMethod(Callable.From<float>(progress =>
+            SetViewPositionClamped(GetViewportRect().Size * 0.5f -
+                viewStartCenter.Lerp(CellCenter(leaderNextCell), progress) * Scale)),
+            0.0f, 1.0f, ExplorationStepSeconds);
 
         await ToSignal(tween, Tween.SignalName.Finished);
         ResolveExplorationTraps();

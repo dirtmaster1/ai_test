@@ -2,6 +2,10 @@ using Godot;
 
 public partial class BattleController
 {
+    private const float MinViewZoom = 0.5f;
+    private const float MaxViewZoom = 2.0f;
+    private const float ViewZoomStep = 1.1f;
+
     // Architecture: Input orchestration only (keyboard/mouse -> high-level intent).
     public override void _Input(InputEvent @event)
     {
@@ -156,6 +160,25 @@ public partial class BattleController
 
     private void HandleMouseInput(InputEventMouseButton mouseEvent)
     {
+        if (mouseEvent.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+        {
+            if (mouseEvent.Pressed && !ShouldIgnoreWorldMouseInput())
+            {
+                var anchor = ToLocal(mouseEvent.GlobalPosition);
+                var direction = mouseEvent.ButtonIndex == MouseButton.WheelUp ? 1.0f : -1.0f;
+                var steps = mouseEvent.Factor > 0.0f ? mouseEvent.Factor : 1.0f;
+                var zoom = Mathf.Clamp(Scale.X * Mathf.Pow(ViewZoomStep, direction * steps), MinViewZoom, MaxViewZoom);
+                Scale = Vector2.One * zoom;
+                SetViewPositionClamped(Position + mouseEvent.GlobalPosition - ToGlobal(anchor));
+                _viewPanStartMouseGlobal = mouseEvent.GlobalPosition;
+                _viewPanStartPosition = Position;
+                ClearMovementPreviewPath();
+                QueueRedraw();
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
+
         if (_isExplorationAutoMoving)
         {
             if (_flowState == BattleFlowState.Exploration &&

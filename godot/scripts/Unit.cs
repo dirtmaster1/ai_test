@@ -127,7 +127,7 @@ public partial class Unit : Node2D
         UnitId = GetString(config, "id", "unit");
         UnitName = GetString(config, "name", "Unit");
         ClassId = GetString(config, "class_id", UnitId).Trim().ToLowerInvariant();
-        Race = GetString(config, "race", ResolveRace());
+        Race = GetString(config, "race", "human");
         Team = GetString(config, "team", "player");
         FootprintSize = Mathf.Clamp(GetInt(config, "footprint_size", 1), 1, 4);
         _spriteTexturePath = GetString(config, "sprite_texture", "");
@@ -1206,19 +1206,6 @@ public partial class Unit : Node2D
         return Team == "enemy"
             ? new Vector2I(3, 1)
             : new Vector2I(1, 0);
-    }
-
-    private string ResolveRace()
-    {
-        var key = NormalizeToken(UnitId + " " + UnitName);
-
-        if (ContainsAny(key, "thief", "rogue")) return "human";
-        if (ContainsAny(key, "warrior")) return "dwarf";
-        if (ContainsAny(key, "ranger")) return "elf";
-        if (ContainsAny(key, "goblin", "goblinarcher", "goblinshaman", "goblinchieftain", "chieftain")) return "goblin";
-        if (ContainsAny(key, "skeleton", "skeletonwarrior", "skeletonmage", "zombie")) return "undead";
-
-        return "human";
     }
 
     private static string NormalizeToken(string value)
