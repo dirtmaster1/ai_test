@@ -99,6 +99,9 @@ public partial class Unit : Node2D
     private Texture2D _unitAtlas;
     private Texture2D _customSpriteTexture;
     private string _spriteTexturePath = "";
+    private bool _spriteFlipH;
+    private bool _spriteFlipV;
+    private bool _spriteTranspose;
     private Color _focusHighlightColor = Colors.Transparent;
     private int _focusHighlightVersion;
     private readonly Dictionary<string, int> _abilityCooldownRemaining = new();
@@ -131,6 +134,9 @@ public partial class Unit : Node2D
         Team = GetString(config, "team", "player");
         FootprintSize = Mathf.Clamp(GetInt(config, "footprint_size", 1), 1, 4);
         _spriteTexturePath = GetString(config, "sprite_texture", "");
+        _spriteFlipH = GetBool(config, "sprite_flip_h", false);
+        _spriteFlipV = GetBool(config, "sprite_flip_v", false);
+        _spriteTranspose = GetBool(config, "sprite_transpose", false);
         _customSpriteTexture = string.IsNullOrEmpty(_spriteTexturePath) ? null : GD.Load<Texture2D>(_spriteTexturePath);
         EncounterId = GetString(config, "encounter_id", "");
         AggroRange = Mathf.Max(0, GetInt(config, "aggro_range", 4));
@@ -810,6 +816,9 @@ public partial class Unit : Node2D
             { "grid_pos", GridPos },
             { "footprint_size", FootprintSize },
             { "sprite_texture", _spriteTexturePath },
+            { "sprite_flip_h", _spriteFlipH },
+            { "sprite_flip_v", _spriteFlipV },
+            { "sprite_transpose", _spriteTranspose },
             { "hit_points", HitPoints },
             { "max_hit_points", MaxHitPoints },
             { "magic_points", MagicPoints },
@@ -850,6 +859,9 @@ public partial class Unit : Node2D
         GridPos = GetVector2I(snapshot, "grid_pos", GridPos);
         FootprintSize = Mathf.Clamp(GetInt(snapshot, "footprint_size", FootprintSize), 1, 4);
         _spriteTexturePath = GetString(snapshot, "sprite_texture", _spriteTexturePath);
+        _spriteFlipH = GetBool(snapshot, "sprite_flip_h", _spriteFlipH);
+        _spriteFlipV = GetBool(snapshot, "sprite_flip_v", _spriteFlipV);
+        _spriteTranspose = GetBool(snapshot, "sprite_transpose", _spriteTranspose);
         _customSpriteTexture = string.IsNullOrEmpty(_spriteTexturePath) ? null : GD.Load<Texture2D>(_spriteTexturePath);
         ConfigureSpriteRegion();
 
@@ -1148,13 +1160,13 @@ public partial class Unit : Node2D
         {
             _sprite.Texture = _customSpriteTexture;
             _sprite.RegionEnabled = false;
-            _sprite.Scale = Vector2.One * (FootprintSize * CellSize) / _customSpriteTexture.GetSize();
+            ConfigureSpriteTransform(Vector2.One * (FootprintSize * CellSize) / _customSpriteTexture.GetSize());
             return;
         }
 
         _sprite.Texture = _unitAtlas;
         _sprite.RegionEnabled = true;
-        _sprite.Scale = Vector2.One * FootprintSize;
+        ConfigureSpriteTransform(Vector2.One * FootprintSize);
 
         var atlasCell = ResolveAtlasCell();
         _sprite.RegionRect = new Rect2(
@@ -1163,6 +1175,15 @@ public partial class Unit : Node2D
             AtlasTileSize,
             AtlasTileSize
         );
+    }
+
+    private void ConfigureSpriteTransform(Vector2 scale)
+    {
+        var horizontal = _spriteFlipH ? -1.0f : 1.0f;
+        var vertical = _spriteFlipV ? -1.0f : 1.0f;
+        var basisX = _spriteTranspose ? new Vector2(0, vertical) : new Vector2(horizontal, 0);
+        var basisY = _spriteTranspose ? new Vector2(horizontal, 0) : new Vector2(0, vertical);
+        _sprite.Transform = new Transform2D(basisX * scale.X, basisY * scale.Y, Vector2.Zero);
     }
 
     private void UpdateSpriteVisuals()

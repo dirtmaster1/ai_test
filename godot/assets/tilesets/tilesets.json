@@ -1,0 +1,22 @@
+{
+  "tileSize": 64,
+  "atlases": [
+    {
+      "id": "dungeon-terrain",
+      "mode": "packed",
+      "columns": 5,
+      "rows": 3,
+      "sourceDirectory": "art/tilesets/dungeon-terrain/tiles",
+      "output": "assets/tilesets/dungeon_terrain_64.png",
+      "tileSet": "assets/tilesets/dungeon_terrain_64_tileset.tres"
+    },
+    { "id": "cave-terrain", "mode": "external", "columns": 4, "rows": 4, "output": "assets/tilesets/cave_terrain_tileset_1_64.png", "tileSet": "assets/tilesets/cave_terrain_64_tileset.tres" },
+    { "id": "forest-terrain", "mode": "external", "columns": 8, "rows": 8, "output": "assets/tilesets/terrain_forest_lake_bridge_64.png", "tileSet": "assets/tilesets/forest_terrain_64_tileset.tres" },
+    { "id": "grass-water-terrain", "mode": "external", "columns": 6, "rows": 6, "output": "assets/tilesets/terrain_grass_water_64.png", "tileSet": "assets/tilesets/forest_terrain_64_tileset.tres" },
+    { "id": "units-2", "mode": "external", "columns": 6, "rows": 6, "output": "assets/tilesets/units_2_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
+    { "id": "units-3", "mode": "external", "columns": 6, "rows": 6, "output": "assets/tilesets/units_3_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
+    { "id": "general-items", "mode": "external", "columns": 5, "rows": 5, "output": "assets/tilesets/general_items_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
+    { "id": "mine-cave-props", "mode": "external", "columns": 4, "rows": 3, "output": "assets/tilesets/mine_cave_props_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
+    { "id": "map-transitions", "mode": "external", "columns": 9, "rows": 9, "output": "assets/tilesets/map_transitions_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" }
+  ]
+}

@@ -73,9 +73,110 @@ func run_test() -> void:
         check((unit.get_node("Sprite2D") as Sprite2D).region_rect == expected_region, template_id + " sprite mapping")
         check((unit.call("GetTurnOrderIcon") as AtlasTexture).region == expected_region, template_id + " portrait mapping")
         unit.free()
+    await check_marker_transforms(unit_scene)
     if failure_count == 0:
-        print("PASS: all 32 atlas-based templates use expected sprites and portraits; new enemy markers, stats, and snapshots verified")
+        print("PASS: atlas templates, marker transforms, rendered pixels, duplicate suppression, and snapshots verified")
     quit(0 if failure_count == 0 else 1)
+
+
+func check_marker_transforms(unit_scene: PackedScene) -> void:
+    var tileset := TileSet.new()
+    tileset.tile_size = Vector2i(64, 64)
+    for data_name in ["marker_type", "template_id", "uses_tile_visual"]:
+        var layer_index := tileset.get_custom_data_layers_count()
+        tileset.add_custom_data_layer()
+        tileset.set_custom_data_layer_name(layer_index, data_name)
+        tileset.set_custom_data_layer_type(layer_index, TYPE_BOOL if data_name == "uses_tile_visual" else TYPE_STRING)
+    var atlas := TileSetAtlasSource.new()
+    atlas.texture = load("res://assets/tilesets/units_2_64.png")
+    atlas.texture_region_size = Vector2i(64, 64)
+    tileset.add_source(atlas, 0)
+    var atlas_cell := Vector2i(1, 5)
+    atlas.create_tile(atlas_cell)
+    var markers := TileMapLayer.new()
+    markers.name = "transform-test-markers"
+    markers.tile_set = tileset
+    for alternative_index in range(8):
+        if alternative_index > 0:
+            atlas.create_alternative_tile(atlas_cell, alternative_index)
+        var data := atlas.get_tile_data(atlas_cell, alternative_index)
+        data.set_custom_data("marker_type", "enemy_spawn")
+        data.set_custom_data("template_id", "bandit-warrior")
+        data.set_custom_data("uses_tile_visual", true)
+        data.flip_h = (alternative_index & 1) != 0
+        data.flip_v = (alternative_index & 2) != 0
+        data.transpose = (alternative_index & 4) != 0
+        for transform_index in range(8):
+            var flags := 0
+            if (transform_index & 1) != 0:
+                flags |= TileSetAtlasSource.TRANSFORM_FLIP_H
+            if (transform_index & 2) != 0:
+                flags |= TileSetAtlasSource.TRANSFORM_FLIP_V
+            if (transform_index & 4) != 0:
+                flags |= TileSetAtlasSource.TRANSFORM_TRANSPOSE
+            markers.set_cell(Vector2i(transform_index, alternative_index), 0, atlas_cell, alternative_index | flags)
+
+    var viewport := SubViewport.new()
+    viewport.size = Vector2i(1024, 512)
+    viewport.world_2d = World2D.new()
+    viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+    viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+    root.add_child(viewport)
+    var maps := Node2D.new()
+    maps.name = "Maps"
+    viewport.add_child(maps)
+    var base_layer := TileMapLayer.new()
+    base_layer.name = "transform-test-base"
+    maps.add_child(base_layer)
+    maps.add_child(markers)
+    var loader := load("res://scripts/MapLoader.cs").new() as Node
+    viewport.add_child(loader)
+    var map_data: Dictionary = loader.call("LoadMapStub", "transform-test")
+    var visuals := maps.get_node("transform-test-item-visuals") as TileMapLayer
+    check(visuals.get_used_cells().is_empty(), "Enemy markers must not leave static duplicates when uses_tile_visual is true")
+    var count := 0
+    for encounter in map_data["encounters"]:
+        for config in encounter["enemies"]:
+            count += 1
+            var unit := unit_scene.instantiate() as Node2D
+            viewport.add_child(unit)
+            unit.call("Setup", config)
+            var sprite := unit.get_node("Sprite2D") as Sprite2D
+            var expected_transform := sprite.transform
+            var snapshot: Dictionary = unit.call("BuildRuntimeSnapshot")
+            unit.call("Setup", {"id": "bandit-warrior"})
+            check(sprite.transform.is_equal_approx(Transform2D.IDENTITY), "Setup must reset the previous orientation")
+            unit.call("ApplyRuntimeSnapshot", snapshot)
+            check(sprite.transform.is_equal_approx(expected_transform), "Snapshot must restore sprite orientation")
+            var legacy_snapshot := snapshot.duplicate(true)
+            for key in ["sprite_flip_h", "sprite_flip_v", "sprite_transpose"]:
+                legacy_snapshot.erase(key)
+            unit.call("ApplyRuntimeSnapshot", legacy_snapshot)
+            check(sprite.transform.is_equal_approx(expected_transform), "Old snapshots must preserve configured orientation")
+            unit.call("SetGridPos", config["grid_pos"] + Vector2i(8, 0))
+            check(sprite.transform.is_equal_approx(expected_transform), "Movement must preserve sprite orientation")
+            sprite.modulate = Color.WHITE
+    check(count == 64, "All eight cell transforms combined with eight alternative transforms must spawn")
+    markers.visible = true
+    await RenderingServer.frame_post_draw
+    var image := viewport.get_texture().get_image()
+    for alternative_index in range(8):
+        for transform_index in range(8):
+            var mismatches := 0
+            var opaque_pixels := 0
+            for pixel_y in range(64):
+                for pixel_x in range(64):
+                    var position := Vector2i(transform_index * 64 + pixel_x, alternative_index * 64 + pixel_y)
+                    var expected := image.get_pixelv(position)
+                    var actual := image.get_pixelv(position + Vector2i(512, 0))
+                    if expected.r + expected.g + expected.b > 0.2:
+                        opaque_pixels += 1
+                    if not expected.is_equal_approx(actual):
+                        mismatches += 1
+            check(opaque_pixels > 100, "Reference tile must render visible artwork")
+            check(mismatches == 0, "Unit pixels must match tile: alternative=%d transform=%d mismatches=%d" % [alternative_index, transform_index, mismatches])
+    viewport.queue_free()
+    await process_frame
 
 
 func check(condition: bool, message: String) -> void:

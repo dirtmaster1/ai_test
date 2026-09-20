@@ -2,6 +2,8 @@
 
 This project now uses one base TileMapLayer per map for floor/wall/door geometry.
 
+Atlas source editing, deterministic PNG builds, GIMP MCP setup, and Godot import commands are documented in [TILESET_PIPELINE.md](TILESET_PIPELINE.md).
+
 ## Layer Naming Convention
 
 For each map id (example: `map-a`), create one layer under `Maps` in `Gameworld.tscn`:
@@ -88,6 +90,8 @@ Set these custom data keys on a tile or tile alternative:
 - `starting_equipment`: optional comma-separated item IDs
 
 Enemies with the same `encounter_id` enter combat and persist as one encounter. Use a unique encounter ID for a separate fight. Every enemy marker must define `template_id`; artwork does not determine gameplay data. For a new enemy type, create a tile alternative with `marker_type = enemy_spawn` and its `template_id` rather than adding a code mapping.
+
+Enemy units inherit the marker's horizontal flip, vertical flip, and transpose (rotation), including transforms on tile alternatives. These affect the world sprite, follow the unit when it moves, and persist in saves. Turn-order portraits remain upright. `uses_tile_visual` is for static props and cosmetics; it is ignored on enemy and party spawn markers to avoid drawing a second, stationary copy. Test map edits in a new run, since saved encounters can restore previous unit state.
 
 ### NPC markers
 

@@ -198,7 +198,7 @@ public partial class MapLoader : Node
 
             var markerType = GetTileString(markerLayer, tileData, "marker_type", "").ToLowerInvariant();
             var usesTileVisual = GetTileBool(markerLayer, tileData, "uses_tile_visual", markerType == "npc");
-            if (!usesTileVisual)
+            if (!usesTileVisual || markerType == "enemy_spawn" || markerType == "player_spawn")
             {
                 continue;
             }
@@ -578,6 +578,11 @@ public partial class MapLoader : Node
                         enemy["name"] = tileData == null ? fallbackEnemyName : GetTileString(markerLayer, tileData, "name", fallbackEnemyName);
                         enemy["team"] = "enemy";
                         enemy["grid_pos"] = cell;
+                        var alternativeTile = markerLayer.GetCellAlternativeTile(cell);
+                        var transpose = (alternativeTile & TileSetAtlasSource.TransformTranspose) != 0;
+                        enemy["sprite_flip_h"] = (transpose ? tileData.FlipV : tileData.FlipH) ^ ((alternativeTile & TileSetAtlasSource.TransformFlipH) != 0);
+                        enemy["sprite_flip_v"] = (transpose ? tileData.FlipH : tileData.FlipV) ^ ((alternativeTile & TileSetAtlasSource.TransformFlipV) != 0);
+                        enemy["sprite_transpose"] = tileData.Transpose ^ transpose;
                         enemy["aggro_range"] = tileData == null ? 4 : GetTileInt(markerLayer, tileData, "aggro_range", 4);
                         enemy["primary_ability_id"] = tileData == null ? fallbackPrimaryAbility : GetTileString(markerLayer, tileData, "primary_ability_id", fallbackPrimaryAbility);
                         enemy["initiative"] = tileData == null ? fallbackInitiative : GetTileInt(markerLayer, tileData, "initiative", fallbackInitiative);
