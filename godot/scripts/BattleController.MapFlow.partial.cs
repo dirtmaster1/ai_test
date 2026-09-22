@@ -112,6 +112,7 @@ public partial class BattleController
         _activeEncounterId = triggeringEnemy.EncounterId;
         _flowState = BattleFlowState.Combat;
         _awaitingPlayerAttackDirection = false;
+        EnlistNearbyCombatEnemies();
         _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
 
         var combatUnits = new Array<Unit>();
@@ -156,6 +157,7 @@ public partial class BattleController
     {
         var queue = new System.Collections.Generic.Queue<Unit>();
         _activeCombatEnemyUnitIds.Add(triggeringEnemy.UnitId);
+        _turnManager?.AddUnit(triggeringEnemy);
         if (!string.IsNullOrEmpty(triggeringEnemy.EncounterId))
         {
             _activeCombatEncounterIds.Add(triggeringEnemy.EncounterId);
@@ -184,6 +186,7 @@ public partial class BattleController
                 }
 
                 _activeCombatEnemyUnitIds.Add(candidate.UnitId);
+                _turnManager?.AddUnit(candidate);
                 if (!string.IsNullOrEmpty(candidate.EncounterId))
                 {
                     _activeCombatEncounterIds.Add(candidate.EncounterId);
@@ -191,6 +194,51 @@ public partial class BattleController
                 queue.Enqueue(candidate);
             }
         }
+    }
+
+    private void EnlistNearbyCombatEnemies()
+    {
+        if (_flowState != BattleFlowState.Combat)
+        {
+            return;
+        }
+
+        foreach (var enemy in _enemyUnits)
+        {
+            if (!IsUsableUnit(enemy) || enemy.IsDead || enemy.Team != "enemy" || string.IsNullOrEmpty(enemy.UnitId)
+                || _activeCombatEnemyUnitIds.Contains(enemy.UnitId))
+            {
+                continue;
+            }
+
+            foreach (var player in _playerUnits)
+            {
+                if (!IsUsableUnit(player) || player.IsDead)
+                {
+                    continue;
+                }
+
+                var enemyCell = enemy.GetClosestCell(player.GridPos);
+                if (Manhattan(player.GetClosestCell(enemyCell), enemyCell) <= enemy.AggroRange
+                    && HasClearUnitLineOfSight(enemy, player))
+                {
+                    AddChainedAggroEnemies(enemy);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void EnlistCombatEnemy(Unit enemy)
+    {
+        if (_flowState != BattleFlowState.Combat || !IsUsableUnit(enemy) || enemy.IsDead
+            || enemy.Team != "enemy" || string.IsNullOrEmpty(enemy.UnitId)
+            || _activeCombatEnemyUnitIds.Contains(enemy.UnitId))
+        {
+            return;
+        }
+
+        AddChainedAggroEnemies(enemy);
     }
 
     private async Task<MapTransitionOutcome> TryHandleMapTransitionAsync()

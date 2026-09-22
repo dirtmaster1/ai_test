@@ -416,6 +416,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        EnlistNearbyCombatEnemies();
+
         var active = GetActivePlayerUnit();
         if (active == null)
         {
@@ -838,6 +840,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
+        EnlistNearbyCombatEnemies();
         var selectedAbilityId = GetSelectedAbilityId(active);
         var actionProfile = ResolveActionProfile(active, selectedAbilityId);
 
@@ -951,6 +954,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
         else
         {
+            EnlistCombatEnemyAtCell(active, targetCell);
             var attackTarget = GetLivingEnemyAtCell(active.Team, targetCell);
             if (attackTarget != null)
             {
@@ -1866,10 +1870,28 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             unit.TrySpendMovement();
+            EnlistNearbyCombatEnemies();
             SetStatusHelp();
         }
 
         return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
+    }
+
+    private void EnlistCombatEnemyAtCell(Unit attacker, Vector2I targetCell)
+    {
+        if (_flowState != BattleFlowState.Combat || !IsUsableUnit(attacker) || attacker.Team != "player")
+        {
+            return;
+        }
+
+        foreach (var enemy in _enemyUnits)
+        {
+            if (IsUsableUnit(enemy) && !enemy.IsDead && enemy.OccupiesCell(targetCell))
+            {
+                EnlistCombatEnemy(enemy);
+                return;
+            }
+        }
     }
 
     private bool TryAttackTarget(Unit attacker, Unit target, int damage, int range, string actionId = "attack", string actionName = "Attack", int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)

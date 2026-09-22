@@ -63,6 +63,16 @@ public partial class TurnManager : Node
         return unit != null && GetActiveUnit() == unit;
     }
 
+    public void AddUnit(Unit unit)
+    {
+        if (unit == null || unit.IsDead || _turnOrder.Contains(unit))
+        {
+            return;
+        }
+
+        _turnOrder.Add(unit);
+    }
+
     public Array<Unit> GetTurnOrderFromActive()
     {
         var result = new Array<Unit>();
