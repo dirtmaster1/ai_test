@@ -280,6 +280,7 @@ public partial class BattleController
 
         confirmation.GetOkButton().Text = "Travel";
         confirmation.AddCancelButton("Stay");
+        TacticalTheme.ApplyDialog(confirmation);
         AddChild(confirmation);
 
         var completion = new TaskCompletionSource<bool>();
@@ -322,6 +323,7 @@ public partial class BattleController
 
         confirmation.GetOkButton().Text = "Rest";
         confirmation.AddCancelButton("Not now");
+        TacticalTheme.ApplyDialog(confirmation);
         AddChild(confirmation);
 
         var completion = new TaskCompletionSource<bool>();
@@ -374,7 +376,7 @@ public partial class BattleController
         var mapName = GetMapDisplayName(toMapId);
         SaveClearedEncounterStateForCurrentMap();
         SpawnMapEncounter(toMapId, preserveParty: true, leadSpawnCell: spawnCell);
-        _hud?.ShowCombatBanner($"ZONE: {mapName}", new Color(0.36f, 0.8f, 1.0f, 1.0f));
+        _hud?.ShowCombatBanner($"ZONE: {mapName}", TacticalTheme.BrassBright);
         _hud?.AddCombatLogEntry($"Entered {mapName}.");
         EnterExplorationMode($"Transitioned to {mapName}. Keep exploring.");
         _persistence.PersistSaveGame(false);

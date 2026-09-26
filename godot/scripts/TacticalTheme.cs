@@ -25,18 +25,79 @@ public static class TacticalTheme
             BorderWidthRight = inset ? 1 : 2,
             BorderWidthBottom = inset ? 1 : 2,
             BorderWidthLeft = inset ? 1 : 2,
-            CornerRadiusTopLeft = 2,
-            CornerRadiusTopRight = 2,
-            CornerRadiusBottomRight = 2,
-            CornerRadiusBottomLeft = 2,
-            ContentMarginTop = margin,
+            CornerRadiusTopLeft = 1,
+            CornerRadiusTopRight = 1,
+            CornerRadiusBottomRight = 1,
+            CornerRadiusBottomLeft = 1,
+            ContentMarginTop = margin + 2,
             ContentMarginRight = margin,
-            ContentMarginBottom = margin,
+            ContentMarginBottom = margin + 2,
             ContentMarginLeft = margin,
             ShadowColor = new Color(0.0f, 0.0f, 0.0f, inset ? 0.2f : 0.65f),
-            ShadowSize = inset ? 1 : 5,
+            ShadowSize = inset ? 1 : 7,
+            ShadowOffset = new Vector2(0.0f, 3.0f),
             AntiAliasing = true
         };
+    }
+
+    public static StyleBoxTexture CreateFramePanel(int margin = 12)
+    {
+        return new StyleBoxTexture
+        {
+            Texture = GD.Load<Texture2D>("res://assets/ui/iron_brass_frame.png"),
+            TextureMarginLeft = 32,
+            TextureMarginTop = 32,
+            TextureMarginRight = 32,
+            TextureMarginBottom = 32,
+            ContentMarginLeft = margin,
+            ContentMarginTop = margin + 2,
+            ContentMarginRight = margin,
+            ContentMarginBottom = margin + 2
+        };
+    }
+
+    public static void ApplyDialog(ConfirmationDialog dialog)
+    {
+        if (dialog == null)
+        {
+            return;
+        }
+
+        ApplyDialogContent(dialog);
+        ApplyButton(dialog.GetOkButton(), true, 15);
+        var cancelButton = dialog.GetCancelButton();
+        if (cancelButton != null)
+        {
+            ApplyButton(cancelButton, false, 14);
+        }
+    }
+
+    private static void ApplyDialogContent(Node parent)
+    {
+        foreach (var child in parent.GetChildren(true))
+        {
+            if (child is RichTextLabel richText)
+            {
+                richText.AddThemeStyleboxOverride("normal", CreatePanel(true, 10));
+                richText.AddThemeColorOverride("default_color", Parchment);
+                richText.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.7f));
+                richText.AddThemeFontSizeOverride("normal_font_size", 16);
+            }
+            else if (child is Label label)
+            {
+                ApplyLabel(label, Parchment, 15);
+            }
+            else if (child is Button button && button != null)
+            {
+                ApplyButton(button);
+            }
+            else if (child is PanelContainer panel)
+            {
+                panel.AddThemeStyleboxOverride("panel", CreatePanel(true, 8));
+            }
+
+            ApplyDialogContent(child);
+        }
     }
 
     public static void ApplyLabel(Label label, Color color, int fontSize)

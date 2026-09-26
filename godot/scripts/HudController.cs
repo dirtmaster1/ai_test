@@ -89,6 +89,9 @@ public partial class HudController : Control
     private Tween _combatBannerTween;
     private readonly Queue<(string Text, Color Accent)> _combatBannerQueue = new();
     private PanelContainer _combatLogPanel;
+    private Button _combatLogMinimizeButton;
+    private Vector2 _combatLogExpandedSize;
+    private bool _combatLogMinimized;
     private Label _activeUnitLabel;
     private Button _abilityButton1;
     private Button _abilityButton2;
@@ -97,7 +100,6 @@ public partial class HudController : Control
     private Button _abilityButton5;
     private Button _endTurnButton;
     private Button _inventoryButton;
-    private Button _characterButton;
     private Button _reserveButton;
     private Label _combatLogHeader;
     private ItemList _combatLog;
@@ -233,9 +235,9 @@ public partial class HudController : Control
         _abilityButton5.FocusMode = FocusModeEnum.None;
         _endTurnButton.FocusMode = FocusModeEnum.None;
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
-        _characterButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/CharacterButton");
         _reserveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/ReserveButton");
-        _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeader");
+        _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogHeader");
+        _combatLogMinimizeButton = GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogMinimizeButton");
         _combatLog = GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog");
         _combatLogResizeHandle = GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogResizeRow/CombatLogResizeHandle");
         _inventoryPanel = GetNode<PanelContainer>("InventoryPanel");
@@ -298,7 +300,6 @@ public partial class HudController : Control
         _abilityButton5.Pressed += OnAbilityButton5Pressed;
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
-        _characterButton.Pressed += OnCharacterButtonPressed;
         _reserveButton.Pressed += OnReserveButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
         _saveButton.Pressed += OnSaveButtonPressed;
@@ -332,6 +333,7 @@ public partial class HudController : Control
         _storeToReserveButton.Pressed += OnStoreToReserveButtonPressed;
         _bringFromReserveButton.Pressed += OnBringFromReserveButtonPressed;
         _closeReserveButton.Pressed += OnCloseReserveButtonPressed;
+        _combatLogMinimizeButton.Pressed += OnCombatLogMinimizePressed;
 
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
@@ -392,14 +394,14 @@ public partial class HudController : Control
             _inventoryButton.Pressed -= OnInventoryButtonPressed;
         }
 
-        if (_characterButton != null)
-        {
-            _characterButton.Pressed -= OnCharacterButtonPressed;
-        }
-
         if (_reserveButton != null)
         {
             _reserveButton.Pressed -= OnReserveButtonPressed;
+        }
+
+        if (_combatLogMinimizeButton != null)
+        {
+            _combatLogMinimizeButton.Pressed -= OnCombatLogMinimizePressed;
         }
 
         if (_helpButton != null)
@@ -611,12 +613,6 @@ public partial class HudController : Control
     private void OnInventoryButtonPressed()
     {
         SetInventoryVisible(!_inventoryPanel.Visible);
-    }
-
-    private void OnCharacterButtonPressed()
-    {
-        SetCharacterVisible(false);
-        SetInventoryVisible(true);
     }
 
     private void OnReserveButtonPressed()
@@ -1178,19 +1174,23 @@ public partial class HudController : Control
         const float utilityHeight = 20.0f;
         const float characterHeight = 218.0f;
         const float helpHeight = 220.0f;
-        const float actionHeight = 68.0f;
+        const float actionWidth = 760.0f;
+        const float actionHeight = 142.0f;
 
         var utilityTop = Margin;
-        var actionTop = utilityTop + utilityHeight + panelGap + 50.0f;
-        var detailsTop = actionTop + actionHeight + panelGap + 30.0f;
+        var detailsTop = utilityTop + utilityHeight + panelGap + 30.0f;
         var combatTop = detailsTop;
-        var combatHeight = 100.0f;
+        var combatHeight = 160.0f;
 
         ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
-        ApplyPanelRect(_actionPanel, new Rect2(new Vector2(sidebarLeft, actionTop), new Vector2(sidebarRight - sidebarLeft, actionHeight)), size);
+        var dockWidth = Mathf.Min(actionWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
+        var actionPosition = new Vector2((size.X - dockWidth) * 0.5f, size.Y - actionHeight - 60.0f);
+        ApplyPanelRect(_actionPanel, new Rect2(actionPosition, new Vector2(dockWidth, actionHeight)), size);
         ApplyPanelRect(_characterPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, characterHeight)), size);
         ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, helpHeight)), size);
-        ApplyPanelRect(_combatLogPanel, new Rect2(new Vector2(sidebarLeft, combatTop), new Vector2(sidebarRight - sidebarLeft, combatHeight)), size);
+        var combatLogWidth = Mathf.Min(SidebarWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
+        var combatLogPosition = new Vector2(size.X - combatLogWidth - SidebarRightInset, size.Y - combatHeight - 40.0f);
+        ApplyPanelRect(_combatLogPanel, new Rect2(combatLogPosition, new Vector2(combatLogWidth, combatHeight)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
         ApplyPanelRect(_vendorPanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 480.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 440.0f) * 0.5f)), new Vector2(480.0f, 440.0f)), size);
         ApplyPanelRect(_reservePanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 520.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 480.0f) * 0.5f)), new Vector2(520.0f, 480.0f)), size);
@@ -1339,6 +1339,32 @@ public partial class HudController : Control
         _resizePanel = null;
     }
 
+    private void OnCombatLogMinimizePressed()
+    {
+        if (_combatLogMinimized)
+        {
+            _combatLogMinimized = false;
+            _combatLog.Visible = true;
+            ((Control)_combatLogResizeHandle.GetParent()).Visible = true;
+            _panelSizeOverrides[_combatLogPanel] = _combatLogExpandedSize;
+            _combatLogMinimizeButton.Text = "-";
+            _combatLogMinimizeButton.TooltipText = "Minimize combat log";
+        }
+        else
+        {
+            _combatLogExpandedSize = _combatLogPanel.Size;
+            _combatLogMinimized = true;
+            _combatLog.Visible = false;
+            ((Control)_combatLogResizeHandle.GetParent()).Visible = false;
+            _panelOffsets[_combatLogPanel] = Vector2.Zero;
+            _panelSizeOverrides[_combatLogPanel] = new Vector2(220.0f, 64.0f);
+            _combatLogMinimizeButton.Text = "+";
+            _combatLogMinimizeButton.TooltipText = "Restore combat log";
+        }
+
+        ApplyHudLayout();
+    }
+
     private void ApplyPanelRect(Control panel, Rect2 baseRect, Vector2 viewportSize)
     {
         if (panel == null)
@@ -1353,7 +1379,9 @@ public partial class HudController : Control
 
         var isResizablePanel = panel == _combatLogPanel;
         var minWidth = isResizablePanel ? MinResizablePanelWidth : 1.0f;
-        var minHeight = isResizablePanel ? MinResizablePanelHeight : 1.0f;
+        var minHeight = isResizablePanel
+            ? (_combatLogMinimized ? 64.0f : MinResizablePanelHeight)
+            : 1.0f;
 
         panelSize.X = Mathf.Clamp(panelSize.X, minWidth, Mathf.Max(minWidth, viewportSize.X));
         panelSize.Y = Mathf.Clamp(panelSize.Y, minHeight, Mathf.Max(minHeight, viewportSize.Y));
@@ -1385,7 +1413,7 @@ public partial class HudController : Control
         var bodyColor = TacticalTheme.Parchment;
         var mutedBodyColor = TacticalTheme.ParchmentMuted;
 
-        var panelStyle = TacticalTheme.CreatePanel();
+        var panelStyle = TacticalTheme.CreateFramePanel();
         StylePanel(_utilityPanel, panelStyle);
         StylePanel(_actionPanel, panelStyle);
         StylePanel(_characterPanel, panelStyle);
@@ -1435,8 +1463,8 @@ public partial class HudController : Control
         StyleButton(_helpButton, false);
         StyleButton(_saveButton, false);
         StyleButton(_loadButton, false);
-        StyleButton(_characterButton, false);
         StyleButton(_reserveButton, false);
+        StyleButton(_combatLogMinimizeButton, false);
         StyleButton(_characterPrevButton, false);
         StyleButton(_characterNextButton, false);
         StyleButton(_characterCloseButton, false);
@@ -1544,7 +1572,7 @@ public partial class HudController : Control
         };
     }
 
-    private static void StylePanel(PanelContainer panel, StyleBoxFlat baseStyle)
+    private static void StylePanel(PanelContainer panel, StyleBox baseStyle)
     {
         if (panel == null)
         {

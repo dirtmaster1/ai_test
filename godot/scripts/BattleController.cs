@@ -4798,6 +4798,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             dialog.AddCancelButton("End");
         }
 
+        TacticalTheme.ApplyDialog(dialog);
         AddChild(dialog);
 
         var completion = new TaskCompletionSource<bool>();
@@ -4856,6 +4857,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         dialog.AddChild(optionList);
         dialog.GetOkButton().Text = "Choose";
         dialog.AddCancelButton("End");
+        TacticalTheme.ApplyDialog(dialog);
         AddChild(dialog);
 
         var completion = new TaskCompletionSource<int>();
@@ -4914,6 +4916,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         dialog.GetOkButton().Text = "Recruit";
         dialog.AddCancelButton("Not now");
+        TacticalTheme.ApplyDialog(dialog);
         AddChild(dialog);
 
         var completion = new TaskCompletionSource<bool>();
