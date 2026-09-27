@@ -1218,6 +1218,7 @@ public partial class MapLoader : Node
                 {
                     { "id", $"bag-gold:{bagId}" },
                     { "label", $"{goldAmount} Gold" },
+                    { "icon_id", "gold" },
                     { "detail", $"Loot {goldAmount} gold." },
                     { "source_title", containerName },
                     { "loot_all_id", $"bag-all:{bagId}" }
@@ -1234,6 +1235,7 @@ public partial class MapLoader : Node
                 {
                     { "id", $"bag-item:{bagId}:{itemIndex}" },
                     { "label", itemName },
+                    { "icon_id", itemId },
                     { "detail", $"Loot {itemName}." },
                     { "source_title", containerName },
                     { "loot_all_id", $"bag-all:{bagId}" }
@@ -1368,6 +1370,7 @@ public partial class MapLoader : Node
                     {
                         { "id", $"bag-gold:{bagId}" },
                         { "label", $"{goldAmount} Gold" },
+                        { "icon_id", "gold" },
                         { "detail", $"Loot {goldAmount} gold." },
                         { "source_title", containerName },
                         { "loot_all_id", $"bag-all:{bagId}" }
@@ -1384,6 +1387,7 @@ public partial class MapLoader : Node
                     {
                         { "id", $"bag-item:{bagId}:{itemIndex}" },
                         { "label", itemName },
+                        { "icon_id", itemId },
                         { "detail", $"Loot {itemName}." },
                         { "source_title", containerName },
                         { "loot_all_id", $"bag-all:{bagId}" }

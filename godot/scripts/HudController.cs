@@ -61,6 +61,42 @@ public partial class HudController : Control
     private const float Margin = 12.0f;
     private const float SidebarWidth = 430.0f;
     private const float SidebarRightInset = 24.0f;
+    private const int ItemIconCellSize = 32;
+    private const string ItemIconAtlasPath = "res://assets/ui/icon_misc_1.png";
+
+    private static Texture2D _itemIconAtlas;
+    private static readonly System.Collections.Generic.Dictionary<string, Vector2I> ItemIconCellsById = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["short-sword"] = new(1, 0),
+        ["long-sword"] = new(2, 0),
+        ["dagger"] = new(0, 0),
+        ["short-bow"] = new(4, 0),
+        ["long-bow"] = new(4, 1),
+        ["war-axe"] = new(6, 0),
+        ["chieftain-club"] = new(6, 1),
+        ["small-shield"] = new(0, 2),
+        ["leather-armor"] = new(2, 2),
+        ["cloth-robe"] = new(3, 2),
+        ["iron-helmet"] = new(4, 2),
+        ["chain-mail"] = new(2, 3),
+        ["healers-circlet"] = new(4, 3),
+        ["mages-amulet"] = new(1, 3),
+        ["fireball-scroll"] = new(5, 3),
+        ["gold"] = new(0, 2),
+        ["melee"] = new(3, 5),
+        ["ranged"] = new(5, 5),
+        ["defend"] = new(6, 5),
+        ["charge"] = new(0, 6),
+        ["pin"] = new(1, 6),
+        ["poison-strike"] = new(4, 5),
+        ["poison"] = new(5, 6),
+        ["lesser-heal"] = new(0, 4),
+        ["magic-missile"] = new(2, 4),
+        ["sleep"] = new(3, 4),
+        ["protection"] = new(4, 4),
+        ["fireball"] = new(5, 4)
+    };
+    private static readonly System.Collections.Generic.Dictionary<string, Texture2D> ItemIconsById = new(StringComparer.OrdinalIgnoreCase);
 
     private PanelContainer _utilityPanel;
     private Label _utilityHeader;
@@ -1716,7 +1752,7 @@ public partial class HudController : Control
         }
     }
 
-    public string BuildCharacterSummary(Unit unit, string selectedAbilityName, string primaryAbilityName)
+    public string BuildCharacterSummary(Unit unit, string selectedAbilityName, string primaryAbilityName, bool includeActionNames = true)
     {
         if (unit == null)
         {
@@ -1756,9 +1792,10 @@ public partial class HudController : Control
             $"\n" +
             $"Attack Damage: {unit.AttackDamage}\n" +
             $"Attack Range: {unit.AttackRange}\n" +
-            $"Initiative: {unit.EffectiveInitiative} (base {unit.Initiative})\n" +
-            $"Primary Action: {primaryAbilityName}\n" +
-            $"Selected Action: {selectedAbilityName}";
+            $"Initiative: {unit.EffectiveInitiative} (base {unit.Initiative})" +
+            (includeActionNames
+                ? $"\nPrimary Action: {primaryAbilityName}\nSelected Action: {selectedAbilityName}"
+                : "");
     }
 
     private static string FormatModifier(int modifier)
@@ -1894,6 +1931,7 @@ public partial class HudController : Control
                 button.Visible = false;
                 button.Disabled = true;
                 button.Text = "";
+                button.Icon = null;
                 button.TooltipText = "";
                 continue;
             }
@@ -1907,17 +1945,13 @@ public partial class HudController : Control
             var isSelected = GetInt(entry, "is_selected", 0) == 1;
 
             button.Visible = true;
-            button.Text = cooldownRemaining > 0
-                ? $"{label} (CD {cooldownRemaining})"
-                : label;
+            button.Text = "";
+            button.Icon = GetGameIcon(abilityId);
+            button.IconAlignment = HorizontalAlignment.Center;
+            button.SelfModulate = isSelected ? TacticalTheme.BrassBright : Colors.White;
             button.TooltipText = detail;
             button.Disabled = !canUseAnyAbility || !isEnabled || cooldownRemaining > 0;
             _abilityIdsByButton[button] = abilityId;
-
-            if (isSelected)
-            {
-                button.Text = $"> {button.Text}";
-            }
         }
     }
 
@@ -1960,6 +1994,7 @@ public partial class HudController : Control
 
         _inventoryItemList.Clear();
         _inventoryItemsById.Clear();
+        ConfigureIconList(_inventoryItemList);
 
         if (items == null)
         {
@@ -1973,10 +2008,11 @@ public partial class HudController : Control
 
             var suffix = _equippedItemIds.Contains(id) ? " (equipped)" : "";
             var line = BuildItemSummary(item) + suffix;
-            var iconPath = GetString(item, "icon_path", "");
-            var icon = string.IsNullOrEmpty(iconPath) ? null : GD.Load<Texture2D>(iconPath);
-            _inventoryItemList.AddItem(line, icon);
-            _inventoryItemList.SetItemMetadata(_inventoryItemList.ItemCount - 1, id);
+            var icon = GetItemIcon(item);
+            _inventoryItemList.AddItem(icon == null ? line : suffix, icon);
+            var itemIndex = _inventoryItemList.ItemCount - 1;
+            _inventoryItemList.SetItemMetadata(itemIndex, id);
+            _inventoryItemList.SetItemTooltip(itemIndex, line);
         }
 
         if (_inventoryItemList.ItemCount > 0)
@@ -2010,6 +2046,7 @@ public partial class HudController : Control
 
         _inventoryEquippedItemList.Clear();
         _inventoryEquippedEntriesBySlot.Clear();
+        ConfigureIconList(_inventoryEquippedItemList);
         ResetEquipmentSlot(_headSlotButton, "HEAD");
         ResetEquipmentSlot(_bodySlotButton, "BODY");
         ResetEquipmentSlot(_mainHandSlotButton, "MAIN HAND");
@@ -2030,8 +2067,11 @@ public partial class HudController : Control
 
             var label = GetString(entry, "label", slotKey);
             _inventoryEquippedEntriesBySlot[slotKey] = entry;
-            _inventoryEquippedItemList.AddItem(label);
-            _inventoryEquippedItemList.SetItemMetadata(_inventoryEquippedItemList.ItemCount - 1, slotKey);
+            var icon = GetItemIcon(entry);
+            _inventoryEquippedItemList.AddItem(icon == null ? label : "", icon);
+            var itemIndex = _inventoryEquippedItemList.ItemCount - 1;
+            _inventoryEquippedItemList.SetItemMetadata(itemIndex, slotKey);
+            _inventoryEquippedItemList.SetItemTooltip(itemIndex, label);
             ApplyEquipmentSlotEntry(slotKey, entry);
         }
 
@@ -2066,6 +2106,7 @@ public partial class HudController : Control
         }
 
         _inventoryAbilityList.Clear();
+        ConfigureIconList(_inventoryAbilityList);
         if (abilities == null)
         {
             return;
@@ -2074,8 +2115,8 @@ public partial class HudController : Control
         foreach (var ability in abilities)
         {
             var label = GetString(ability, "label", "Ability");
-            var cooldown = GetInt(ability, "cooldown_remaining", 0);
-            var index = _inventoryAbilityList.AddItem(cooldown > 0 ? $"{label}  [CD {cooldown}]" : label);
+            var icon = GetGameIcon(GetString(ability, "id", ""));
+            var index = _inventoryAbilityList.AddItem(icon == null ? label : "", icon);
             var detail = GetString(ability, "detail", label);
             _inventoryAbilityList.SetItemTooltip(index, detail);
             _inventoryAbilityList.SetItemMetadata(index, detail);
@@ -2535,6 +2576,7 @@ public partial class HudController : Control
 
         _lootItemList.Clear();
         _lootEntriesById.Clear();
+        ConfigureIconList(_lootItemList);
         _lootAllInteractionId = "";
         if (_lootHeader != null)
         {
@@ -2573,9 +2615,12 @@ public partial class HudController : Control
             }
 
             var label = GetString(entry, "label", interactionId);
+            var icon = GetGameIcon(GetString(entry, "icon_id", ""));
             _lootEntriesById[interactionId] = entry;
-            _lootItemList.AddItem(label);
-            _lootItemList.SetItemMetadata(_lootItemList.ItemCount - 1, interactionId);
+            _lootItemList.AddItem(icon == null ? label : "", icon);
+            var itemIndex = _lootItemList.ItemCount - 1;
+            _lootItemList.SetItemMetadata(itemIndex, interactionId);
+            _lootItemList.SetItemTooltip(itemIndex, label);
         }
 
         if (_lootItemList.ItemCount > 0)
@@ -2658,6 +2703,7 @@ public partial class HudController : Control
 
         list.Clear();
         entriesById.Clear();
+        ConfigureIconList(list);
 
         if (items == null || items.Count == 0)
         {
@@ -2677,9 +2723,15 @@ public partial class HudController : Control
             var quantity = GetInt(item, "quantity", 1);
             var price = GetInt(item, "price", 0);
             var label = $"{Mathf.Max(1, quantity)} x {BuildItemSummary(item)} - {Mathf.Max(0, price)} gp";
+            var icon = GetItemIcon(item);
+            var visibleLabel = icon == null
+                ? label
+                : $"{Mathf.Max(1, quantity)}x {Mathf.Max(0, price)} gp";
             entriesById[itemId] = item;
-            list.AddItem(label);
-            list.SetItemMetadata(list.ItemCount - 1, itemId);
+            list.AddItem(visibleLabel, icon);
+            var itemIndex = list.ItemCount - 1;
+            list.SetItemMetadata(itemIndex, itemId);
+            list.SetItemTooltip(itemIndex, label);
         }
 
         if (list.ItemCount > 0)
@@ -2733,6 +2785,59 @@ public partial class HudController : Control
         }
 
         return ((Variant)dict[key]).AsString();
+    }
+
+    private static Texture2D GetItemIcon(Dictionary item)
+    {
+        if (item == null)
+        {
+            return null;
+        }
+
+        var iconPath = GetString(item, "icon_path", "");
+        return string.IsNullOrEmpty(iconPath)
+            ? GetGameIcon(GetString(item, "id", ""))
+            : GD.Load<Texture2D>(iconPath);
+    }
+
+    private static Texture2D GetGameIcon(string iconId)
+    {
+        if (string.IsNullOrWhiteSpace(iconId))
+        {
+            return null;
+        }
+
+        if (ItemIconsById.TryGetValue(iconId, out var icon))
+        {
+            return icon;
+        }
+
+        if (!ItemIconCellsById.TryGetValue(iconId, out var cell))
+        {
+            return null;
+        }
+
+        _itemIconAtlas ??= GD.Load<Texture2D>(ItemIconAtlasPath);
+        if (_itemIconAtlas == null)
+        {
+            return null;
+        }
+
+        icon = new AtlasTexture
+        {
+            Atlas = _itemIconAtlas,
+            Region = new Rect2(cell.X * ItemIconCellSize, cell.Y * ItemIconCellSize, ItemIconCellSize, ItemIconCellSize)
+        };
+        ItemIconsById[iconId] = icon;
+        return icon;
+    }
+
+    private static void ConfigureIconList(ItemList list)
+    {
+        if (list != null)
+        {
+            list.FixedIconSize = new Vector2I(ItemIconCellSize, ItemIconCellSize);
+        }
     }
 
     private static int GetInt(Dictionary dict, string key, int fallback)
@@ -2979,14 +3084,18 @@ public partial class HudController : Control
         }
 
         var name = GetString(entry, "name", GetString(entry, "label", "Equipped"));
-        button.Text = $"{FormatSlotName(slotKey).ToUpperInvariant()}\n{name}";
         button.TooltipText = BuildItemDetail(entry, true);
         var iconPath = GetString(entry, "icon_path", "");
-        button.Icon = string.IsNullOrEmpty(iconPath) ? null : GD.Load<Texture2D>(iconPath);
+        var icon = string.IsNullOrEmpty(iconPath) ? GetItemIcon(entry) : GD.Load<Texture2D>(iconPath);
+        button.Icon = icon;
+        button.IconAlignment = HorizontalAlignment.Center;
+        button.Text = icon == null ? FormatSlotName(slotKey).ToUpperInvariant() : "";
 
         if (slotKey == "2-handed")
         {
-            _offHandSlotButton.Text = "OFF HAND\nOccupied";
+            _offHandSlotButton.Icon = icon;
+            _offHandSlotButton.IconAlignment = HorizontalAlignment.Center;
+            _offHandSlotButton.Text = icon == null ? "OFF HAND\nOccupied" : "";
             _offHandSlotButton.TooltipText = $"Occupied by {name}.";
         }
     }

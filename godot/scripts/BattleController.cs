@@ -411,6 +411,31 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void OnHudAbilityPressed(string abilityId)
     {
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            var explorerActor = GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+            if (!IsUsableUnit(explorerActor) || explorerActor.IsDead || string.IsNullOrEmpty(abilityId) || !explorerActor.HasAbility(abilityId))
+            {
+                return;
+            }
+
+            var explorationProfile = ResolveActionProfile(explorerActor, abilityId);
+            if (explorationProfile.ActionType != "heal"
+                || explorerActor.GetAbilityCooldownRemaining(abilityId) > 0
+                || !CanCastAction(explorerActor, explorationProfile))
+            {
+                return;
+            }
+
+            SetSelectedAbilityId(explorerActor, abilityId);
+            _awaitingPlayerAttackDirection = true;
+            ClearMovementPreviewPath();
+            SetStatusHelp();
+            SyncHudFromGameState();
+            QueueRedraw();
+            return;
+        }
+
         if (_flowState != BattleFlowState.Combat)
         {
             return;
@@ -3078,7 +3103,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
-    private Array<Dictionary> BuildAbilityEntriesForHud(Unit unit)
+    private Array<Dictionary> BuildAbilityEntriesForHud(Unit unit, bool healingOnly = false)
     {
         var entries = new Array<Dictionary>();
         if (unit == null || unit.AbilityIds == null)
@@ -3095,6 +3120,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var profile = ResolveActionProfile(unit, abilityId);
+            if (healingOnly && profile.ActionType != "heal")
+            {
+                continue;
+            }
+
             var actionName = string.IsNullOrEmpty(profile.ActionName) ? GetActionDisplayName(abilityId) : profile.ActionName;
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
             var valueText = profile.ActionType == "heal"
@@ -3128,14 +3158,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 : abilityId == "melee"
                     ? "Requirement: melee weapon equipped (or no weapon equipped)"
                 : "Requirement: none";
-            var isEnabled = CanUseActionProfileNow(unit, profile);
+            var isEnabled = healingOnly
+                ? cooldownRemaining <= 0 && CanCastAction(unit, profile)
+                : CanUseActionProfileNow(unit, profile);
             var stateLabel = cooldownRemaining > 0
                 ? $"Status: on cooldown ({cooldownRemaining} remaining)"
                 : profile.RequiresRangedWeapon && !CanUseRangedWeaponAbility(unit)
                     ? "Status: requires a ranged weapon"
                     : abilityId == "melee" && !CanUseMeleeAbility(unit)
                         ? "Status: requires a melee weapon"
-                    : !profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn()
+                    : _flowState == BattleFlowState.Combat && !profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn()
                         ? "Status: action already used"
                     : !CanCastAction(unit, profile)
                         ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
@@ -3275,13 +3307,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        var active = _turnManager?.GetActiveUnit();
+        var active = _flowState == BattleFlowState.Combat
+            ? _turnManager?.GetActiveUnit()
+            : _flowState == BattleFlowState.Exploration
+                ? GetSelectedCharacterPartyUnit() ?? GetExplorerUnit()
+                : null;
         if (!IsUsableUnit(active) || active.Team != "player" || active.IsDead)
         {
             return;
         }
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
+        if (_flowState == BattleFlowState.Exploration && actionProfile.ActionType != "heal")
+        {
+            return;
+        }
+
         var center = CellCenter(active.GridPos);
         canvas.DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
@@ -3306,7 +3347,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     : GetLivingEnemyAtCell(active.Team, cell);
                 var valid = actionProfile.ActionType == "area_attack"
                     ? HasClearLineOfSight(active.GridPos, cell)
-                    : target != null && active.CanUseActionAtRange(target, actionProfile.Range, _allUnits);
+                    : target != null && (actionProfile.ActionType == "heal"
+                        ? active.CanHealTarget(target, actionProfile.Range, _allUnits) && HasClearUnitLineOfSight(active, target)
+                        : active.CanUseActionAtRange(target, actionProfile.Range, _allUnits));
 
                 var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
                 var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
@@ -5473,18 +5516,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var orderedSlots = new List<string>(equippedBySlot.Keys);
         orderedSlots.Sort();
-
-        var parts = new List<string>();
-        foreach (var slot in orderedSlots)
-        {
-            var itemId = equippedBySlot[slot];
-            var itemData = _gameData.GetItem(itemId);
-            var itemName = itemData.Count == 0 ? itemId : GetString(itemData, "name", itemId);
-            var slotLabel = slot.Replace("-a", " A").Replace("-b", " B");
-            parts.Add($"{slotLabel}: {itemName}");
-        }
-
-        return $"Equipped: {string.Join(" | ", parts)}";
+        return $"Equipped: {orderedSlots.Count} item{(orderedSlots.Count == 1 ? "" : "s")}";
     }
 
     private Array<Dictionary> BuildInventoryEquippedEntries(Unit unit)

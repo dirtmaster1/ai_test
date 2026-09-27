@@ -67,6 +67,15 @@ public partial class BattleController
 
         if (_flowState == BattleFlowState.Exploration)
         {
+            if (_awaitingPlayerAttackDirection)
+            {
+                if (keyEvent.Keycode == Key.Escape)
+                {
+                    CancelAttackMode();
+                }
+                return;
+            }
+
             HandleExplorationInput(keyEvent);
             return;
         }
@@ -394,6 +403,47 @@ public partial class BattleController
 
         if (mouseEvent.ButtonIndex != MouseButton.Left)
         {
+            return;
+        }
+
+        if (_flowState == BattleFlowState.Exploration)
+        {
+            var explorerActor = GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+            if (!IsUsableUnit(explorerActor) || explorerActor.IsDead)
+            {
+                CancelAttackMode(false);
+                return;
+            }
+
+            var explorationProfile = ResolveActionProfile(explorerActor, GetSelectedAbilityId(explorerActor));
+            if (explorationProfile.ActionType != "heal")
+            {
+                CancelAttackMode(false);
+                return;
+            }
+
+            var targetCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
+            var allyTarget = GetLivingAllyAtCell(explorerActor.Team, targetCell);
+            if (allyTarget == null || !TryHealTarget(
+                    explorerActor,
+                    allyTarget,
+                    explorationProfile.HealAmount,
+                    explorationProfile.Range,
+                    explorationProfile.ActionId,
+                    explorationProfile.ActionName,
+                    explorationProfile.CooldownTurns,
+                    explorationProfile.MagicPointCost,
+                    explorationProfile.IsMagical,
+                    consumeAction: false))
+            {
+                return;
+            }
+
+            CancelAttackMode(false);
+            SetStatusHelp();
+            SyncHudFromGameState();
+            _persistence.PersistSaveGame(false);
+            QueueRedraw();
             return;
         }
 

@@ -39,9 +39,18 @@ public partial class BattleController
 
         var activePlayer = GetActivePlayerUnit();
         var mainActionEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
-        var abilityPanelEnabled = _flowState == BattleFlowState.Combat && activePlayer != null;
-        _hud.SetActionButtonsEnabled(mainActionEnabled, _flowState == BattleFlowState.Combat);
-        _hud.SetAbilityButtons(BuildAbilityEntriesForHud(activePlayer), abilityPanelEnabled);
+        var actionBarUnit = _flowState == BattleFlowState.Combat
+            ? activePlayer
+            : _flowState == BattleFlowState.Exploration
+                ? GetSelectedCharacterPartyUnit() ?? GetExplorerUnit()
+                : null;
+        var healingOnly = _flowState == BattleFlowState.Exploration;
+        var actionBarAbilities = BuildAbilityEntriesForHud(actionBarUnit, healingOnly);
+        var abilityPanelEnabled = _flowState == BattleFlowState.Combat
+            ? activePlayer != null
+            : healingOnly && actionBarAbilities.Count > 0;
+        _hud.SetActionButtonsEnabled(abilityPanelEnabled, _flowState == BattleFlowState.Combat);
+        _hud.SetAbilityButtons(actionBarAbilities, abilityPanelEnabled);
         _hud.SetInventoryGold(_partyGold);
 
         var inventoryTarget = GetInventoryTargetUnit();
@@ -52,7 +61,8 @@ public partial class BattleController
                 _hud.BuildCharacterSummary(
                     inventoryTarget,
                     GetActionDisplayName(GetSelectedAbilityId(inventoryTarget)),
-                    GetActionDisplayName(inventoryTarget.PrimaryAbilityId)
+                    GetActionDisplayName(inventoryTarget.PrimaryAbilityId),
+                    includeActionNames: false
                 )
             );
             _hud.SetInventoryAbilities(BuildAbilityEntriesForHud(inventoryTarget));
