@@ -4828,6 +4828,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             dialog.Confirmed -= HandleConfirmed;
             dialog.Canceled -= HandleCanceled;
             dialog.CloseRequested -= HandleCanceled;
+            dialog.Exclusive = false;
             dialog.QueueFree();
         }
     }
@@ -4841,53 +4842,106 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             Exclusive = true
         };
 
-        dialog.AddChild(CreateScrollableDialogBody(bodyText, new Vector2(560.0f, 180.0f)));
+        var optionHeight = Mathf.Min(choices.Count * 44, 352);
+        var dialogContent = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(600.0f, 220.0f + optionHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        var contentLayout = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        dialogContent.AddChild(contentLayout);
 
-        var optionList = new OptionButton
+        var dialogueBody = CreateScrollableDialogBody(bodyText, new Vector2(560.0f, 180.0f));
+        dialogueBody.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        contentLayout.AddChild(dialogueBody);
+
+        var optionScroll = new ScrollContainer
+        {
+            CustomMinimumSize = new Vector2(560.0f, Mathf.Min(choices.Count * 44.0f, 352.0f)),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkEnd
+        };
+        var optionList = new VBoxContainer
         {
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
+        optionScroll.AddChild(optionList);
 
+        var completion = new TaskCompletionSource<int>();
         for (var i = 0; i < choices.Count; i++)
         {
             var label = GetString(choices[i], "label", $"Choice {i + 1}");
-            optionList.AddItem(label, i);
+            var choiceIndex = i;
+            var optionButton = new Button
+            {
+                Text = $"{choiceIndex + 1}. {label}",
+                CustomMinimumSize = new Vector2(0.0f, 40.0f),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+            };
+            var shortcutKey = GetChoiceShortcutKey(choiceIndex);
+            if (shortcutKey != Key.None)
+            {
+                var shortcut = new Shortcut();
+                shortcut.Events.Add(new InputEventKey { Keycode = shortcutKey });
+                optionButton.Shortcut = shortcut;
+                optionButton.ShortcutInTooltip = false;
+            }
+
+            optionButton.Pressed += () => completion.TrySetResult(choiceIndex);
+            optionList.AddChild(optionButton);
         }
 
-        dialog.AddChild(optionList);
-        dialog.GetOkButton().Text = "Choose";
+        contentLayout.AddChild(optionScroll);
+        dialog.AddChild(dialogContent);
+        dialog.GetOkButton().Visible = false;
         dialog.AddCancelButton("End");
         TacticalTheme.ApplyDialog(dialog);
+        dialogContent.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel());
         AddChild(dialog);
-
-        var completion = new TaskCompletionSource<int>();
-
-        void HandleConfirmed()
-        {
-            completion.TrySetResult((int)optionList.GetSelectedId());
-        }
 
         void HandleCanceled()
         {
             completion.TrySetResult(-1);
         }
 
-        dialog.Confirmed += HandleConfirmed;
         dialog.Canceled += HandleCanceled;
         dialog.CloseRequested += HandleCanceled;
 
         try
         {
-            dialog.PopupCentered(new Vector2I(640, 380));
+            dialog.PopupCentered(new Vector2I(640, 380 + optionHeight));
             return await completion.Task;
         }
         finally
         {
-            dialog.Confirmed -= HandleConfirmed;
             dialog.Canceled -= HandleCanceled;
             dialog.CloseRequested -= HandleCanceled;
+            dialog.Exclusive = false;
             dialog.QueueFree();
         }
+    }
+
+    private static Key GetChoiceShortcutKey(int choiceIndex)
+    {
+        return choiceIndex switch
+        {
+            0 => Key.Key1,
+            1 => Key.Key2,
+            2 => Key.Key3,
+            3 => Key.Key4,
+            4 => Key.Key5,
+            5 => Key.Key6,
+            6 => Key.Key7,
+            7 => Key.Key8,
+            8 => Key.Key9,
+            9 => Key.Key0,
+            _ => Key.None
+        };
     }
 
     private static RichTextLabel CreateScrollableDialogBody(string bodyText, Vector2 size)
@@ -4945,6 +4999,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             dialog.Confirmed -= HandleConfirmed;
             dialog.Canceled -= HandleCanceled;
             dialog.CloseRequested -= HandleCanceled;
+            dialog.Exclusive = false;
             dialog.QueueFree();
         }
     }

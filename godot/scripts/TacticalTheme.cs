@@ -63,6 +63,9 @@ public static class TacticalTheme
             return;
         }
 
+        var frame = CreateFramePanel();
+        dialog.AddThemeStyleboxOverride("embedded_border", frame);
+        dialog.AddThemeStyleboxOverride("embedded_unfocused_border", (StyleBox)frame.Duplicate());
         ApplyDialogContent(dialog);
         ApplyButton(dialog.GetOkButton(), true, 15);
         var cancelButton = dialog.GetCancelButton();
