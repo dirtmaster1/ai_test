@@ -9,6 +9,7 @@ public partial class BattleController
     // Architecture: Input orchestration only (keyboard/mouse -> high-level intent).
     public override void _Input(InputEvent @event)
     {
+        UpdateFogOfWar();
         if (_flowState == BattleFlowState.Defeat)
         {
             return;

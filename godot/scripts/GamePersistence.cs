@@ -139,6 +139,7 @@ public sealed class GamePersistence
             { "opened_prop_ids_by_map", BuildSetMapSnapshot(_host.OpenedPropIdsByMap) },
             { "defeated_enemy_ids_by_map", BuildSetMapSnapshot(_host.DefeatedEnemyIdsByMap) },
             { "looted_bag_ids_by_map", BuildSetMapSnapshot(_host.LootedBagIdsByMap) },
+            { "revealed_fog_cell_ids_by_map", BuildSetMapSnapshot(_host.RevealedFogCellIdsByMap) },
             { "loot_bags_by_map", BuildLootBagsByMapSnapshot(_host.LootBagsByMap) },
             { "party_roster", partyRoster },
             { "reserve_roster", reserveRoster },
@@ -159,6 +160,7 @@ public sealed class GamePersistence
         _host.OpenedPropIdsByMap.Clear();
         _host.DefeatedEnemyIdsByMap.Clear();
         _host.LootedBagIdsByMap.Clear();
+        _host.RevealedFogCellIdsByMap.Clear();
         _host.LootBagsByMap.Clear();
 
         _host.CurrentMapId = GetString(saveData, "current_map_id", "forest-town");
@@ -171,6 +173,7 @@ public sealed class GamePersistence
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_prop_ids_by_map"), _host.OpenedPropIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "defeated_enemy_ids_by_map"), _host.DefeatedEnemyIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "looted_bag_ids_by_map"), _host.LootedBagIdsByMap);
+        RestoreSetMapSnapshot(GetDictionary(saveData, "revealed_fog_cell_ids_by_map"), _host.RevealedFogCellIdsByMap);
         RestoreLootBagsByMapSnapshot(GetDictionary(saveData, "loot_bags_by_map"), _host.LootBagsByMap);
         _host.RestoreRecruitedNpcIds(GetStringArray(saveData, "recruited_npc_ids"));
 

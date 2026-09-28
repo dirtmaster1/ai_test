@@ -19,6 +19,7 @@ public interface IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> OpenedPropIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> DefeatedEnemyIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> LootedBagIdsByMap { get; }
+    System.Collections.Generic.Dictionary<string, HashSet<string>> RevealedFogCellIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> LootBagsByMap { get; }
 
     string GetFlowStateToken();

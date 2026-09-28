@@ -11,6 +11,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const int CellSize = 64;
     private const int MaxPartyMembers = 5;
     private const int DefaultAggroTriggerRange = 4;
+    private const int FogOfWarVisionRange = 7;
     private const float GridLineThickness = 2.0f;
     private const ulong ManualEndTurnDebounceMs = 220;
     private const ulong PostPlayerActionMouseMoveLockMs = 300;
@@ -39,7 +40,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly Array<Unit> _playerUnits = new();
     private readonly Array<Unit> _enemyUnits = new();
     private readonly Array<Vector2I> _wallCells = new();
+    private readonly Array<Vector2I> _mapFogCells = new();
     private readonly HashSet<Vector2I> _walkableCells = new();
+    private readonly HashSet<Vector2I> _mapFogCellSet = new();
+    private readonly HashSet<Vector2I> _visibleFogCells = new();
     private readonly Array<Dictionary> _mapDoors = new();
     private readonly HashSet<Vector2I> _wallCellSet = new();
     private readonly System.Collections.Generic.Dictionary<Vector2I, Dictionary> _mapDoorByCell = new();
@@ -65,6 +69,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedPropIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _defeatedEnemyIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _revealedFogCellIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _pendingLevelUpNoticesByUnitId = new();
     private readonly RandomNumberGenerator _lootRng = new();
@@ -75,6 +80,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private BattleFlowState _flowState = BattleFlowState.Exploration;
     private bool _awaitingPlayerAttackDirection;
     private Unit _explorerUnit;
+    private Unit _fogVisibilityActor;
+    private Vector2I _fogVisibilityAnchorCell = new(-1, -1);
+    private string _fogVisibilityMapId = "";
     private Unit _selectionHighlightedUnit;
     private string _activeEncounterId = "";
     private string _currentMapId = "forest-town";
@@ -216,6 +224,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         SyncHudFromGameState();
+        UpdateFogOfWar();
         CenterViewOnCurrentFocus();
         QueueRedraw();
     }
@@ -246,6 +255,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.LevelUpRequested -= OnHudLevelUpRequested;
         }
 
+        UpdateFogOfWar();
         _persistence.PersistSaveGame(false);
     }
 
@@ -295,11 +305,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _hud?.ClearWorldHoverTooltip();
+        UpdateFogOfWar();
         _mapLoader?.DrawMapFeaturesOverlay(canvas, _mapTransitions, _gridWidth, _gridHeight, CellSize);
         UpdateFocusedUnitCellHighlight();
-        DrawMapInteractablesOverlay(canvas);
         DrawMovementPreviewOverlay(canvas);
         DrawAttackPreviewOverlay(canvas);
+        DrawFogOfWarOverlay(canvas);
+        DrawMapInteractablesOverlay(canvas);
         DrawHoveredUnitTooltip();
         DrawHoveredInteractableTooltip();
     }
@@ -313,6 +325,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         PruneInvalidUnitReferences();
+        UpdateFogOfWar();
 
         // Always reset to movement-ready input when turn ownership changes.
         _mouseMoveInputLockedUntilMs = 0;
@@ -865,6 +878,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
+        UpdateFogOfWar();
+        if (!IsFogCellCurrentlyVisible(targetCell))
+        {
+            return;
+        }
+
         EnlistNearbyCombatEnemies();
         var selectedAbilityId = GetSelectedAbilityId(active);
         var actionProfile = ResolveActionProfile(active, selectedAbilityId);
@@ -1633,6 +1652,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _wallCells.Clear();
+        _mapFogCells.Clear();
+        _mapFogCellSet.Clear();
+        _visibleFogCells.Clear();
+        _fogVisibilityActor = null;
+        _fogVisibilityAnchorCell = new Vector2I(-1, -1);
+        _fogVisibilityMapId = "";
         _wallCellSet.Clear();
         _walkableCells.Clear();
         _mapDoors.Clear();
@@ -1650,6 +1675,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _gridHeight = Mathf.Max(1, GetInt(mapData, "height", DefaultGridHeight));
         ClampViewPositionToBounds();
         _mapLoader?.SetActiveMapVisual(_currentMapId);
+        var mapCells = _mapLoader?.GetBaseLayerUsedCells(_currentMapId);
+        if (mapCells != null)
+        {
+            foreach (var cell in mapCells)
+            {
+                AddFogMapCell(cell);
+            }
+        }
         LoadClearedEncounterStateForCurrentMap();
         LoadMapInteractionStateForCurrentMap();
 
@@ -1659,12 +1692,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             _wallCells.Add(wallCell);
             _wallCellSet.Add(wallCell);
+            AddFogMapCell(wallCell);
         }
 
         var walkableCells = TryGetVector2IArray(mapData, "walkable_cells");
         foreach (var walkableCell in walkableCells)
         {
             _walkableCells.Add(walkableCell);
+            AddFogMapCell(walkableCell);
         }
 
         var doors = TryGetDictionaryArray(mapData, "doors");
@@ -1778,6 +1813,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var fromCell = unit.GridPos;
         unit.SetGridPos(targetCell);
+        UpdateFogOfWar();
         _eventBus?.EmitSignal(EventBus.SignalName.UnitMoved, unit, fromCell, targetCell);
         SetStatusHelp();
         QueueRedraw();
@@ -3471,7 +3507,138 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void DrawMapInteractablesOverlay(CanvasItem canvas)
     {
-        _mapLoader?.DrawMapInteractablesOverlay(canvas, BuildVisibleMapProps(), _lootBags, _openedPropIds, CellSize);
+        _mapLoader?.DrawMapInteractablesOverlay(canvas, BuildVisibleMapProps(), BuildRevealedLootBags(), _openedPropIds, CellSize);
+    }
+
+    private void AddFogMapCell(Vector2I cell)
+    {
+        if (_mapFogCellSet.Add(cell))
+        {
+            _mapFogCells.Add(cell);
+        }
+    }
+
+    private void UpdateFogOfWar()
+    {
+        if (string.IsNullOrWhiteSpace(_currentMapId))
+        {
+            return;
+        }
+
+        Unit actor = null;
+        if (_flowState == BattleFlowState.Combat)
+        {
+            var activeUnit = _turnManager?.GetActiveUnit();
+            if (IsUsableUnit(activeUnit) && !activeUnit.IsDead && activeUnit.Team == "player")
+            {
+                actor = activeUnit;
+            }
+            else if (IsUsableUnit(_fogVisibilityActor) && !_fogVisibilityActor.IsDead && _fogVisibilityActor.Team == "player")
+            {
+                actor = _fogVisibilityActor;
+            }
+        }
+        else if (_flowState == BattleFlowState.Exploration)
+        {
+            actor = GetExplorerUnit();
+        }
+
+        if (!IsUsableUnit(actor) || actor.IsDead || actor.Team != "player")
+        {
+            return;
+        }
+
+        var anchorCell = actor.GridPos;
+        if (_fogVisibilityActor == actor && _fogVisibilityAnchorCell == anchorCell && _fogVisibilityMapId == _currentMapId)
+        {
+            UpdateFogEnemyVisibility();
+            return;
+        }
+
+        _fogVisibilityActor = actor;
+        _fogVisibilityAnchorCell = anchorCell;
+        _fogVisibilityMapId = _currentMapId;
+        _visibleFogCells.Clear();
+
+        if (!_revealedFogCellIdsByMap.TryGetValue(_currentMapId, out var revealedCells))
+        {
+            revealedCells = new HashSet<string>();
+            _revealedFogCellIdsByMap[_currentMapId] = revealedCells;
+        }
+
+        if (_mapFogCells.Count == 0)
+        {
+            for (var x = 0; x < _gridWidth; x++)
+            {
+                for (var y = 0; y < _gridHeight; y++)
+                {
+                    AddFogMapCell(new Vector2I(x, y));
+                }
+            }
+        }
+
+        foreach (var cell in _mapFogCells)
+        {
+            if (!Unit.IsWithinRange(anchorCell, cell, FogOfWarVisionRange) || !HasClearLineOfSight(anchorCell, cell))
+            {
+                continue;
+            }
+
+            _visibleFogCells.Add(cell);
+            revealedCells.Add(GetFogCellId(cell));
+        }
+
+        UpdateFogEnemyVisibility();
+    }
+
+    private void UpdateFogEnemyVisibility()
+    {
+        foreach (var enemy in _enemyUnits)
+        {
+            if (!IsUsableUnit(enemy))
+            {
+                continue;
+            }
+
+            enemy.Visible = !enemy.IsDead && _visibleFogCells.Contains(enemy.GetClosestCell(_fogVisibilityAnchorCell));
+        }
+    }
+
+    private void DrawFogOfWarOverlay(CanvasItem canvas)
+    {
+        UpdateFogOfWar();
+        _revealedFogCellIdsByMap.TryGetValue(_currentMapId, out var revealedCells);
+        foreach (var cell in _mapFogCells)
+        {
+            if (_visibleFogCells.Contains(cell))
+            {
+                continue;
+            }
+
+            var explored = revealedCells != null && revealedCells.Contains(GetFogCellId(cell));
+            var fogColor = explored
+                ? new Color(0.015f, 0.018f, 0.02f, 0.62f)
+                : new Color(0.005f, 0.006f, 0.008f, 1.0f);
+            canvas.DrawRect(new Rect2(cell.X * CellSize, cell.Y * CellSize, CellSize, CellSize), fogColor, true);
+        }
+    }
+
+    private bool IsFogCellCurrentlyVisible(Vector2I cell)
+    {
+        UpdateFogOfWar();
+        return _visibleFogCells.Contains(cell);
+    }
+
+    private bool IsFogCellRevealed(Vector2I cell)
+    {
+        UpdateFogOfWar();
+        return _revealedFogCellIdsByMap.TryGetValue(_currentMapId, out var revealedCells)
+            && revealedCells.Contains(GetFogCellId(cell));
+    }
+
+    private static string GetFogCellId(Vector2I cell)
+    {
+        return $"{cell.X},{cell.Y}";
     }
 
     private void UpdateFocusedUnitCellHighlight()
@@ -3509,7 +3676,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void DrawHoveredUnitTooltip()
     {
         var cell = WorldToCell(ToLocal(GetGlobalMousePosition()));
-        if (!IsInBounds(cell))
+        if (!IsInBounds(cell) || !IsFogCellCurrentlyVisible(cell))
         {
             return;
         }
@@ -3542,7 +3709,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void DrawHoveredInteractableTooltip()
     {
         var cell = WorldToCell(ToLocal(GetGlobalMousePosition()));
-        if (!IsInBounds(cell) || GetLivingUnitAtCell(cell) != null)
+        if (!IsInBounds(cell) || !IsFogCellRevealed(cell) || GetLivingUnitAtCell(cell) != null)
         {
             return;
         }
@@ -3655,19 +3822,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool TryOpenExplorationInteractionAtCell(Vector2I clickedCell)
     {
+        UpdateFogOfWar();
         if (_flowState != BattleFlowState.Exploration)
         {
             return false;
         }
 
         var explorer = GetExplorerUnit();
-        if (explorer == null || !IsInBounds(clickedCell))
+        if (explorer == null || !IsInBounds(clickedCell) || !IsFogCellRevealed(clickedCell))
         {
             return false;
         }
 
         var visibleMapProps = BuildVisibleMapProps();
-        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, visibleMapProps, _lootBags, _openedPropIds, _gameData, out var entries, out var statusText))
+        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, visibleMapProps, BuildRevealedLootBags(), _openedPropIds, _gameData, out var entries, out var statusText))
         {
             return false;
         }
@@ -3729,7 +3897,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 if (TryExecuteExplorationInteractionById(explorer, firstInteractionId))
                 {
-                    _mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, BuildVisibleMapProps(), _lootBags, _openedPropIds, _gameData, out entries, out _);
+                    _mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, BuildVisibleMapProps(), BuildRevealedLootBags(), _openedPropIds, _gameData, out entries, out _);
                     AppendReserveEntriesForRestCell(clickedCell, entries);
                 }
             }
@@ -4586,12 +4754,28 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private Array<Dictionary> BuildVisibleMapProps()
     {
+        UpdateFogOfWar();
         var visible = new Array<Dictionary>();
         foreach (var prop in _mapProps)
         {
-            if (!ShouldHideNpcProp(prop))
+            var cell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
+            if (!ShouldHideNpcProp(prop) && IsFogCellRevealed(cell))
             {
                 visible.Add(prop);
+            }
+        }
+
+        return visible;
+    }
+
+    private Array<Dictionary> BuildRevealedLootBags()
+    {
+        var visible = new Array<Dictionary>();
+        foreach (var bag in _lootBags)
+        {
+            if (IsFogCellRevealed(GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999))))
+            {
+                visible.Add(bag);
             }
         }
 
@@ -7046,6 +7230,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool TryOpenDoorAtCell(Vector2I cell)
     {
+        if (!IsFogCellRevealed(cell))
+        {
+            return false;
+        }
+
         if (_flowState != BattleFlowState.Exploration)
         {
             return false;
@@ -7085,6 +7274,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         door["is_open"] = shouldOpen;
+        _fogVisibilityActor = null;
         _mapLoader?.SetDoorVisual(_currentMapId, doorCell, shouldOpen);
         _hud?.AddCombatLogEntry(shouldOpen
             ? $"{explorer.UnitName} opened a door."
@@ -7195,6 +7385,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedPropIdsByMap => _openedPropIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.DefeatedEnemyIdsByMap => _defeatedEnemyIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.RevealedFogCellIdsByMap => _revealedFogCellIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;
 
     string IGamePersistenceHost.GetFlowStateToken() => _flowState == BattleFlowState.Combat ? "combat" : (_flowState == BattleFlowState.Defeat ? "defeat" : "exploration");

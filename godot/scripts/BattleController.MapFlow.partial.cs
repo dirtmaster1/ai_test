@@ -21,6 +21,7 @@ public partial class BattleController
         ClearMovementPreviewPath();
         PruneInvalidUnitReferences();
         _explorerUnit = GetExplorerUnit();
+        UpdateFogOfWar();
 
         foreach (var unit in _allUnits)
         {

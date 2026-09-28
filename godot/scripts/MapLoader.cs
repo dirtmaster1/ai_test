@@ -129,6 +129,18 @@ public partial class MapLoader : Node
         }
     }
 
+    public Array<Vector2I> GetBaseLayerUsedCells(string mapId)
+    {
+        if (_mapLayersById.Count == 0)
+        {
+            CacheMapLayers();
+        }
+
+        return _mapLayersById.TryGetValue(mapId + BaseSuffix, out var layer)
+            ? layer.GetUsedCells()
+            : new Array<Vector2I>();
+    }
+
     private void CacheMapLayers()
     {
         _mapLayersById.Clear();
