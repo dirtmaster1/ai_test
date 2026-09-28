@@ -295,9 +295,13 @@ public partial class MapLoader : Node
             var cell = pair.Key;
             var cellSnapshot = pair.Value;
 
-            if (cellSnapshot.TerrainType == "wall")
+            if (cellSnapshot.TerrainType == "wall" || cellSnapshot.TerrainType == "water")
             {
-                wallCells.Add(cell);
+                if (cellSnapshot.TerrainType == "wall")
+                {
+                    wallCells.Add(cell);
+                }
+
                 continue;
             }
 

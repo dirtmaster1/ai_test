@@ -33,6 +33,7 @@ On tiles in each `*-base` layer, set custom data keys in the TileSet.
 
 - `floor`: walkable, does not block line of sight
 - `wall`: not walkable, blocks line of sight
+- `water`: not walkable, does not block line of sight
 - `door`: starts closed (not walkable, blocks line of sight)
 
 ### `door_id` (optional, door tiles only)
