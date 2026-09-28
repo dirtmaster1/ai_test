@@ -12,6 +12,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const int MaxPartyMembers = 5;
     private const int DefaultAggroTriggerRange = 4;
     private const int FogOfWarVisionRange = 7;
+    private const int FogTexturePixelsPerCell = 8;
+    private const int FogTexturePaddingCells = 1;
+    private const float FogEdgeFeatherPixels = 32.0f;
     private const float GridLineThickness = 2.0f;
     private const ulong ManualEndTurnDebounceMs = 220;
     private const ulong PostPlayerActionMouseMoveLockMs = 300;
@@ -44,6 +47,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly HashSet<Vector2I> _walkableCells = new();
     private readonly HashSet<Vector2I> _mapFogCellSet = new();
     private readonly HashSet<Vector2I> _visibleFogCells = new();
+    private readonly HashSet<Vector2I> _fogOccludedCells = new();
+    private ImageTexture _fogOverlayTexture;
+    private Rect2 _fogOverlayRect;
     private readonly Array<Dictionary> _mapDoors = new();
     private readonly HashSet<Vector2I> _wallCellSet = new();
     private readonly System.Collections.Generic.Dictionary<Vector2I, Dictionary> _mapDoorByCell = new();
@@ -1655,6 +1661,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mapFogCells.Clear();
         _mapFogCellSet.Clear();
         _visibleFogCells.Clear();
+        _fogOccludedCells.Clear();
+        _fogOverlayTexture = null;
         _fogVisibilityActor = null;
         _fogVisibilityAnchorCell = new Vector2I(-1, -1);
         _fogVisibilityMapId = "";
@@ -3559,6 +3567,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _fogVisibilityAnchorCell = anchorCell;
         _fogVisibilityMapId = _currentMapId;
         _visibleFogCells.Clear();
+        _fogOccludedCells.Clear();
 
         if (!_revealedFogCellIdsByMap.TryGetValue(_currentMapId, out var revealedCells))
         {
@@ -3579,7 +3588,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var cell in _mapFogCells)
         {
-            if (!Unit.IsWithinRange(anchorCell, cell, FogOfWarVisionRange) || !HasClearLineOfSight(anchorCell, cell))
+            if (!Unit.IsWithinRange(anchorCell, cell, FogOfWarVisionRange + 1))
+            {
+                continue;
+            }
+
+            if (!HasClearLineOfSight(anchorCell, cell))
+            {
+                _fogOccludedCells.Add(cell);
+                continue;
+            }
+
+            if (!Unit.IsWithinRange(anchorCell, cell, FogOfWarVisionRange))
             {
                 continue;
             }
@@ -3589,6 +3609,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         UpdateFogEnemyVisibility();
+        RebuildFogOverlayTexture(revealedCells);
     }
 
     private void UpdateFogEnemyVisibility()
@@ -3607,20 +3628,106 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void DrawFogOfWarOverlay(CanvasItem canvas)
     {
         UpdateFogOfWar();
-        _revealedFogCellIdsByMap.TryGetValue(_currentMapId, out var revealedCells);
+        if (_fogOverlayTexture != null)
+        {
+            var visualOffset = IsUsableUnit(_fogVisibilityActor)
+                ? _fogVisibilityActor.Position - CellCenter(_fogVisibilityAnchorCell)
+                : Vector2.Zero;
+            var drawRect = new Rect2(_fogOverlayRect.Position + visualOffset, _fogOverlayRect.Size);
+            canvas.DrawTextureRect(_fogOverlayTexture, drawRect, false);
+        }
+    }
+
+    private void RebuildFogOverlayTexture(HashSet<string> revealedCells)
+    {
+        if (_mapFogCells.Count == 0)
+        {
+            _fogOverlayTexture = null;
+            return;
+        }
+
+        var minX = _mapFogCells[0].X;
+        var minY = _mapFogCells[0].Y;
+        var maxX = minX;
+        var maxY = minY;
         foreach (var cell in _mapFogCells)
         {
-            if (_visibleFogCells.Contains(cell))
-            {
-                continue;
-            }
-
-            var explored = revealedCells != null && revealedCells.Contains(GetFogCellId(cell));
-            var fogColor = explored
-                ? new Color(0.015f, 0.018f, 0.02f, 0.62f)
-                : new Color(0.005f, 0.006f, 0.008f, 1.0f);
-            canvas.DrawRect(new Rect2(cell.X * CellSize, cell.Y * CellSize, CellSize, CellSize), fogColor, true);
+            minX = Mathf.Min(minX, cell.X);
+            minY = Mathf.Min(minY, cell.Y);
+            maxX = Mathf.Max(maxX, cell.X);
+            maxY = Mathf.Max(maxY, cell.Y);
         }
+
+        var textureMinX = minX - FogTexturePaddingCells;
+        var textureMinY = minY - FogTexturePaddingCells;
+        var cellWidth = maxX - minX + 1 + FogTexturePaddingCells * 2;
+        var cellHeight = maxY - minY + 1 + FogTexturePaddingCells * 2;
+        var textureWidth = cellWidth * FogTexturePixelsPerCell;
+        var textureHeight = cellHeight * FogTexturePixelsPerCell;
+        var fogAlphaByCell = new byte[cellWidth * cellHeight];
+        System.Array.Fill(fogAlphaByCell, (byte)255);
+        var canFeatherByCell = new bool[cellWidth * cellHeight];
+        foreach (var cell in _mapFogCells)
+        {
+            var cellIndex = (cell.Y - textureMinY) * cellWidth + cell.X - textureMinX;
+            var alpha = _visibleFogCells.Contains(cell)
+                ? 0
+                : revealedCells.Contains(GetFogCellId(cell))
+                    ? 158
+                    : 255;
+            fogAlphaByCell[cellIndex] = (byte)alpha;
+            canFeatherByCell[cellIndex] = !_fogOccludedCells.Contains(cell);
+        }
+
+        var pixels = new byte[textureWidth * textureHeight * 4];
+        for (var pixelY = 0; pixelY < textureHeight; pixelY++)
+        {
+            var worldY = textureMinY * CellSize + (pixelY + 0.5f) * CellSize / FogTexturePixelsPerCell;
+            var cellY = Mathf.FloorToInt(worldY / CellSize);
+            var localY = worldY - cellY * CellSize;
+            for (var pixelX = 0; pixelX < textureWidth; pixelX++)
+            {
+                var worldX = textureMinX * CellSize + (pixelX + 0.5f) * CellSize / FogTexturePixelsPerCell;
+                var cellX = Mathf.FloorToInt(worldX / CellSize);
+                var localX = worldX - cellX * CellSize;
+                var cellIndex = (cellY - textureMinY) * cellWidth + cellX - textureMinX;
+                var baseAlpha = fogAlphaByCell[cellIndex];
+                if (baseAlpha == 0)
+                {
+                    continue;
+                }
+
+                var nearestVisibleDistance = FogEdgeFeatherPixels;
+                if (canFeatherByCell[cellIndex])
+                {
+                    for (var offsetY = -1; offsetY <= 1; offsetY++)
+                    {
+                        for (var offsetX = -1; offsetX <= 1; offsetX++)
+                        {
+                            var neighbor = new Vector2I(cellX + offsetX, cellY + offsetY);
+                            if (!_visibleFogCells.Contains(neighbor))
+                            {
+                                continue;
+                            }
+
+                            var distanceX = offsetX < 0 ? localX : offsetX > 0 ? CellSize - localX : 0.0f;
+                            var distanceY = offsetY < 0 ? localY : offsetY > 0 ? CellSize - localY : 0.0f;
+                            nearestVisibleDistance = Mathf.Min(nearestVisibleDistance, Mathf.Sqrt(distanceX * distanceX + distanceY * distanceY));
+                        }
+                    }
+                }
+
+                var feather = Mathf.Clamp(nearestVisibleDistance / FogEdgeFeatherPixels, 0.0f, 1.0f);
+                var easedFeather = feather * feather * (3.0f - 2.0f * feather);
+                var alphaByte = (byte)Mathf.RoundToInt(baseAlpha * easedFeather);
+                var pixelIndex = (pixelY * textureWidth + pixelX) * 4;
+                pixels[pixelIndex + 3] = alphaByte;
+            }
+        }
+
+        var fogImage = Image.CreateFromData(textureWidth, textureHeight, false, Image.Format.Rgba8, pixels);
+        _fogOverlayTexture = ImageTexture.CreateFromImage(fogImage);
+        _fogOverlayRect = new Rect2(textureMinX * CellSize, textureMinY * CellSize, cellWidth * CellSize, cellHeight * CellSize);
     }
 
     private bool IsFogCellCurrentlyVisible(Vector2I cell)
@@ -7043,8 +7150,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var tween = CreateTween();
-        tween.SetTrans(Tween.TransitionType.Sine);
-        tween.SetEase(Tween.EaseType.Out);
+        tween.SetTrans(Tween.TransitionType.Linear);
         foreach (var pair in visualTo)
         {
             tween.Parallel().TweenProperty(pair.Key, "position", pair.Value, ExplorationStepSeconds);

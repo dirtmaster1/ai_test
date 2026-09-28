@@ -8,6 +8,7 @@ public partial class BattleOverlay : Node2D
     {
         _battleController = GetParentOrNull<BattleController>();
         ZIndex = 1;
+        TextureFilter = CanvasItem.TextureFilterEnum.Linear;
     }
 
     public override void _Process(double delta)
