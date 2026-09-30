@@ -5183,8 +5183,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             dialog.AddCancelButton("End");
         }
 
-        TacticalTheme.ApplyDialog(dialog);
         AddChild(dialog);
+        TacticalTheme.ApplyDialog(dialog);
 
         var completion = new TaskCompletionSource<bool>();
 
@@ -5285,9 +5285,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         dialog.AddChild(dialogContent);
         dialog.GetOkButton().Visible = false;
         dialog.AddCancelButton("End");
+        AddChild(dialog);
         TacticalTheme.ApplyDialog(dialog);
         dialogContent.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel());
-        AddChild(dialog);
 
         void HandleCanceled()
         {
@@ -5355,8 +5355,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         dialog.GetOkButton().Text = "Recruit";
         dialog.AddCancelButton("Not now");
-        TacticalTheme.ApplyDialog(dialog);
         AddChild(dialog);
+        TacticalTheme.ApplyDialog(dialog);
 
         var completion = new TaskCompletionSource<bool>();
 

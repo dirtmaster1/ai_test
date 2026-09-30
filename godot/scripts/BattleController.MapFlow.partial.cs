@@ -281,8 +281,8 @@ public partial class BattleController
 
         confirmation.GetOkButton().Text = "Travel";
         confirmation.AddCancelButton("Stay");
-        TacticalTheme.ApplyDialog(confirmation);
         AddChild(confirmation);
+        TacticalTheme.ApplyDialog(confirmation);
 
         var completion = new TaskCompletionSource<bool>();
 
@@ -324,8 +324,8 @@ public partial class BattleController
 
         confirmation.GetOkButton().Text = "Rest";
         confirmation.AddCancelButton("Not now");
-        TacticalTheme.ApplyDialog(confirmation);
         AddChild(confirmation);
+        TacticalTheme.ApplyDialog(confirmation);
 
         var completion = new TaskCompletionSource<bool>();
 

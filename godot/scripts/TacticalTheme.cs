@@ -94,13 +94,42 @@ public static class TacticalTheme
             {
                 ApplyButton(button);
             }
-            else if (child is PanelContainer panel)
+            else if (child is PanelContainer panelContainer)
             {
-                panel.AddThemeStyleboxOverride("panel", CreatePanel(true, 8));
+                panelContainer.AddThemeStyleboxOverride("panel", CreatePanel(true, 8));
+            }
+            else if (child is Panel panel)
+            {
+                var dialogPanelStyle = CreatePanel(false, 12);
+                dialogPanelStyle.BgColor = new Color(Iron.R, Iron.G, Iron.B, 1.0f);
+                panel.AddThemeStyleboxOverride("panel", dialogPanelStyle);
+                ApplyDecorativeDialogFrame(panel);
             }
 
             ApplyDialogContent(child);
         }
+    }
+
+    private static void ApplyDecorativeDialogFrame(Panel panel)
+    {
+        if (panel.GetNodeOrNull<NinePatchRect>("TacticalDialogFrame") != null)
+        {
+            return;
+        }
+
+        panel.AddChild(new NinePatchRect
+        {
+            Name = "TacticalDialogFrame",
+            Texture = GD.Load<Texture2D>("res://assets/ui/iron_brass_frame.png"),
+            PatchMarginLeft = 32,
+            PatchMarginTop = 32,
+            PatchMarginRight = 32,
+            PatchMarginBottom = 32,
+            AnchorRight = 1.0f,
+            AnchorBottom = 1.0f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest
+        });
     }
 
     public static void ApplyLabel(Label label, Color color, int fontSize)
