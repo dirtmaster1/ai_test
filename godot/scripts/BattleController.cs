@@ -49,6 +49,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly HashSet<Vector2I> _visibleFogCells = new();
     private readonly HashSet<Vector2I> _fogOccludedCells = new();
     private ImageTexture _fogOverlayTexture;
+    private ImageTexture _fogPreviousOverlayTexture;
+    private ShaderMaterial _fogOverlayMaterial;
+    private float _fogStepBlend = 1.0f;
     private Rect2 _fogOverlayRect;
     private readonly Array<Dictionary> _mapDoors = new();
     private readonly HashSet<Vector2I> _wallCellSet = new();
@@ -316,7 +319,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         UpdateFocusedUnitCellHighlight();
         DrawMovementPreviewOverlay(canvas);
         DrawAttackPreviewOverlay(canvas);
-        DrawFogOfWarOverlay(canvas);
+    }
+
+    public void DrawWorldForegroundOverlays(CanvasItem canvas)
+    {
         DrawMapInteractablesOverlay(canvas);
         DrawHoveredUnitTooltip();
         DrawHoveredInteractableTooltip();
@@ -1663,6 +1669,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _visibleFogCells.Clear();
         _fogOccludedCells.Clear();
         _fogOverlayTexture = null;
+        _fogPreviousOverlayTexture = null;
+        SetFogStepBlend(1.0f);
         _fogVisibilityActor = null;
         _fogVisibilityAnchorCell = new Vector2I(-1, -1);
         _fogVisibilityMapId = "";
@@ -3566,6 +3574,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _fogVisibilityActor = actor;
         _fogVisibilityAnchorCell = anchorCell;
         _fogVisibilityMapId = _currentMapId;
+        _fogPreviousOverlayTexture = null;
+        SetFogStepBlend(1.0f);
         _visibleFogCells.Clear();
         _fogOccludedCells.Clear();
 
@@ -3625,17 +3635,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private void DrawFogOfWarOverlay(CanvasItem canvas)
+    public void DrawFogOfWarOverlay(CanvasItem canvas)
     {
         UpdateFogOfWar();
         if (_fogOverlayTexture != null)
         {
-            var visualOffset = IsUsableUnit(_fogVisibilityActor)
-                ? _fogVisibilityActor.Position - CellCenter(_fogVisibilityAnchorCell)
-                : Vector2.Zero;
-            var drawRect = new Rect2(_fogOverlayRect.Position + visualOffset, _fogOverlayRect.Size);
-            canvas.DrawTextureRect(_fogOverlayTexture, drawRect, false);
+            if (canvas.Material is ShaderMaterial material)
+            {
+                _fogOverlayMaterial = material;
+                material.SetShaderParameter("previous_fog", _fogPreviousOverlayTexture ?? _fogOverlayTexture);
+                material.SetShaderParameter("step_blend", _fogStepBlend);
+            }
+            canvas.DrawTextureRect(_fogOverlayTexture, _fogOverlayRect, false);
         }
+    }
+
+    private void SetFogStepBlend(float progress)
+    {
+        _fogStepBlend = progress;
+        _fogOverlayMaterial?.SetShaderParameter("step_blend", progress);
     }
 
     private void RebuildFogOverlayTexture(HashSet<string> revealedCells)
@@ -7124,6 +7142,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var visualFrom = new System.Collections.Generic.Dictionary<Unit, Vector2>();
         var visualTo = new System.Collections.Generic.Dictionary<Unit, Vector2>();
 
+        UpdateFogOfWar();
+        var previousFogTexture = _fogOverlayTexture;
+        var previousFogRect = _fogOverlayRect;
         visualFrom[leader] = leader.Position;
         leader.SetGridPos(leaderNextCell);
         visualTo[leader] = leader.Position;
@@ -7149,6 +7170,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             follower.Position = visualFrom[follower];
         }
 
+        UpdateFogOfWar();
+        var stepFogTexture = _fogOverlayTexture;
+        if (previousFogTexture != null && previousFogRect == _fogOverlayRect)
+        {
+            _fogPreviousOverlayTexture = previousFogTexture;
+            SetFogStepBlend(0.0f);
+        }
+
         var tween = CreateTween();
         tween.SetTrans(Tween.TransitionType.Linear);
         foreach (var pair in visualTo)
@@ -7158,11 +7187,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var viewStartCenter = (GetViewportRect().Size * 0.5f - Position) / Scale;
         tween.Parallel().TweenMethod(Callable.From<float>(progress =>
+        {
+            if (_fogOverlayTexture == stepFogTexture)
+            {
+                SetFogStepBlend(progress);
+            }
             SetViewPositionClamped(GetViewportRect().Size * 0.5f -
-                viewStartCenter.Lerp(CellCenter(leaderNextCell), progress) * Scale)),
+                viewStartCenter.Lerp(CellCenter(leaderNextCell), progress) * Scale);
+        }),
             0.0f, 1.0f, ExplorationStepSeconds);
 
         await ToSignal(tween, Tween.SignalName.Finished);
+        if (_fogOverlayTexture == stepFogTexture)
+        {
+            _fogPreviousOverlayTexture = null;
+            SetFogStepBlend(1.0f);
+        }
         ResolveExplorationTraps();
         QueueRedraw();
         return true;
