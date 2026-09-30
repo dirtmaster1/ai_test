@@ -47,6 +47,19 @@ public partial class FogOfWarChecks : BattleController
             _leader.GridPos + delta, new List<Unit> { _leader });
     }
 
+    public void StartPath(Array<Vector2I> directions) => _movement = MovePath(directions);
+
+    private async Task<bool> MovePath(Array<Vector2I> directions)
+    {
+        foreach (var direction in directions)
+        {
+            var step = (Task<bool>)CallPrivate("TryMoveExplorationPartyStepAnimated",
+                _leader.GridPos + direction, new List<Unit> { _leader });
+            if (!await step) return false;
+        }
+        return true;
+    }
+
     public bool IsStepRunning() => _movement != null && !_movement.IsCompleted;
     public bool StepSucceeded() => _movement?.IsCompletedSuccessfully == true && _movement.Result;
 
@@ -57,6 +70,33 @@ public partial class FogOfWarChecks : BattleController
         return moved;
     }
 
+    public Dictionary BenchmarkFogRebuild()
+    {
+        Field("_gridWidth").SetValue(this, 96);
+        Field("_gridHeight").SetValue(this, 96);
+        ((Array<Vector2I>)Field("_mapFogCells").GetValue(this)).Clear();
+        ((HashSet<Vector2I>)Field("_mapFogCellSet").GetValue(this)).Clear();
+        ResetScenario();
+        var timings = new List<double>();
+        for (var sample = 0; sample < 12; sample++)
+        {
+            _leader.SetGridPos(new Vector2I(48 + sample % 2, 48));
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            CallPrivate("UpdateFogOfWar");
+            var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            if (sample >= 2) timings.Add(elapsed);
+        }
+        timings.Sort();
+        var texture = (ImageTexture)Field("_fogOverlayTexture").GetValue(this);
+        using var image = texture.GetImage();
+        return new Dictionary
+        {
+            { "median_ms", timings[timings.Count / 2] },
+            { "max_ms", timings[timings.Count - 1] },
+            { "sha256", System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image.GetData())) }
+        };
+    }
+
     public Dictionary FogState()
     {
         CallPrivate("UpdateFogOfWar");
@@ -65,6 +105,8 @@ public partial class FogOfWarChecks : BattleController
         return new Dictionary
         {
             { "texture", (ImageTexture)Field("_fogOverlayTexture").GetValue(this) },
+            { "previous_texture", (ImageTexture)Field("_fogPreviousOverlayTexture").GetValue(this)
+                ?? (ImageTexture)Field("_fogOverlayTexture").GetValue(this) },
             { "rect", (Rect2)Field("_fogOverlayRect").GetValue(this) },
             { "blend", (float)Field("_fogStepBlend").GetValue(this) },
             { "drawn_blend", ((ShaderMaterial)GetNode<Node2D>("Overlay/Fog").Material).GetShaderParameter("step_blend") },

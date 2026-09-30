@@ -3643,8 +3643,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (canvas.Material is ShaderMaterial material)
             {
                 _fogOverlayMaterial = material;
-                material.SetShaderParameter("previous_fog", _fogPreviousOverlayTexture ?? _fogOverlayTexture);
-                material.SetShaderParameter("step_blend", _fogStepBlend);
+                SetFogStepBlend(_fogStepBlend);
             }
             canvas.DrawTextureRect(_fogOverlayTexture, _fogOverlayRect, false);
         }
@@ -3653,7 +3652,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void SetFogStepBlend(float progress)
     {
         _fogStepBlend = progress;
-        _fogOverlayMaterial?.SetShaderParameter("step_blend", progress);
+        if (_fogOverlayMaterial != null && _fogOverlayTexture != null)
+        {
+            _fogOverlayMaterial.SetShaderParameter("previous_fog", _fogPreviousOverlayTexture ?? _fogOverlayTexture);
+            _fogOverlayMaterial.SetShaderParameter("current_fog", _fogOverlayTexture);
+            _fogOverlayMaterial.SetShaderParameter("step_blend", progress);
+        }
     }
 
     private void RebuildFogOverlayTexture(HashSet<string> revealedCells)
@@ -3697,55 +3701,84 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             canFeatherByCell[cellIndex] = !_fogOccludedCells.Contains(cell);
         }
 
-        var pixels = new byte[textureWidth * textureHeight * 4];
-        for (var pixelY = 0; pixelY < textureHeight; pixelY++)
+        var visibleNeighborMasks = new ushort[cellWidth * cellHeight];
+        foreach (var visibleCell in _visibleFogCells)
         {
-            var worldY = textureMinY * CellSize + (pixelY + 0.5f) * CellSize / FogTexturePixelsPerCell;
-            var cellY = Mathf.FloorToInt(worldY / CellSize);
-            var localY = worldY - cellY * CellSize;
-            for (var pixelX = 0; pixelX < textureWidth; pixelX++)
+            for (var offsetY = -1; offsetY <= 1; offsetY++)
             {
-                var worldX = textureMinX * CellSize + (pixelX + 0.5f) * CellSize / FogTexturePixelsPerCell;
-                var cellX = Mathf.FloorToInt(worldX / CellSize);
-                var localX = worldX - cellX * CellSize;
-                var cellIndex = (cellY - textureMinY) * cellWidth + cellX - textureMinX;
+                for (var offsetX = -1; offsetX <= 1; offsetX++)
+                {
+                    var neighborX = visibleCell.X + offsetX - textureMinX;
+                    var neighborY = visibleCell.Y + offsetY - textureMinY;
+                    if (neighborX < 0 || neighborX >= cellWidth || neighborY < 0 || neighborY >= cellHeight)
+                    {
+                        continue;
+                    }
+
+                    var neighborIndex = neighborY * cellWidth + neighborX;
+                    if (canFeatherByCell[neighborIndex])
+                    {
+                        visibleNeighborMasks[neighborIndex] |= (ushort)(1 << ((1 - offsetY) * 3 + 1 - offsetX));
+                    }
+                }
+            }
+        }
+
+        var pixels = new byte[textureWidth * textureHeight * 4];
+        for (var cellY = 0; cellY < cellHeight; cellY++)
+        {
+            for (var cellX = 0; cellX < cellWidth; cellX++)
+            {
+                var cellIndex = cellY * cellWidth + cellX;
                 var baseAlpha = fogAlphaByCell[cellIndex];
                 if (baseAlpha == 0)
                 {
                     continue;
                 }
 
-                var nearestVisibleDistance = FogEdgeFeatherPixels;
-                if (canFeatherByCell[cellIndex])
+                var visibleNeighborMask = visibleNeighborMasks[cellIndex];
+                for (var localPixelY = 0; localPixelY < FogTexturePixelsPerCell; localPixelY++)
                 {
-                    for (var offsetY = -1; offsetY <= 1; offsetY++)
+                    var pixelY = cellY * FogTexturePixelsPerCell + localPixelY;
+                    var pixelIndex = (pixelY * textureWidth + cellX * FogTexturePixelsPerCell) * 4 + 3;
+                    for (var localPixelX = 0; localPixelX < FogTexturePixelsPerCell; localPixelX++, pixelIndex += 4)
                     {
-                        for (var offsetX = -1; offsetX <= 1; offsetX++)
+                        if (visibleNeighborMask == 0)
                         {
-                            var neighbor = new Vector2I(cellX + offsetX, cellY + offsetY);
-                            if (!_visibleFogCells.Contains(neighbor))
-                            {
-                                continue;
-                            }
-
-                            var distanceX = offsetX < 0 ? localX : offsetX > 0 ? CellSize - localX : 0.0f;
-                            var distanceY = offsetY < 0 ? localY : offsetY > 0 ? CellSize - localY : 0.0f;
-                            nearestVisibleDistance = Mathf.Min(nearestVisibleDistance, Mathf.Sqrt(distanceX * distanceX + distanceY * distanceY));
+                            pixels[pixelIndex] = baseAlpha;
+                            continue;
                         }
+
+                        var localX = (localPixelX + 0.5f) * CellSize / FogTexturePixelsPerCell;
+                        var localY = (localPixelY + 0.5f) * CellSize / FogTexturePixelsPerCell;
+                        var nearestVisibleDistance = FogEdgeFeatherPixels;
+                        for (var offsetY = -1; offsetY <= 1; offsetY++)
+                        {
+                            for (var offsetX = -1; offsetX <= 1; offsetX++)
+                            {
+                                if ((visibleNeighborMask & (1 << ((offsetY + 1) * 3 + offsetX + 1))) == 0)
+                                {
+                                    continue;
+                                }
+
+                                var distanceX = offsetX < 0 ? localX : offsetX > 0 ? CellSize - localX : 0.0f;
+                                var distanceY = offsetY < 0 ? localY : offsetY > 0 ? CellSize - localY : 0.0f;
+                                nearestVisibleDistance = Mathf.Min(nearestVisibleDistance, Mathf.Sqrt(distanceX * distanceX + distanceY * distanceY));
+                            }
+                        }
+
+                        var feather = Mathf.Clamp(nearestVisibleDistance / FogEdgeFeatherPixels, 0.0f, 1.0f);
+                        var easedFeather = feather * feather * (3.0f - 2.0f * feather);
+                        pixels[pixelIndex] = (byte)Mathf.RoundToInt(baseAlpha * easedFeather);
                     }
                 }
-
-                var feather = Mathf.Clamp(nearestVisibleDistance / FogEdgeFeatherPixels, 0.0f, 1.0f);
-                var easedFeather = feather * feather * (3.0f - 2.0f * feather);
-                var alphaByte = (byte)Mathf.RoundToInt(baseAlpha * easedFeather);
-                var pixelIndex = (pixelY * textureWidth + pixelX) * 4;
-                pixels[pixelIndex + 3] = alphaByte;
             }
         }
 
-        var fogImage = Image.CreateFromData(textureWidth, textureHeight, false, Image.Format.Rgba8, pixels);
+        using var fogImage = Image.CreateFromData(textureWidth, textureHeight, false, Image.Format.Rgba8, pixels);
         _fogOverlayTexture = ImageTexture.CreateFromImage(fogImage);
         _fogOverlayRect = new Rect2(textureMinX * CellSize, textureMinY * CellSize, cellWidth * CellSize, cellHeight * CellSize);
+        SetFogStepBlend(_fogStepBlend);
     }
 
     private bool IsFogCellCurrentlyVisible(Vector2I cell)

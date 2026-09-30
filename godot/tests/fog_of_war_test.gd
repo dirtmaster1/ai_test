@@ -52,12 +52,30 @@ func run_test() -> void:
     var keyboard_state: Dictionary = checks.call("FogState")
     check(click_result == keyboard_state.texture.get_image().get_data(), "Click and keyboard paths must produce identical final fog")
     check(is_equal_approx(keyboard_state.blend, 1.0), "Keyboard movement must not retain a click blend")
+    checks.call("ResetScenario")
+    await RenderingServer.frame_post_draw
+    var path: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.RIGHT, Vector2i.UP, Vector2i.LEFT, Vector2i.DOWN, Vector2i.LEFT]
+    checks.call("StartPath", path)
+    var handoffs := 0
+    var last_cell: Vector2i = checks.call("FogState").leader_cell
+    while checks.call("IsStepRunning"):
+        await RenderingServer.frame_post_draw
+        var state: Dictionary = checks.call("FogState")
+        if state.leader_cell != last_cell:
+            handoffs += 1
+            last_cell = state.leader_cell
+        check_pixels(viewport, checks, state, state.previous_texture.get_image(), state.texture.get_image())
+    check(checks.call("StepSucceeded"), "Continuous click path must finish successfully")
+    check(handoffs == path.size() - 1, "Continuous path must check every step handoff")
     check(blended_frames > 1, "Fog must be verified across multiple intermediate frames")
     check(changed_samples > 0, "Rendered checks must cover cells whose visibility changes")
+    var benchmark: Dictionary = checks.call("BenchmarkFogRebuild")
+    check(benchmark.sha256 == "DFB84A781BC06C6B3C57EBAA08CF3449EECA582224F280377A41B5A6E19A7BAE", "Optimized fog must remain byte-identical to the original mask")
+    print("Fog rebuild, 96x96 cells: median %.2f ms, max %.2f ms; SHA256 %s" % [benchmark.median_ms, benchmark.max_ms, benchmark.sha256])
     checks.free()
     viewport.queue_free()
     if failures == 0:
-        print("PASS: world-aligned fog, cached masks, wall occlusion, tween synchronization, and keyboard equivalence across %d blended frames" % blended_frames)
+        print("PASS: world-aligned fog, cached masks, wall occlusion, tween synchronization, keyboard equivalence, and %d continuous step handoffs across %d blended frames" % [handoffs, blended_frames])
     quit(0 if failures == 0 else 1)
 
 
