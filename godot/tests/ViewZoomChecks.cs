@@ -48,10 +48,10 @@ public partial class ViewZoomChecks : BattleController
             Check(!(bool)Call("IsPointInsideVisibleGrid", ToGlobal(new Vector2(-6410, -6410))),
                 "Scaled hit testing must reject points outside map bounds");
             Call("SetViewPositionClamped", new Vector2(100000, 100000));
-            Check(Mathf.IsEqualApprox(Position.Y, 6400 * Scale.Y + 96), "Top clamp must use scaled bounds");
+            Check(Mathf.IsEqualApprox(Position.Y, 6400 * Scale.Y + 240), "Top clamp must preserve edge-pan overscroll");
             Call("SetViewPositionClamped", new Vector2(-100000, -100000));
-            Check(Mathf.IsEqualApprox(Position.Y, GetViewportRect().Size.Y - 6464 * Scale.Y - 96),
-                "Bottom clamp must use scaled bounds");
+            Check(Mathf.IsEqualApprox(Position.Y, GetViewportRect().Size.Y - 6464 * Scale.Y - 240),
+                "Bottom clamp must preserve edge-pan overscroll");
         }
 
         Scale = Vector2.One;
@@ -73,11 +73,62 @@ public partial class ViewZoomChecks : BattleController
             var previousScale = Scale;
             Scroll(MouseButton.WheelUp, cursor);
             Check(Scale.IsEqualApprox(previousScale), "HUD input blocking must prevent world zoom");
+
+            Field("_isPanningView").SetValue(this, false);
+            Field("_leftMouseClickCandidate").SetValue(this, false);
+            typeof(HudController).GetField("_isDraggingPanel", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(hud, false);
+            using var press = new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left, Pressed = true,
+                Position = cursor, GlobalPosition = cursor
+            };
+            _Input(press);
+            typeof(HudController).GetField("_isDraggingPanel", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(hud, true);
+            using var drag = new InputEventMouseMotion
+            {
+                Position = cursor + new Vector2(40, 32),
+                GlobalPosition = cursor + new Vector2(40, 32),
+                ButtonMask = MouseButtonMask.Left
+            };
+            _Input(drag);
+            Check((bool)Field("_isPanningView").GetValue(this), "Map drag must continue after crossing a HUD panel");
+            Check(Position.DistanceTo(Vector2.Zero) > 0.1f, "Map drag must keep updating camera position over HUD");
+            using var release = new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left, Pressed = false,
+                Position = cursor + new Vector2(40, 32), GlobalPosition = cursor + new Vector2(40, 32)
+            };
+            _Input(release);
+            typeof(HudController).GetField("_isDraggingPanel", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(hud, false);
+            Check(!(bool)Field("_isPanningView").GetValue(this)
+                && !(bool)Field("_leftMouseClickCandidate").GetValue(this), "Releasing a drag over HUD must clear pan state");
         }
         finally
         {
             Field("_hud").SetValue(this, null);
             hud.Free();
+        }
+
+        Field("_isPanningView").SetValue(this, false);
+        Field("_leftMouseClickCandidate").SetValue(this, false);
+        using (var edgePress = new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left, Pressed = true,
+            Position = ToGlobal(new Vector2(-6410, -6410)),
+            GlobalPosition = ToGlobal(new Vector2(-6410, -6410))
+        })
+        {
+            _Input(edgePress);
+        }
+        Check((bool)Field("_leftMouseClickCandidate").GetValue(this), "Panning must be startable in exposed space beyond a map edge");
+        using (var edgeRelease = new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left, Pressed = false,
+            Position = ToGlobal(new Vector2(-6410, -6410)),
+            GlobalPosition = ToGlobal(new Vector2(-6410, -6410))
+        })
+        {
+            _Input(edgeRelease);
         }
         return failures;
     }

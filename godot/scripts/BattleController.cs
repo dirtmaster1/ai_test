@@ -121,7 +121,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Vector2 _viewPanStartMouseGlobal;
     private Vector2 _viewPanStartPosition;
     private const float ViewPanDragThreshold = 8.0f;
-    private const float ViewPanOverscroll = 96.0f;
+    private const float ViewPanOverscroll = 240.0f;
     private const float ViewRightEdgeFollowBuffer = 72.0f;
     private const float ExplorationStepSeconds = 0.14f;
 

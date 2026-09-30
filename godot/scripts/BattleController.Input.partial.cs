@@ -189,6 +189,13 @@ public partial class BattleController
             return;
         }
 
+        if (mouseEvent.ButtonIndex == MouseButton.Left
+            && (_leftMouseClickCandidate || _isPanningView)
+            && HandleViewPanInput(mouseEvent))
+        {
+            return;
+        }
+
         if (_isExplorationAutoMoving)
         {
             if (_flowState == BattleFlowState.Exploration &&
@@ -248,6 +255,11 @@ public partial class BattleController
 
     private void HandleMouseHoverInput(InputEventMouseMotion mouseMotion)
     {
+        if ((_leftMouseClickCandidate || _isPanningView) && HandleViewPanInput(mouseMotion))
+        {
+            return;
+        }
+
         if (ShouldIgnoreWorldMouseInput())
         {
             ClearMovementPreviewPath();
@@ -510,13 +522,8 @@ public partial class BattleController
 
         if (mouseEvent.Pressed)
         {
-            if (!IsPointInsideVisibleGrid(mouseEvent.GlobalPosition))
-            {
-                _leftMouseClickCandidate = false;
-                return false;
-            }
-
-            if (mouseEvent.DoubleClick)
+            var pressInsideGrid = IsPointInsideVisibleGrid(mouseEvent.GlobalPosition);
+            if (mouseEvent.DoubleClick && pressInsideGrid)
             {
                 _leftMouseClickCandidate = false;
                 _isPanningView = false;
