@@ -28,6 +28,7 @@ public partial class MapLoader : Node
         public int AlternativeTile { get; init; }
         public string TerrainType { get; init; } = "floor";
         public string DoorId { get; init; } = "";
+        public bool Locked { get; init; }
         public Vector2I? OpenDoorAtlasCoords { get; init; }
     }
 
@@ -295,7 +296,7 @@ public partial class MapLoader : Node
             var cell = pair.Key;
             var cellSnapshot = pair.Value;
 
-            if (cellSnapshot.TerrainType == "wall" || cellSnapshot.TerrainType == "water")
+            if (cellSnapshot.TerrainType == "wall" || cellSnapshot.TerrainType == "see_through")
             {
                 if (cellSnapshot.TerrainType == "wall")
                 {
@@ -313,6 +314,7 @@ public partial class MapLoader : Node
                 {
                     { "id", string.IsNullOrEmpty(cellSnapshot.DoorId) ? $"{mapId}-door-{cell.X}-{cell.Y}" : cellSnapshot.DoorId },
                     { "cell", cell },
+                    { "locked", cellSnapshot.Locked },
                     { "is_open", false }
                 });
             }
@@ -358,6 +360,7 @@ public partial class MapLoader : Node
                     AlternativeTile = baseLayer.GetCellAlternativeTile(cell),
                     TerrainType = ResolveTerrainType(mapId, baseLayer, cell),
                     DoorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId),
+                    Locked = tileData != null && GetTileBool(baseLayer, tileData, "locked", false),
                     OpenDoorAtlasCoords = tileData == null
                         ? null
                         : TryGetOpenDoorAtlasCoords(baseLayer, tileData, out var openDoorAtlasCoords)
@@ -1157,6 +1160,11 @@ public partial class MapLoader : Node
 
         foreach (var prop in mapProps)
         {
+            if (GetString(prop, "type", "prop") == "trap")
+            {
+                continue;
+            }
+
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             if (Manhattan(explorer.GridPos, propCell) > 1)
             {
@@ -1278,6 +1286,11 @@ public partial class MapLoader : Node
 
         foreach (var prop in mapProps)
         {
+            if (GetString(prop, "type", "prop") == "trap")
+            {
+                continue;
+            }
+
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             if (propCell != clickedCell)
             {
@@ -1779,6 +1792,11 @@ public partial class MapLoader : Node
             if (GetString(prop, "id", "") != propId)
             {
                 continue;
+            }
+
+            if (GetString(prop, "type", "prop") == "trap")
+            {
+                return false;
             }
 
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));

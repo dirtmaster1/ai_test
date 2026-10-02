@@ -16,6 +16,7 @@ public interface IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, List<string>> VendorInventoryItemIdsById { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> ClearedEncounterIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> OpenedDoorIdsByMap { get; }
+    System.Collections.Generic.Dictionary<string, HashSet<string>> UnlockedDoorIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> OpenedPropIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> DefeatedEnemyIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> LootedBagIdsByMap { get; }

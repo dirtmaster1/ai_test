@@ -33,7 +33,7 @@ On tiles in each `*-base` layer, set custom data keys in the TileSet.
 
 - `floor`: walkable, does not block line of sight
 - `wall`: not walkable, blocks line of sight
-- `water`: not walkable, does not block line of sight
+- `see_through`: not walkable, does not block line of sight
 - `door`: starts closed (not walkable, blocks line of sight)
 
 ### `door_id` (optional, door tiles only)
@@ -50,9 +50,28 @@ On tiles in each `*-base` layer, set custom data keys in the TileSet.
 ### Door interaction behavior
 
 - Closed doors are impassable and block line of sight
-- Clicking an adjacent closed door opens it
+- Clicking an adjacent unlocked closed door opens it in exploration or combat
 - Open doors become walkable and no longer block line of sight
 - Open/closed door state is saved per map
+
+### `locked` (optional boolean, door tiles only)
+
+- Available on all terrain TileSets; only applies when `terrain_type = door`
+- `true`: cannot be opened normally; use Pick Lock from an orthogonally adjacent tile
+- `false` or absent: unlocked, with the usual click-to-open behavior
+- Picking a lock unlocks the door without opening it; unlocked state persists per map and across saves
+- Use a TileSet alternative tile if only some instances of a door should start locked
+- Key support is reserved by `TryUnlockDoorWithKey` in the controller; it currently returns false. No key items or key consumption are implemented yet
+
+### Thief utility abilities
+
+- Disarm Trap and Pick Lock appear on the selected thief's exploration action bar and on their combat turn
+- Both target visible orthogonally adjacent tiles (range 1); green highlights indicate valid targets
+- Disarm Trap targets armed `marker_type = trap` tiles; Pick Lock targets locked doors
+- Confirm the gold-bordered dialog to apply the effect and display a green banner; cancel leaves the target unchanged
+- Successful use costs one action in combat and no action in exploration; neither ability costs MP or has a cooldown
+- Disarmed traps share the persisted inactive state of triggered traps and cannot harm any team. Walking onto an armed trap still triggers its normal damage
+- Existing saved player characters receive their class template's utility abilities when spawned
 
 ## Authoring Order
 

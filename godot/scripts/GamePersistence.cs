@@ -136,6 +136,7 @@ public sealed class GamePersistence
             { "equipped_items_by_unit_id", equippedByUnit },
             { "cleared_encounter_ids_by_map", BuildSetMapSnapshot(_host.ClearedEncounterIdsByMap) },
             { "opened_door_ids_by_map", BuildSetMapSnapshot(_host.OpenedDoorIdsByMap) },
+            { "unlocked_door_ids_by_map", BuildSetMapSnapshot(_host.UnlockedDoorIdsByMap) },
             { "opened_prop_ids_by_map", BuildSetMapSnapshot(_host.OpenedPropIdsByMap) },
             { "defeated_enemy_ids_by_map", BuildSetMapSnapshot(_host.DefeatedEnemyIdsByMap) },
             { "looted_bag_ids_by_map", BuildSetMapSnapshot(_host.LootedBagIdsByMap) },
@@ -157,6 +158,7 @@ public sealed class GamePersistence
         _host.VendorInventoryItemIdsById.Clear();
         _host.ClearedEncounterIdsByMap.Clear();
         _host.OpenedDoorIdsByMap.Clear();
+        _host.UnlockedDoorIdsByMap.Clear();
         _host.OpenedPropIdsByMap.Clear();
         _host.DefeatedEnemyIdsByMap.Clear();
         _host.LootedBagIdsByMap.Clear();
@@ -170,6 +172,7 @@ public sealed class GamePersistence
         RestoreSelectedAbilityMap(GetDictionary(saveData, "selected_ability_id_by_unit_id"));
         RestoreSetMapSnapshot(GetDictionary(saveData, "cleared_encounter_ids_by_map"), _host.ClearedEncounterIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_door_ids_by_map"), _host.OpenedDoorIdsByMap);
+        RestoreSetMapSnapshot(GetDictionary(saveData, "unlocked_door_ids_by_map"), _host.UnlockedDoorIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_prop_ids_by_map"), _host.OpenedPropIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "defeated_enemy_ids_by_map"), _host.DefeatedEnemyIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "looted_bag_ids_by_map"), _host.LootedBagIdsByMap);

@@ -1945,8 +1945,8 @@ public partial class HudController : Control
             var isSelected = GetInt(entry, "is_selected", 0) == 1;
 
             button.Visible = true;
-            button.Text = "";
             button.Icon = GetGameIcon(abilityId);
+            button.Text = button.Icon == null ? label : "";
             button.IconAlignment = HorizontalAlignment.Center;
             button.SelfModulate = isSelected ? TacticalTheme.BrassBright : Colors.White;
             button.TooltipText = detail;

@@ -44,11 +44,11 @@ public partial class BattleController
             : _flowState == BattleFlowState.Exploration
                 ? GetSelectedCharacterPartyUnit() ?? GetExplorerUnit()
                 : null;
-        var healingOnly = _flowState == BattleFlowState.Exploration;
-        var actionBarAbilities = BuildAbilityEntriesForHud(actionBarUnit, healingOnly);
+        var explorationOnly = _flowState == BattleFlowState.Exploration;
+        var actionBarAbilities = BuildAbilityEntriesForHud(actionBarUnit, explorationOnly);
         var abilityPanelEnabled = _flowState == BattleFlowState.Combat
             ? activePlayer != null
-            : healingOnly && actionBarAbilities.Count > 0;
+            : explorationOnly && actionBarAbilities.Count > 0;
         _hud.SetActionButtonsEnabled(abilityPanelEnabled, _flowState == BattleFlowState.Combat);
         _hud.SetAbilityButtons(actionBarAbilities, abilityPanelEnabled);
         _hud.SetInventoryGold(_partyGold);

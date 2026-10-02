@@ -75,6 +75,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly HashSet<string> _defeatedEnemyIds = new();
     private readonly HashSet<string> _lootedBagIds = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedDoorIdsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _unlockedDoorIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _openedPropIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _defeatedEnemyIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
@@ -436,6 +437,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void OnHudAbilityPressed(string abilityId)
     {
+        if (_utilityConfirmationPending || _isExplorationAutoMoving)
+        {
+            return;
+        }
+
         if (_flowState == BattleFlowState.Exploration)
         {
             var explorerActor = GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
@@ -445,7 +451,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var explorationProfile = ResolveActionProfile(explorerActor, abilityId);
-            if (explorationProfile.ActionType != "heal"
+            if (!IsExplorationAction(explorationProfile.ActionType)
                 || explorerActor.GetAbilityCooldownRemaining(abilityId) > 0
                 || !CanCastAction(explorerActor, explorationProfile))
             {
@@ -899,6 +905,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         EnlistNearbyCombatEnemies();
         var selectedAbilityId = GetSelectedAbilityId(active);
         var actionProfile = ResolveActionProfile(active, selectedAbilityId);
+
+        if (IsUtilityAction(actionProfile.ActionType))
+        {
+            BeginUtilityAction(active, actionProfile, targetCell);
+            return;
+        }
 
         if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
         {
@@ -1802,6 +1814,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (unit.Team == "player")
         {
+            EnsureClassUtilityAbilities(unit);
             _playerUnits.Add(unit);
             ApplyStartingEquipmentFromConfig(unit, config, addToPartyInventory: true);
         }
@@ -2438,7 +2451,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool IsDoorOpen(Dictionary door)
     {
-        if (door == null)
+        if (door == null || IsDoorLocked(door))
         {
             return false;
         }
@@ -3155,7 +3168,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
-    private Array<Dictionary> BuildAbilityEntriesForHud(Unit unit, bool healingOnly = false)
+    private Array<Dictionary> BuildAbilityEntriesForHud(Unit unit, bool explorationOnly = false)
     {
         var entries = new Array<Dictionary>();
         if (unit == null || unit.AbilityIds == null)
@@ -3172,14 +3185,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var profile = ResolveActionProfile(unit, abilityId);
-            if (healingOnly && profile.ActionType != "heal")
+            if (explorationOnly && !IsExplorationAction(profile.ActionType))
             {
                 continue;
             }
 
             var actionName = string.IsNullOrEmpty(profile.ActionName) ? GetActionDisplayName(abilityId) : profile.ActionName;
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
-            var valueText = profile.ActionType == "heal"
+            var valueText = profile.ActionType == "disarm_trap"
+                ? "Effect: permanently disarm an adjacent trap"
+                : profile.ActionType == "pick_lock"
+                    ? "Effect: unlock an adjacent door"
+                : profile.ActionType == "heal"
                 ? $"Heal: {profile.HealAmount}"
                 : profile.ActionType == "defend"
                     ? $"Effect: damage taken -{Unit.DefendDamageReductionPercent}%"
@@ -3202,7 +3219,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var cooldownLabel = profile.CooldownTurns <= 0
                 ? "Cooldown: none"
                 : $"Cooldown: {profile.CooldownTurns} turn{(profile.CooldownTurns == 1 ? "" : "s")}";
-            var actionCostLabel = profile.IgnoresActionCost
+            var actionCostLabel = explorationOnly || profile.IgnoresActionCost
                 ? "Action Cost: free"
                 : "Action Cost: uses action";
             var requirementLabel = profile.RequiresRangedWeapon
@@ -3210,7 +3227,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 : abilityId == "melee"
                     ? "Requirement: melee weapon equipped (or no weapon equipped)"
                 : "Requirement: none";
-            var isEnabled = healingOnly
+            var isEnabled = explorationOnly
                 ? cooldownRemaining <= 0 && CanCastAction(unit, profile)
                 : CanUseActionProfileNow(unit, profile);
             var stateLabel = cooldownRemaining > 0
@@ -3370,7 +3387,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
-        if (_flowState == BattleFlowState.Exploration && actionProfile.ActionType != "heal")
+        if (_flowState == BattleFlowState.Exploration && !IsExplorationAction(actionProfile.ActionType))
         {
             return;
         }
@@ -3393,11 +3410,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     continue;
                 }
 
+                if (IsUtilityAction(actionProfile.ActionType)
+                    && (Manhattan(active.GridPos, cell) != 1 || !IsFogCellCurrentlyVisible(cell)))
+                {
+                    continue;
+                }
+
                 var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
                 var target = actionProfile.ActionType == "heal"
                     ? GetLivingAllyAtCell(active.Team, cell)
                     : GetLivingEnemyAtCell(active.Team, cell);
-                var valid = actionProfile.ActionType == "area_attack"
+                var valid = IsUtilityAction(actionProfile.ActionType)
+                    ? TryGetUtilityTarget(active, actionProfile, cell, out _)
+                    : actionProfile.ActionType == "area_attack"
                     ? HasClearLineOfSight(active.GridPos, cell)
                     : target != null && (actionProfile.ActionType == "heal"
                         ? active.CanHealTarget(target, actionProfile.Range, _allUnits) && HasClearUnitLineOfSight(active, target)
@@ -3902,7 +3927,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
             else
             {
-                details = BuildPropHoverDetailText(prop);
+                details = GetString(prop, "type", "") == "trap"
+                    ? (_openedPropIds.Contains(propId) ? "Inactive" : "Armed trap")
+                    : BuildPropHoverDetailText(prop);
             }
             break;
         }
@@ -5349,7 +5376,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var dialog = new ConfirmationDialog
         {
             Title = "Recruit Companion",
-            DialogText = $"{recruitName} wants to join your party as a {templateId}.\nRecruit now?",
+            DialogText = $"""
+            Hey I can get you past those traps in there if you can help me out with the spiders? 
+            They guarding a chest with some nifty loot in it, split it 50/50 with ya. what do you say?
+            I can also pick a lock or two when no one's looking. I can be quite handy in a fight as well.
+            {recruitName} wants to join your party as a {templateId}.
+            Recruit now?
+            """,
             Exclusive = true
         };
 
@@ -7414,7 +7447,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (_flowState != BattleFlowState.Exploration)
+        if (_flowState != BattleFlowState.Exploration && _flowState != BattleFlowState.Combat)
         {
             return false;
         }
@@ -7424,7 +7457,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var explorer = GetExplorerUnit();
+        var explorer = _flowState == BattleFlowState.Combat
+            ? GetActivePlayerUnit()
+            : GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
         if (!IsUsableUnit(explorer) || explorer.IsDead)
         {
             return false;
@@ -7437,8 +7472,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var doorId = GetString(door, "id", "");
+        if (IsDoorLocked(door) && !TryUnlockDoorWithKey(explorer, door))
+        {
+            _hud?.AddCombatLogEntry("This door is locked. Use Pick Lock or a matching key.");
+            return true;
+        }
+
         var isOpen = IsDoorOpen(door);
         var shouldOpen = !isOpen;
+        if (!shouldOpen && GetLivingUnitAtCell(doorCell) != null)
+        {
+            return true;
+        }
 
         if (!string.IsNullOrEmpty(doorId))
         {
@@ -7459,7 +7504,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ? $"{explorer.UnitName} opened a door."
             : $"{explorer.UnitName} closed a door.");
         SaveMapInteractionStateForCurrentMap();
-        _persistence.PersistSaveGame(false);
+        _persistence?.PersistSaveGame(false);
         SetStatusHelp();
         QueueRedraw();
         return true;
@@ -7561,6 +7606,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, List<string>> IGamePersistenceHost.VendorInventoryItemIdsById => _vendorInventoryItemIdsById;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.ClearedEncounterIdsByMap => _clearedEncounterIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedDoorIdsByMap => _openedDoorIdsByMap;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.UnlockedDoorIdsByMap => _unlockedDoorIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.OpenedPropIdsByMap => _openedPropIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.DefeatedEnemyIdsByMap => _defeatedEnemyIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;

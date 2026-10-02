@@ -9,6 +9,11 @@ public partial class BattleController
     // Architecture: Input orchestration only (keyboard/mouse -> high-level intent).
     public override void _Input(InputEvent @event)
     {
+        if (_utilityConfirmationPending)
+        {
+            return;
+        }
+
         UpdateFogOfWar();
         if (_flowState == BattleFlowState.Defeat)
         {
@@ -228,7 +233,7 @@ public partial class BattleController
         if (!mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
         {
             var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
-            if (_flowState == BattleFlowState.Exploration && TryOpenDoorAtCell(clickedCell))
+            if (TryOpenDoorAtCell(clickedCell))
             {
                 return;
             }
@@ -417,6 +422,19 @@ public partial class BattleController
         if (mouseEvent.ButtonIndex != MouseButton.Left)
         {
             return;
+        }
+
+        var utilityActor = _flowState == BattleFlowState.Combat
+            ? GetActivePlayerUnit()
+            : GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+        if (IsUsableUnit(utilityActor))
+        {
+            var utilityProfile = ResolveActionProfile(utilityActor, GetSelectedAbilityId(utilityActor));
+            if (IsUtilityAction(utilityProfile.ActionType))
+            {
+                BeginUtilityAction(utilityActor, utilityProfile, WorldToCell(ToLocal(mouseEvent.GlobalPosition)));
+                return;
+            }
         }
 
         if (_flowState == BattleFlowState.Exploration)

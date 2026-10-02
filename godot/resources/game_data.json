@@ -1,5 +1,17 @@
 {
   "abilities": {
+	"disarm-trap": {
+	  "id": "disarm-trap",
+	  "name": "Disarm Trap",
+	  "type": "disarm_trap",
+	  "range": 1
+	},
+	"pick-lock": {
+	  "id": "pick-lock",
+	  "name": "Pick Lock",
+	  "type": "pick_lock",
+	  "range": 1
+	},
 	"melee": {
 	  "id": "melee",
 	  "name": "Melee Attack",
@@ -478,6 +490,8 @@
 		"ability_ids": [
 		  "melee",
 		  "poison-strike",
+		  "disarm-trap",
+		  "pick-lock",
 		  "defend"
 		],
 		"initiative": 15,
@@ -770,8 +784,8 @@
 		],
 		"base_unarmed_damage": 8,
 		"initiative": 14,
-		"hit_points": 12,
-		"max_hit_points": 12,
+		"hit_points": 20,
+		"max_hit_points": 20,
 		"intelligence": 3,
 		"strength": 8,
 		"wisdom": 3,
