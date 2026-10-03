@@ -7466,7 +7466,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var doorId = GetString(door, "id", "");
         if (IsDoorLocked(door) && !TryUnlockDoorWithKey(explorer, door))
         {
-            RejectPlayerAction("Door locked - use Pick Lock.");
+            RejectPlayerAction("Door locked.");
             return true;
         }
 

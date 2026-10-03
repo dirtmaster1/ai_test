@@ -68,7 +68,7 @@ public partial class BattleController
     {
         if (!IsInBounds(cell))
         {
-            return RejectPlayerAction("Target is outside the map.");
+            return RejectPlayerAction("Target is unreachable.");
         }
 
         var target = GetLivingUnitAtCell(cell);
@@ -79,7 +79,7 @@ public partial class BattleController
         if (IsUtilityAction(profile.ActionType) ? distance != 1 : distance > profile.Range)
         {
             return RejectPlayerAction(IsUtilityAction(profile.ActionType)
-                ? $"Move adjacent to use {profile.ActionName}."
+                ? $"Move nearby to use {profile.ActionName}."
                 : "Out of range.");
         }
 
@@ -207,7 +207,7 @@ public partial class BattleController
 
         if (!IsInBounds(cell))
         {
-            return RejectPlayerAction("Destination is outside the map.");
+            return RejectPlayerAction("Destination is unreachable.");
         }
 
         foreach (var occupiedCell in actor.GetOccupiedCellsAt(cell))
