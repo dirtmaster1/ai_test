@@ -88,7 +88,7 @@ public partial class HudController : Control
         ["defend"] = new(6, 5),
         ["charge"] = new(0, 6),
         ["pin"] = new(1, 6),
-        ["poison-strike"] = new(4, 5),
+        ["poison-strike"] = new(4, 6),
         ["poison"] = new(5, 6),
         ["lesser-heal"] = new(0, 4),
         ["magic-missile"] = new(2, 4),

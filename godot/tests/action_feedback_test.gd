@@ -8,6 +8,17 @@ func _initialize() -> void:
 func run_test() -> void:
     var checks = load("res://tests/ActionFeedbackChecks.cs").new()
     root.add_child(checks)
+    if OS.get_cmdline_user_args().has("--icon-only"):
+        var icon_failures = checks.call("RunIconChecks")
+        for failure in icon_failures:
+            push_error(failure)
+        checks.call("Cleanup")
+        checks.queue_free()
+        await process_frame
+        if icon_failures.is_empty():
+            print("PASS: Poison Strike shared atlas region and action-bar icon")
+        quit(0 if icon_failures.is_empty() else 1)
+        return
     checks.call("Run")
     checks.call("StartQueueChecks")
     await create_timer(1.65).timeout

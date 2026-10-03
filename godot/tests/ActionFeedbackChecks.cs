@@ -20,9 +20,17 @@ public partial class ActionFeedbackChecks : BattleController
     public override void _Ready() { }
     public override void _ExitTree() { }
 
+    public Array<string> RunIconChecks()
+    {
+        SetupFixture();
+        CheckPoisonStrikeIcon();
+        return _failures;
+    }
+
     public Array<string> Run()
     {
         SetupFixture();
+        CheckPoisonStrikeIcon();
         CheckResources();
         CheckTargets();
         CheckUtilities();
@@ -30,6 +38,22 @@ public partial class ActionFeedbackChecks : BattleController
         CheckInteractions();
         CheckAllowedActions();
         return _failures;
+    }
+
+    private void CheckPoisonStrikeIcon()
+    {
+        var icon = (Texture2D)typeof(HudController)
+            .GetMethod("GetGameIcon", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { "poison-strike" });
+        Check(icon is AtlasTexture atlas && atlas.Region == new Rect2(128, 192, 32, 32),
+            "Poison Strike must use the fifth column of the seventh atlas row");
+        _testHud.SetAbilityButtons(new Array<Dictionary>
+        {
+            new() { { "id", "poison-strike" }, { "is_enabled", 1 } }
+        }, true);
+        Check(AbilityButton("poison-strike").Icon == icon,
+            "Poison Strike action-bar button must use the shared icon mapping");
+        Call("SyncHudFromGameState");
     }
 
     private void SetupFixture()
