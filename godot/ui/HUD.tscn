@@ -256,11 +256,12 @@ mouse_filter = 2
 
 [node name="CombatBannerLabel" type="Label" parent="CombatBanner"]
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
 size_flags_vertical = 4
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "COMBAT"
+autowrap_mode = 3
 
 [node name="CombatLogPanel" type="PanelContainer" parent="."]
 layout_mode = 0

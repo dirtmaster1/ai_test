@@ -47,6 +47,30 @@ dotnet build DarkDungeonTactics.csproj
    - fix bug,
    - restart count at Run 1.
 
+## Rejected Action Feedback
+
+Rejected player attempts show a red banner without adding combat-log entries or
+spending resources. Unavailable abilities remain dimmed but clickable so their
+mana, action, cooldown, weapon, or status requirement can be explained.
+
+Check mouse and keyboard targeting, locked/occupied doors, healing a full-health
+ally, movement limits and blocked routes, utility targets, distant/empty loot,
+scroll requirements, shop funds, and party/reserve restrictions. A rejected
+target should leave targeting active for another attempt. Free actions must
+remain usable after the normal action is spent; Fireball can still target empty
+areas and area spells can still affect allies.
+
+Repeated identical failures must not restart or queue copies of the warning.
+An existing combat/zone banner finishes first, then the latest pending failure
+is shown. Other queued combat/zone banners are preserved.
+
+After building, run the focused regression checks with a Godot .NET executable:
+
+```powershell
+godot --headless --path . --script res://tests/action_feedback_test.gd
+godot --headless --path . --script res://tests/utility_abilities_test.gd
+```
+
 ## Exit Gate
 
 - 10 consecutive runs marked PASS.

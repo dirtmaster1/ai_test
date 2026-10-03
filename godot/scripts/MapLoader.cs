@@ -1704,6 +1704,7 @@ public partial class MapLoader : Node
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
             if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
+                statusText = "Move adjacent to pick up the loot.";
                 return false;
             }
 
@@ -1716,6 +1717,7 @@ public partial class MapLoader : Node
 
             if (itemIndex >= itemIds.Count)
             {
+                statusText = "That loot item is no longer available.";
                 return false;
             }
 
@@ -1802,6 +1804,7 @@ public partial class MapLoader : Node
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
             if (Chebyshev(explorer.GridPos, propCell) > 1)
             {
+                statusText = $"Move adjacent to interact with {GetString(prop, "name", "that object")}.";
                 return false;
             }
 
@@ -1873,6 +1876,7 @@ public partial class MapLoader : Node
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
             if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
+                statusText = "Move adjacent to pick up the loot.";
                 return false;
             }
 
@@ -1924,6 +1928,7 @@ public partial class MapLoader : Node
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
             if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
+                statusText = "Move adjacent to pick up the loot.";
                 return false;
             }
 

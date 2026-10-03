@@ -447,13 +447,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var explorerActor = GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
             if (!IsUsableUnit(explorerActor) || explorerActor.IsDead || string.IsNullOrEmpty(abilityId) || !explorerActor.HasAbility(abilityId))
             {
+                if (IsUsableUnit(explorerActor) && !explorerActor.IsDead && !string.IsNullOrEmpty(abilityId))
+                {
+                    RejectPlayerAction($"{explorerActor.UnitName} has not learned {GetActionDisplayName(abilityId)}.");
+                }
                 return;
             }
 
             var explorationProfile = ResolveActionProfile(explorerActor, abilityId);
-            if (!IsExplorationAction(explorationProfile.ActionType)
-                || explorerActor.GetAbilityCooldownRemaining(abilityId) > 0
-                || !CanCastAction(explorerActor, explorationProfile))
+            if (!IsExplorationAction(explorationProfile.ActionType))
+            {
+                RejectPlayerAction($"{explorationProfile.ActionName} can only be used in combat.");
+                return;
+            }
+
+            if (!ValidatePlayerAction(explorerActor, explorationProfile))
             {
                 return;
             }
@@ -482,25 +490,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (string.IsNullOrEmpty(abilityId) || !active.HasAbility(abilityId))
         {
+            if (!string.IsNullOrEmpty(abilityId))
+            {
+                RejectPlayerAction($"{active.UnitName} has not learned {GetActionDisplayName(abilityId)}.");
+            }
             SetStatusHelp();
             return;
         }
 
         var actionProfile = ResolveActionProfile(active, abilityId);
-        if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
-        {
-            SetStatusHelp();
-            return;
-        }
-
-        var cooldownRemaining = active.GetAbilityCooldownRemaining(abilityId);
-        if (cooldownRemaining > 0)
-        {
-            SetStatusHelp();
-            return;
-        }
-
-        if (!CanCastAction(active, actionProfile))
+        if (!ValidatePlayerAction(active, actionProfile))
         {
             return;
         }
@@ -666,7 +665,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (_playerUnits.Count <= 1)
         {
-            _hud?.AddCombatLogEntry("At least one member must remain in the active party.");
+            RejectPlayerAction("At least one member must remain in the party.");
             return;
         }
 
@@ -746,6 +745,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var itemData = _gameData.GetItem(itemId);
         if (itemData.Count == 0 || !_partyInventoryItemIds.Contains(itemId))
         {
+            RejectPlayerAction("That item is no longer available.");
             return;
         }
 
@@ -753,7 +753,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var effectType = GetString(useEffect, "type", "");
         if (effectType != "learn_spell")
         {
-            _hud?.AddCombatLogEntry($"{GetString(itemData, "name", itemId)} cannot be used yet.");
+            RejectPlayerAction($"{GetString(itemData, "name", itemId)} cannot be used.");
             return;
         }
 
@@ -771,20 +771,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var itemName = GetString(itemData, "name", itemId);
         if (!classAllowed)
         {
-            _hud?.AddCombatLogEntry($"{target.UnitName} cannot use {itemName}. Required class: {string.Join(", ", allowedClasses)}.");
+            RejectPlayerAction($"{target.UnitName} cannot use {itemName} - requires {string.Join(", ", allowedClasses)}.");
             return;
         }
 
         var spellId = GetString(useEffect, "spell_id", "");
         if (string.IsNullOrEmpty(spellId) || _gameData.GetSpell(spellId).Count == 0)
         {
-            _hud?.AddCombatLogEntry($"{itemName} does not contain a valid spell.");
+            RejectPlayerAction($"{itemName} does not contain a valid spell.");
             return;
         }
 
         if (!target.LearnAbility(spellId))
         {
-            _hud?.AddCombatLogEntry($"{target.UnitName} already knows {GetActionDisplayName(spellId)}.");
+            RejectPlayerAction($"{target.UnitName} already knows {GetActionDisplayName(spellId)}.");
             return;
         }
 
@@ -897,11 +897,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
         UpdateFogOfWar();
-        if (!IsFogCellCurrentlyVisible(targetCell))
-        {
-            return;
-        }
-
         EnlistNearbyCombatEnemies();
         var selectedAbilityId = GetSelectedAbilityId(active);
         var actionProfile = ResolveActionProfile(active, selectedAbilityId);
@@ -912,17 +907,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
-        {
-            return;
-        }
-
-        if (active.GetAbilityCooldownRemaining(actionProfile.ActionId) > 0)
-        {
-            return;
-        }
-
-        if (!CanCastAction(active, actionProfile))
+        if (!ValidatePlayerAction(active, actionProfile))
         {
             return;
         }
@@ -939,11 +924,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
+            CancelAttackMode(false);
             var result = ResolveSuccessfulAction(actionProfile.ActionType);
             ApplyActionResult(result);
             BeginPostPlayerActionMouseMoveLock();
             return;
         }
+
+        if (!ValidatePlayerTarget(active, actionProfile, targetCell))
+        {
+            return;
+        }
+
+        CancelAttackMode(false);
 
         if (actionProfile.ActionType == "sleep")
         {
@@ -2819,6 +2812,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
+        if (actor.TryGetActionPreventingStatusName(out _))
+        {
+            return false;
+        }
+
         if (!actionProfile.IgnoresActionCost && !actor.CanUseAbilityThisTurn())
         {
             return false;
@@ -3159,12 +3157,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var profile = ResolveActionProfile(unit, abilityId);
-            if (!profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn())
-            {
-                continue;
-            }
-
-            if (unit.GetAbilityCooldownRemaining(abilityId) <= 0 && CanCastAction(unit, profile))
+            if (CanUseActionProfileNow(unit, profile))
             {
                 return true;
             }
@@ -3233,19 +3226,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     ? "Requirement: melee weapon equipped (or no weapon equipped)"
                 : "Requirement: none";
             var isEnabled = explorationOnly
-                ? cooldownRemaining <= 0 && CanCastAction(unit, profile)
+                ? string.IsNullOrEmpty(GetActionFailureReason(unit, profile))
                 : CanUseActionProfileNow(unit, profile);
-            var stateLabel = cooldownRemaining > 0
-                ? $"Status: on cooldown ({cooldownRemaining} remaining)"
-                : profile.RequiresRangedWeapon && !CanUseRangedWeaponAbility(unit)
-                    ? "Status: requires a ranged weapon"
-                    : abilityId == "melee" && !CanUseMeleeAbility(unit)
-                        ? "Status: requires a melee weapon"
-                    : _flowState == BattleFlowState.Combat && !profile.IgnoresActionCost && !unit.CanUseAbilityThisTurn()
-                        ? "Status: action already used"
-                    : !CanCastAction(unit, profile)
-                        ? $"Status: needs MP ({unit.MagicPoints}/{profile.MagicPointCost})"
-                        : "Status: ready";
+            var failureReason = GetActionFailureReason(unit, profile);
+            var stateLabel = string.IsNullOrEmpty(failureReason) ? "Status: ready" : $"Status: {failureReason}";
             entries.Add(new Dictionary
             {
                 { "id", abilityId },
@@ -4032,8 +4016,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         AppendReserveEntriesForRestCell(clickedCell, entries);
 
-        if (!string.IsNullOrEmpty(statusText))
+        if (entries.Count == 0 && !string.IsNullOrEmpty(statusText))
         {
+            RejectPlayerAction(statusText);
         }
 
         if (entries.Count > 0)
@@ -4203,13 +4188,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         EnsureDefaultVendorState();
         if (string.IsNullOrEmpty(itemId) || !_vendorInventoryItemIdsById.TryGetValue(vendorId, out var vendorInventory) || !vendorInventory.Contains(itemId))
         {
-            return $"{GetVendorDisplayName(vendorId)} does not have that item in stock.";
+            return ReportInteractionFailure("That item is out of stock.");
         }
 
         var price = GetItemBuyPrice(vendorId, itemId);
         if (_partyGold < price)
         {
-            return $"Not enough gold. {GetItemName(itemId)} costs {price} gp.";
+            return ReportInteractionFailure($"Not enough gold - requires {price} gp, have {_partyGold}.");
         }
 
         _partyGold -= price;
@@ -4225,14 +4210,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         EnsureDefaultVendorState();
         if (string.IsNullOrEmpty(itemId) || !HasUnequippedSharedItem(itemId))
         {
-            return "That item is not available to sell.";
+            return ReportInteractionFailure("That item is not available to sell.");
         }
 
         var price = GetItemSellPrice(vendorId, itemId);
         var vendorGold = GetVendorGold(vendorId);
         if (vendorGold < price)
         {
-            return $"{GetVendorDisplayName(vendorId)} only has {vendorGold} gp.";
+            return ReportInteractionFailure($"{GetVendorDisplayName(vendorId)} does not have enough gold.");
         }
 
         _partyInventoryItemIds.Remove(itemId);
@@ -4539,11 +4524,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!_mapLoader.TryResolveExplorationInteractionById(explorer, interactionId, BuildVisibleMapProps(), _lootBags, _openedPropIds, _lootedBagIds, _partyInventoryItemIds, ref _partyGold, _gameData, _lootRng, out var statusText, out var logText, out var changedState))
         {
-            return false;
+            return RejectPlayerAction(string.IsNullOrEmpty(statusText)
+                ? "That interaction is no longer available."
+                : statusText);
         }
 
-        if (!string.IsNullOrEmpty(statusText))
+        if (!changedState && string.IsNullOrEmpty(logText) && !string.IsNullOrEmpty(statusText))
         {
+            RejectPlayerAction(statusText);
         }
 
         if (!string.IsNullOrEmpty(logText))
@@ -4689,7 +4677,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var recruitTemplateId = GetString(npcProp, "recruit_template_id", "");
         if (string.IsNullOrWhiteSpace(recruitTemplateId))
         {
-            _hud?.AddCombatLogEntry("This NPC is not recruitable.");
+            RejectPlayerAction("This character cannot be recruited.");
             return;
         }
 
@@ -4704,7 +4692,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var template = CopyDictionary(_gameData?.GetCharacterTemplate(recruitTemplateId) ?? new Dictionary());
         if (template.Count == 0)
         {
-            _hud?.AddCombatLogEntry($"Recruit template '{recruitTemplateId}' was not found.");
+            GD.PushError($"Recruit template '{recruitTemplateId}' was not found.");
+            RejectPlayerAction("This character cannot be recruited.");
             return;
         }
 
@@ -4722,13 +4711,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (alreadyInParty)
         {
-            _hud?.AddCombatLogEntry($"{GetString(npcProp, "name", "This ally")} is already in your party.");
+            RejectPlayerAction($"{GetString(npcProp, "name", "This ally")} is already in your party.");
             return;
         }
 
         if (recruitOnce && _recruitedNpcIds.Contains(npcId))
         {
-            _hud?.AddCombatLogEntry($"{GetString(npcProp, "name", "This ally")} has already joined before.");
+            RejectPlayerAction($"{GetString(npcProp, "name", "This ally")} has already been recruited.");
             return;
         }
 
@@ -4807,7 +4796,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!TryTakeReserveUnit(unitId, out var reserveConfig))
         {
-            _hud?.AddCombatLogEntry("That reserve member is no longer available.");
+            RejectPlayerAction("That reserve member is no longer available.");
             return;
         }
 
@@ -5556,7 +5545,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return true;
         }
 
-        for (var distance = 1; distance <= actionProfile.Range; distance++)
+        for (var distance = 1; distance <= Mathf.Max(_gridWidth, _gridHeight); distance++)
         {
             var cell = active.GridPos + direction * distance;
             if (!IsInBounds(cell))
@@ -5564,18 +5553,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 break;
             }
 
-            var target = actionProfile.ActionType == "heal"
-                ? GetLivingAllyAtCell(active.Team, cell)
-                : GetLivingEnemyAtCell(active.Team, cell);
-            if (target != null && active.CanUseActionAtRange(target, actionProfile.Range, _allUnits))
+            var target = GetLivingUnitAtCell(cell);
+            if (target != null && (distance <= actionProfile.Range || IsFogCellCurrentlyVisible(cell)))
             {
                 targetCell = cell;
                 return true;
-            }
-
-            if (GetLivingUnitAtCell(cell) != null)
-            {
-                break;
             }
         }
 
@@ -6983,6 +6965,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var path = FindExplorationPath(leader.GridPos, targetCell, party);
             if (path.Count == 0)
             {
+                if (ValidatePlayerMovement(leader, targetCell, pathing: false))
+                {
+                    RejectPlayerAction("No path to that location.");
+                }
                 return;
             }
 
@@ -7043,7 +7029,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (!IsInBounds(targetCell))
         {
-            return false;
+            return RejectPlayerAction("Destination is outside the map.");
         }
 
         var leader = GetExplorerUnit();
@@ -7473,13 +7459,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var doorCell = GetVector2I(door, "cell", new Vector2I(-9999, -9999));
         if (Chebyshev(explorer.GridPos, doorCell) > 1)
         {
-            return false;
+            RejectPlayerAction("Move adjacent to the door.");
+            return true;
         }
 
         var doorId = GetString(door, "id", "");
         if (IsDoorLocked(door) && !TryUnlockDoorWithKey(explorer, door))
         {
-            _hud?.AddCombatLogEntry("This door is locked. Use Pick Lock or a matching key.");
+            RejectPlayerAction("Door locked - use Pick Lock.");
             return true;
         }
 
@@ -7487,6 +7474,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var shouldOpen = !isOpen;
         if (!shouldOpen && GetLivingUnitAtCell(doorCell) != null)
         {
+            RejectPlayerAction("Cannot close the door - doorway occupied.");
             return true;
         }
 

@@ -119,6 +119,7 @@ public partial class UtilityAbilityChecks : BattleController
             Click(new Vector2I(3, 1));
             RequireDialog("Disarm Trap").EmitSignal(ConfirmationDialog.SignalName.Canceled);
             Check(Dialog() == null, "Diagonally adjacent trap must open and cancel its confirmation");
+            Choose("disarm-trap");
             Click(new Vector2I(2, 3));
             Check(Dialog() == null, "Empty floor must not open a disarm confirmation");
             Click(_trapCell);

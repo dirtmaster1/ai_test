@@ -87,8 +87,13 @@ public partial class BattleController
 
     private async void BeginUtilityAction(Unit actor, ActionProfile profile, Vector2I cell)
     {
-        if (_utilityConfirmationPending || !CanUseUtilityAction(actor, profile)
-            || !TryGetUtilityTarget(actor, profile, cell, out var target))
+        if (_utilityConfirmationPending || !IsUsableUnit(actor) || actor.IsDead)
+        {
+            return;
+        }
+
+        if (!ValidatePlayerAction(actor, profile) || !ValidatePlayerTarget(actor, profile, cell)
+            || !CanUseUtilityAction(actor, profile) || !TryGetUtilityTarget(actor, profile, cell, out var target))
         {
             return;
         }

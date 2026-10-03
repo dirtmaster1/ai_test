@@ -124,6 +124,8 @@ public partial class HudController : Control
     private Label _combatBannerLabel;
     private Tween _combatBannerTween;
     private readonly Queue<(string Text, Color Accent)> _combatBannerQueue = new();
+    private bool _activeBannerIsFailure;
+    private string _pendingActionFailureText = "";
     private PanelContainer _combatLogPanel;
     private Button _combatLogMinimizeButton;
     private Vector2 _combatLogExpandedSize;
@@ -1948,9 +1950,12 @@ public partial class HudController : Control
             button.Icon = GetGameIcon(abilityId);
             button.Text = button.Icon == null ? label : "";
             button.IconAlignment = HorizontalAlignment.Center;
-            button.SelfModulate = isSelected ? TacticalTheme.BrassBright : Colors.White;
+            var isAvailable = isEnabled && cooldownRemaining <= 0;
+            button.SelfModulate = !isAvailable
+                ? new Color(0.5f, 0.5f, 0.5f)
+                : isSelected ? TacticalTheme.BrassBright : Colors.White;
             button.TooltipText = detail;
-            button.Disabled = !canUseAnyAbility || !isEnabled || cooldownRemaining > 0;
+            button.Disabled = !canUseAnyAbility;
             _abilityIdsByButton[button] = abilityId;
         }
     }
@@ -3251,9 +3256,35 @@ public partial class HudController : Control
         PlayCombatBanner(text, accentColor);
     }
 
-    private void PlayCombatBanner(string text, Color accentColor)
+    public void ShowActionFailureBanner(string text)
     {
+        if (_combatBannerPanel == null || _combatBannerLabel == null || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
 
+        if (_combatBannerTween != null && _combatBannerTween.IsRunning())
+        {
+            if (!_activeBannerIsFailure)
+            {
+                _pendingActionFailureText = text;
+                return;
+            }
+
+            if (_combatBannerLabel.Text == text)
+            {
+                return;
+            }
+
+            _combatBannerTween.Kill();
+        }
+
+        PlayCombatBanner(text, new Color("ff5555"), true);
+    }
+
+    private void PlayCombatBanner(string text, Color accentColor, bool isFailure = false)
+    {
+        _activeBannerIsFailure = isFailure;
         var panelStyle = new StyleBoxFlat
         {
             BgColor = new Color(0.04f, 0.06f, 0.08f, 0.92f),
@@ -3288,7 +3319,7 @@ public partial class HudController : Control
         _combatBannerTween.SetEase(Tween.EaseType.Out);
         _combatBannerTween.TweenProperty(_combatBannerPanel, "modulate:a", 1.0f, 0.16f);
         _combatBannerTween.Parallel().TweenProperty(_combatBannerPanel, "scale", Vector2.One, 0.16f);
-        _combatBannerTween.TweenInterval(0.9f);
+        _combatBannerTween.TweenInterval(isFailure ? 2.0f : 0.9f);
         _combatBannerTween.SetEase(Tween.EaseType.In);
         _combatBannerTween.TweenProperty(_combatBannerPanel, "modulate:a", 0.0f, 0.32f);
         _combatBannerTween.Parallel().TweenProperty(_combatBannerPanel, "scale", new Vector2(1.03f, 1.03f), 0.32f);
@@ -3301,7 +3332,14 @@ public partial class HudController : Control
             }
 
             _combatBannerTween = null;
-            if (_combatBannerQueue.Count > 0)
+            _activeBannerIsFailure = false;
+            if (!string.IsNullOrEmpty(_pendingActionFailureText))
+            {
+                var failure = _pendingActionFailureText;
+                _pendingActionFailureText = "";
+                ShowActionFailureBanner(failure);
+            }
+            else if (_combatBannerQueue.Count > 0)
             {
                 var next = _combatBannerQueue.Dequeue();
                 PlayCombatBanner(next.Text, next.Accent);

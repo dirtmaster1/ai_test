@@ -215,6 +215,27 @@ public partial class Unit : Node2D
         return !HasUsedAbilityThisTurn && !HasActionPreventingStatusEffect();
     }
 
+    public bool TryGetActionPreventingStatusName(out string statusName) =>
+        TryGetPreventingStatusName(false, out statusName);
+
+    public bool TryGetMovementPreventingStatusName(out string statusName) =>
+        TryGetPreventingStatusName(true, out statusName);
+
+    private bool TryGetPreventingStatusName(bool movement, out string statusName)
+    {
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (effect.RemainingTurns > 0 && (movement ? effect.PreventMovement : effect.PreventActions))
+            {
+                statusName = string.IsNullOrEmpty(effect.DisplayName) ? effect.BaseStatusId : effect.DisplayName;
+                return true;
+            }
+        }
+
+        statusName = "";
+        return false;
+    }
+
     public bool HasAbility(string abilityId)
     {
         if (string.IsNullOrEmpty(abilityId))
@@ -1418,28 +1439,12 @@ public partial class Unit : Node2D
 
     private bool HasMovementPreventingStatusEffect()
     {
-        foreach (var effect in _statusEffects.Values)
-        {
-            if (effect.RemainingTurns > 0 && effect.PreventMovement)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return TryGetMovementPreventingStatusName(out _);
     }
 
     private bool HasActionPreventingStatusEffect()
     {
-        foreach (var effect in _statusEffects.Values)
-        {
-            if (effect.RemainingTurns > 0 && effect.PreventActions)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return TryGetActionPreventingStatusName(out _);
     }
 
     private int GetActiveArmorClassBonusFromStatuses()

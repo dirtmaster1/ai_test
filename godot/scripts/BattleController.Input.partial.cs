@@ -119,18 +119,7 @@ public partial class BattleController
             }
 
             var actionProfile = ResolveActionProfile(active, selectedAbilityId);
-            if (!actionProfile.IgnoresActionCost && !active.CanUseAbilityThisTurn())
-            {
-                return;
-            }
-
-            var cooldownRemaining = active.GetAbilityCooldownRemaining(selectedAbilityId);
-            if (cooldownRemaining > 0)
-            {
-                return;
-            }
-
-            if (!CanCastAction(active, actionProfile))
+            if (!ValidatePlayerAction(active, actionProfile))
             {
                 return;
             }
@@ -165,6 +154,11 @@ public partial class BattleController
 
         var delta = KeyToDelta(keyEvent.Keycode);
         if (delta == Vector2I.Zero)
+        {
+            return;
+        }
+
+        if (!ValidatePlayerMovement(active, active.GridPos + delta, pathing: false))
         {
             return;
         }
@@ -330,17 +324,12 @@ public partial class BattleController
         }
 
         var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
-        if (!IsInBounds(clickedCell))
-        {
-            return;
-        }
-
         if (clickedCell == active.GridPos)
         {
             return;
         }
 
-        if (!active.CanMoveThisTurn())
+        if (!ValidatePlayerMovement(active, clickedCell, pathing: true))
         {
             return;
         }
@@ -393,6 +382,7 @@ public partial class BattleController
 
         if (!TryMoveExplorationParty(delta))
         {
+            ValidatePlayerMovement(explorer, explorer.GridPos + delta, pathing: false);
             return;
         }
 
@@ -454,6 +444,12 @@ public partial class BattleController
             }
 
             var targetCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
+            if (!ValidatePlayerAction(explorerActor, explorationProfile)
+                || !ValidatePlayerTarget(explorerActor, explorationProfile, targetCell))
+            {
+                return;
+            }
+
             var allyTarget = GetLivingAllyAtCell(explorerActor.Team, targetCell);
             if (allyTarget == null || !TryHealTarget(
                     explorerActor,
@@ -485,18 +481,7 @@ public partial class BattleController
             return;
         }
 
-        var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
         var clickedCell = WorldToCell(ToLocal(mouseEvent.GlobalPosition));
-        var target = GetLivingUnitAtCell(clickedCell);
-        var inRange = target != null && actionProfile.AreaRadius == 0
-            ? active.DistanceToUnitAt(active.GridPos, target) <= actionProfile.Range
-            : Unit.IsWithinRange(active.GridPos, clickedCell, actionProfile.Range);
-        if (!inRange)
-        {
-            return;
-        }
-
-        CancelAttackMode(false);
         TryResolvePlayerActionAtCell(active, clickedCell);
     }
 
@@ -522,12 +507,25 @@ public partial class BattleController
         }
 
         var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
-        if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
+        if (!ValidatePlayerAction(active, actionProfile))
         {
             return;
         }
 
-        CancelAttackMode(false);
+        if (IsUtilityAction(actionProfile.ActionType))
+        {
+            BeginUtilityAction(active, actionProfile, active.GridPos + delta);
+            return;
+        }
+
+        if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
+        {
+            RejectPlayerAction(actionProfile.ActionType == "heal"
+                ? "No ally in that direction."
+                : "No visible enemy in range in that direction.");
+            return;
+        }
+
         TryResolvePlayerActionAtCell(active, targetCell);
     }
 
