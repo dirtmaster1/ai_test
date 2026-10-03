@@ -1166,7 +1166,7 @@ public partial class MapLoader : Node
             }
 
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, propCell) > 1)
+            if (Chebyshev(explorer.GridPos, propCell) > 1)
             {
                 continue;
             }
@@ -1222,7 +1222,7 @@ public partial class MapLoader : Node
         foreach (var bag in lootBags)
         {
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
                 continue;
             }
@@ -1298,7 +1298,7 @@ public partial class MapLoader : Node
             }
 
             clickedInteractable = true;
-            if (Manhattan(explorer.GridPos, propCell) > 1)
+            if (Chebyshev(explorer.GridPos, propCell) > 1)
             {
                 statusText = "Move adjacent to interact with that object.";
                 return true;
@@ -1377,7 +1377,7 @@ public partial class MapLoader : Node
                 }
 
                 clickedInteractable = true;
-                if (Manhattan(explorer.GridPos, bagCell) > 1)
+                if (Chebyshev(explorer.GridPos, bagCell) > 1)
                 {
                     statusText = "Move adjacent to pick up that loot bag.";
                     return true;
@@ -1702,7 +1702,7 @@ public partial class MapLoader : Node
             }
 
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
                 return false;
             }
@@ -1800,7 +1800,7 @@ public partial class MapLoader : Node
             }
 
             var propCell = GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, propCell) > 1)
+            if (Chebyshev(explorer.GridPos, propCell) > 1)
             {
                 return false;
             }
@@ -1871,7 +1871,7 @@ public partial class MapLoader : Node
             }
 
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
                 return false;
             }
@@ -1922,7 +1922,7 @@ public partial class MapLoader : Node
             }
 
             var bagCell = GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999));
-            if (Manhattan(explorer.GridPos, bagCell) > 1)
+            if (Chebyshev(explorer.GridPos, bagCell) > 1)
             {
                 return false;
             }
@@ -2006,9 +2006,9 @@ public partial class MapLoader : Node
         return !string.IsNullOrEmpty(single);
     }
 
-    private static int Manhattan(Vector2I a, Vector2I b)
+    private static int Chebyshev(Vector2I a, Vector2I b)
     {
-        return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
+        return Mathf.Max(Mathf.Abs(a.X - b.X), Mathf.Abs(a.Y - b.Y));
     }
 
     private static bool IsInBounds(Vector2I cell, int gridWidth, int gridHeight)

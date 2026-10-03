@@ -46,7 +46,7 @@ public partial class BattleController
         target = null;
         if (!IsUsableUnit(actor) || actor.IsDead || actor.Team != "player"
             || !actor.HasAbility(profile.ActionId) || !IsUtilityAction(profile.ActionType)
-            || Manhattan(actor.GridPos, cell) != 1 || !IsFogCellCurrentlyVisible(cell)
+            || Chebyshev(actor.GridPos, cell) != 1 || !IsFogCellCurrentlyVisible(cell)
             || !HasClearLineOfSight(actor.GridPos, cell))
         {
             return false;

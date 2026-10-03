@@ -2688,6 +2688,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         };
     }
 
+    private static int Chebyshev(Vector2I a, Vector2I b)
+    {
+        return Mathf.Max(Mathf.Abs(a.X - b.X), Mathf.Abs(a.Y - b.Y));
+    }
+
     private static int Manhattan(Vector2I a, Vector2I b)
     {
         return Mathf.Abs(a.X - b.X) + Mathf.Abs(a.Y - b.Y);
@@ -3411,7 +3416,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 if (IsUtilityAction(actionProfile.ActionType)
-                    && (Manhattan(active.GridPos, cell) != 1 || !IsFogCellCurrentlyVisible(cell)))
+                    && (Chebyshev(active.GridPos, cell) != 1 || !IsFogCellCurrentlyVisible(cell)))
                 {
                     continue;
                 }
@@ -7466,7 +7471,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var doorCell = GetVector2I(door, "cell", new Vector2I(-9999, -9999));
-        if (Manhattan(explorer.GridPos, doorCell) > 1)
+        if (Chebyshev(explorer.GridPos, doorCell) > 1)
         {
             return false;
         }

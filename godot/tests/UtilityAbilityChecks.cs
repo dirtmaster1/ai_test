@@ -117,7 +117,8 @@ public partial class UtilityAbilityChecks : BattleController
             Click(new Vector2I(2, 0));
             Check(Dialog() == null, "Distant trap must not open a confirmation");
             Click(new Vector2I(3, 1));
-            Check(Dialog() == null, "Diagonal trap must be outside range one");
+            RequireDialog("Disarm Trap").EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            Check(Dialog() == null, "Diagonally adjacent trap must open and cancel its confirmation");
             Click(new Vector2I(2, 3));
             Check(Dialog() == null, "Empty floor must not open a disarm confirmation");
             Click(_trapCell);
@@ -143,6 +144,7 @@ public partial class UtilityAbilityChecks : BattleController
             Choose("pick-lock");
             Click(new Vector2I(1, 2));
             Check(Dialog() == null, "Unlocked door must not be a pick-lock target");
+            _thief.SetGridPos(new Vector2I(2, 1));
             Click(_doorCell);
             RequireDialog("Pick Lock").EmitSignal(ConfirmationDialog.SignalName.Canceled);
             Check((bool)Call("IsDoorLocked", door), "Cancel must leave the door locked");
@@ -157,6 +159,7 @@ public partial class UtilityAbilityChecks : BattleController
             Check((bool)Call("HasClearLineOfSight", _thief.GridPos, new Vector2I(4, 2)), "Opened door must allow sight");
             Call("TryOpenDoorAtCell", _doorCell);
             Check(!(bool)Call("IsDoorLocked", door), "Closing must not relock a picked door");
+            _thief.SetGridPos(new Vector2I(2, 2));
 
             CheckPersistence();
             CheckTrapDamage();
@@ -245,7 +248,10 @@ public partial class UtilityAbilityChecks : BattleController
         }
         opened.Clear();
         prop["type"] = "chest";
-        Check(_testLoader.TryBuildExplorationClickLootEntries(_thief, _trapCell, props, bags, opened, gameData, out var chestEntries, out _)
+        prop["grid_pos"] = new Vector2I(3, 3);
+        Check(_testLoader.BuildNearbyLootEntries(_thief, props, bags, opened, gameData).Count > 0,
+            "Diagonally adjacent containers must appear in nearby interactions");
+        Check(_testLoader.TryBuildExplorationClickLootEntries(_thief, new Vector2I(3, 3), props, bags, opened, gameData, out var chestEntries, out _)
             && chestEntries.Count > 0, "Normal containers must still offer loot interactions");
         Check(_testLoader.TryResolveExplorationInteractionById(_thief, "prop:trap-loot-check", props, bags, opened,
             new HashSet<string>(), inventory, ref gold, gameData, rng, out _, out _, out var chestChanged)
