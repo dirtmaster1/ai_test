@@ -16,7 +16,7 @@ func run_test() -> void:
         checks.queue_free()
         await process_frame
         if icon_failures.is_empty():
-            print("PASS: Poison Strike shared atlas region and action-bar icon")
+            print("PASS: shared icon atlas dimensions, cell artwork, new item mappings, and Poison Strike action-bar icon")
         quit(0 if icon_failures.is_empty() else 1)
         return
     checks.call("Run")

@@ -24,6 +24,7 @@ public partial class ActionFeedbackChecks : BattleController
     {
         SetupFixture();
         CheckPoisonStrikeIcon();
+        CheckExtendedIconAtlas();
         return _failures;
     }
 
@@ -31,6 +32,7 @@ public partial class ActionFeedbackChecks : BattleController
     {
         SetupFixture();
         CheckPoisonStrikeIcon();
+        CheckExtendedIconAtlas();
         CheckResources();
         CheckTargets();
         CheckUtilities();
@@ -54,6 +56,33 @@ public partial class ActionFeedbackChecks : BattleController
         Check(AbilityButton("poison-strike").Icon == icon,
             "Poison Strike action-bar button must use the shared icon mapping");
         Call("SyncHudFromGameState");
+    }
+
+    private void CheckExtendedIconAtlas()
+    {
+        var getIcon = typeof(HudController).GetMethod("GetGameIcon", BindingFlags.Static | BindingFlags.NonPublic);
+        var expectedCells = new System.Collections.Generic.Dictionary<string, Vector2I>
+        {
+            ["healing-potion"] = new(0, 7),
+            ["magic-potion"] = new(1, 7),
+            ["gold"] = new(0, 8),
+            ["rusty-key"] = new(1, 8),
+            ["small-shield"] = new(0, 2),
+            ["poison-strike"] = new(4, 6)
+        };
+        foreach (var entry in expectedCells)
+        {
+            var icon = getIcon.Invoke(null, new object[] { entry.Key }) as AtlasTexture;
+            var expectedRegion = new Rect2(entry.Value.X * 32, entry.Value.Y * 32, 32, 32);
+            Check(icon != null && icon.Region == expectedRegion,
+                $"{entry.Key} must use its assigned 32px atlas cell");
+            if (icon == null) continue;
+            Check(icon.Atlas.GetWidth() == 224 && icon.Atlas.GetHeight() == 288,
+                "Extended icon atlas must retain seven columns and add two rows");
+            using var image = icon.Atlas.GetImage();
+            using var cell = image.GetRegion(new Rect2I(entry.Value * 32, new Vector2I(32, 32)));
+            Check(!cell.IsInvisible(), $"{entry.Key} atlas cell must contain visible artwork");
+        }
     }
 
     private void SetupFixture()

@@ -58,6 +58,42 @@ Use `Extract` only to bootstrap or intentionally reset source tiles from an atla
 
 Atlas dimensions are strict: `width = columns * 64` and `height = rows * 64`. Non-grid images such as portraits and launch art do not belong in this manifest.
 
+## Extending the UI Icon Atlas
+
+The UI atlas `assets/ui/icon_misc_1.png` is separate from the 64px terrain
+pipeline. It uses fixed 32px cells and explicit zero-based `(column, row)`
+coordinates in `ItemIconCellsById` in `scripts/HudController.cs`.
+The same mapping supplies action-bar, ability-list, item, and loot icons.
+
+To add artwork without breaking existing icons:
+
+1. In GIMP, increase **Canvas Size**, not **Scale Image**. Keep the width at
+   224px (seven columns), anchor the existing artwork at the top-left, and
+   add height in multiples of 32px.
+2. Keep all existing pixels and cell positions unchanged. Place new icons
+   on the added rows at exact 32px grid offsets; retain transparency.
+3. Export to the same PNG path, retaining the existing Godot import file/UID.
+4. Add item/ability IDs to `ItemIconCellsById`. Coordinates are zero-based,
+   so the eighth row is `7`. New IDs only register artwork; usable item
+   definitions and effects must be added separately when needed.
+5. Reimport the PNG in Godot and restart a running game to refresh its cached
+   icon textures.
+
+The atlas is now 224x288px. The appended 2x2 block occupies these cells:
+
+| Icon ID | Column, row (zero-based) | Human-readable position |
+|---|---|---|
+| `healing-potion` | `(0, 7)` | Row 8, column 1 |
+| `magic-potion` | `(1, 7)` | Row 8, column 2 |
+| `gold` | `(0, 8)` | Row 9, column 1 |
+| `rusty-key` | `(1, 8)` | Row 9, column 2 |
+
+Only `gold` intentionally replaces an existing mapping (previously the shield
+cell). All other existing icon coordinates remain unchanged.
+After a C# build, run
+`godot --headless --path . --script res://tests/action_feedback_test.gd -- --icon-only`
+to check shared regions, new cell artwork, and the Poison Strike action-bar icon.
+
 ## GIMP MCP
 
 The local integration uses `maorcc/gimp-mcp`, installed under `C:/Users/antho/Tools/gimp-mcp` and registered as `gimp` in VS Code's user `mcp.json`. Its GIMP 3.2 plugin is installed under `%APPDATA%/GIMP/3.2/plug-ins/gimp-mcp-plugin/`.
