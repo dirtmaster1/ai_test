@@ -57,6 +57,7 @@ Use `Extract` only to bootstrap or intentionally reset source tiles from an atla
 4. Run `Validate`, then switch the atlas to `packed` when its source tiles are ready.
 
 Atlas dimensions are strict: `width = columns * 64` and `height = rows * 64`. Non-grid images such as portraits and launch art do not belong in this manifest.
+The grass-water atlas is 6x7 tiles (384x448px); its appended door duplicate is at row 7, column 1, with the same `door` terrain and open-door target as the original at row 6, column 4.
 
 ## Extending the UI Icon Atlas
 
