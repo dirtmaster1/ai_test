@@ -14,3 +14,8 @@ Consumables are defined in `resources/game_data.json` with `type: "potion"`,
 `slot: "consumable"`, and a `use_effect` containing an effect type and amount.
 The initial effects are `restore_hit_points` and `restore_magic_points`.
 Mira the Curio Trader stocks one of each potion.
+
+Key items use `type: "key"` and a `key_id`. They remain in the party's shared
+inventory, cannot be equipped or used, and are not consumed when used to unlock
+a matching keyed door. To place one in a chest, add its item ID to that chest's
+`loot_item_ids` marker property.

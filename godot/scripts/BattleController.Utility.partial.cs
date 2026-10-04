@@ -30,7 +30,7 @@ public partial class BattleController
 
     private bool IsDoorLocked(Dictionary door)
     {
-        if (door == null || !GetBool(door, "locked", false))
+        if (door == null || (!GetBool(door, "locked", false) && string.IsNullOrEmpty(GetString(door, "key_id", ""))))
         {
             return false;
         }
@@ -39,7 +39,65 @@ public partial class BattleController
             || !unlockedDoors.Contains(GetString(door, "id", ""));
     }
 
-    private static bool TryUnlockDoorWithKey(Unit actor, Dictionary door) => false;
+    private bool HasRequiredKeyInParty(Dictionary door)
+    {
+        var keyId = GetString(door, "key_id", "");
+        if (string.IsNullOrEmpty(keyId) || _gameData == null)
+        {
+            return false;
+        }
+
+        foreach (var itemId in _partyInventoryItemIds)
+        {
+            var item = _gameData.GetItem(itemId);
+            if (GetString(item, "type", "") == "key"
+                && string.Equals(GetString(item, "key_id", ""), keyId, System.StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string GetRequiredKeyName(string keyId)
+    {
+        if (_gameData == null)
+        {
+            return keyId;
+        }
+
+        foreach (var itemEntry in _gameData.Items.Keys)
+        {
+            var itemId = ((Variant)itemEntry).AsString();
+            var item = _gameData.GetItem(itemId);
+            if (GetString(item, "type", "") == "key"
+                && string.Equals(GetString(item, "key_id", ""), keyId, System.StringComparison.Ordinal))
+            {
+                return GetString(item, "name", keyId);
+            }
+        }
+
+        return keyId;
+    }
+
+    private bool TryUnlockDoorWithKey(Unit actor, Dictionary door)
+    {
+        if (!IsUsableUnit(actor) || actor.IsDead || actor.Team != "player" || !_playerUnits.Contains(actor)
+            || !IsDoorLocked(door) || !HasRequiredKeyInParty(door))
+        {
+            return false;
+        }
+
+        if (!_unlockedDoorIdsByMap.TryGetValue(_currentMapId, out var unlockedDoors))
+        {
+            unlockedDoors = new HashSet<string>();
+            _unlockedDoorIdsByMap[_currentMapId] = unlockedDoors;
+        }
+
+        unlockedDoors.Add(GetString(door, "id", ""));
+        return true;
+    }
 
     private bool TryGetUtilityTarget(Unit actor, ActionProfile profile, Vector2I cell, out Dictionary target)
     {
@@ -54,7 +112,9 @@ public partial class BattleController
 
         if (profile.ActionType == "pick_lock")
         {
-            return TryGetDoorAtCell(cell, out target) && IsDoorLocked(target);
+            return TryGetDoorAtCell(cell, out target)
+                && IsDoorLocked(target)
+                && string.IsNullOrEmpty(GetString(target, "key_id", ""));
         }
 
         foreach (var prop in _mapProps)
@@ -166,13 +226,21 @@ public partial class BattleController
     private async Task<bool> ConfirmUtilityActionAsync(ActionProfile profile, Dictionary target)
     {
         var disarming = profile.ActionType == "disarm_trap";
+        return await ConfirmActionAsync(
+            profile.ActionName,
+            disarming ? $"Disarm {GetString(target, "name", "this trap")}?" : "Pick this door's lock?",
+            disarming ? "Disarm" : "Pick Lock");
+    }
+
+    private async Task<bool> ConfirmActionAsync(string title, string text, string confirmLabel)
+    {
         var dialog = new ConfirmationDialog
         {
-            Title = profile.ActionName,
-            DialogText = disarming ? $"Disarm {GetString(target, "name", "this trap")}?" : "Pick this door's lock?",
+            Title = title,
+            DialogText = text,
             Exclusive = true
         };
-        dialog.GetOkButton().Text = disarming ? "Disarm" : "Pick Lock";
+        dialog.GetOkButton().Text = confirmLabel;
         dialog.GetCancelButton().Text = "Not now";
         AddChild(dialog);
         TacticalTheme.ApplyDialog(dialog);

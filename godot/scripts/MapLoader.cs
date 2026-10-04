@@ -12,6 +12,7 @@ public partial class MapLoader : Node
     private const string ItemVisualSuffix = "-item-visuals";
     private const string TerrainTypeKey = "terrain_type";
     private const string DoorIdKey = "door_id";
+    private const string DoorKeyIdKey = "key_id";
     private const string OpenDoorAtlasKey = "open_door_atlas";
 
     private GameData _gameData;
@@ -28,6 +29,7 @@ public partial class MapLoader : Node
         public int AlternativeTile { get; init; }
         public string TerrainType { get; init; } = "floor";
         public string DoorId { get; init; } = "";
+        public string KeyId { get; init; } = "";
         public bool Locked { get; init; }
         public Vector2I? OpenDoorAtlasCoords { get; init; }
     }
@@ -315,6 +317,7 @@ public partial class MapLoader : Node
                     { "id", string.IsNullOrEmpty(cellSnapshot.DoorId) ? $"{mapId}-door-{cell.X}-{cell.Y}" : cellSnapshot.DoorId },
                     { "cell", cell },
                     { "locked", cellSnapshot.Locked },
+                    { "key_id", cellSnapshot.KeyId },
                     { "is_open", false }
                 });
             }
@@ -360,6 +363,7 @@ public partial class MapLoader : Node
                     AlternativeTile = baseLayer.GetCellAlternativeTile(cell),
                     TerrainType = ResolveTerrainType(mapId, baseLayer, cell),
                     DoorId = tileData == null ? fallbackDoorId : GetTileString(baseLayer, tileData, DoorIdKey, fallbackDoorId),
+                    KeyId = tileData == null ? "" : GetTileString(baseLayer, tileData, DoorKeyIdKey, ""),
                     Locked = tileData != null && GetTileBool(baseLayer, tileData, "locked", false),
                     OpenDoorAtlasCoords = tileData == null
                         ? null

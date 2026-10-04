@@ -57,11 +57,20 @@ On tiles in each `*-base` layer, set custom data keys in the TileSet.
 ### `locked` (optional boolean, door tiles only)
 
 - Available on all terrain TileSets; only applies when `terrain_type = door`
-- `true`: cannot be opened normally; use Pick Lock from an orthogonally adjacent tile
+- `true`: cannot be opened normally; use Pick Lock from an orthogonally adjacent tile, unless a `key_id` is set
 - `false` or absent: unlocked, with the usual click-to-open behavior
 - Picking a lock unlocks the door without opening it; unlocked state persists per map and across saves
 - Use a TileSet alternative tile if only some instances of a door should start locked
-- Key support is reserved by `TryUnlockDoorWithKey` in the controller; it currently returns false. No key items or key consumption are implemented yet
+
+### `key_id` (optional string, door tiles only)
+
+- Available on all terrain TileSets; only applies when `terrain_type = door`
+- Empty or absent: no key is required; a door with `locked = true` can still be picked
+- Non-empty: requires a matching key item in the party's shared inventory, regardless of the `locked` value
+- Key IDs must match exactly. For example, `rusty-key` matches the Rusty Key item's `key_id`
+- Clicking a locked keyed door with the matching key prompts to unlock it; confirming unlocks it without opening it and does not consume the key
+- A keyed door cannot be picked. Attempting to use Pick Lock on it displays an alert banner
+- Key-required unlocked state persists per map and across saves
 
 ### Thief utility abilities
 

@@ -105,6 +105,11 @@ public partial class BattleController
                     return RejectPlayerAction("Select a locked door.");
                 }
 
+                if (IsDoorLocked(door) && !string.IsNullOrEmpty(GetString(door, "key_id", "")))
+                {
+                    return RejectPlayerAction("This door requires a key and cannot be picked.");
+                }
+
                 return IsDoorLocked(door) || RejectPlayerAction("This door is already unlocked.");
             }
 

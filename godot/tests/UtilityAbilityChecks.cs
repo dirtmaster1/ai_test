@@ -10,6 +10,7 @@ public partial class UtilityAbilityChecks : BattleController
     private readonly Array<string> _failures = new();
     private readonly Vector2I _trapCell = new(2, 1);
     private readonly Vector2I _doorCell = new(3, 2);
+    private const string KeyId = "rusty-key";
     private Unit _thief;
     private GamePersistence _testPersistence;
     private MapLoader _testLoader;
@@ -104,14 +105,82 @@ public partial class UtilityAbilityChecks : BattleController
 
             var door = Doors()[_doorCell];
             Check((bool)Call("IsDoorLocked", door), "Authored locked flag must survive MapLoader");
+            Check(door["key_id"].AsString() == KeyId, "Authored key_id must survive MapLoader");
+            Check((bool)Call("IsDoorLocked", new Dictionary
+            {
+                { "id", "key-only-door" }, { "locked", false }, { "key_id", KeyId }
+            }), "A key_id must require a key even when locked is false");
             Check(!(bool)Call("IsDoorLocked", new Dictionary()), "Absent locked flag must default to unlocked");
             Check(!(bool)Call("IsDoorLocked", new Dictionary { { "locked", false } }), "False locked flag must be unlocked");
             Call("TryOpenDoorAtCell", _doorCell);
             Check(!(bool)Call("IsDoorOpen", door), "Ordinary door click must not bypass a lock");
             Check(!(bool)Call("CanUnitStandAt", _thief, _doorCell), "Locked doors must block movement");
             Check(!(bool)Call("HasClearLineOfSight", _thief.GridPos, new Vector2I(4, 2)), "Locked doors must block sight");
-            Check(!(bool)typeof(BattleController).GetMethod("TryUnlockDoorWithKey", BindingFlags.NonPublic | BindingFlags.Static)
-                .Invoke(null, new object[] { _thief, door }), "Reserved key hook must not unlock doors yet");
+            Check(!(bool)Call("TryUnlockDoorWithKey", _thief, door), "A locked door must reject an absent key");
+
+            AttachHud();
+            Choose("pick-lock");
+            Click(_doorCell);
+            Check(Dialog() == null, "A keyed door must not open a pick-lock confirmation");
+            Check(_testHud.GetNode<Label>("CombatBanner/CombatBannerLabel").Text.Contains("requires a key and cannot be picked"),
+                "Trying to pick a keyed door must show an alert banner");
+
+            var partyInventory = Field<List<string>>("_partyInventoryItemIds");
+            var gameData = GetNode<GameData>("/root/GameData");
+            gameData.Items["incorrect-key"] = new Dictionary
+            {
+                { "id", "incorrect-key" }, { "name", "Wrong Key" }, { "type", "key" }, { "key_id", "other-lock" }
+            };
+            partyInventory.Add("incorrect-key");
+            Check(!(bool)Call("TryUnlockDoorWithKey", _thief, door),
+                "A different key_id in shared inventory must not unlock this door");
+            partyInventory.Remove("incorrect-key");
+            gameData.Items.Remove("incorrect-key");
+            partyInventory.Add(KeyId);
+            var keyItem = gameData.GetItem(KeyId);
+            Check(keyItem.Count > 0 && keyItem["type"].AsString() == "key" && keyItem["key_id"].AsString() == KeyId,
+                "Rusty Key must be a passive key item with the matching key_id");
+            _testHud.SetInventoryItems((Array<Dictionary>)Call("BuildInventoryItemsForHud"), new Array<string>());
+            var inventoryList = (ItemList)typeof(HudController)
+                .GetField("_inventoryItemList", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            var keyIndex = -1;
+            for (var i = 0; i < inventoryList.ItemCount; i++)
+            {
+                if (inventoryList.GetItemMetadata(i).AsString() == KeyId)
+                {
+                    keyIndex = i;
+                    break;
+                }
+            }
+            Check(keyIndex >= 0, "Rusty Key must appear in the shared inventory list");
+            typeof(HudController).GetMethod("UpdateInventoryPrimaryAction", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_testHud, new object[] { keyItem });
+            var equipButton = (Button)typeof(HudController)
+                .GetField("_equipButton", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            Check(equipButton.Disabled && equipButton.Text == "Passive",
+                "Key items must remain visible in shared inventory but cannot be equipped or used");
+
+            Call("TryOpenDoorAtCell", _doorCell);
+            var keyDialog = Dialog() ?? throw new System.InvalidOperationException("Missing key unlock confirmation");
+            Check(keyDialog.Title == "Unlock Door"
+                && keyDialog.DialogText.Contains("Rusty Key")
+                && keyDialog.GetOkButton().Text == "Unlock",
+                "Key unlock confirmation must name the required item");
+            keyDialog.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            Check((bool)Call("IsDoorLocked", door) && partyInventory.Contains(KeyId),
+                "Cancel must preserve the lock and shared key");
+            Call("TryOpenDoorAtCell", _doorCell);
+            (Dialog() ?? throw new System.InvalidOperationException("Missing key unlock confirmation"))
+                .EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            Check(!(bool)Call("IsDoorLocked", door) && !(bool)Call("IsDoorOpen", door),
+                "Confirming the key must unlock without opening the door");
+            Check(partyInventory.Contains(KeyId), "Unlocking a door must not consume its key");
+            Call("TryOpenDoorAtCell", _doorCell);
+            Check((bool)Call("IsDoorOpen", door), "A key-unlocked door must open normally");
+            Call("TryOpenDoorAtCell", _doorCell);
+            Check(!(bool)Call("IsDoorOpen", door), "A key-unlocked door must close normally");
+            door.Remove("key_id");
+            Field<System.Collections.Generic.Dictionary<string, HashSet<string>>>("_unlockedDoorIdsByMap").Clear();
 
             Choose("disarm-trap");
             Click(new Vector2I(2, 0));
@@ -191,6 +260,7 @@ public partial class UtilityAbilityChecks : BattleController
         var tiles = (TileSet)GD.Load<TileSet>("res://assets/tilesets/dungeon_terrain_64_tileset.tres").Duplicate(true);
         var atlas = (TileSetAtlasSource)tiles.GetSource(0);
         atlas.GetTileData(new Vector2I(3, 1), 0).SetCustomData("locked", true);
+        atlas.GetTileData(new Vector2I(3, 1), 0).SetCustomData("key_id", KeyId);
         var baseLayer = new TileMapLayer { Name = TestMap + "-base", TileSet = tiles };
         for (var row = 0; row < 5; row++)
             for (var column = 0; column < 5; column++)
@@ -250,6 +320,7 @@ public partial class UtilityAbilityChecks : BattleController
         opened.Clear();
         prop["type"] = "chest";
         prop["grid_pos"] = new Vector2I(3, 3);
+        prop["loot_item_ids"] = new Array<string> { KeyId };
         Check(_testLoader.BuildNearbyLootEntries(_thief, props, bags, opened, gameData).Count > 0,
             "Diagonally adjacent containers must appear in nearby interactions");
         Check(_testLoader.TryBuildExplorationClickLootEntries(_thief, new Vector2I(3, 3), props, bags, opened, gameData, out var chestEntries, out _)
@@ -257,6 +328,10 @@ public partial class UtilityAbilityChecks : BattleController
         Check(_testLoader.TryResolveExplorationInteractionById(_thief, "prop:trap-loot-check", props, bags, opened,
             new HashSet<string>(), inventory, ref gold, gameData, rng, out _, out _, out var chestChanged)
             && chestChanged && bags.Count == 1, "Normal containers must still reveal loot");
+        Check(_testLoader.GetBagItemIds(bags[0]).Contains(KeyId), "Chest loot configuration must support key item IDs");
+        Check(_testLoader.TryResolveExplorationInteractionById(_thief, $"bag-item:{bags[0]["id"]}:0", props, bags, opened,
+            new HashSet<string>(), inventory, ref gold, gameData, rng, out _, out _, out var lootedKey)
+            && lootedKey && inventory.Contains(KeyId), "Looting a key must add it to shared party inventory");
     }
 
     private void CheckTerrainMetadata()
@@ -267,6 +342,9 @@ public partial class UtilityAbilityChecks : BattleController
             var layer = tiles.GetCustomDataLayerByName("locked");
             Check(layer >= 0 && tiles.GetCustomDataLayerType(layer) == Variant.Type.Bool,
                 $"{name} terrain must expose a boolean locked layer");
+            var keyLayer = tiles.GetCustomDataLayerByName("key_id");
+            Check(keyLayer >= 0 && tiles.GetCustomDataLayerType(keyLayer) == Variant.Type.String,
+                $"{name} terrain must expose a string key_id layer");
         }
     }
 
@@ -315,6 +393,8 @@ public partial class UtilityAbilityChecks : BattleController
     {
         var flowField = PrivateField("_flowState");
         flowField.SetValue(this, System.Enum.Parse(flowField.FieldType, "Combat"));
+        Set("_mouseMoveInputLockedUntilMs", (ulong)0);
+        Doors()[_doorCell].Remove("key_id");
         _testTurns.SetupTurnOrder(new Array<Unit> { _thief });
         _thief.ResetTurnResources();
         InactiveTraps().Remove(TrapId());
@@ -344,6 +424,16 @@ public partial class UtilityAbilityChecks : BattleController
         Set("_explorerUnit", _thief);
         Set("_fogVisibilityActor", null);
         Call("UpdateFogOfWar");
+    }
+
+    private void AttachHud()
+    {
+        _hudLayer = new CanvasLayer();
+        AddChild(_hudLayer);
+        _testHud = GD.Load<PackedScene>("res://ui/HUD.tscn").Instantiate<HudController>();
+        _hudLayer.AddChild(_testHud);
+        Set("_hud", _testHud);
+        Call("SyncHudFromGameState");
     }
 
     private void Choose(string abilityId)

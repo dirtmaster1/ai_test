@@ -206,5 +206,7 @@ custom_data_layer_1/name = "open_door_atlas"
 custom_data_layer_1/type = 4
 custom_data_layer_2/name = "locked"
 custom_data_layer_2/type = 1
+custom_data_layer_3/name = "key_id"
+custom_data_layer_3/type = 4
 sources/3 = SubResource("TileSetAtlasSource_eb3ql")
 sources/6 = SubResource("TileSetAtlasSource_5gw13")

@@ -299,6 +299,14 @@
 		"amount": 4
 	  },
 	  "consumed_on_use": true
+	},
+	"rusty-key": {
+	  "id": "rusty-key",
+	  "name": "Rusty Key",
+	  "type": "key",
+	  "key_id": "rusty-key",
+	  "slot": "none",
+	  "description": "A worn key for doors and seals marked with key_id rusty-key."
 	}
   },
   "dialogues": {

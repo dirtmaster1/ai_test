@@ -42,4 +42,6 @@ custom_data_layer_0/name = "terrain_type"
 custom_data_layer_0/type = 4
 custom_data_layer_1/name = "locked"
 custom_data_layer_1/type = 1
+custom_data_layer_2/name = "key_id"
+custom_data_layer_2/type = 4
 sources/0 = SubResource("TileSetAtlasSource_graveyard")

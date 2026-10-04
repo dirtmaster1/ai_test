@@ -743,6 +743,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
         else
         {
+            var itemType = GetString(itemData, "type", "");
+            if (itemType is not ("weapon" or "armor"))
+            {
+                RejectPlayerAction($"{GetString(itemData, "name", itemId)} cannot be equipped.");
+                return;
+            }
+
             EquipItemToUnit(target, itemData, itemId);
         }
 
@@ -769,6 +776,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        var itemName = GetString(itemData, "name", itemId);
+        if (GetString(itemData, "type", "") == "key")
+        {
+            RejectPlayerAction($"{itemName} is passive and cannot be used.");
+            return;
+        }
+
         var useEffect = GetDictionary(itemData, "use_effect");
         var effectType = GetString(useEffect, "type", "");
         if (effectType != "learn_spell")
@@ -788,7 +802,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
-        var itemName = GetString(itemData, "name", itemId);
         if (!classAllowed)
         {
             RejectPlayerAction($"{target.UnitName} cannot use {itemName} - requires {string.Join(", ", allowedClasses)}.");
@@ -7730,9 +7743,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var doorId = GetString(door, "id", "");
-        if (IsDoorLocked(door) && !TryUnlockDoorWithKey(explorer, door))
+        if (IsDoorLocked(door))
         {
-            RejectPlayerAction("Door locked.");
+            var keyId = GetString(door, "key_id", "");
+            if (string.IsNullOrEmpty(keyId))
+            {
+                RejectPlayerAction("Door locked.");
+            }
+            else if (!HasRequiredKeyInParty(door))
+            {
+                RejectPlayerAction($"This door requires {GetRequiredKeyName(keyId)}.");
+            }
+            else
+            {
+                BeginKeyUnlockAction(explorer, door);
+            }
+
             return true;
         }
 
@@ -7767,6 +7793,41 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         SetStatusHelp();
         QueueRedraw();
         return true;
+    }
+
+    private async void BeginKeyUnlockAction(Unit actor, Dictionary door)
+    {
+        if (_utilityConfirmationPending || !IsUsableUnit(actor) || actor.IsDead
+            || !IsDoorLocked(door) || !HasRequiredKeyInParty(door))
+        {
+            return;
+        }
+
+        var mapId = _currentMapId;
+        var flowState = _flowState;
+        var keyName = GetRequiredKeyName(GetString(door, "key_id", ""));
+        _utilityConfirmationPending = true;
+        CancelAttackMode(false);
+        try
+        {
+            var confirmed = await ConfirmActionAsync("Unlock Door", $"Use {keyName} to unlock this door?", "Unlock");
+            if (confirmed && mapId == _currentMapId && flowState == _flowState
+                && TryUnlockDoorWithKey(actor, door))
+            {
+                _hud?.ShowCombatBanner("Door unlocked!", new Color(0.3f, 1.0f, 0.45f));
+                _hud?.AddCombatLogEntry($"{actor.UnitName} used {keyName} to unlock a door.");
+                SaveMapInteractionStateForCurrentMap();
+                _persistence?.PersistSaveGame(false);
+                SetStatusHelp();
+            }
+        }
+        finally
+        {
+            _utilityConfirmationPending = false;
+            BeginPostPlayerActionMouseMoveLock();
+            SyncHudFromGameState();
+            QueueRedraw();
+        }
     }
 
     private void SyncDoorVisualStateForCurrentMap()

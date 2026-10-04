@@ -3098,6 +3098,12 @@ public partial class HudController : Control
             return $"{name} - Scroll\n{description}\nTeaches: {spellId}\nClasses: {classLabel}\nConsumed on successful use";
         }
 
+        if (type == "key")
+        {
+            var description = GetString(item, "description", "A passive key item.");
+            return $"{prefix}{name} - Key\n{description}\nPassive item; cannot be equipped or used.";
+        }
+
         if (IsConsumableItem(item))
         {
             var description = GetString(item, "description", "A consumable item.");
@@ -3132,6 +3138,7 @@ public partial class HudController : Control
         _equipButton.Disabled = !canEquip && !canUse;
         _equipButton.Text = type switch
         {
+            "key" => "Passive",
             "scroll" => "Learn Spell",
             "potion" or "food" or "consumable" => consumableSlotsFull ? "Slots Full" : "Equip",
             "weapon" or "armor" => "Equip",
