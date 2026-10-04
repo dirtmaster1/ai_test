@@ -137,6 +137,7 @@ public partial class HudController : Control
     private Vector2 _combatLogExpandedSize;
     private bool _combatLogMinimized;
     private Label _movementCounterLabel;
+    private Label _actionDragHandle;
     private Button _abilityButton1;
     private Button _abilityButton2;
     private Button _abilityButton3;
@@ -270,6 +271,7 @@ public partial class HudController : Control
         _combatBannerLabel = GetNode<Label>("CombatBanner/CombatBannerLabel");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _movementCounterLabel = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
+        _actionDragHandle = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/ActionDragHandle");
         _abilityButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
         _abilityButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton2");
         _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton3");
@@ -395,6 +397,7 @@ public partial class HudController : Control
         RegisterDraggable(_helpHeader, _helpPanel);
         RegisterDraggable(_characterHeader, _characterPanel);
         RegisterDraggable(_movementCounterLabel, _actionPanel);
+        RegisterDraggable(_actionDragHandle, _actionPanel);
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryHeader, _inventoryPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
@@ -1334,18 +1337,20 @@ public partial class HudController : Control
         var sidebarLeft = Mathf.Max(GridPixelWidth + Margin, sidebarRight - SidebarWidth);
 
         const float panelGap = 10.0f;
-        const float utilityHeight = 20.0f;
+        const float utilityHeight = 64.0f;
         const float characterHeight = 218.0f;
         const float helpHeight = 220.0f;
         const float actionWidth = 720.0f;
         const float actionHeight = 78.0f;
 
         var utilityTop = Margin;
+        var utilityWidth = Mathf.Min(604.0f, Mathf.Max(1.0f, size.X - Margin - SidebarRightInset));
+        var utilityLeft = size.X - SidebarRightInset - utilityWidth;
         var detailsTop = utilityTop + utilityHeight + panelGap + 30.0f;
         var combatTop = detailsTop;
         var combatHeight = 160.0f;
 
-        ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
+        ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(utilityLeft, utilityTop), new Vector2(utilityWidth, utilityHeight)), size);
         var dockWidth = Mathf.Min(actionWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
         var actionPosition = new Vector2((size.X - dockWidth) * 0.5f, size.Y - actionHeight - 32.0f);
         ApplyPanelRect(_actionPanel, new Rect2(actionPosition, new Vector2(dockWidth, actionHeight)), size);
@@ -1375,6 +1380,7 @@ public partial class HudController : Control
         }
 
         handle.MouseFilter = MouseFilterEnum.Stop;
+        handle.MouseDefaultCursorShape = CursorShape.Move;
         handle.GuiInput += (inputEvent) => OnDragHandleInput(inputEvent, panel);
     }
 
@@ -1577,11 +1583,12 @@ public partial class HudController : Control
         var mutedBodyColor = TacticalTheme.ParchmentMuted;
 
         var panelStyle = TacticalTheme.CreateFramePanel();
-        StylePanel(_utilityPanel, panelStyle);
-        StylePanel(_actionPanel, panelStyle);
+        var persistentPanelStyle = TacticalTheme.CreatePanel(false, 8);
+        StylePanel(_utilityPanel, persistentPanelStyle);
+        StylePanel(_actionPanel, persistentPanelStyle);
+        StylePanel(_partyPanel, persistentPanelStyle);
+        StylePanel(_combatLogPanel, persistentPanelStyle);
         StylePanel(_characterPanel, panelStyle);
-        StylePanel(_partyPanel, panelStyle);
-        StylePanel(_combatLogPanel, panelStyle);
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
@@ -1609,6 +1616,7 @@ public partial class HudController : Control
         }
 
         StyleBodyLabel(_movementCounterLabel, bodyColor, 14);
+        TacticalTheme.ApplyLabel(_actionDragHandle, headerColor, 22);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
         StyleBodyLabel(_characterStatusLabel, mutedBodyColor, 13);
         StyleBodyLabel(_helpBody, bodyColor, 14);
@@ -1631,13 +1639,13 @@ public partial class HudController : Control
         StyleButton(_characterPrevButton, false);
         StyleButton(_characterNextButton, false);
         StyleButton(_characterCloseButton, false);
-        StyleButton(_abilityButton1, true);
-        StyleButton(_abilityButton2, true);
-        StyleButton(_abilityButton3, true);
-        StyleButton(_abilityButton4, true);
-        StyleButton(_abilityButton5, true);
-        StyleButton(_consumableButton1, true);
-        StyleButton(_consumableButton2, true);
+        StyleButton(_abilityButton1, false);
+        StyleButton(_abilityButton2, false);
+        StyleButton(_abilityButton3, false);
+        StyleButton(_abilityButton4, false);
+        StyleButton(_abilityButton5, false);
+        StyleButton(_consumableButton1, false);
+        StyleButton(_consumableButton2, false);
         StyleButton(_endTurnButton, true);
         StyleButton(_closeHelpButton, false);
         StyleButton(_inventoryPrevUnitButton, false);

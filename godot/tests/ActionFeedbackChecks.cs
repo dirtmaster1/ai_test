@@ -134,6 +134,37 @@ public partial class ActionFeedbackChecks : BattleController
             "Abilities, consumables, and End Turn must share one compact row");
         Check(_testHud.GetNode<PanelContainer>("ActionPanel").Size.Y <= 90.0f,
             "Action bar height must be reduced");
+        Check(movementCounter.MouseDefaultCursorShape == Control.CursorShape.Move,
+            "Movement counter must advertise the draggable action bar");
+
+        var grip = _testHud.GetNode<Label>("ActionPanel/ActionVBox/ActionRow/ActionDragHandle");
+        Check(grip.MouseFilter == Control.MouseFilterEnum.Stop
+            && grip.MouseDefaultCursorShape == Control.CursorShape.Move
+            && grip.TooltipText.Contains("Drag"),
+            "Action bar must provide a visible draggable grip");
+
+        var utilityPanel = _testHud.GetNode<PanelContainer>("UtilityPanel");
+        var utilityRow = _testHud.GetNode<HBoxContainer>("UtilityPanel/UtilityVBox");
+        Check(utilityPanel.Size.Y >= 64.0f
+            && utilityPanel.Size.X >= utilityRow.GetCombinedMinimumSize().X,
+            "Utility controls must fit in a single, content-sized row");
+        Check(_testHud.GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader").GetParent() == utilityRow
+            && _testHud.GetNode<HBoxContainer>("UtilityPanel/UtilityVBox/UtilityButtons").GetParent() == utilityRow,
+            "Utility heading and buttons must share one horizontal row");
+
+        var abilityStyle = _testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1")
+            .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
+        var endTurnStyle = _testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/EndTurnButton")
+            .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
+        Check(abilityStyle != null && abilityStyle.BgColor == TacticalTheme.IronRaised
+            && endTurnStyle != null && endTurnStyle.BgColor == TacticalTheme.Crimson,
+            "Crimson emphasis must be reserved for End Turn, not routine ability buttons");
+
+        var visibleRect = _testHud.GetViewport().GetVisibleRect();
+        Check(utilityPanel.Position.X >= 0.0f
+            && utilityPanel.Position.X + utilityPanel.Size.X <= visibleRect.Size.X
+            && _testHud.GetNode<PanelContainer>("ActionPanel").Position.X >= 0.0f,
+            "Top utility row and action dock must remain within the logical viewport");
     }
 
     private void SetupFixture()
