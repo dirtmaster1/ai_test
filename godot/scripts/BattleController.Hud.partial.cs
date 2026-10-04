@@ -51,6 +51,14 @@ public partial class BattleController
             : explorationOnly && actionBarAbilities.Count > 0;
         _hud.SetActionButtonsEnabled(abilityPanelEnabled, _flowState == BattleFlowState.Combat);
         _hud.SetAbilityButtons(actionBarAbilities, abilityPanelEnabled);
+        var canUseConsumables = actionBarUnit != null
+            && !actionBarUnit.IsDead
+            && actionBarUnit.Team == "player"
+            && (_flowState == BattleFlowState.Exploration
+                || _flowState == BattleFlowState.Combat
+                    && IsCurrentActiveUnit(actionBarUnit)
+                    && actionBarUnit.CanUseAbilityThisTurn());
+        _hud.SetConsumableButtons(BuildConsumableEntriesForHud(actionBarUnit), canUseConsumables);
         _hud.SetInventoryGold(_partyGold);
 
         var inventoryTarget = GetInventoryTargetUnit();

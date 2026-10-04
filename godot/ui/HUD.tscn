@@ -170,7 +170,7 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -380.0
-offset_top = -202.0
+offset_top = -262.0
 offset_right = 380.0
 offset_bottom = -60.0
 
@@ -186,6 +186,30 @@ text = "Actions"
 layout_mode = 2
 autowrap_mode = 3
 text = "Turn: -"
+
+[node name="ConsumablesHeader" type="Label" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+text = "Consumables"
+
+[node name="ConsumableButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ConsumableButton1" type="Button" parent="ActionPanel/ActionVBox/ConsumableButtons"]
+custom_minimum_size = Vector2(54, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+expand_icon = true
+icon_max_width = 32
+text = "1"
+
+[node name="ConsumableButton2" type="Button" parent="ActionPanel/ActionVBox/ConsumableButtons"]
+custom_minimum_size = Vector2(54, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+expand_icon = true
+icon_max_width = 32
+text = "2"
 
 [node name="ActionButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
@@ -492,6 +516,30 @@ text = "BODY\nEmpty"
 visible = false
 layout_mode = 2
 allow_reselect = true
+
+[node name="ConsumablesHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
+layout_mode = 2
+text = "CONSUMABLES"
+
+[node name="ConsumableSlots" type="HBoxContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ConsumableSlot1Button" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots"]
+custom_minimum_size = Vector2(132, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+expand_icon = true
+icon_max_width = 32
+text = "CONSUMABLE 1\nEmpty"
+
+[node name="ConsumableSlot2Button" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots"]
+custom_minimum_size = Vector2(132, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+expand_icon = true
+icon_max_width = 32
+text = "CONSUMABLE 2\nEmpty"
 
 [node name="InventoryColumn" type="PanelContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns"]
 custom_minimum_size = Vector2(330, 0)

@@ -19,6 +19,9 @@ public partial class HudController : Control
     public delegate void UseItemRequestedEventHandler(string itemId);
 
     [Signal]
+    public delegate void ConsumablePressedEventHandler(string slotKey);
+
+    [Signal]
     public delegate void UnequipItemRequestedEventHandler(string equippedSlotKey);
 
     [Signal]
@@ -139,6 +142,8 @@ public partial class HudController : Control
     private Button _abilityButton3;
     private Button _abilityButton4;
     private Button _abilityButton5;
+    private Button _consumableButton1;
+    private Button _consumableButton2;
     private Button _endTurnButton;
     private Button _inventoryButton;
     private Button _reserveButton;
@@ -164,6 +169,8 @@ public partial class HudController : Control
     private Button _bodySlotButton;
     private Button _mainHandSlotButton;
     private Button _offHandSlotButton;
+    private Button _consumableSlot1Button;
+    private Button _consumableSlot2Button;
     private PanelContainer _lootPanel;
     private Label _lootHeader;
     private ItemList _lootItemList;
@@ -200,6 +207,7 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveActiveEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveRosterEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
+    private readonly System.Collections.Generic.Dictionary<Button, string> _consumableSlotKeysByButton = new();
     private string _lastLogLine = "";
     private string _turnOrderSignature = "";
     private string _partyListSignature = "";
@@ -268,6 +276,8 @@ public partial class HudController : Control
         _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton3");
         _abilityButton4 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton4");
         _abilityButton5 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton5");
+        _consumableButton1 = GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton1");
+        _consumableButton2 = GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton2");
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
         _abilityButton1.FocusMode = FocusModeEnum.None;
         _abilityButton2.FocusMode = FocusModeEnum.None;
@@ -300,6 +310,8 @@ public partial class HudController : Control
         _bodySlotButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BodySlot");
         _mainHandSlotButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/MainHandSlot");
         _offHandSlotButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/OffHandSlot");
+        _consumableSlot1Button = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
+        _consumableSlot2Button = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot2Button");
         _lootPanel = GetNode<PanelContainer>("LootPanel");
         _lootHeader = GetNode<Label>("LootPanel/LootVBox/LootHeader");
         _lootItemList = GetNode<ItemList>("LootPanel/LootVBox/LootItemList");
@@ -339,6 +351,8 @@ public partial class HudController : Control
         _abilityButton3.Pressed += OnAbilityButton3Pressed;
         _abilityButton4.Pressed += OnAbilityButton4Pressed;
         _abilityButton5.Pressed += OnAbilityButton5Pressed;
+        _consumableButton1.Pressed += OnConsumableButton1Pressed;
+        _consumableButton2.Pressed += OnConsumableButton2Pressed;
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
         _reserveButton.Pressed += OnReserveButtonPressed;
@@ -361,6 +375,8 @@ public partial class HudController : Control
         _bodySlotButton.Pressed += OnBodySlotPressed;
         _mainHandSlotButton.Pressed += OnMainHandSlotPressed;
         _offHandSlotButton.Pressed += OnOffHandSlotPressed;
+        _consumableSlot1Button.Pressed += OnConsumableSlot1Pressed;
+        _consumableSlot2Button.Pressed += OnConsumableSlot2Pressed;
         _lootItemList.ItemSelected += OnLootItemSelected;
         _confirmLootButton.Pressed += OnConfirmLootButtonPressed;
         _closeLootButton.Pressed += OnCloseLootButtonPressed;
@@ -423,6 +439,16 @@ public partial class HudController : Control
         if (_abilityButton5 != null)
         {
             _abilityButton5.Pressed -= OnAbilityButton5Pressed;
+        }
+
+        if (_consumableButton1 != null)
+        {
+            _consumableButton1.Pressed -= OnConsumableButton1Pressed;
+        }
+
+        if (_consumableButton2 != null)
+        {
+            _consumableButton2.Pressed -= OnConsumableButton2Pressed;
         }
 
         if (_endTurnButton != null)
@@ -540,6 +566,16 @@ public partial class HudController : Control
             _offHandSlotButton.Pressed -= OnOffHandSlotPressed;
         }
 
+        if (_consumableSlot1Button != null)
+        {
+            _consumableSlot1Button.Pressed -= OnConsumableSlot1Pressed;
+        }
+
+        if (_consumableSlot2Button != null)
+        {
+            _consumableSlot2Button.Pressed -= OnConsumableSlot2Pressed;
+        }
+
         if (_lootItemList != null)
         {
             _lootItemList.ItemSelected -= OnLootItemSelected;
@@ -606,6 +642,52 @@ public partial class HudController : Control
         }
     }
 
+    public void SetConsumableButtons(Array<Dictionary> consumables, bool canUseAnyConsumable)
+    {
+        _consumableSlotKeysByButton.Clear();
+        var buttons = new[] { _consumableButton1, _consumableButton2 };
+        for (var i = 0; i < buttons.Length; i++)
+        {
+            var button = buttons[i];
+            if (button == null)
+            {
+                continue;
+            }
+
+            var slotNumber = i + 1;
+            var slotKey = $"consumable-{slotNumber}";
+            button.Visible = true;
+            button.Icon = null;
+            button.Text = slotNumber.ToString();
+            button.Disabled = true;
+            button.SelfModulate = Colors.White;
+            button.TooltipText = $"Consumable slot {slotNumber} is empty.";
+
+            if (consumables == null || i >= consumables.Count)
+            {
+                continue;
+            }
+
+            var entry = consumables[i];
+            slotKey = GetString(entry, "slot_key", slotKey);
+            var itemId = GetString(entry, "id", "");
+            if (string.IsNullOrEmpty(itemId))
+            {
+                continue;
+            }
+
+            var icon = GetItemIcon(entry);
+            button.Icon = icon;
+            button.Text = icon == null ? GetString(entry, "label", itemId) : "";
+            button.IconAlignment = HorizontalAlignment.Center;
+            var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
+            button.Disabled = !canUseAnyConsumable || !isEnabled;
+            button.SelfModulate = button.Disabled ? new Color(0.5f, 0.5f, 0.5f) : Colors.White;
+            button.TooltipText = GetString(entry, "detail", GetString(entry, "label", itemId));
+            _consumableSlotKeysByButton[button] = slotKey;
+        }
+    }
+
     private void OnAbilityButton1Pressed()
     {
         EmitAbilityPressed(_abilityButton1);
@@ -629,6 +711,26 @@ public partial class HudController : Control
     private void OnAbilityButton5Pressed()
     {
         EmitAbilityPressed(_abilityButton5);
+    }
+
+    private void OnConsumableButton1Pressed()
+    {
+        EmitConsumablePressed(_consumableButton1);
+    }
+
+    private void OnConsumableButton2Pressed()
+    {
+        EmitConsumablePressed(_consumableButton2);
+    }
+
+    private void EmitConsumablePressed(Button button)
+    {
+        if (button != null
+            && _consumableSlotKeysByButton.TryGetValue(button, out var slotKey)
+            && !string.IsNullOrEmpty(slotKey))
+        {
+            EmitSignal(SignalName.ConsumablePressed, slotKey);
+        }
     }
 
     private void EmitAbilityPressed(Button button)
@@ -817,10 +919,25 @@ public partial class HudController : Control
         SelectEquipmentSlot(_inventoryEquippedEntriesBySlot.ContainsKey("2-handed") ? "2-handed" : "1-handed-b");
     }
 
+    private void OnConsumableSlot1Pressed()
+    {
+        SelectEquipmentSlot("consumable-1");
+    }
+
+    private void OnConsumableSlot2Pressed()
+    {
+        SelectEquipmentSlot("consumable-2");
+    }
+
     private void SelectEquipmentSlot(string slotKey)
     {
         if (!_inventoryEquippedEntriesBySlot.TryGetValue(slotKey, out var entry))
         {
+            _inventoryEquippedItemList?.DeselectAll();
+            if (_unequipButton != null)
+            {
+                _unequipButton.Disabled = true;
+            }
             _inventoryItemDetails.Text = $"{FormatSlotName(slotKey)} is empty.";
             return;
         }
@@ -834,6 +951,10 @@ public partial class HudController : Control
             }
         }
 
+        if (_unequipButton != null)
+        {
+            _unequipButton.Disabled = false;
+        }
         _inventoryItemDetails.Text = $"{BuildItemDetail(entry, true)}\nSlot: {FormatSlotName(slotKey)}";
     }
 
@@ -848,10 +969,12 @@ public partial class HudController : Control
         var slotKey = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
         if (string.IsNullOrEmpty(slotKey) || !_inventoryEquippedEntriesBySlot.TryGetValue(slotKey, out var entry))
         {
+            _unequipButton.Disabled = true;
             _inventoryItemDetails.Text = _inventoryEquippedItemList.GetItemText((int)index);
             return;
         }
 
+        _unequipButton.Disabled = false;
         var detail = GetString(entry, "detail", _inventoryEquippedItemList.GetItemText((int)index));
         _inventoryItemDetails.Text = detail;
     }
@@ -1514,6 +1637,8 @@ public partial class HudController : Control
         StyleButton(_abilityButton3, true);
         StyleButton(_abilityButton4, true);
         StyleButton(_abilityButton5, true);
+        StyleButton(_consumableButton1, true);
+        StyleButton(_consumableButton2, true);
         StyleButton(_endTurnButton, true);
         StyleButton(_closeHelpButton, false);
         StyleButton(_inventoryPrevUnitButton, false);
@@ -1525,6 +1650,8 @@ public partial class HudController : Control
         StyleButton(_bodySlotButton, false);
         StyleButton(_mainHandSlotButton, false);
         StyleButton(_offHandSlotButton, false);
+        StyleButton(_consumableSlot1Button, false);
+        StyleButton(_consumableSlot2Button, false);
         StyleButton(_confirmLootButton, true);
         StyleButton(_closeLootButton, false);
         StyleButton(_vendorTalkButton, true);
@@ -2055,10 +2182,13 @@ public partial class HudController : Control
         _inventoryEquippedItemList.Clear();
         _inventoryEquippedEntriesBySlot.Clear();
         ConfigureIconList(_inventoryEquippedItemList);
+        _unequipButton.Disabled = true;
         ResetEquipmentSlot(_headSlotButton, "HEAD");
         ResetEquipmentSlot(_bodySlotButton, "BODY");
         ResetEquipmentSlot(_mainHandSlotButton, "MAIN HAND");
         ResetEquipmentSlot(_offHandSlotButton, "OFF HAND");
+        ResetEquipmentSlot(_consumableSlot1Button, "CONSUMABLE 1");
+        ResetEquipmentSlot(_consumableSlot2Button, "CONSUMABLE 2");
 
         if (entries == null)
         {
@@ -2968,6 +3098,21 @@ public partial class HudController : Control
             return $"{name} - Scroll\n{description}\nTeaches: {spellId}\nClasses: {classLabel}\nConsumed on successful use";
         }
 
+        if (IsConsumableItem(item))
+        {
+            var description = GetString(item, "description", "A consumable item.");
+            var effect = GetDictionary(item, "use_effect");
+            var effectType = GetString(effect, "type", "");
+            var amount = GetInt(effect, "amount", 0);
+            var effectLabel = effectType switch
+            {
+                "restore_hit_points" => $"Restores up to {amount} HP",
+                "restore_magic_points" => $"Restores up to {amount} MP",
+                _ => "Effect unavailable"
+            };
+            return $"{prefix}{name} - Consumable\n{description}\n{effectLabel}\nEquip to a consumable slot before use.";
+        }
+
         return $"{prefix}{name} - {type}";
     }
 
@@ -2979,13 +3124,16 @@ public partial class HudController : Control
         }
 
         var type = GetString(item, "type", "item");
-        var canEquip = type is "weapon" or "armor";
+        var isConsumable = IsConsumableItem(item);
+        var consumableSlotsFull = _inventoryEquippedEntriesBySlot.ContainsKey("consumable-1")
+            && _inventoryEquippedEntriesBySlot.ContainsKey("consumable-2");
+        var canEquip = type is "weapon" or "armor" || isConsumable && !consumableSlotsFull;
         var canUse = IsUsableInventoryItem(item);
         _equipButton.Disabled = !canEquip && !canUse;
         _equipButton.Text = type switch
         {
             "scroll" => "Learn Spell",
-            "potion" or "food" or "consumable" => "Use",
+            "potion" or "food" or "consumable" => consumableSlotsFull ? "Slots Full" : "Equip",
             "weapon" or "armor" => "Equip",
             _ => "Unavailable"
         };
@@ -2994,7 +3142,13 @@ public partial class HudController : Control
     private static bool IsUsableInventoryItem(Dictionary item)
     {
         var type = GetString(item, "type", "");
-        return type is "scroll" or "potion" or "food" or "consumable" || GetDictionary(item, "use_effect").Count > 0;
+        return !IsConsumableItem(item) && (type == "scroll" || GetDictionary(item, "use_effect").Count > 0);
+    }
+
+    private static bool IsConsumableItem(Dictionary item)
+    {
+        var type = GetString(item, "type", "");
+        return type is "potion" or "food" or "consumable";
     }
 
     private string BuildItemComparisonDetail(Dictionary item)
@@ -3059,6 +3213,8 @@ public partial class HudController : Control
             .Replace("1-handed-a", "Main Hand")
             .Replace("1-handed-b", "Off Hand")
             .Replace("2-handed", "Two Hands")
+            .Replace("consumable-1", "Consumable 1")
+            .Replace("consumable-2", "Consumable 2")
             .Replace("head", "Head")
             .Replace("body", "Body");
     }
@@ -3084,6 +3240,8 @@ public partial class HudController : Control
             "1-handed-a" => _mainHandSlotButton,
             "1-handed-b" => _offHandSlotButton,
             "2-handed" => _mainHandSlotButton,
+            "consumable-1" => _consumableSlot1Button,
+            "consumable-2" => _consumableSlot2Button,
             _ => null
         };
         if (button == null)

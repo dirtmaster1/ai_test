@@ -275,6 +275,30 @@
 		"spell_id": "fireball"
 	  },
 	  "consumed_on_use": true
+	},
+	"healing-potion": {
+	  "id": "healing-potion",
+	  "name": "Healing Potion",
+	  "type": "potion",
+	  "slot": "consumable",
+	  "description": "Restores up to 6 hit points.",
+	  "use_effect": {
+		"type": "restore_hit_points",
+		"amount": 6
+	  },
+	  "consumed_on_use": true
+	},
+	"magic-potion": {
+	  "id": "magic-potion",
+	  "name": "Magic Potion",
+	  "type": "potion",
+	  "slot": "consumable",
+	  "description": "Restores up to 4 magic points.",
+	  "use_effect": {
+		"type": "restore_magic_points",
+		"amount": 4
+	  },
+	  "consumed_on_use": true
 	}
   },
   "dialogues": {
@@ -360,7 +384,9 @@
 	  "starting_inventory_item_ids": [
 		"cloth-robe",
 		"mages-amulet",
-		"fireball-scroll"
+		"fireball-scroll",
+		"healing-potion",
+		"magic-potion"
 	  ]
 	}
   },

@@ -3,6 +3,8 @@ using Godot.Collections;
 
 public partial class Unit : Node2D
 {
+    public const int DefaultConsumableSlotCount = 2;
+
     private sealed class StatusEffectState
     {
         public string BaseStatusId = "";
@@ -365,6 +367,15 @@ public partial class Unit : Node2D
 
         MagicPoints -= spend;
         return true;
+    }
+
+    public int RestoreMagicPoints(int amount)
+    {
+        var restoreAmount = Mathf.Max(0, amount);
+        var nextMagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + restoreAmount);
+        var actualRestored = nextMagicPoints - MagicPoints;
+        MagicPoints = nextMagicPoints;
+        return actualRestored;
     }
 
     public Dictionary ApplyStatusEffect(string statusId, string displayName, bool isBuff, int durationTurns, int startDelayTurns = 0, int damagePerTurn = 0, string stackingMode = "refresh", int maxStacks = 1, int stackAmount = 1, string scope = "persistent", bool skipTurn = false, bool preventMovement = false, bool preventActions = false, bool wakeOnDamage = false, int armorClassBonus = 0)

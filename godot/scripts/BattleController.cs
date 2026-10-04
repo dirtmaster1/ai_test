@@ -209,6 +209,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_hud != null)
         {
             _hud.AbilityPressed += OnHudAbilityPressed;
+            _hud.ConsumablePressed += OnHudConsumablePressed;
             _hud.EndTurnPressed += OnHudEndTurnPressed;
             _hud.EquipItemRequested += OnHudEquipItemRequested;
             _hud.UseItemRequested += OnHudUseItemRequested;
@@ -249,6 +250,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_hud != null)
         {
             _hud.AbilityPressed -= OnHudAbilityPressed;
+            _hud.ConsumablePressed -= OnHudConsumablePressed;
             _hud.EndTurnPressed -= OnHudEndTurnPressed;
             _hud.EquipItemRequested -= OnHudEquipItemRequested;
             _hud.UseItemRequested -= OnHudUseItemRequested;
@@ -725,7 +727,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        EquipItemToUnit(target, itemData, itemId);
+        if (IsConsumableItem(itemData))
+        {
+            if (!HasUnequippedSharedItem(itemId))
+            {
+                RejectPlayerAction("That item is no longer available.");
+                return;
+            }
+
+            if (!TryEquipConsumableToUnit(target, itemId))
+            {
+                RejectPlayerAction("Both consumable slots are full. Unequip a consumable first.");
+                return;
+            }
+        }
+        else
+        {
+            EquipItemToUnit(target, itemData, itemId);
+        }
+
         ApplyEquippedItemBonuses(target);
 
         var itemName = GetString(itemData, "name", itemId);
@@ -795,6 +815,121 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         SetSelectedAbilityId(target, spellId);
         _hud?.AddCombatLogEntry($"{target.UnitName} consumes {itemName} and learns {GetActionDisplayName(spellId)}.");
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+    }
+
+    private void OnHudConsumablePressed(string slotKey)
+    {
+        if (_utilityConfirmationPending || _isExplorationAutoMoving)
+        {
+            return;
+        }
+
+        var actor = _flowState switch
+        {
+            BattleFlowState.Exploration => GetSelectedCharacterPartyUnit() ?? GetExplorerUnit(),
+            BattleFlowState.Combat => GetActivePlayerUnit(),
+            _ => null
+        };
+        if (!IsUsableUnit(actor) || actor.IsDead || actor.Team != "player")
+        {
+            return;
+        }
+
+        if (_flowState == BattleFlowState.Combat
+            && (!IsCurrentActiveUnit(actor) || !actor.CanUseAbilityThisTurn()))
+        {
+            RejectPlayerAction($"{actor.UnitName} cannot use a consumable right now.");
+            return;
+        }
+
+        if (_flowState != BattleFlowState.Exploration && _flowState != BattleFlowState.Combat)
+        {
+            return;
+        }
+
+        if (!TryGetEquippedItemAtSlot(actor, slotKey, out var itemId)
+            || !_partyInventoryItemIds.Contains(itemId)
+            || _gameData == null)
+        {
+            RejectPlayerAction("That consumable is no longer available.");
+            return;
+        }
+
+        var itemData = _gameData.GetItem(itemId);
+        if (itemData.Count == 0 || !IsConsumableItem(itemData))
+        {
+            RejectPlayerAction("That item cannot be used as a consumable.");
+            return;
+        }
+
+        var useEffect = GetDictionary(itemData, "use_effect");
+        var effectType = GetString(useEffect, "type", "");
+        var amount = GetInt(useEffect, "amount", 0);
+        var itemName = GetString(itemData, "name", itemId);
+        var restoredAmount = 0;
+        string resourceName;
+        switch (effectType)
+        {
+            case "restore_hit_points":
+                if (actor.HitPoints >= actor.MaxHitPoints)
+                {
+                    RejectPlayerAction($"{actor.UnitName} is already at full health.");
+                    return;
+                }
+                restoredAmount = Mathf.Min(amount, actor.MaxHitPoints - actor.HitPoints);
+                resourceName = "HP";
+                break;
+            case "restore_magic_points":
+                if (actor.MagicPoints >= actor.MaxMagicPoints)
+                {
+                    RejectPlayerAction($"{actor.UnitName} is already at full magic.");
+                    return;
+                }
+                restoredAmount = Mathf.Min(amount, actor.MaxMagicPoints - actor.MagicPoints);
+                resourceName = "MP";
+                break;
+            default:
+                RejectPlayerAction($"{itemName} has no supported consumable effect.");
+                return;
+        }
+
+        if (amount <= 0 || restoredAmount <= 0)
+        {
+            RejectPlayerAction($"{itemName} has no effect on {actor.UnitName}.");
+            return;
+        }
+
+        if (!UnequipSlotForUnit(actor, slotKey))
+        {
+            RejectPlayerAction("That consumable is no longer available.");
+            return;
+        }
+
+        if (!_partyInventoryItemIds.Remove(itemId))
+        {
+            if (!_equippedItemsByUnitId.TryGetValue(actor.UnitId, out var equippedBySlot))
+            {
+                equippedBySlot = new System.Collections.Generic.Dictionary<string, string>();
+                _equippedItemsByUnitId[actor.UnitId] = equippedBySlot;
+            }
+            equippedBySlot[slotKey] = itemId;
+            RejectPlayerAction("That consumable is no longer available.");
+            return;
+        }
+
+        var restored = effectType == "restore_hit_points"
+            ? actor.ApplyHealing(amount)
+            : actor.RestoreMagicPoints(amount);
+        if (_flowState == BattleFlowState.Combat)
+        {
+            actor.MarkAbilityUsed("");
+            _awaitingPlayerAttackDirection = false;
+            ClearMovementPreviewPath();
+        }
+
+        _hud?.AddCombatLogEntry($"{actor.UnitName} uses {itemName} and restores {restored} {resourceName}.");
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
     }
@@ -3244,6 +3379,92 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return entries;
     }
 
+    private Array<Dictionary> BuildConsumableEntriesForHud(Unit unit)
+    {
+        var entries = new Array<Dictionary>();
+        var actorCanUse = IsUsableUnit(unit)
+            && !unit.IsDead
+            && unit.Team == "player"
+            && (_flowState == BattleFlowState.Exploration
+                || _flowState == BattleFlowState.Combat
+                    && IsCurrentActiveUnit(unit)
+                    && unit.CanUseAbilityThisTurn());
+
+        for (var slotIndex = 0; slotIndex < Unit.DefaultConsumableSlotCount; slotIndex++)
+        {
+            var slotKey = GetConsumableSlotKey(slotIndex);
+            if (!TryGetEquippedItemAtSlot(unit, slotKey, out var itemId))
+            {
+                entries.Add(new Dictionary
+                {
+                    { "slot_key", slotKey },
+                    { "id", "" },
+                    { "label", $"Consumable slot {slotIndex + 1}" },
+                    { "detail", $"Consumable slot {slotIndex + 1} is empty." },
+                    { "is_enabled", 0 }
+                });
+                continue;
+            }
+
+            var itemData = _gameData?.GetItem(itemId) ?? new Dictionary();
+            var itemName = GetString(itemData, "name", itemId);
+            var useEffect = GetDictionary(itemData, "use_effect");
+            var effectType = GetString(useEffect, "type", "");
+            var amount = GetInt(useEffect, "amount", 0);
+            var canRestore = amount > 0;
+            var effectLabel = effectType switch
+            {
+                "restore_hit_points" => $"Restores up to {amount} HP",
+                "restore_magic_points" => $"Restores up to {amount} MP",
+                _ => "No supported effect"
+            };
+
+            if (!IsConsumableItem(itemData) || !_partyInventoryItemIds.Contains(itemId))
+            {
+                canRestore = false;
+                effectLabel = "No longer available";
+            }
+            else if (effectType == "restore_hit_points" && unit != null && unit.HitPoints >= unit.MaxHitPoints)
+            {
+                canRestore = false;
+                effectLabel += " (health is full)";
+            }
+            else if (effectType == "restore_magic_points" && unit != null && unit.MagicPoints >= unit.MaxMagicPoints)
+            {
+                canRestore = false;
+                effectLabel += " (magic is full)";
+            }
+            else if (effectType is not ("restore_hit_points" or "restore_magic_points"))
+            {
+                canRestore = false;
+            }
+
+            if (!actorCanUse)
+            {
+                canRestore = false;
+                effectLabel += _flowState == BattleFlowState.Combat
+                    ? " (no action available)"
+                    : " (unavailable)";
+            }
+
+            entries.Add(new Dictionary
+            {
+                { "slot_key", slotKey },
+                { "id", itemId },
+                { "label", itemName },
+                { "detail", $"{itemName}\n{effectLabel}\nClick to use; the item is consumed." },
+                { "is_enabled", canRestore ? 1 : 0 }
+            });
+        }
+
+        return entries;
+    }
+
+    private static string GetConsumableSlotKey(int slotIndex)
+    {
+        return $"consumable-{slotIndex + 1}";
+    }
+
     private string GetActionDisplayName(string actionId)
     {
         if (string.IsNullOrEmpty(actionId) || _gameData == null)
@@ -4451,6 +4672,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             "mages-amulet" => 25,
             "chain-mail" => 30,
             "fireball-scroll" => 30,
+            "healing-potion" => 12,
+            "magic-potion" => 12,
             "long-bow" => 35,
             "war-axe" => 40,
             "chieftain-club" => 45,
@@ -5902,7 +6125,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var itemId = equippedBySlot[slot];
             var itemData = _gameData.GetItem(itemId);
             var itemName = itemData.Count == 0 ? itemId : GetString(itemData, "name", itemId);
-            var slotLabel = slot.Replace("-a", " A").Replace("-b", " B");
+            var slotLabel = slot switch
+            {
+                "consumable-1" => "Consumable 1",
+                "consumable-2" => "Consumable 2",
+                _ => slot.Replace("-a", " A").Replace("-b", " B")
+            };
             var entry = itemData.Duplicate();
             entry["slot_key"] = slot;
             entry["label"] = $"{slotLabel}: {itemName}";
@@ -6144,6 +6372,44 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         itemId = value;
         return !string.IsNullOrEmpty(itemId);
+    }
+
+    private static bool IsConsumableItem(Dictionary itemData)
+    {
+        var type = GetString(itemData, "type", "");
+        return type is "potion" or "food" or "consumable";
+    }
+
+    private bool TryEquipConsumableToUnit(Unit unit, string itemId)
+    {
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || string.IsNullOrEmpty(itemId))
+        {
+            return false;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot))
+        {
+            equippedBySlot = new System.Collections.Generic.Dictionary<string, string>();
+            _equippedItemsByUnitId[unit.UnitId] = equippedBySlot;
+        }
+
+        for (var slotIndex = 0; slotIndex < Unit.DefaultConsumableSlotCount; slotIndex++)
+        {
+            var slotKey = GetConsumableSlotKey(slotIndex);
+            if (equippedBySlot.ContainsKey(slotKey))
+            {
+                continue;
+            }
+
+            equippedBySlot[slotKey] = itemId;
+            return true;
+        }
+
+        if (equippedBySlot.Count == 0)
+        {
+            _equippedItemsByUnitId.Remove(unit.UnitId);
+        }
+        return false;
     }
 
     private void EquipItemToUnit(Unit unit, Dictionary itemData, string itemId)

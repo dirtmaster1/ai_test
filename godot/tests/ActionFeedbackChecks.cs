@@ -25,6 +25,7 @@ public partial class ActionFeedbackChecks : BattleController
         SetupFixture();
         CheckPoisonStrikeIcon();
         CheckExtendedIconAtlas();
+        CheckConsumableActionBarIcons();
         return _failures;
     }
 
@@ -33,11 +34,13 @@ public partial class ActionFeedbackChecks : BattleController
         SetupFixture();
         CheckPoisonStrikeIcon();
         CheckExtendedIconAtlas();
+        CheckConsumableActionBarIcons();
         CheckResources();
         CheckTargets();
         CheckUtilities();
         CheckMovement();
         CheckInteractions();
+        CheckConsumables();
         CheckAllowedActions();
         return _failures;
     }
@@ -85,6 +88,25 @@ public partial class ActionFeedbackChecks : BattleController
         }
     }
 
+    private void CheckConsumableActionBarIcons()
+    {
+        var getIcon = typeof(HudController).GetMethod("GetGameIcon", BindingFlags.Static | BindingFlags.NonPublic);
+        _testHud.SetConsumableButtons(new Array<Dictionary>
+        {
+            new() { { "slot_key", "consumable-1" }, { "id", "healing-potion" }, { "is_enabled", 1 } },
+            new() { { "slot_key", "consumable-2" }, { "id", "magic-potion" }, { "is_enabled", 1 } }
+        }, true);
+
+        var healingIcon = (Texture2D)getIcon.Invoke(null, new object[] { "healing-potion" });
+        var magicIcon = (Texture2D)getIcon.Invoke(null, new object[] { "magic-potion" });
+        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton1").Icon == healingIcon,
+            "Healing potion action-bar button must use row 8, column 1");
+        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton2").Icon == magicIcon,
+            "Magic potion action-bar button must use row 8, column 2");
+        Check(Unit.DefaultConsumableSlotCount == 2,
+            "Every unit must have exactly two default consumable slots");
+    }
+
     private void SetupFixture()
     {
         Set("_gameData", GetNode<GameData>("/root/GameData"));
@@ -124,7 +146,11 @@ public partial class ActionFeedbackChecks : BattleController
         _testHud = GD.Load<PackedScene>("res://ui/HUD.tscn").Instantiate<HudController>();
         layer.AddChild(_testHud);
         Set("_hud", _testHud);
+        Set("_persistence", new GamePersistence(this, "user://action-feedback-consumable-test.json"));
         _testHud.AbilityPressed += id => Call("OnHudAbilityPressed", id);
+        _testHud.ConsumablePressed += slotKey => Call("OnHudConsumablePressed", slotKey);
+        _testHud.EquipItemRequested += itemId => Call("OnHudEquipItemRequested", itemId);
+        _testHud.UnequipItemRequested += slotKey => Call("OnHudUnequipItemRequested", slotKey);
         _banner = _testHud.GetNode<Label>("CombatBanner/CombatBannerLabel");
         _log = HudField<ItemList>("_combatLog");
         Reset();
@@ -387,6 +413,108 @@ public partial class ActionFeedbackChecks : BattleController
             "That reserve member is no longer available.");
     }
 
+    private void CheckConsumables()
+    {
+        var inventory = Field<List<string>>("_partyInventoryItemIds");
+        var equippedByUnit = Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId");
+
+        ResetConsumableState(exploration: true);
+        inventory.Add("healing-potion");
+        _actor.ApplyDamage(10);
+        Call("SyncHudFromGameState");
+        var equipButton = HudField<Button>("_equipButton");
+        Check(!equipButton.Disabled && equipButton.Text == "Equip",
+            "A healing potion in shared inventory must be equipable, not directly usable");
+        equipButton.EmitSignal(Button.SignalName.Pressed);
+        Check(equippedByUnit[_actor.UnitId]["consumable-1"] == "healing-potion",
+            "The first healing potion must equip to the first consumable slot");
+        var inventorySlot = _testHud.GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
+        Check(inventorySlot.Icon != null, "The equipped potion must appear in the inventory's consumable slot");
+        var healingButton = HudField<Button>("_consumableButton1");
+        Check(!healingButton.Disabled && healingButton.Icon != null,
+            "An equipped healing potion must be enabled on the action bar in exploration");
+        healingButton.EmitSignal(Button.SignalName.Pressed);
+        Check(_actor.HitPoints == 46 && !inventory.Contains("healing-potion")
+            && !equippedByUnit.ContainsKey(_actor.UnitId) && !_actor.HasUsedAbilityThisTurn,
+            "Exploration use must restore 6 HP, consume the potion, and remain free of combat action costs");
+
+        ResetConsumableState(exploration: true);
+        inventory.Add("healing-potion");
+        Call("SyncHudFromGameState");
+        HudField<Button>("_equipButton").EmitSignal(Button.SignalName.Pressed);
+        _testHud.GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button")
+            .EmitSignal(Button.SignalName.Pressed);
+        HudField<Button>("_unequipButton").EmitSignal(Button.SignalName.Pressed);
+        Check(!equippedByUnit.ContainsKey(_actor.UnitId) && inventory.Contains("healing-potion"),
+            "Unequipping a consumable must return it to shared inventory");
+
+        ResetConsumableState(exploration: true);
+        inventory.Add("healing-potion");
+        Call("OnHudEquipItemRequested", "healing-potion");
+        healingButton = HudField<Button>("_consumableButton1");
+        Check(healingButton.Disabled, "A healing potion must be disabled at maximum HP");
+        ExpectFailure(() => Call("OnHudConsumablePressed", "consumable-1"), "caster is already at full health.");
+        Check(inventory.Contains("healing-potion")
+            && equippedByUnit[_actor.UnitId]["consumable-1"] == "healing-potion",
+            "A potion with no restorative effect must remain equipped and unconsumed");
+
+        ResetConsumableState(exploration: true);
+        inventory.Add("healing-potion");
+        _actor.ApplyDamage(1);
+        Call("OnHudEquipItemRequested", "healing-potion");
+        HudField<Button>("_consumableButton1").EmitSignal(Button.SignalName.Pressed);
+        Check(_actor.HitPoints == _actor.MaxHitPoints,
+            "Healing must stop at maximum HP when less than 6 HP is missing");
+
+        ResetConsumableState(exploration: false);
+        inventory.Add("magic-potion");
+        _actor.TrySpendMagicPoints(4);
+        Call("OnHudEquipItemRequested", "magic-potion");
+        HudField<Button>("_consumableButton1").EmitSignal(Button.SignalName.Pressed);
+        Check(_actor.MagicPoints == _actor.MaxMagicPoints && _actor.HasUsedAbilityThisTurn
+            && !inventory.Contains("magic-potion") && !equippedByUnit.ContainsKey(_actor.UnitId),
+            "Combat use must restore 4 MP, consume the item, and spend the unit's action");
+
+        ResetConsumableState(exploration: true);
+        inventory.Add("magic-potion");
+        _actor.TrySpendMagicPoints(2);
+        Call("OnHudEquipItemRequested", "magic-potion");
+        HudField<Button>("_consumableButton1").EmitSignal(Button.SignalName.Pressed);
+        Check(_actor.MagicPoints == _actor.MaxMagicPoints,
+            "Magic restoration must stop at maximum MP when less than 4 MP is missing");
+
+        ResetConsumableState(exploration: true);
+        inventory.AddRange(new Array<string> { "healing-potion", "magic-potion", "healing-potion" });
+        Call("OnHudEquipItemRequested", "healing-potion");
+        Call("OnHudEquipItemRequested", "magic-potion");
+        ExpectFailure(() => Call("OnHudEquipItemRequested", "healing-potion"),
+            "Both consumable slots are full. Unequip a consumable first.");
+        Check(equippedByUnit[_actor.UnitId].Count == Unit.DefaultConsumableSlotCount
+            && ((Array<Dictionary>)Call("BuildInventoryItemsForHud")).Count == 1,
+            "A unit must not equip more than two consumables, and excess stock must remain shared");
+
+        ResetConsumableState(exploration: false);
+        inventory.Add("healing-potion");
+        _actor.ApplyDamage(1);
+        Call("OnHudEquipItemRequested", "healing-potion");
+        _actor.MarkAbilityUsed("defend");
+        Call("SyncHudFromGameState");
+        Check(HudField<Button>("_consumableButton1").Disabled,
+            "Combat consumables must be disabled after the unit has spent its action");
+        ExpectFailure(() => Call("OnHudConsumablePressed", "consumable-1"),
+            "caster cannot use a consumable right now.");
+        Check(_actor.HitPoints == _actor.MaxHitPoints - 1 && inventory.Contains("healing-potion"),
+            "A spent combat action must not restore resources or consume the equipped item");
+    }
+
+    private void ResetConsumableState(bool exploration)
+    {
+        Reset(exploration: exploration);
+        Field<List<string>>("_partyInventoryItemIds").Clear();
+        Set("_selectedCharacterUnitId", _actor.UnitId);
+        Call("SyncHudFromGameState");
+    }
+
     private void CheckAllowedActions()
     {
         Reset();
@@ -531,7 +659,15 @@ public partial class ActionFeedbackChecks : BattleController
         _banner.Text = "";
     }
 
-    public void Cleanup() => _testLoader.Free();
+    public void Cleanup()
+    {
+        _testLoader.Free();
+        var testSavePath = ProjectSettings.GlobalizePath("user://action-feedback-consumable-test.json");
+        if (System.IO.File.Exists(testSavePath))
+        {
+            System.IO.File.Delete(testSavePath);
+        }
+    }
     private void Check(bool condition, string message) { if (!condition) _failures.Add(message); }
     private static FieldInfo PrivateField(string name) => typeof(BattleController).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
     private static FieldInfo HudPrivateField(string name) => typeof(HudController).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
