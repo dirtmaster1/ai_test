@@ -46,6 +46,7 @@ On tiles in each `*-base` layer, set custom data keys in the TileSet.
 - Atlas coordinates for the tile shown when this specific door is open
 - Accepts either a `Vector2i` custom-data value or a string in `x,y` format (example: `3,2`)
 - If omitted, the map terrain default `OpenDoorAtlasX/OpenDoorAtlasY` is used
+- When opened, the target atlas tile uses alternative `0` while retaining flip/transpose flags from the closed tile; closing restores the original alternative
 
 ### Door interaction behavior
 

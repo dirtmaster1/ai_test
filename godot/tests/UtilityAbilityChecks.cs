@@ -96,6 +96,7 @@ public partial class UtilityAbilityChecks : BattleController
         {
             SetupFixture();
             CheckTerrainMetadata();
+            CheckAlternativeDoorVisual();
             CheckTrapLootExclusion();
             Check(_thief.HasAbility("disarm-trap") && _thief.HasAbility("pick-lock"), "Saved thief must gain both utility abilities");
             var entries = (Array<Dictionary>)Call("BuildAbilityEntriesForHud", _thief, true);
@@ -346,6 +347,58 @@ public partial class UtilityAbilityChecks : BattleController
             Check(keyLayer >= 0 && tiles.GetCustomDataLayerType(keyLayer) == Variant.Type.String,
                 $"{name} terrain must expose a string key_id layer");
         }
+    }
+
+    private void CheckAlternativeDoorVisual()
+    {
+        var terrain = GD.Load<TileSet>("res://assets/tilesets/forest_terrain_64_tileset.tres");
+        var doorAtlas = new Vector2I(3, 5);
+        var openAtlas = new Vector2I(2, 4);
+        var sourceId = -1;
+        for (var i = 0; i < terrain.GetSourceCount(); i++)
+        {
+            var candidateId = terrain.GetSourceId(i);
+            if (terrain.GetSource(candidateId) is TileSetAtlasSource atlas
+                && atlas.HasTile(doorAtlas)
+                && atlas.HasAlternativeTile(doorAtlas, 2))
+            {
+                sourceId = candidateId;
+                break;
+            }
+        }
+
+        Check(sourceId >= 0, "Forest TileSet must contain the authored alternative door fixture");
+        if (sourceId < 0)
+        {
+            return;
+        }
+
+        var fixture = new Node2D();
+        var maps = new Node2D { Name = "Maps" };
+        maps.AddChild(new TileMapLayer
+        {
+            Name = "alternative-door-test-base",
+            TileSet = terrain
+        });
+        var layer = (TileMapLayer)maps.GetChild(0);
+        var cell = Vector2I.Zero;
+        var closedAlternative = 2 | (int)TileSetAtlasSource.TransformFlipH;
+        var openTransform = (int)TileSetAtlasSource.TransformFlipH;
+        layer.SetCell(cell, sourceId, doorAtlas, closedAlternative);
+        fixture.AddChild(maps);
+        var loader = new MapLoader { MapsRootPath = "../Maps" };
+        fixture.AddChild(loader);
+        AddChild(fixture);
+
+        Check(loader.SetDoorVisual("alternative-door-test", cell, true),
+            "Alternative door must resolve its configured open atlas tile");
+        Check(layer.GetCellAtlasCoords(cell) == openAtlas && layer.GetCellAlternativeTile(cell) == openTransform,
+            "Opening an alternative door must use the base open-tile alternative and preserve orientation");
+        Check(loader.SetDoorVisual("alternative-door-test", cell, false),
+            "Alternative door must close after being opened");
+        Check(layer.GetCellAtlasCoords(cell) == doorAtlas && layer.GetCellAlternativeTile(cell) == closedAlternative,
+            "Closing a door must restore its authored alternative tile");
+        fixture.Free();
     }
 
     private void CheckPersistence()

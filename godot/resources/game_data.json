@@ -306,7 +306,7 @@
 	  "type": "key",
 	  "key_id": "rusty-key",
 	  "slot": "none",
-	  "description": "A worn key for doors and seals marked with key_id rusty-key."
+	  "description": "A worn rusty key."
 	}
   },
   "dialogues": {

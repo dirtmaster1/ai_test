@@ -250,7 +250,16 @@ public partial class MapLoader : Node
             return false;
         }
 
-        baseLayer.SetCell(cell, authoredCell.SourceId, atlas, authoredCell.AlternativeTile);
+        var alternativeTile = authoredCell.AlternativeTile;
+        if (isOpen)
+        {
+            var transformFlags = (int)(TileSetAtlasSource.TransformFlipH
+                | TileSetAtlasSource.TransformFlipV
+                | TileSetAtlasSource.TransformTranspose);
+            alternativeTile &= transformFlags;
+        }
+
+        baseLayer.SetCell(cell, authoredCell.SourceId, atlas, alternativeTile);
         return true;
     }
 
