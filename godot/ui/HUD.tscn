@@ -169,80 +169,85 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -380.0
-offset_top = -262.0
-offset_right = 380.0
-offset_bottom = -60.0
+offset_left = -360.0
+offset_top = -110.0
+offset_right = 360.0
+offset_bottom = -32.0
 
 [node name="ActionVBox" type="VBoxContainer" parent="ActionPanel"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 0
 
-[node name="ActionHeader" type="Label" parent="ActionPanel/ActionVBox"]
-layout_mode = 2
-text = "Actions"
-
-[node name="ActiveUnitLabel" type="Label" parent="ActionPanel/ActionVBox"]
-layout_mode = 2
-autowrap_mode = 3
-text = "Turn: -"
-
-[node name="ConsumablesHeader" type="Label" parent="ActionPanel/ActionVBox"]
-layout_mode = 2
-text = "Consumables"
-
-[node name="ConsumableButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="ConsumableButton1" type="Button" parent="ActionPanel/ActionVBox/ConsumableButtons"]
-custom_minimum_size = Vector2(54, 42)
+[node name="ActionRow" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="MovementCounterLabel" type="Label" parent="ActionPanel/ActionVBox/ActionRow"]
+custom_minimum_size = Vector2(72, 48)
+layout_mode = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Move -"
+tooltip_text = "Drag to reposition the action bar"
+
+[node name="ActionButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox/ActionRow"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AbilityButton1" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+expand_icon = true
+icon_max_width = 32
+text = "Ability 1"
+
+[node name="AbilityButton2" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+expand_icon = true
+icon_max_width = 32
+text = "Ability 2"
+
+[node name="AbilityButton3" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+expand_icon = true
+icon_max_width = 32
+text = "Ability 3"
+
+[node name="AbilityButton4" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+expand_icon = true
+icon_max_width = 32
+text = "Ability 4"
+
+[node name="AbilityButton5" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
+expand_icon = true
+icon_max_width = 32
+text = "Ability 5"
+
+[node name="ConsumableButton1" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
+layout_mode = 2
 expand_icon = true
 icon_max_width = 32
 text = "1"
 
-[node name="ConsumableButton2" type="Button" parent="ActionPanel/ActionVBox/ConsumableButtons"]
-custom_minimum_size = Vector2(54, 42)
+[node name="ConsumableButton2" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(56, 48)
 layout_mode = 2
-size_flags_horizontal = 3
 expand_icon = true
 icon_max_width = 32
 text = "2"
 
-[node name="ActionButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox"]
+[node name="EndTurnButton" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(88, 48)
 layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="AbilityButton1" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Ability 1"
-
-[node name="AbilityButton2" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Ability 2"
-
-[node name="AbilityButton3" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Ability 3"
-
-[node name="AbilityButton4" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Ability 4"
-
-[node name="AbilityButton5" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Ability 5"
-
-[node name="EndTurnButton" type="Button" parent="ActionPanel/ActionVBox/ActionButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
 text = "End Turn"
 
 [node name="TurnOrderDisplay" type="MarginContainer" parent="."]

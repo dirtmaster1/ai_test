@@ -136,7 +136,7 @@ public partial class HudController : Control
     private Button _combatLogMinimizeButton;
     private Vector2 _combatLogExpandedSize;
     private bool _combatLogMinimized;
-    private Label _activeUnitLabel;
+    private Label _movementCounterLabel;
     private Button _abilityButton1;
     private Button _abilityButton2;
     private Button _abilityButton3;
@@ -269,16 +269,15 @@ public partial class HudController : Control
         _combatBannerPanel = GetNode<PanelContainer>("CombatBanner");
         _combatBannerLabel = GetNode<Label>("CombatBanner/CombatBannerLabel");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
-        _activeUnitLabel = GetNode<Label>("ActionPanel/ActionVBox/ActiveUnitLabel");
-        var actionHeader = GetNode<Label>("ActionPanel/ActionVBox/ActionHeader");
-        _abilityButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton1");
-        _abilityButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton2");
-        _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton3");
-        _abilityButton4 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton4");
-        _abilityButton5 = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/AbilityButton5");
-        _consumableButton1 = GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton1");
-        _consumableButton2 = GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton2");
-        _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionButtons/EndTurnButton");
+        _movementCounterLabel = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
+        _abilityButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
+        _abilityButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton2");
+        _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton3");
+        _abilityButton4 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton4");
+        _abilityButton5 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton5");
+        _consumableButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton1");
+        _consumableButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton2");
+        _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/EndTurnButton");
         _abilityButton1.FocusMode = FocusModeEnum.None;
         _abilityButton2.FocusMode = FocusModeEnum.None;
         _abilityButton3.FocusMode = FocusModeEnum.None;
@@ -395,7 +394,7 @@ public partial class HudController : Control
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
         RegisterDraggable(_characterHeader, _characterPanel);
-        RegisterDraggable(actionHeader, _actionPanel);
+        RegisterDraggable(_movementCounterLabel, _actionPanel);
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryHeader, _inventoryPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
@@ -1338,8 +1337,8 @@ public partial class HudController : Control
         const float utilityHeight = 20.0f;
         const float characterHeight = 218.0f;
         const float helpHeight = 220.0f;
-        const float actionWidth = 760.0f;
-        const float actionHeight = 142.0f;
+        const float actionWidth = 720.0f;
+        const float actionHeight = 78.0f;
 
         var utilityTop = Margin;
         var detailsTop = utilityTop + utilityHeight + panelGap + 30.0f;
@@ -1348,7 +1347,7 @@ public partial class HudController : Control
 
         ApplyPanelRect(_utilityPanel, new Rect2(new Vector2(sidebarLeft, utilityTop), new Vector2(sidebarRight - sidebarLeft, utilityHeight)), size);
         var dockWidth = Mathf.Min(actionWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
-        var actionPosition = new Vector2((size.X - dockWidth) * 0.5f, size.Y - actionHeight - 60.0f);
+        var actionPosition = new Vector2((size.X - dockWidth) * 0.5f, size.Y - actionHeight - 32.0f);
         ApplyPanelRect(_actionPanel, new Rect2(actionPosition, new Vector2(dockWidth, actionHeight)), size);
         ApplyPanelRect(_characterPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, characterHeight)), size);
         ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, helpHeight)), size);
@@ -1609,7 +1608,7 @@ public partial class HudController : Control
             _combatBannerLabel.AddThemeFontSizeOverride("font_size", 28);
         }
 
-        StyleBodyLabel(_activeUnitLabel, bodyColor, 15);
+        StyleBodyLabel(_movementCounterLabel, bodyColor, 14);
         StyleBodyLabel(_characterSummaryLabel, bodyColor, 14);
         StyleBodyLabel(_characterStatusLabel, mutedBodyColor, 13);
         StyleBodyLabel(_helpBody, bodyColor, 14);
@@ -2090,22 +2089,20 @@ public partial class HudController : Control
         }
     }
 
-    public void SetActiveUnit(Unit active)
+    public void SetMovementCounter(Unit active)
     {
-        if (_activeUnitLabel == null)
+        if (_movementCounterLabel == null)
         {
             return;
         }
 
         if (active == null)
         {
-            _activeUnitLabel.Text = "Turn: -";
+            _movementCounterLabel.Text = "Move -";
             return;
         }
 
-        _activeUnitLabel.Text =
-            $"Turn: {active.UnitName} ({active.Team})\n" +
-            $"HP {active.HitPoints}/{active.MaxHitPoints}  MP {active.MagicPoints}/{active.MaxMagicPoints}  Move {active.RemainingMovement}/{active.MovementPerTurn}";
+        _movementCounterLabel.Text = $"Move {active.RemainingMovement}/{active.MovementPerTurn}";
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)

@@ -26,6 +26,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckPoisonStrikeIcon();
         CheckExtendedIconAtlas();
         CheckConsumableActionBarIcons();
+        CheckCompactActionBar();
         return _failures;
     }
 
@@ -35,6 +36,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckPoisonStrikeIcon();
         CheckExtendedIconAtlas();
         CheckConsumableActionBarIcons();
+        CheckCompactActionBar();
         CheckResources();
         CheckTargets();
         CheckUtilities();
@@ -99,12 +101,39 @@ public partial class ActionFeedbackChecks : BattleController
 
         var healingIcon = (Texture2D)getIcon.Invoke(null, new object[] { "healing-potion" });
         var magicIcon = (Texture2D)getIcon.Invoke(null, new object[] { "magic-potion" });
-        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton1").Icon == healingIcon,
+        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton1").Icon == healingIcon,
             "Healing potion action-bar button must use row 8, column 1");
-        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ConsumableButtons/ConsumableButton2").Icon == magicIcon,
+        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton2").Icon == magicIcon,
             "Magic potion action-bar button must use row 8, column 2");
         Check(Unit.DefaultConsumableSlotCount == 2,
             "Every unit must have exactly two default consumable slots");
+    }
+
+    private void CheckCompactActionBar()
+    {
+        var movementCounter = _testHud.GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
+        Check(movementCounter.MouseFilter == Control.MouseFilterEnum.Stop
+            && movementCounter.TooltipText.Contains("Drag"),
+            "Movement counter must retain the action bar's drag affordance");
+        var flowField = PrivateField("_flowState");
+        var previousFlow = flowField.GetValue(this);
+        foreach (var flowName in new[] { "Exploration", "Combat" })
+        {
+            flowField.SetValue(this, Enum.Parse(flowField.FieldType, flowName));
+            Call("SyncHudFromGameState");
+            Check(movementCounter.Text == $"Move {_actor.RemainingMovement}/{_actor.MovementPerTurn}",
+                $"{flowName} action bar must show the active unit's movement counter");
+        }
+        flowField.SetValue(this, previousFlow);
+        Call("SyncHudFromGameState");
+        Check(_testHud.GetNodeOrNull<Label>("ActionPanel/ActionVBox/ActionHeader") == null
+            && _testHud.GetNodeOrNull<Label>("ActionPanel/ActionVBox/ActiveUnitLabel") == null
+            && _testHud.GetNodeOrNull<Label>("ActionPanel/ActionVBox/ConsumablesHeader") == null,
+            "Action bar must not show redundant headers or party stats");
+        Check(_testHud.GetNode<HBoxContainer>("ActionPanel/ActionVBox/ActionRow/ActionButtons").GetChildCount() == 8,
+            "Abilities, consumables, and End Turn must share one compact row");
+        Check(_testHud.GetNode<PanelContainer>("ActionPanel").Size.Y <= 90.0f,
+            "Action bar height must be reduced");
     }
 
     private void SetupFixture()

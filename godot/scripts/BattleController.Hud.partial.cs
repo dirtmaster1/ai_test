@@ -12,7 +12,6 @@ public partial class BattleController
 
         var active = _turnManager?.GetActiveUnit();
         _hud.SetTurnOrder(BuildTurnOrderForHud(), active);
-        _hud.SetActiveUnit(_flowState == BattleFlowState.Combat ? active : null);
         _hud.SetPartyList(_playerUnits, _selectedCharacterUnitId, _flowState == BattleFlowState.Exploration, BuildPendingLevelUpUnitIds());
 
         var characterUnit = GetSelectedCharacterUnit();
@@ -44,6 +43,7 @@ public partial class BattleController
             : _flowState == BattleFlowState.Exploration
                 ? GetSelectedCharacterPartyUnit() ?? GetExplorerUnit()
                 : null;
+        _hud.SetMovementCounter(actionBarUnit);
         var explorationOnly = _flowState == BattleFlowState.Exploration;
         var actionBarAbilities = BuildAbilityEntriesForHud(actionBarUnit, explorationOnly);
         var abilityPanelEnabled = _flowState == BattleFlowState.Combat
