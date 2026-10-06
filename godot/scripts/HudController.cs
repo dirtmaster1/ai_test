@@ -2149,7 +2149,10 @@ public partial class HudController : Control
             var suffix = _equippedItemIds.Contains(id) ? " (equipped)" : "";
             var line = BuildItemSummary(item) + suffix;
             var icon = GetItemIcon(item);
-            _inventoryItemList.AddItem(icon == null ? line : suffix, icon);
+            var visibleLabel = icon == null
+                ? line
+                : GetString(item, "name", id) + suffix;
+            _inventoryItemList.AddItem(visibleLabel, icon);
             var itemIndex = _inventoryItemList.ItemCount - 1;
             _inventoryItemList.SetItemMetadata(itemIndex, id);
             _inventoryItemList.SetItemTooltip(itemIndex, line);
@@ -2259,7 +2262,7 @@ public partial class HudController : Control
         {
             var label = GetString(ability, "label", "Ability");
             var icon = GetGameIcon(GetString(ability, "id", ""));
-            var index = _inventoryAbilityList.AddItem(icon == null ? label : "", icon);
+            var index = _inventoryAbilityList.AddItem(label, icon);
             var detail = GetString(ability, "detail", label);
             _inventoryAbilityList.SetItemTooltip(index, detail);
             _inventoryAbilityList.SetItemMetadata(index, detail);
@@ -2760,7 +2763,7 @@ public partial class HudController : Control
             var label = GetString(entry, "label", interactionId);
             var icon = GetGameIcon(GetString(entry, "icon_id", ""));
             _lootEntriesById[interactionId] = entry;
-            _lootItemList.AddItem(icon == null ? label : "", icon);
+            _lootItemList.AddItem(label, icon);
             var itemIndex = _lootItemList.ItemCount - 1;
             _lootItemList.SetItemMetadata(itemIndex, interactionId);
             _lootItemList.SetItemTooltip(itemIndex, label);
@@ -2869,7 +2872,7 @@ public partial class HudController : Control
             var icon = GetItemIcon(item);
             var visibleLabel = icon == null
                 ? label
-                : $"{Mathf.Max(1, quantity)}x {Mathf.Max(0, price)} gp";
+                : $"{Mathf.Max(1, quantity)} x {GetString(item, "name", itemId)} - {Mathf.Max(0, price)} gp";
             entriesById[itemId] = item;
             list.AddItem(visibleLabel, icon);
             var itemIndex = list.ItemCount - 1;
