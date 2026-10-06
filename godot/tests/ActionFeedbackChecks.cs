@@ -44,7 +44,26 @@ public partial class ActionFeedbackChecks : BattleController
         CheckInteractions();
         CheckConsumables();
         CheckAllowedActions();
+        CheckCombatEndClearsCombatStatuses();
         return _failures;
+    }
+
+    private void CheckCombatEndClearsCombatStatuses()
+    {
+        Reset();
+        _actor.ApplyStatusEffect("combat-buff", "Protected", true, 3, scope: "combat_only", armorClassBonus: 2);
+        _ally.ApplyStatusEffect("combat-debuff", "Poisoned", false, 3, scope: "combat_only", damagePerTurn: 1);
+        _actor.ApplyStatusEffect("persistent-buff", "Blessed", true, 3, scope: "persistent");
+        _enemy.ApplyStatusEffect("enemy-combat-buff", "Protected", true, 3, scope: "combat_only");
+
+        Call("EnterExplorationMode", "Encounter cleared.");
+
+        Check(!_actor.HasStatusEffect("combat-buff") && !_ally.HasStatusEffect("combat-debuff"),
+            "Ending combat must clear combat-only buffs and debuffs from party members.");
+        Check(_actor.HasStatusEffect("persistent-buff"),
+            "Ending combat must not clear persistent party status effects.");
+        Check(_enemy.HasStatusEffect("enemy-combat-buff"),
+            "Ending combat cleanup must not clear enemy status effects.");
     }
 
     private void CheckPoisonStrikeIcon()

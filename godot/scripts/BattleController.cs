@@ -212,6 +212,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.ConsumablePressed += OnHudConsumablePressed;
             _hud.EndTurnPressed += OnHudEndTurnPressed;
             _hud.EquipItemRequested += OnHudEquipItemRequested;
+            _hud.EquipItemToSlotRequested += OnHudEquipItemToSlotRequested;
+            _hud.MoveEquippedItemToSlotRequested += OnHudMoveEquippedItemToSlotRequested;
             _hud.UseItemRequested += OnHudUseItemRequested;
             _hud.UnequipItemRequested += OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested += OnHudInventoryCycleRequested;
@@ -253,6 +255,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.ConsumablePressed -= OnHudConsumablePressed;
             _hud.EndTurnPressed -= OnHudEndTurnPressed;
             _hud.EquipItemRequested -= OnHudEquipItemRequested;
+            _hud.EquipItemToSlotRequested -= OnHudEquipItemToSlotRequested;
+            _hud.MoveEquippedItemToSlotRequested -= OnHudMoveEquippedItemToSlotRequested;
             _hud.UseItemRequested -= OnHudUseItemRequested;
             _hud.UnequipItemRequested -= OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested -= OnHudInventoryCycleRequested;
@@ -757,6 +761,74 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var itemName = GetString(itemData, "name", itemId);
         _hud?.AddCombatLogEntry($"{target.UnitName} equipped {itemName}.");
+        SetStatusHelp();
+        _persistence.PersistSaveGame(false);
+    }
+
+    private void OnHudEquipItemToSlotRequested(string itemId, string slotKey)
+    {
+        var target = GetInventoryTargetUnit();
+        if (target == null || string.IsNullOrEmpty(itemId) || _gameData == null)
+        {
+            return;
+        }
+
+        var itemData = _gameData.GetItem(itemId);
+        if (itemData.Count == 0 || !HasUnequippedSharedItem(itemId))
+        {
+            RejectPlayerAction("That item is no longer available.");
+            return;
+        }
+
+        if (!EquipmentSlotRules.CanEquipItemToSlot(itemData, slotKey)
+            || !EquipItemToSpecificSlot(target, itemData, itemId, slotKey))
+        {
+            RejectPlayerAction($"{GetString(itemData, "name", itemId)} cannot be equipped in {slotKey}.");
+            return;
+        }
+
+        ApplyEquippedItemBonuses(target);
+        _hud?.AddCombatLogEntry($"{target.UnitName} equipped {GetString(itemData, "name", itemId)}.");
+        SetStatusHelp();
+        _persistence.PersistSaveGame(false);
+    }
+
+    private void OnHudMoveEquippedItemToSlotRequested(string sourceSlotKey, string targetSlotKey)
+    {
+        var target = GetInventoryTargetUnit();
+        if (target == null
+            || sourceSlotKey == targetSlotKey
+            || !EquipmentSlotRules.IsConsumableSlotKey(sourceSlotKey)
+            || !EquipmentSlotRules.IsConsumableSlotKey(targetSlotKey)
+            || _gameData == null
+            || !_equippedItemsByUnitId.TryGetValue(target.UnitId, out var equippedBySlot)
+            || !equippedBySlot.TryGetValue(sourceSlotKey, out var sourceItemId))
+        {
+            return;
+        }
+
+        var sourceItem = _gameData.GetItem(sourceItemId);
+        if (!EquipmentSlotRules.CanEquipItemToSlot(sourceItem, targetSlotKey))
+        {
+            return;
+        }
+
+        if (equippedBySlot.TryGetValue(targetSlotKey, out var targetItemId))
+        {
+            var targetItem = _gameData.GetItem(targetItemId);
+            if (!EquipmentSlotRules.CanEquipItemToSlot(targetItem, sourceSlotKey))
+            {
+                return;
+            }
+        }
+
+        if (!MoveEquippedItemBetweenSlots(equippedBySlot, sourceSlotKey, targetSlotKey))
+        {
+            return;
+        }
+
+        var sourceItemName = GetString(sourceItem, "name", sourceItemId);
+        _hud?.AddCombatLogEntry($"{target.UnitName} moved {sourceItemName} to {targetSlotKey}.");
         SetStatusHelp();
         _persistence.PersistSaveGame(false);
     }
@@ -2496,7 +2568,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud?.ShowCombatBanner("COMBAT ENDED - DEFEAT", new Color(0.9f, 0.28f, 0.25f, 1.0f));
             _hud?.AddCombatLogEntry("Combat ended. The party was defeated.");
             _flowState = BattleFlowState.Defeat;
-            ClearCombatOnlyDebuffsForParty();
+            ClearCombatOnlyStatusEffectsForParty();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             SyncHudFromGameState();
             _persistence.PersistSaveGame(false);
@@ -3228,19 +3300,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return GetString(abilityData, "type", "attack").ToLowerInvariant() == "passive";
     }
 
-    private void ClearCombatOnlyDebuffsForParty()
+    private void ClearCombatOnlyStatusEffectsForParty()
     {
-        foreach (var unit in _playerUnits)
+        foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit))
+            if (!IsUsableUnit(unit) || unit.Team != "player")
             {
                 continue;
             }
 
-            var removedCount = unit.ClearStatusEffectsByScope("combat_only", includeBuffs: false);
+            var removedCount = unit.ClearStatusEffectsByScope("combat_only");
             if (removedCount > 0)
             {
-                _hud?.AddCombatLogEntry($"{unit.UnitName} shakes off lingering combat debuffs.");
+                _hud?.AddCombatLogEntry($"{unit.UnitName} shakes off lingering combat effects.");
             }
         }
     }
@@ -4716,18 +4788,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
-        var equippedCount = 0;
-        foreach (var equippedBySlot in _equippedItemsByUnitId.Values)
-        {
-            foreach (var equippedItemId in equippedBySlot.Values)
-            {
-                if (equippedItemId == itemId)
-                {
-                    equippedCount++;
-                }
-            }
-        }
-
+        var equippedUsage = BuildEquippedItemUsage();
+        var equippedCount = equippedUsage.TryGetValue(itemId, out var count) ? count : 0;
         return sharedCount > equippedCount;
     }
 
@@ -5971,25 +6033,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return items;
         }
 
-        var equippedUsage = new System.Collections.Generic.Dictionary<string, int>();
-        foreach (var player in _playerUnits)
-        {
-            if (!IsUsableUnit(player) || string.IsNullOrEmpty(player.UnitId))
-            {
-                continue;
-            }
-
-            if (!_equippedItemsByUnitId.TryGetValue(player.UnitId, out var equippedBySlot))
-            {
-                continue;
-            }
-
-            foreach (var entry in equippedBySlot)
-            {
-                var equippedId = entry.Value;
-                equippedUsage[equippedId] = equippedUsage.TryGetValue(equippedId, out var count) ? count + 1 : 1;
-            }
-        }
+        var equippedUsage = BuildEquippedItemUsage();
 
         foreach (var itemId in _partyInventoryItemIds)
         {
@@ -6425,6 +6469,100 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
+    private bool EquipItemToSpecificSlot(Unit unit, Dictionary itemData, string itemId, string targetSlotKey)
+    {
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return false;
+        }
+
+        if (IsConsumableItem(itemData))
+        {
+            if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var consumableSlots))
+            {
+                consumableSlots = new System.Collections.Generic.Dictionary<string, string>();
+                _equippedItemsByUnitId[unit.UnitId] = consumableSlots;
+            }
+
+            if (consumableSlots.TryGetValue(targetSlotKey, out var replacedConsumable)
+                && replacedConsumable != itemId)
+            {
+                EnsureSharedInventoryHasUnequippedCount(replacedConsumable, 1);
+            }
+
+            consumableSlots[targetSlotKey] = itemId;
+            return true;
+        }
+
+        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot))
+        {
+            equippedBySlot = new System.Collections.Generic.Dictionary<string, string>();
+            _equippedItemsByUnitId[unit.UnitId] = equippedBySlot;
+        }
+
+        if (GetString(itemData, "slot", "") == "2-handed")
+        {
+            if (equippedBySlot.Remove("1-handed-a", out var removedMainHand))
+            {
+                EnsureSharedInventoryHasUnequippedCount(removedMainHand, 1);
+            }
+            if (equippedBySlot.Remove("1-handed-b", out var removedOffHand))
+            {
+                EnsureSharedInventoryHasUnequippedCount(removedOffHand, 1);
+            }
+            if (equippedBySlot.TryGetValue("2-handed", out var replacedTwoHanded)
+                && replacedTwoHanded != itemId)
+            {
+                EnsureSharedInventoryHasUnequippedCount(replacedTwoHanded, 1);
+            }
+
+            equippedBySlot["2-handed"] = itemId;
+            return true;
+        }
+
+        if (targetSlotKey is "1-handed-a" or "1-handed-b"
+            && equippedBySlot.Remove("2-handed", out var removedTwoHanded))
+        {
+            EnsureSharedInventoryHasUnequippedCount(removedTwoHanded, 1);
+        }
+
+        if (equippedBySlot.TryGetValue(targetSlotKey, out var replacedItem)
+            && replacedItem != itemId)
+        {
+            EnsureSharedInventoryHasUnequippedCount(replacedItem, 1);
+        }
+
+        equippedBySlot[targetSlotKey] = itemId;
+        return true;
+    }
+
+    private static bool MoveEquippedItemBetweenSlots(
+        System.Collections.Generic.Dictionary<string, string> equippedBySlot,
+        string sourceSlotKey,
+        string targetSlotKey)
+    {
+        if (equippedBySlot == null
+            || !EquipmentSlotRules.IsConsumableSlotKey(sourceSlotKey)
+            || !EquipmentSlotRules.IsConsumableSlotKey(targetSlotKey)
+            || sourceSlotKey == targetSlotKey
+            || !equippedBySlot.TryGetValue(sourceSlotKey, out var sourceItemId))
+        {
+            return false;
+        }
+
+        if (equippedBySlot.TryGetValue(targetSlotKey, out var targetItemId))
+        {
+            equippedBySlot[sourceSlotKey] = targetItemId;
+        }
+        else
+        {
+            equippedBySlot.Remove(sourceSlotKey);
+        }
+
+        equippedBySlot[targetSlotKey] = sourceItemId;
+        return true;
+    }
+
     private void EquipItemToUnit(Unit unit, Dictionary itemData, string itemId)
     {
         if (unit == null || string.IsNullOrEmpty(unit.UnitId) || itemData == null)
@@ -6515,27 +6653,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
-        var equippedCount = 0;
-        foreach (var player in _playerUnits)
-        {
-            if (!IsUsableUnit(player) || string.IsNullOrEmpty(player.UnitId))
-            {
-                continue;
-            }
-
-            if (!_equippedItemsByUnitId.TryGetValue(player.UnitId, out var equippedBySlot))
-            {
-                continue;
-            }
-
-            foreach (var equippedItemId in equippedBySlot.Values)
-            {
-                if (equippedItemId == itemId)
-                {
-                    equippedCount++;
-                }
-            }
-        }
+        var equippedUsage = BuildEquippedItemUsage();
+        var equippedCount = equippedUsage.TryGetValue(itemId, out var count) ? count : 0;
 
         var unequippedCount = sharedCount - equippedCount;
         while (unequippedCount < minimumUnequippedCount)
@@ -6543,6 +6662,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _partyInventoryItemIds.Add(itemId);
             unequippedCount++;
         }
+    }
+
+    private System.Collections.Generic.Dictionary<string, int> BuildEquippedItemUsage()
+    {
+        var equippedUsage = new System.Collections.Generic.Dictionary<string, int>();
+        foreach (var unit in _playerUnits)
+        {
+            if (unit == null
+                || string.IsNullOrEmpty(unit.UnitId)
+                || !_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot))
+            {
+                continue;
+            }
+
+            foreach (var itemId in equippedBySlot.Values)
+            {
+                equippedUsage[itemId] = equippedUsage.TryGetValue(itemId, out var count) ? count + 1 : 1;
+            }
+        }
+
+        return equippedUsage;
     }
 
     private Array<Unit> BuildTurnOrderForHud()
@@ -7607,7 +7747,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (livingLeader == null)
         {
             _flowState = BattleFlowState.Defeat;
-            ClearCombatOnlyDebuffsForParty();
+            ClearCombatOnlyStatusEffectsForParty();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
         }
 

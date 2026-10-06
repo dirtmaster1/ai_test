@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/HudController.cs" id="1_ynpr3"]
+[ext_resource type="Script" path="res://scripts/SharedPartyInventoryList.cs" id="2_8d4ql"]
+[ext_resource type="Script" path="res://scripts/EquipmentSlotButton.cs" id="3_svlc2"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -484,6 +486,7 @@ autowrap_mode = 3
 text = "CHARACTER\nDOLL"
 
 [node name="HeadSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(92, 68)
 layout_mode = 0
 offset_left = 94.0
@@ -495,6 +498,7 @@ icon_max_width = 32
 text = "HEAD\nEmpty"
 
 [node name="MainHandSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(82, 72)
 layout_mode = 0
 offset_left = 4.0
@@ -506,6 +510,7 @@ icon_max_width = 32
 text = "MAIN HAND\nEmpty"
 
 [node name="OffHandSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(82, 72)
 layout_mode = 0
 offset_left = 194.0
@@ -517,6 +522,7 @@ icon_max_width = 32
 text = "OFF HAND\nEmpty"
 
 [node name="BodySlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(106, 68)
 layout_mode = 0
 offset_left = 87.0
@@ -541,6 +547,7 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="ConsumableSlot1Button" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots"]
+script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(132, 48)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -549,6 +556,7 @@ icon_max_width = 32
 text = "CONSUMABLE 1\nEmpty"
 
 [node name="ConsumableSlot2Button" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots"]
+script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(132, 48)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -570,6 +578,7 @@ layout_mode = 2
 text = "SHARED PARTY INVENTORY"
 
 [node name="InventoryItemList" type="ItemList" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox"]
+script = ExtResource("2_8d4ql")
 layout_mode = 2
 size_flags_vertical = 3
 fixed_icon_size = Vector2i(32, 32)

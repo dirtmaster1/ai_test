@@ -15,7 +15,7 @@ public partial class BattleController
     private void EnterExplorationMode(string statusText = null)
     {
         ResetPlayerAbilityCooldowns();
-        ClearCombatOnlyDebuffsForParty();
+        ClearCombatOnlyStatusEffectsForParty();
         _flowState = BattleFlowState.Exploration;
         _awaitingPlayerAttackDirection = false;
         ClearMovementPreviewPath();
