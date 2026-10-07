@@ -14,27 +14,17 @@ public partial class BattleController
         _hud.SetTurnOrder(BuildTurnOrderForHud(), active);
         _hud.SetPartyList(_playerUnits, _selectedCharacterUnitId, _flowState == BattleFlowState.Exploration, BuildPendingLevelUpUnitIds());
 
-        var characterUnit = GetSelectedCharacterUnit();
-        if (characterUnit == null)
+        if (GetSelectedCharacterUnit() == null)
         {
-            characterUnit = _flowState == BattleFlowState.Combat
+            var fallbackCharacterUnit = _flowState == BattleFlowState.Combat
                 ? active
                 : GetExplorerUnit();
 
-            if (characterUnit != null)
+            if (fallbackCharacterUnit != null)
             {
-                _selectedCharacterUnitId = characterUnit.UnitId;
+                _selectedCharacterUnitId = fallbackCharacterUnit.UnitId;
             }
         }
-
-        _hud.SetCharacterSummary(
-            _hud.BuildCharacterSummary(
-                characterUnit,
-                characterUnit == null ? "" : GetActionDisplayName(GetSelectedAbilityId(characterUnit)),
-                characterUnit == null ? "" : GetActionDisplayName(characterUnit.PrimaryAbilityId)
-            )
-        );
-        _hud.SetCharacterStatusSummary(_hud.BuildCharacterStatusSummary(characterUnit));
 
         var activePlayer = GetActivePlayerUnit();
         var mainActionEnabled = _flowState == BattleFlowState.Combat && activePlayer != null && activePlayer.CanUseAbilityThisTurn();
@@ -74,13 +64,11 @@ public partial class BattleController
                 )
             );
             _hud.SetInventoryAbilities(BuildAbilityEntriesForHud(inventoryTarget));
-            _hud.SetInventoryEquippedSummary(BuildInventoryEquippedSummary(inventoryTarget));
             _hud.SetInventoryEquippedItems(BuildInventoryEquippedEntries(inventoryTarget));
             _hud.SetInventoryItems(BuildInventoryItemsForHud(), GetEquippedItemIds(inventoryTarget));
         }
         else
         {
-            _hud.SetInventoryEquippedSummary("Equipped: none");
             _hud.SetInventoryEquippedItems(new Godot.Collections.Array<Godot.Collections.Dictionary>());
         }
 

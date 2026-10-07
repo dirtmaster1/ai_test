@@ -184,7 +184,7 @@
 	  "slot": "2-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 4
+	  "range": 5
 	},
 	"leather-armor": {
 	  "id": "leather-armor",
@@ -226,7 +226,7 @@
 	  "slot": "2-handed",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
-	  "range": 5
+	  "range": 7
 	},
 	"chain-mail": {
 	  "id": "chain-mail",

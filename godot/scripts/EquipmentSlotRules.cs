@@ -18,7 +18,7 @@ public static class EquipmentSlotRules
             return slot == "consumable" && (type is "potion" or "food" or "consumable");
         }
 
-        if (targetSlotKey is "head" or "body")
+        if (targetSlotKey is "head" or "body" or "feet")
         {
             return type == "armor" && slot == targetSlotKey;
         }

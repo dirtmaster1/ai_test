@@ -40,7 +40,7 @@ theme_override_constants/separation = 6
 [node name="InventoryButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Inventory (I)"
+text = "Party (P)"
 
 [node name="HelpButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
@@ -88,62 +88,6 @@ text = "Use H to toggle this panel."
 layout_mode = 2
 
 [node name="CloseHelpButton" type="Button" parent="HelpPanel/HelpVBox/HelpButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Close"
-
-[node name="CharacterPanel" type="PanelContainer" parent="."]
-visible = false
-layout_mode = 0
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -308.0
-offset_top = 166.0
-offset_right = -20.0
-offset_bottom = 334.0
-
-[node name="CharacterVBox" type="VBoxContainer" parent="CharacterPanel"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="CharacterHeader" type="Label" parent="CharacterPanel/CharacterVBox"]
-layout_mode = 2
-text = "Character"
-
-[node name="CharacterDetailsPanel" type="PanelContainer" parent="CharacterPanel/CharacterVBox"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="CharacterDetailsVBox" type="VBoxContainer" parent="CharacterPanel/CharacterVBox/CharacterDetailsPanel"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="CharacterSummaryLabel" type="Label" parent="CharacterPanel/CharacterVBox/CharacterDetailsPanel/CharacterDetailsVBox"]
-layout_mode = 2
-size_flags_vertical = 3
-autowrap_mode = 3
-text = "No unit selected."
-
-[node name="CharacterStatusLabel" type="Label" parent="CharacterPanel/CharacterVBox/CharacterDetailsPanel/CharacterDetailsVBox"]
-layout_mode = 2
-autowrap_mode = 3
-text = "Status Effects: none"
-
-[node name="CharacterCycleButtons" type="HBoxContainer" parent="CharacterPanel/CharacterVBox"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="CharacterPrevButton" type="Button" parent="CharacterPanel/CharacterVBox/CharacterCycleButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Prev Member"
-
-[node name="CharacterNextButton" type="Button" parent="CharacterPanel/CharacterVBox/CharacterCycleButtons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Next Member"
-
-[node name="CharacterCloseButton" type="Button" parent="CharacterPanel/CharacterVBox/CharacterCycleButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"
@@ -362,21 +306,6 @@ offset_bottom = 690.0
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="InventoryHeaderRow" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
-layout_mode = 2
-
-[node name="InventoryHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryHeaderRow"]
-layout_mode = 2
-text = "Inventory"
-
-[node name="HeaderSpacer" type="Control" parent="InventoryPanel/InventoryVBox/InventoryHeaderRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="InventoryGoldLabel" type="Label" parent="InventoryPanel/InventoryVBox/InventoryHeaderRow"]
-layout_mode = 2
-text = "Party Treasury: 0 gp"
-
 [node name="InventoryCycleButtons" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
 layout_mode = 2
 theme_override_constants/separation = 8
@@ -391,7 +320,7 @@ tooltip_text = "Previous party member"
 layout_mode = 2
 size_flags_horizontal = 3
 horizontal_alignment = 1
-text = "Party Member: -"
+text = ""
 
 [node name="NextUnitButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryCycleButtons"]
 custom_minimum_size = Vector2(42, 0)
@@ -413,27 +342,24 @@ size_flags_horizontal = 3
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="CharacterColumnHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox"]
-layout_mode = 2
-text = "CHARACTER RECORD"
-
-[node name="CharacterSummaryScroll" type="ScrollContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox"]
-custom_minimum_size = Vector2(0, 230)
+[node name="CharacterTabs" type="TabContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox"]
 layout_mode = 2
 size_flags_vertical = 3
+current_tab = 0
 
-[node name="InventoryCharacterSummary" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterSummaryScroll"]
+[node name="Info" type="ScrollContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs"]
+layout_mode = 2
+
+[node name="InventoryCharacterSummary" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info"]
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
 text = "No active character."
 
-[node name="AbilityHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox"]
+[node name="Abilities" type="VBoxContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs"]
 layout_mode = 2
-text = "ABILITIES & SPELLS"
 
-[node name="InventoryAbilityList" type="ItemList" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox"]
-custom_minimum_size = Vector2(0, 150)
+[node name="InventoryAbilityList" type="ItemList" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Abilities"]
 layout_mode = 2
 size_flags_vertical = 3
 allow_reselect = true
@@ -451,47 +377,21 @@ theme_override_constants/separation = 6
 layout_mode = 2
 text = "EQUIPMENT"
 
-[node name="InventoryEquippedSummaryLabel" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
-layout_mode = 2
-autowrap_mode = 3
-text = "Equipped: none"
-
 [node name="DollStage" type="PanelContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
-custom_minimum_size = Vector2(280, 360)
+custom_minimum_size = Vector2(280, 280)
 layout_mode = 2
 size_flags_vertical = 3
 
 [node name="DollControl" type="Control" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage"]
 layout_mode = 2
 
-[node name="CharacterPortrait" type="TextureRect" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
-layout_mode = 0
-offset_left = 92.0
-offset_top = 94.0
-offset_right = 188.0
-offset_bottom = 250.0
-expand_mode = 1
-stretch_mode = 5
-tooltip_text = "Character doll artwork placeholder"
-
-[node name="PortraitPlaceholder" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
-layout_mode = 0
-offset_left = 92.0
-offset_top = 94.0
-offset_right = 188.0
-offset_bottom = 250.0
-horizontal_alignment = 1
-vertical_alignment = 1
-autowrap_mode = 3
-text = "CHARACTER\nDOLL"
-
 [node name="HeadSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(92, 68)
 layout_mode = 0
-offset_left = 94.0
+offset_left = 104.0
 offset_top = 12.0
-offset_right = 186.0
+offset_right = 196.0
 offset_bottom = 80.0
 expand_icon = true
 icon_max_width = 32
@@ -499,48 +399,56 @@ text = "HEAD\nEmpty"
 
 [node name="MainHandSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(82, 72)
+custom_minimum_size = Vector2(94, 78)
 layout_mode = 0
-offset_left = 4.0
-offset_top = 132.0
-offset_right = 86.0
-offset_bottom = 204.0
+offset_left = -4.0
+offset_top = 112.0
+offset_right = 90.0
+offset_bottom = 190.0
 expand_icon = true
 icon_max_width = 32
-text = "MAIN HAND\nEmpty"
+text = "MAIN\nHAND\nEmpty"
 
 [node name="OffHandSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(82, 72)
+custom_minimum_size = Vector2(94, 78)
 layout_mode = 0
-offset_left = 194.0
-offset_top = 132.0
-offset_right = 276.0
-offset_bottom = 204.0
+offset_left = 208.0
+offset_top = 112.0
+offset_right = 302.0
+offset_bottom = 190.0
 expand_icon = true
 icon_max_width = 32
-text = "OFF HAND\nEmpty"
+text = "OFF\nHAND\nEmpty"
 
 [node name="BodySlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
 custom_minimum_size = Vector2(106, 68)
 layout_mode = 0
-offset_left = 87.0
-offset_top = 268.0
-offset_right = 193.0
-offset_bottom = 336.0
+offset_left = 96.0
+offset_top = 112.0
+offset_right = 202.0
+offset_bottom = 180.0
 expand_icon = true
 icon_max_width = 32
 text = "BODY\nEmpty"
+
+[node name="FeetSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
+custom_minimum_size = Vector2(106, 60)
+layout_mode = 0
+offset_left = 96.0
+offset_top = 200.0
+offset_right = 202.0
+offset_bottom = 260.0
+expand_icon = true
+icon_max_width = 32
+text = "FEET\nEmpty"
 
 [node name="InventoryEquippedItemList" type="ItemList" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
 visible = false
 layout_mode = 2
 allow_reselect = true
-
-[node name="ConsumablesHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
-layout_mode = 2
-text = "CONSUMABLES"
 
 [node name="ConsumableSlots" type="HBoxContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
 layout_mode = 2
@@ -575,7 +483,21 @@ theme_override_constants/separation = 6
 
 [node name="SharedInventoryHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox"]
 layout_mode = 2
-text = "SHARED PARTY INVENTORY"
+text = "INVENTORY"
+
+[node name="InventoryTreasuryRow" type="HBoxContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="InventoryGoldIcon" type="TextureRect" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryTreasuryRow"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="InventoryGoldLabel" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryTreasuryRow"]
+layout_mode = 2
+text = "25 gp"
 
 [node name="InventoryItemList" type="ItemList" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox"]
 script = ExtResource("2_8d4ql")
@@ -583,16 +505,6 @@ layout_mode = 2
 size_flags_vertical = 3
 fixed_icon_size = Vector2i(32, 32)
 allow_reselect = true
-
-[node name="ComparisonHeader" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox"]
-layout_mode = 2
-text = "ITEM DETAILS & COMPARISON"
-
-[node name="InventoryItemDetails" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox"]
-custom_minimum_size = Vector2(0, 170)
-layout_mode = 2
-autowrap_mode = 3
-text = "Select an item to view details."
 
 [node name="InventoryButtons" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
 layout_mode = 2

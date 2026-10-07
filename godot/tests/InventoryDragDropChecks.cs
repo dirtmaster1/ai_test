@@ -19,10 +19,46 @@ public partial class InventoryDragDropChecks : Node
         var hud = hudScene.Instantiate<HudController>();
         AddChild(hud);
 
+        var summaryUnit = new Unit();
+        summaryUnit.Setup(new Dictionary { { "id", "summary-test-unit" }, { "team", "player" } });
+        var characterSummary = hud.BuildCharacterSummary(summaryUnit, "", "", includeActionNames: false);
+        var classIndex = characterSummary.IndexOf("Class:");
+        var levelIndex = characterSummary.IndexOf("Level:");
+        var experienceIndex = characterSummary.IndexOf("Experience:");
+        var raceIndex = characterSummary.IndexOf("Race:");
+        Check(classIndex >= 0 && classIndex < levelIndex && levelIndex < experienceIndex && experienceIndex < raceIndex,
+            "Party info must list Level and Experience between Class and Race.");
+        Check(!characterSummary.Contains("Team:")
+            && !characterSummary.Contains("Status:")
+            && !characterSummary.Contains("to next level"),
+            "Party info must omit Team, Status, and the experience remaining suffix.");
+
+        var characterTabs = hud.GetNode<TabContainer>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs");
+        Check(characterTabs.CurrentTab == 0, "The Info tab must be selected by default.");
+        Check(characterTabs.GetTabTitle(0) == "Info" && characterTabs.GetTabTitle(1) == "Abilities & Spells",
+            "The character record tabs must be Info and Abilities & Spells.");
+        hud.SetInventoryAbilities(new Array<Dictionary>
+        {
+            new()
+            {
+                { "id", "fireball" },
+                { "label", "Fireball" },
+                { "detail", "Fireball\nType: area_attack\nRange: 6\nRequirement: none\nStatus: ready" }
+            }
+        });
+        var abilityList = hud.GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Abilities/InventoryAbilityList");
+        var abilityTooltip = abilityList.GetItemTooltip(0);
+        Check(abilityTooltip.Contains("Range: 6")
+            && !abilityTooltip.Contains("Type:")
+            && !abilityTooltip.Contains("Requirement:")
+            && !abilityTooltip.Contains("Status:"),
+            "Abilities and spells tooltips must omit Type, Requirement, and Status.");
+
         var items = new Array<Dictionary>
         {
             new() { { "id", "test-helmet" }, { "name", "Test Helmet" }, { "type", "armor" }, { "slot", "head" } },
             new() { { "id", "test-armor" }, { "name", "Test Armor" }, { "type", "armor" }, { "slot", "body" } },
+            new() { { "id", "test-boots" }, { "name", "Test Boots" }, { "type", "armor" }, { "slot", "feet" } },
             new() { { "id", "test-dagger" }, { "name", "Test Dagger" }, { "type", "weapon" }, { "slot", "1-handed" } },
             new() { { "id", "test-bow" }, { "name", "Test Bow" }, { "type", "weapon" }, { "slot", "2-handed" } },
             new() { { "id", "test-potion" }, { "name", "Test Potion" }, { "type", "potion" }, { "slot", "consumable" } },
@@ -33,6 +69,7 @@ public partial class InventoryDragDropChecks : Node
 
         var head = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
         var body = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BodySlot");
+        var feet = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/FeetSlot");
         var mainHand = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/MainHandSlot");
         var offHand = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/OffHandSlot");
         var consumable = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
@@ -48,6 +85,8 @@ public partial class InventoryDragDropChecks : Node
         Check(head._CanDropData(Vector2.Zero, helmet), "Head armor must be accepted by the head slot.");
         Check(!body._CanDropData(Vector2.Zero, helmet), "Head armor must be rejected by the body slot.");
         Check(body._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-armor"), "Body armor must be accepted by the body slot.");
+        Check(feet._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-boots"), "Footwear armor must be accepted by the feet slot.");
+        Check(!feet._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-armor"), "Body armor must be rejected by the feet slot.");
         Check(mainHand._CanDropData(Vector2.Zero, dagger) && offHand._CanDropData(Vector2.Zero, dagger), "One-handed weapons must be accepted by either hand.");
         Check(mainHand._CanDropData(Vector2.Zero, bow) && !offHand._CanDropData(Vector2.Zero, bow), "Two-handed weapons must only be accepted by the main-hand slot.");
         Check(consumable._CanDropData(Vector2.Zero, potion), "Consumables must be accepted by consumable slots.");
@@ -60,6 +99,13 @@ public partial class InventoryDragDropChecks : Node
         };
         offHand._DropData(Vector2.Zero, dagger);
         Check(equipRequested, "Dropping a valid inventory item must request equipping it in the target slot.");
+        var footwearEquipRequested = false;
+        hud.EquipItemToSlotRequested += (itemId, slotKey) =>
+        {
+            footwearEquipRequested = itemId == "test-boots" && slotKey == "feet";
+        };
+        feet._DropData(Vector2.Zero, (Variant)"inventory-item:test-boots");
+        Check(footwearEquipRequested, "Dropping footwear into the feet slot must request equipping it.");
 
         var unequipRequested = false;
         hud.UnequipItemRequested += slotKey => unequipRequested = slotKey == "head";

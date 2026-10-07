@@ -596,7 +596,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _selectedCharacterUnitId = unit.UnitId;
         SyncHudFromGameState();
-        _hud?.SetCharacterVisible(true);
     }
 
     private void OnHudLevelUpRequested(string unitId)
@@ -6142,23 +6141,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return result;
-    }
-
-    private string BuildInventoryEquippedSummary(Unit unit)
-    {
-        if (unit == null || _gameData == null || string.IsNullOrEmpty(unit.UnitId))
-        {
-            return "Equipped: none";
-        }
-
-        if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
-        {
-            return "Equipped: none";
-        }
-
-        var orderedSlots = new List<string>(equippedBySlot.Keys);
-        orderedSlots.Sort();
-        return $"Equipped: {orderedSlots.Count} item{(orderedSlots.Count == 1 ? "" : "s")}";
     }
 
     private Array<Dictionary> BuildInventoryEquippedEntries(Unit unit)

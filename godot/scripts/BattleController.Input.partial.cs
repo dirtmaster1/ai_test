@@ -37,16 +37,9 @@ public partial class BattleController
             return;
         }
 
-        if (keyEvent.Keycode == Key.I)
+        if (keyEvent.Keycode == Key.P)
         {
             _hud?.ToggleInventoryVisible();
-            SyncHudFromGameState();
-            return;
-        }
-
-        if (keyEvent.Keycode == Key.C)
-        {
-            _hud?.ToggleCharacterVisible();
             SyncHudFromGameState();
             return;
         }
