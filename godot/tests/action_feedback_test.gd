@@ -8,6 +8,16 @@ func _initialize() -> void:
 func run_test() -> void:
     var checks = load("res://tests/ActionFeedbackChecks.cs").new()
     root.add_child(checks)
+    if OS.get_cmdline_user_args().has("--equipment-only"):
+        var equipment_failures = checks.call("RunEquipmentBonusChecks")
+        for failure in equipment_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if equipment_failures.is_empty():
+            print("PASS: equipment stat bonuses affect healing, maximum MP, and MP regeneration")
+        quit(0 if equipment_failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--icon-only"):
         var icon_failures = checks.call("RunIconChecks")
         for failure in icon_failures:

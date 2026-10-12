@@ -88,7 +88,7 @@ public partial class HudController : Control
         ["cloth-robe"] = new(3, 2),
         ["iron-helmet"] = new(4, 2),
         ["chain-mail"] = new(2, 3),
-        ["healers-circlet"] = new(4, 3),
+        ["healers-circlet"] = new(0, 3),
         ["mages-amulet"] = new(1, 3),
         ["fireball-scroll"] = new(5, 3),
         ["gold"] = new(0, 8),
@@ -2971,7 +2971,8 @@ public partial class HudController : Control
         {
             var base_armor_class = GetInt(item, "base_armor_class", 0);
             var bonus_armor_class = GetInt(item, "bonus_armor_class", 0);
-            return $"{name} [armor] armor_class+{base_armor_class} (+{bonus_armor_class})";
+            var bonuses = BuildEquipmentBonusSummary(item);
+            return $"{name} [armor] armor_class+{base_armor_class} (+{bonus_armor_class}){bonuses}";
         }
 
         return $"{name} [{type}]";
@@ -2996,7 +2997,8 @@ public partial class HudController : Control
         {
             var base_armor_class = GetInt(item, "base_armor_class", 0);
             var bonus_armor_class = GetInt(item, "bonus_armor_class", 0);
-            return $"{prefix}{name} - Armor\nArmor Class: +{base_armor_class} (+{bonus_armor_class})";
+            var bonuses = BuildEquipmentBonusDetail(item);
+            return $"{prefix}{name} - Armor\nArmor Class: +{base_armor_class} (+{bonus_armor_class}){bonuses}";
         }
 
         if (type == "scroll")
@@ -3031,6 +3033,32 @@ public partial class HudController : Control
         }
 
         return $"{prefix}{name} - {type}";
+    }
+
+    private static string BuildEquipmentBonusSummary(Dictionary item)
+    {
+        var bonuses = new List<string>();
+        AddEquipmentBonus(bonuses, "heal", GetInt(item, "bonus_healing", 0));
+        AddEquipmentBonus(bonuses, "max MP", GetInt(item, "bonus_max_magic_points", 0));
+        AddEquipmentBonus(bonuses, "MP regen", GetInt(item, "bonus_magic_point_regen", 0));
+        return bonuses.Count == 0 ? "" : $" {string.Join(" ", bonuses)}";
+    }
+
+    private static string BuildEquipmentBonusDetail(Dictionary item)
+    {
+        var bonuses = new List<string>();
+        AddEquipmentBonus(bonuses, "Healing spells", GetInt(item, "bonus_healing", 0));
+        AddEquipmentBonus(bonuses, "Maximum MP", GetInt(item, "bonus_max_magic_points", 0));
+        AddEquipmentBonus(bonuses, "MP regeneration per turn", GetInt(item, "bonus_magic_point_regen", 0));
+        return bonuses.Count == 0 ? "" : $"\n{string.Join("\n", bonuses)}";
+    }
+
+    private static void AddEquipmentBonus(List<string> bonuses, string label, int amount)
+    {
+        if (amount != 0)
+        {
+            bonuses.Add($"{label}: +{amount}");
+        }
     }
 
     private void UpdateInventoryPrimaryAction(Dictionary item)

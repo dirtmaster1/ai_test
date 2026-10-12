@@ -30,6 +30,14 @@ public partial class ActionFeedbackChecks : BattleController
         return _failures;
     }
 
+    public Array<string> RunEquipmentBonusChecks()
+    {
+        SetupFixture();
+        CheckEquipmentStatBonuses();
+        Cleanup();
+        return _failures;
+    }
+
     public Array<string> Run()
     {
         SetupFixture();
@@ -38,6 +46,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckConsumableActionBarIcons();
         CheckCompactActionBar();
         CheckResources();
+        CheckEquipmentStatBonuses();
         CheckTargets();
         CheckUtilities();
         CheckMovement();
@@ -87,6 +96,8 @@ public partial class ActionFeedbackChecks : BattleController
         var getIcon = typeof(HudController).GetMethod("GetGameIcon", BindingFlags.Static | BindingFlags.NonPublic);
         var expectedCells = new System.Collections.Generic.Dictionary<string, Vector2I>
         {
+            ["healers-circlet"] = new(0, 3),
+            ["mages-amulet"] = new(1, 3),
             ["healing-potion"] = new(0, 7),
             ["magic-potion"] = new(1, 7),
             ["gold"] = new(0, 8),
@@ -107,6 +118,46 @@ public partial class ActionFeedbackChecks : BattleController
             using var cell = image.GetRegion(new Rect2I(entry.Value * 32, new Vector2I(32, 32)));
             Check(!cell.IsInvisible(), $"{entry.Key} atlas cell must contain visible artwork");
         }
+
+    }
+
+    private void CheckEquipmentStatBonuses()
+    {
+        Reset();
+        var equippedByUnit = Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId");
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["head"] = "healers-circlet"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.MaxMagicPoints == 32 && _actor.HealingSpellBonus == 3,
+            "The Healer's Circlet must grant +2 maximum MP and +3 healing spell strength.");
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.MaxMagicPoints == 32,
+            "Recalculating equipment bonuses must not stack the Healer's Circlet's maximum MP bonus.");
+
+        _ally.ApplyDamage(20);
+        var healed = (bool)Call("TryHealTarget", _actor, _ally, 4, 3, "lesser-heal", "Lesser Heal", 0, 2, true, false);
+        Check(healed && _ally.HitPoints == 37,
+            "The Healer's Circlet must add 3 HP to a magical healing spell.");
+
+        Reset(mana: 20);
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["head"] = "mages-amulet"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.MaxMagicPoints == 33 && _actor.ScaledMagicPointRegenPerTurn == 3,
+            "The Mage's Amulet must grant +3 maximum MP and +2 MP regeneration per turn.");
+        _actor.ResetTurnResources();
+        Check(_actor.MagicPoints == 23,
+            "The Mage's Amulet must restore its additional 2 MP when turn resources reset.");
+
+        equippedByUnit.Remove(_actor.UnitId);
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.MaxMagicPoints == 30 && _actor.ScaledMagicPointRegenPerTurn == 1
+            && _actor.HealingSpellBonus == 0,
+            "Unequipping bonus items must remove their bonuses.");
     }
 
     private void CheckConsumableActionBarIcons()

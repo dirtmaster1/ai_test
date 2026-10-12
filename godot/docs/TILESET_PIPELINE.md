@@ -80,20 +80,24 @@ To add artwork without breaking existing icons:
 5. Reimport the PNG in Godot and restart a running game to refresh its cached
    icon textures.
 
-The atlas is now 224x288px. The appended 2x2 block occupies these cells:
+The atlas is now 224x288px. Headgear and the appended 2x2 block use these cells:
 
 | Icon ID | Column, row (zero-based) | Human-readable position |
 |---|---|---|
+| `healers-circlet` | `(0, 3)` | Row 4, column 1 |
+| `mages-amulet` | `(1, 3)` | Row 4, column 2 |
 | `healing-potion` | `(0, 7)` | Row 8, column 1 |
 | `magic-potion` | `(1, 7)` | Row 8, column 2 |
 | `gold` | `(0, 8)` | Row 9, column 1 |
 | `rusty-key` | `(1, 8)` | Row 9, column 2 |
 
-Only `gold` intentionally replaces an existing mapping (previously the shield
-cell). All other existing icon coordinates remain unchanged.
+The Healer's Circlet mapping uses the requested first headgear sprite, and the
+Mage's Amulet uses the second. `gold` intentionally replaces the previous
+shield-cell mapping; other icon coordinates remain unchanged.
 After a C# build, run
 `godot --headless --path . --script res://tests/action_feedback_test.gd -- --icon-only`
 to check shared regions, new cell artwork, and the Poison Strike action-bar icon.
+Run with `-- --equipment-only` instead to check equipment stat bonuses.
 
 ## GIMP MCP
 

@@ -31,6 +31,10 @@ public partial class Unit : Node2D
     public const int MaxMovementPerTurn = 3;
     public const int DefendDamageReductionPercent = 10;
 
+    private int _baseMaxMagicPoints;
+    private int _equipmentMaxMagicPointBonus;
+    private int _equipmentMagicPointRegenBonus;
+
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
     public string ClassId { get; private set; } = "";
@@ -41,8 +45,9 @@ public partial class Unit : Node2D
     public int HitPoints { get; private set; } = 10;
     public int MaxHitPoints { get; private set; } = 10;
     public int MagicPoints { get; private set; }
-    public int MaxMagicPoints { get; private set; }
+    public int MaxMagicPoints => Mathf.Max(0, _baseMaxMagicPoints + _equipmentMaxMagicPointBonus);
     public int MagicPointRegenPerTurn { get; private set; }
+    public int HealingSpellBonus { get; private set; }
     public int Intelligence { get; private set; } = 5;
     public int Strength { get; private set; } = 5;
     public int Wisdom { get; private set; } = 5;
@@ -89,7 +94,7 @@ public partial class Unit : Node2D
     public int IntelligenceModifier => GetStatModifier(Intelligence);
     public int WisdomModifier => GetStatModifier(Wisdom);
     public int EffectiveInitiative => Initiative + DexterityModifier;
-    public int ScaledMagicPointRegenPerTurn => Mathf.Max(0, MagicPointRegenPerTurn + GetMagicPointRegenScalingBonus());
+    public int ScaledMagicPointRegenPerTurn => Mathf.Max(0, MagicPointRegenPerTurn + _equipmentMagicPointRegenBonus + GetMagicPointRegenScalingBonus());
     public int MovementPerTurn { get; private set; } = MaxMovementPerTurn;
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
@@ -144,7 +149,10 @@ public partial class Unit : Node2D
         AggroRange = Mathf.Max(0, GetInt(config, "aggro_range", 4));
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
-        MaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
+        _equipmentMaxMagicPointBonus = 0;
+        _equipmentMagicPointRegenBonus = 0;
+        HealingSpellBonus = 0;
+        _baseMaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
         MagicPoints = Mathf.Clamp(GetInt(config, "magic_points", MaxMagicPoints), 0, MaxMagicPoints);
         var defaultMagicRegen = MaxMagicPoints > 0 ? 1 : 0;
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(config, "magic_point_regen_per_turn", defaultMagicRegen));
@@ -808,6 +816,14 @@ public partial class Unit : Node2D
         ArmorClassBonus = armorClassBonus;
     }
 
+    public void SetEquipmentStatBonuses(int maxMagicPointBonus, int magicPointRegenBonus, int healingSpellBonus)
+    {
+        _equipmentMaxMagicPointBonus = maxMagicPointBonus;
+        _equipmentMagicPointRegenBonus = magicPointRegenBonus;
+        HealingSpellBonus = healingSpellBonus;
+        MagicPoints = Mathf.Clamp(MagicPoints, 0, MaxMagicPoints);
+    }
+
     public Dictionary BuildRuntimeSnapshot()
     {
         var cooldowns = new Dictionary();
@@ -854,7 +870,7 @@ public partial class Unit : Node2D
             { "hit_points", HitPoints },
             { "max_hit_points", MaxHitPoints },
             { "magic_points", MagicPoints },
-            { "max_magic_points", MaxMagicPoints },
+            { "max_magic_points", _baseMaxMagicPoints },
             { "magic_point_regen_per_turn", MagicPointRegenPerTurn },
             { "is_dead", IsDead },
             { "movement_per_turn", MovementPerTurn },
@@ -879,7 +895,7 @@ public partial class Unit : Node2D
         HitPoints = Mathf.Clamp(GetInt(snapshot, "hit_points", HitPoints), 0, MaxHitPoints);
         ClassId = GetString(snapshot, "class_id", ClassId);
         Race = GetString(snapshot, "race", Race);
-        MaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", MaxMagicPoints));
+        _baseMaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", _baseMaxMagicPoints));
         MagicPoints = Mathf.Clamp(GetInt(snapshot, "magic_points", MagicPoints), 0, MaxMagicPoints);
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
@@ -1443,7 +1459,7 @@ public partial class Unit : Node2D
 
         MaxHitPoints += hitPointGain;
         HitPoints = Mathf.Min(MaxHitPoints, HitPoints + hitPointGain);
-        MaxMagicPoints += magicPointGain;
+        _baseMaxMagicPoints += magicPointGain;
         MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + magicPointGain);
         MagicPointRegenPerTurn += 1;
     }

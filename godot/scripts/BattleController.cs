@@ -2434,7 +2434,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var healable = Mathf.Min(Mathf.Max(0, healAmount), Mathf.Max(0, target.MaxHitPoints - target.HitPoints));
+        var effectiveHealAmount = Mathf.Max(0, healAmount + (isMagical ? actor.HealingSpellBonus : 0));
+        var healable = Mathf.Min(effectiveHealAmount, Mathf.Max(0, target.MaxHitPoints - target.HitPoints));
         if (healable <= 0)
         {
             return false;
@@ -2445,7 +2446,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var healed = target.ApplyHealing(healAmount);
+        var healed = target.ApplyHealing(effectiveHealAmount);
         _combatEffectsDirector?.PlayHeal(actor, target, healed);
 
         if (_flowState == BattleFlowState.Combat)
@@ -6284,6 +6285,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         unit.SetWeaponBonuses(0, 0);
         unit.SetArmorBonuses(0);
+        unit.SetEquipmentStatBonuses(0, 0, 0);
 
         if (_gameData == null || unit == null || string.IsNullOrEmpty(unit.UnitId))
         {
@@ -6299,6 +6301,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var bestWeaponRange = 0;
         var hasEquippedWeapon = false;
         var total_armor_class = 0;
+        var total_max_magic_points = 0;
+        var total_magic_point_regen = 0;
+        var total_healing = 0;
         foreach (var entry in equippedBySlot)
         {
             var itemData = _gameData.GetItem(entry.Value);
@@ -6322,6 +6327,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 var base_armor_class = GetInt(itemData, "base_armor_class", 0);
                 var bonus_armor_class = GetInt(itemData, "bonus_armor_class", 0);
                 total_armor_class += base_armor_class + bonus_armor_class;
+                total_max_magic_points += GetInt(itemData, "bonus_max_magic_points", 0);
+                total_magic_point_regen += GetInt(itemData, "bonus_magic_point_regen", 0);
+                total_healing += GetInt(itemData, "bonus_healing", 0);
             }
         }
 
@@ -6334,6 +6342,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         unit.SetWeaponBonuses(weaponDamageBonus, weaponRangeBonus);
         unit.SetArmorBonuses(total_armor_class);
+        unit.SetEquipmentStatBonuses(total_max_magic_points, total_magic_point_regen, total_healing);
     }
 
     private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config, bool addToPartyInventory)
