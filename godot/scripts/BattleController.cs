@@ -6469,7 +6469,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (consumableSlots.TryGetValue(targetSlotKey, out var replacedConsumable)
                 && replacedConsumable != itemId)
             {
+                consumableSlots[targetSlotKey] = itemId;
                 EnsureSharedInventoryHasUnequippedCount(replacedConsumable, 1);
+                return true;
             }
 
             consumableSlots[targetSlotKey] = itemId;
@@ -6495,7 +6497,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (equippedBySlot.TryGetValue("2-handed", out var replacedTwoHanded)
                 && replacedTwoHanded != itemId)
             {
+                equippedBySlot["2-handed"] = itemId;
                 EnsureSharedInventoryHasUnequippedCount(replacedTwoHanded, 1);
+                return true;
             }
 
             equippedBySlot["2-handed"] = itemId;
@@ -6511,7 +6515,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (equippedBySlot.TryGetValue(targetSlotKey, out var replacedItem)
             && replacedItem != itemId)
         {
+            equippedBySlot[targetSlotKey] = itemId;
             EnsureSharedInventoryHasUnequippedCount(replacedItem, 1);
+            return true;
         }
 
         equippedBySlot[targetSlotKey] = itemId;

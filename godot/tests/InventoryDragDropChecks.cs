@@ -199,6 +199,27 @@ public partial class InventoryDragDropChecks : Node
         Check((bool)equip.Invoke(controller, new object[] { unit, armor, "test-armor", "body" }), "Body armor must re-equip after returning to shared inventory.");
         Check(!(bool)hasAvailable.Invoke(controller, new object[] { "test-armor" }), "Re-equipped body armor must no longer be counted as shared inventory.");
 
+        var chainMail = new Dictionary
+        {
+            { "id", "test-chain-mail" }, { "name", "Test Chain Mail" }, { "type", "armor" }, { "slot", "body" }
+        };
+        inventory.Add("test-chain-mail");
+        Check((bool)equip.Invoke(controller, new object[] { unit, chainMail, "test-chain-mail", "body" }),
+            "Body armor must be replaceable by another body armor.");
+        Check(inventory.FindAll(itemId => itemId == "test-armor").Count == 1,
+            "Replacing equipped body armor must return exactly one copy to shared inventory.");
+
+        var replacementBow = new Dictionary
+        {
+            { "id", "test-replacement-bow" }, { "name", "Test Replacement Bow" }, { "type", "weapon" }, { "slot", "2-handed" }
+        };
+        inventory.Add("test-bow");
+        inventory.Add("test-replacement-bow");
+        Check((bool)equip.Invoke(controller, new object[] { unit, replacementBow, "test-replacement-bow", "2-handed" }),
+            "A two-handed weapon must be replaceable by another two-handed weapon.");
+        Check(inventory.FindAll(itemId => itemId == "test-bow").Count == 1,
+            "Replacing an equipped two-handed weapon must return exactly one copy to shared inventory.");
+
         slots["consumable-1"] = "test-potion";
         slots["consumable-2"] = "test-magic-potion";
         var moveSlots = typeof(BattleController).GetMethod("MoveEquippedItemBetweenSlots", BindingFlags.Static | BindingFlags.NonPublic);
