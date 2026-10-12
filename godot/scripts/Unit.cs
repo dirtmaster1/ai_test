@@ -34,6 +34,8 @@ public partial class Unit : Node2D
     private int _baseMaxMagicPoints;
     private int _equipmentMaxMagicPointBonus;
     private int _equipmentMagicPointRegenBonus;
+    private int _baseMovementPerTurn = MaxMovementPerTurn;
+    private int _equipmentMovementBonus;
 
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
@@ -95,7 +97,7 @@ public partial class Unit : Node2D
     public int WisdomModifier => GetStatModifier(Wisdom);
     public int EffectiveInitiative => Initiative + DexterityModifier;
     public int ScaledMagicPointRegenPerTurn => Mathf.Max(0, MagicPointRegenPerTurn + _equipmentMagicPointRegenBonus + GetMagicPointRegenScalingBonus());
-    public int MovementPerTurn { get; private set; } = MaxMovementPerTurn;
+    public int MovementPerTurn => Mathf.Max(1, _baseMovementPerTurn + _equipmentMovementBonus);
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDefending { get; private set; }
@@ -151,6 +153,7 @@ public partial class Unit : Node2D
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
         _equipmentMaxMagicPointBonus = 0;
         _equipmentMagicPointRegenBonus = 0;
+        _equipmentMovementBonus = 0;
         HealingSpellBonus = 0;
         _baseMaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
         MagicPoints = Mathf.Clamp(GetInt(config, "magic_points", MaxMagicPoints), 0, MaxMagicPoints);
@@ -170,7 +173,7 @@ public partial class Unit : Node2D
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", 0));
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", GetInt(config, "base_attack_range", 1));
         ArmorClassBonus = GetInt(config, "armor_class_bonus", 0);
-        MovementPerTurn = Mathf.Max(1, GetInt(config, "movement_per_turn", MaxMovementPerTurn));
+        _baseMovementPerTurn = Mathf.Max(1, GetInt(config, "movement_per_turn", MaxMovementPerTurn));
         GridPos = GetVector2I(config, "grid_pos", Vector2I.Zero);
         ResetTurnResources();
         ConfigureSpriteRegion();
@@ -816,12 +819,14 @@ public partial class Unit : Node2D
         ArmorClassBonus = armorClassBonus;
     }
 
-    public void SetEquipmentStatBonuses(int maxMagicPointBonus, int magicPointRegenBonus, int healingSpellBonus)
+    public void SetEquipmentStatBonuses(int maxMagicPointBonus, int magicPointRegenBonus, int healingSpellBonus, int movementBonus = 0)
     {
         _equipmentMaxMagicPointBonus = maxMagicPointBonus;
         _equipmentMagicPointRegenBonus = magicPointRegenBonus;
+        _equipmentMovementBonus = movementBonus;
         HealingSpellBonus = healingSpellBonus;
         MagicPoints = Mathf.Clamp(MagicPoints, 0, MaxMagicPoints);
+        RemainingMovement = Mathf.Clamp(RemainingMovement, 0, MovementPerTurn);
     }
 
     public Dictionary BuildRuntimeSnapshot()
@@ -873,6 +878,7 @@ public partial class Unit : Node2D
             { "max_magic_points", _baseMaxMagicPoints },
             { "magic_point_regen_per_turn", MagicPointRegenPerTurn },
             { "is_dead", IsDead },
+            { "base_movement_per_turn", _baseMovementPerTurn },
             { "movement_per_turn", MovementPerTurn },
             { "remaining_movement", RemainingMovement },
             { "has_used_ability_this_turn", HasUsedAbilityThisTurn },
@@ -900,8 +906,12 @@ public partial class Unit : Node2D
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
-        MovementPerTurn = Mathf.Max(1, GetInt(snapshot, "movement_per_turn", MovementPerTurn));
-        RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, MovementPerTurn);
+        _baseMovementPerTurn = Mathf.Max(1, GetInt(
+            snapshot,
+            "base_movement_per_turn",
+            GetInt(snapshot, "movement_per_turn", _baseMovementPerTurn)));
+        var savedMovementPerTurn = Mathf.Max(1, GetInt(snapshot, "movement_per_turn", MovementPerTurn));
+        RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, savedMovementPerTurn);
         HasUsedAbilityThisTurn = GetBool(snapshot, "has_used_ability_this_turn", HasUsedAbilityThisTurn);
         IsDefending = GetBool(snapshot, "is_defending", IsDefending);
         GridPos = GetVector2I(snapshot, "grid_pos", GridPos);

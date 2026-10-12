@@ -4730,6 +4730,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             "short-sword" => 20,
             "healers-circlet" => 25,
             "mages-amulet" => 25,
+            "boots-of-speed" => 150,
             "chain-mail" => 30,
             "fireball-scroll" => 30,
             "healing-potion" => 12,
@@ -6250,15 +6251,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         unit.SetWeaponBonuses(0, 0);
         unit.SetArmorBonuses(0);
-        unit.SetEquipmentStatBonuses(0, 0, 0);
 
         if (_gameData == null || unit == null || string.IsNullOrEmpty(unit.UnitId))
         {
+            unit.SetEquipmentStatBonuses(0, 0, 0, 0);
             return;
         }
 
         if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot) || equippedBySlot.Count == 0)
         {
+            unit.SetEquipmentStatBonuses(0, 0, 0, 0);
             return;
         }
 
@@ -6269,6 +6271,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var total_max_magic_points = 0;
         var total_magic_point_regen = 0;
         var total_healing = 0;
+        var total_movement_bonus = 0;
         foreach (var entry in equippedBySlot)
         {
             var itemData = _gameData.GetItem(entry.Value);
@@ -6295,6 +6298,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 total_max_magic_points += GetInt(itemData, "bonus_max_magic_points", 0);
                 total_magic_point_regen += GetInt(itemData, "bonus_magic_point_regen", 0);
                 total_healing += GetInt(itemData, "bonus_healing", 0);
+                total_movement_bonus += GetInt(itemData, "bonus_movement", 0);
             }
         }
 
@@ -6307,7 +6311,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         unit.SetWeaponBonuses(weaponDamageBonus, weaponRangeBonus);
         unit.SetArmorBonuses(total_armor_class);
-        unit.SetEquipmentStatBonuses(total_max_magic_points, total_magic_point_regen, total_healing);
+        unit.SetEquipmentStatBonuses(total_max_magic_points, total_magic_point_regen, total_healing, total_movement_bonus);
     }
 
     private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config, bool addToPartyInventory)

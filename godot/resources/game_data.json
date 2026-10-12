@@ -99,6 +99,15 @@
 	  "mp_cost": 2,
 	  "cooldown": 1
 	},
+	"greater-heal": {
+	  "id": "greater-heal",
+	  "name": "Greater Heal",
+	  "type": "heal",
+	  "range": 3,
+	  "heal_amount": 8,
+	  "mp_cost": 4,
+	  "cooldown": 2
+	},
 	"magic-missile": {
 	  "id": "magic-missile",
 	  "name": "Magic Missile",
@@ -235,6 +244,16 @@
 	  "slot": "body",
 	  "base_armor_class": 2,
 	  "bonus_armor_class": 0
+	},
+	"boots-of-speed": {
+	  "id": "boots-of-speed",
+	  "name": "Boots of Speed",
+	  "type": "armor",
+	  "slot": "feet",
+	  "base_armor_class": 0,
+	  "bonus_armor_class": 0,
+	  "bonus_movement": 2,
+	  "description": "Grants +2 movement per turn while equipped."
 	},
 	"healers-circlet": {
 	  "id": "healers-circlet",
@@ -410,7 +429,8 @@
 		"leather-armor",
 		"leather-armor",
 		"small-shield",
-		"short-sword"
+		"short-sword",
+		"boots-of-speed"
 	  ]
 	},
 	"mira": {

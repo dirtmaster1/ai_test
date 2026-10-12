@@ -75,6 +75,53 @@ public partial class InventoryDragDropChecks : Node
         var consumable = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
         var consumable2 = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot2Button");
         var inventory = hud.GetNode<SharedPartyInventoryList>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList");
+        var hoverDetailsBuilder = typeof(HudController).GetMethod("BuildItemHoverDetails", BindingFlags.Static | BindingFlags.NonPublic);
+        var itemHoverDetails = (string)hoverDetailsBuilder.Invoke(null, new object[]
+        {
+            new Dictionary
+            {
+                { "id", "test-boots" }, { "name", "Test Boots" }, { "type", "armor" },
+                { "base_armor_class", 1 }, { "bonus_armor_class", 2 }, { "bonus_movement", 2 }, { "price", 150 }
+            }
+        });
+        var weaponHoverDetails = (string)hoverDetailsBuilder.Invoke(null, new object[]
+        {
+            new Dictionary
+            {
+                { "id", "test-sword" }, { "name", "Test Sword" }, { "type", "weapon" },
+                { "base_damage", 4 }, { "bonus_damage", 2 }
+            }
+        });
+        hud.SetVendorItems(new Array<Dictionary>
+        {
+            new() { { "id", "test-boots" }, { "name", "Test Boots" }, { "type", "armor" }, { "price", 150 } }
+        }, new Array<Dictionary>());
+        var vendorBuyList = hud.GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyList");
+        var itemHoverTooltipLayer = (CanvasLayer)typeof(HudController)
+            .GetField("_itemHoverTooltipLayer", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(hud);
+        var itemHoverTooltipPanel = (PanelContainer)typeof(HudController)
+            .GetField("_itemHoverTooltipPanel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(hud);
+        Check(inventory.GetItemTooltip(0) == ""
+            && vendorBuyList.GetItemTooltip(0) == ""
+            && itemHoverDetails.Contains("Armor Class: +3")
+            && !itemHoverDetails.Contains("(+2)")
+            && itemHoverDetails.Contains("Movement per turn: +2")
+            && itemHoverDetails.Contains("Price: 150 gp")
+            && weaponHoverDetails.Contains("Damage: +6")
+            && !weaponHoverDetails.Contains("(+2)")
+            && itemHoverTooltipLayer.Layer > 0
+            && itemHoverTooltipPanel.GetParent() == itemHoverTooltipLayer,
+            "Item hover cards must show summed bonuses and use the custom overlay for inventory and store items.");
+
+        var vendorTreasuryRow = hud.GetNode<HBoxContainer>("VendorPanel/VendorVBox/VendorTreasuryRow");
+        var storeTabs = hud.GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
+        var inventoryGoldIcon = hud.GetNode<TextureRect>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryTreasuryRow/InventoryGoldIcon");
+        var vendorGoldIcon = hud.GetNode<TextureRect>("VendorPanel/VendorVBox/VendorTreasuryRow/VendorGoldIcon");
+        var vendorStatusLabel = hud.GetNode<Label>("VendorPanel/VendorVBox/VendorTreasuryRow/VendorStatusLabel");
+        Check(vendorTreasuryRow.GetIndex() < storeTabs.GetIndex()
+            && ReferenceEquals(inventoryGoldIcon.Texture, vendorGoldIcon.Texture)
+            && vendorStatusLabel.GetThemeFontSize("font_size") == 18,
+            "The store must display prominent gold totals and reuse the inventory gold icon above its item tabs.");
 
         Variant helmet = "inventory-item:test-helmet";
         Variant dagger = "inventory-item:test-dagger";

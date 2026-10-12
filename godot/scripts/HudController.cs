@@ -88,6 +88,7 @@ public partial class HudController : Control
         ["cloth-robe"] = new(3, 2),
         ["iron-helmet"] = new(4, 2),
         ["chain-mail"] = new(2, 3),
+        ["boots-of-speed"] = new(6, 3),
         ["healers-circlet"] = new(0, 3),
         ["mages-amulet"] = new(1, 3),
         ["fireball-scroll"] = new(5, 3),
@@ -179,13 +180,14 @@ public partial class HudController : Control
     private Button _closeLootButton;
     private PanelContainer _vendorPanel;
     private Label _vendorHeader;
+    private TextureRect _vendorGoldIcon;
+    private Label _vendorStatusLabel;
     private Label _vendorMessageLabel;
     private TabContainer _vendorStoreTabs;
     private ItemList _vendorBuyList;
     private ItemList _vendorSellList;
     private Button _vendorBuyButton;
     private Button _vendorSellButton;
-    private Label _vendorStatusLabel;
     private Button _closeVendorButton;
     private PanelContainer _reservePanel;
     private Label _reserveHeader;
@@ -222,6 +224,11 @@ public partial class HudController : Control
     private Color _worldHoverBorder = new(0.82f, 0.86f, 0.94f, 0.95f);
     private Color _worldHoverTitleColor = new(1.0f, 0.95f, 0.8f, 1.0f);
     private Color _worldHoverDetailsColor = new(0.95f, 0.9f, 0.78f, 1.0f);
+    private CanvasLayer _itemHoverTooltipLayer;
+    private PanelContainer _itemHoverTooltipPanel;
+    private Label _itemHoverTooltipTitle;
+    private Label _itemHoverTooltipDetails;
+    private string _itemHoverTooltipKey = "";
 
     private readonly System.Collections.Generic.Dictionary<Control, Vector2> _panelOffsets = new();
     private readonly System.Collections.Generic.Dictionary<Control, Rect2> _basePanelRects = new();
@@ -315,13 +322,14 @@ public partial class HudController : Control
         _closeLootButton = GetNode<Button>("LootPanel/LootVBox/LootButtons/CloseLootButton");
         _vendorPanel = GetNode<PanelContainer>("VendorPanel");
         _vendorHeader = GetNode<Label>("VendorPanel/VendorVBox/VendorHeader");
+        _vendorGoldIcon = GetNode<TextureRect>("VendorPanel/VendorVBox/VendorTreasuryRow/VendorGoldIcon");
+        _vendorStatusLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorTreasuryRow/VendorStatusLabel");
         _vendorMessageLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorMessageLabel");
         _vendorStoreTabs = GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
         _vendorBuyList = GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyList");
         _vendorSellList = GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Sell/SellList");
         _vendorBuyButton = GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyButton");
         _vendorSellButton = GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Sell/SellButton");
-        _vendorStatusLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorStatusLabel");
         _closeVendorButton = GetNode<Button>("VendorPanel/VendorVBox/VendorButtons/CloseVendorButton");
         _reservePanel = GetNode<PanelContainer>("ReservePanel");
         _reserveHeader = GetNode<Label>("ReservePanel/ReserveVBox/ReserveHeader");
@@ -332,8 +340,10 @@ public partial class HudController : Control
         _bringFromReserveButton = GetNode<Button>("ReservePanel/ReserveVBox/ReserveButtons/BringFromReserveButton");
         _closeReserveButton = GetNode<Button>("ReservePanel/ReserveVBox/ReserveButtons/CloseReserveButton");
         _confirmLootButton.Text = "Loot All";
+        _vendorGoldIcon.Texture = _inventoryGoldIcon.Texture;
 
         ApplyFantasyHudStyling();
+        CreateItemHoverTooltip();
 
         _inventoryPanel.MouseFilter = MouseFilterEnum.Stop;
         _vendorPanel.MouseFilter = MouseFilterEnum.Stop;
@@ -1188,6 +1198,11 @@ public partial class HudController : Control
         }
     }
 
+    public override void _Process(double delta)
+    {
+        UpdateItemHoverTooltip();
+    }
+
     public override void _Draw()
     {
         if (!_showWorldHoverTooltip)
@@ -1588,7 +1603,7 @@ public partial class HudController : Control
         StyleBodyLabel(_inventoryGoldLabel, bodyColor, 14);
         StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
         StyleBodyLabel(_vendorMessageLabel, bodyColor, 14);
-        StyleBodyLabel(_vendorStatusLabel, mutedBodyColor, 13);
+        StyleBodyLabel(_vendorStatusLabel, TacticalTheme.BrassBright, 18);
         StyleBodyLabel(_reserveDetailsLabel, mutedBodyColor, 13);
 
         StyleButton(_inventoryButton, false);
@@ -2026,7 +2041,7 @@ public partial class HudController : Control
             _inventoryItemList.AddItem(visibleLabel, icon);
             var itemIndex = _inventoryItemList.ItemCount - 1;
             _inventoryItemList.SetItemMetadata(itemIndex, id);
-            _inventoryItemList.SetItemTooltip(itemIndex, line);
+            _inventoryItemList.SetItemTooltip(itemIndex, "");
         }
 
         if (_inventoryItemList.ItemCount > 0)
@@ -2083,7 +2098,7 @@ public partial class HudController : Control
             _inventoryEquippedItemList.AddItem(icon == null ? label : "", icon);
             var itemIndex = _inventoryEquippedItemList.ItemCount - 1;
             _inventoryEquippedItemList.SetItemMetadata(itemIndex, slotKey);
-            _inventoryEquippedItemList.SetItemTooltip(itemIndex, label);
+            _inventoryEquippedItemList.SetItemTooltip(itemIndex, "");
             ApplyEquipmentSlotEntry(slotKey, entry);
         }
 
@@ -2736,7 +2751,7 @@ public partial class HudController : Control
             list.AddItem(visibleLabel, icon);
             var itemIndex = list.ItemCount - 1;
             list.SetItemMetadata(itemIndex, itemId);
-            list.SetItemTooltip(itemIndex, label);
+            list.SetItemTooltip(itemIndex, "");
         }
 
         if (list.ItemCount > 0)
@@ -2946,7 +2961,7 @@ public partial class HudController : Control
             var base_dmg = GetInt(item, "base_damage", 0);
             var bonus_dmg = GetInt(item, "bonus_damage", 0);
             var range = GetInt(item, "range", 0);
-            return $"{prefix}{name} - Weapon\nDamage: +{base_dmg} (+{bonus_dmg})\nRange: +{range}";
+            return $"{prefix}{name} - Weapon\nDamage: +{base_dmg + bonus_dmg}\nRange: +{range}";
         }
 
         if (type == "armor")
@@ -2954,7 +2969,7 @@ public partial class HudController : Control
             var base_armor_class = GetInt(item, "base_armor_class", 0);
             var bonus_armor_class = GetInt(item, "bonus_armor_class", 0);
             var bonuses = BuildEquipmentBonusDetail(item);
-            return $"{prefix}{name} - Armor\nArmor Class: +{base_armor_class} (+{bonus_armor_class}){bonuses}";
+            return $"{prefix}{name} - Armor\nArmor Class: +{base_armor_class + bonus_armor_class}{bonuses}";
         }
 
         if (type == "scroll")
@@ -2991,12 +3006,211 @@ public partial class HudController : Control
         return $"{prefix}{name} - {type}";
     }
 
+    private static string BuildItemHoverDetails(Dictionary item)
+    {
+        var detail = BuildItemDetail(item, false);
+        var firstLineEnd = detail.IndexOf('\n');
+        var details = firstLineEnd >= 0 ? detail[(firstLineEnd + 1)..] : "";
+        if (item.ContainsKey("price"))
+        {
+            var price = Mathf.Max(0, GetInt(item, "price", 0));
+            details = string.IsNullOrEmpty(details) ? $"Price: {price} gp" : $"{details}\nPrice: {price} gp";
+        }
+
+        return details;
+    }
+
+    private void CreateItemHoverTooltip()
+    {
+        _itemHoverTooltipLayer = new CanvasLayer
+        {
+            Name = "ItemHoverTooltipLayer",
+            Layer = 100
+        };
+        AddChild(_itemHoverTooltipLayer);
+
+        _itemHoverTooltipPanel = new PanelContainer
+        {
+            Name = "ItemHoverTooltip",
+            Visible = false,
+            MouseFilter = MouseFilterEnum.Ignore,
+            CustomMinimumSize = new Vector2(288.0f, 0.0f),
+            ZIndex = 1000
+        };
+        var panelStyle = new StyleBoxFlat
+        {
+            BgColor = _worldHoverBackground,
+            BorderColor = _worldHoverBorder,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomRight = 8,
+            CornerRadiusBottomLeft = 8,
+            ShadowColor = new Color(0.0f, 0.0f, 0.0f, 0.55f),
+            ShadowSize = 5,
+            AntiAliasing = true
+        };
+        _itemHoverTooltipPanel.AddThemeStyleboxOverride("panel", panelStyle);
+
+        var margins = new MarginContainer();
+        margins.AddThemeConstantOverride("margin_left", 16);
+        margins.AddThemeConstantOverride("margin_top", 13);
+        margins.AddThemeConstantOverride("margin_right", 16);
+        margins.AddThemeConstantOverride("margin_bottom", 12);
+        var content = new VBoxContainer();
+        content.AddThemeConstantOverride("separation", 7);
+
+        _itemHoverTooltipTitle = new Label
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        _itemHoverTooltipTitle.AddThemeColorOverride("font_color", TacticalTheme.BrassBright);
+        _itemHoverTooltipTitle.AddThemeFontSizeOverride("font_size", 15);
+        content.AddChild(_itemHoverTooltipTitle);
+
+        var separator = new HSeparator
+        {
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        separator.AddThemeStyleboxOverride("separator", new StyleBoxLine
+        {
+            Color = _worldHoverBorder,
+            Thickness = 1
+        });
+        content.AddChild(separator);
+
+        _itemHoverTooltipDetails = new Label
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(256.0f, 0.0f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        _itemHoverTooltipDetails.AddThemeColorOverride("font_color", _worldHoverDetailsColor);
+        _itemHoverTooltipDetails.AddThemeFontSizeOverride("font_size", 13);
+        content.AddChild(_itemHoverTooltipDetails);
+
+        margins.AddChild(content);
+        _itemHoverTooltipPanel.AddChild(margins);
+        _itemHoverTooltipLayer.AddChild(_itemHoverTooltipPanel);
+    }
+
+    private void UpdateItemHoverTooltip()
+    {
+        Dictionary item = null;
+        var equipped = false;
+        var foundItem = TryGetHoveredItem(_inventoryItemList, _inventoryItemsById, out item);
+        if (!foundItem)
+        {
+            foundItem = TryGetHoveredItem(_inventoryEquippedItemList, _inventoryEquippedEntriesBySlot, out item);
+            equipped = foundItem;
+        }
+        if (!foundItem)
+        {
+            foundItem = TryGetHoveredItem(_vendorBuyList, _vendorBuyItemsById, out item)
+                || TryGetHoveredItem(_vendorSellList, _vendorSellItemsById, out item);
+        }
+        if (!foundItem)
+        {
+            foundItem = TryGetHoveredEquipmentSlot(out item);
+            equipped = foundItem;
+        }
+
+        if (!foundItem || item == null)
+        {
+            _itemHoverTooltipKey = "";
+            _itemHoverTooltipPanel.Visible = false;
+            return;
+        }
+
+        var id = GetString(item, "id", GetString(item, "name", "item"));
+        equipped |= _equippedItemIds.Contains(id);
+        var tooltipKey = $"{id}:{equipped}:{GetInt(item, "price", -1)}";
+        if (_itemHoverTooltipKey != tooltipKey)
+        {
+            _itemHoverTooltipTitle.Text = equipped
+                ? $"{GetString(item, "name", id)} (equipped)"
+                : GetString(item, "name", id);
+            _itemHoverTooltipDetails.Text = BuildItemHoverDetails(item);
+            _itemHoverTooltipPanel.Size = _itemHoverTooltipPanel.GetCombinedMinimumSize();
+            _itemHoverTooltipKey = tooltipKey;
+        }
+
+        var viewportSize = GetViewportRect().Size;
+        var tooltipSize = _itemHoverTooltipPanel.Size;
+        var cursor = GetViewport().GetMousePosition() + new Vector2(14.0f, 14.0f);
+        if (cursor.X + tooltipSize.X > viewportSize.X)
+        {
+            cursor.X = viewportSize.X - tooltipSize.X - 8.0f;
+        }
+
+        if (cursor.Y + tooltipSize.Y > viewportSize.Y)
+        {
+            cursor.Y = viewportSize.Y - tooltipSize.Y - 8.0f;
+        }
+
+        _itemHoverTooltipPanel.Position = new Vector2(Mathf.Max(0.0f, cursor.X), Mathf.Max(0.0f, cursor.Y));
+        _itemHoverTooltipPanel.Visible = true;
+    }
+
+    private static bool TryGetHoveredItem(ItemList list, System.Collections.Generic.Dictionary<string, Dictionary> itemsById, out Dictionary item)
+    {
+        item = null;
+        if (list == null || !list.IsVisibleInTree())
+        {
+            return false;
+        }
+
+        var index = list.GetItemAtPosition(list.GetLocalMousePosition(), true);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        var metadata = list.GetItemMetadata(index);
+        return metadata.VariantType == Variant.Type.String
+            && itemsById.TryGetValue(metadata.AsString(), out item);
+    }
+
+    private bool TryGetHoveredEquipmentSlot(out Dictionary item)
+    {
+        return TryGetHoveredEquipmentSlot(_headSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_bodySlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_feetSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_mainHandSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_offHandSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_consumableSlot1Button, out item)
+            || TryGetHoveredEquipmentSlot(_consumableSlot2Button, out item);
+    }
+
+    private bool TryGetHoveredEquipmentSlot(EquipmentSlotButton button, out Dictionary item)
+    {
+        item = null;
+        if (button == null || !button.IsVisibleInTree())
+        {
+            return false;
+        }
+
+        var localMouse = button.GetLocalMousePosition();
+        if (!new Rect2(Vector2.Zero, button.Size).HasPoint(localMouse))
+        {
+            return false;
+        }
+
+        return _inventoryEquippedEntriesBySlot.TryGetValue(button.EquippedSlotKey, out item);
+    }
+
     private static string BuildEquipmentBonusSummary(Dictionary item)
     {
         var bonuses = new List<string>();
         AddEquipmentBonus(bonuses, "heal", GetInt(item, "bonus_healing", 0));
         AddEquipmentBonus(bonuses, "max MP", GetInt(item, "bonus_max_magic_points", 0));
         AddEquipmentBonus(bonuses, "MP regen", GetInt(item, "bonus_magic_point_regen", 0));
+        AddEquipmentBonus(bonuses, "movement", GetInt(item, "bonus_movement", 0));
         return bonuses.Count == 0 ? "" : $" {string.Join(" ", bonuses)}";
     }
 
@@ -3006,6 +3220,7 @@ public partial class HudController : Control
         AddEquipmentBonus(bonuses, "Healing spells", GetInt(item, "bonus_healing", 0));
         AddEquipmentBonus(bonuses, "Maximum MP", GetInt(item, "bonus_max_magic_points", 0));
         AddEquipmentBonus(bonuses, "MP regeneration per turn", GetInt(item, "bonus_magic_point_regen", 0));
+        AddEquipmentBonus(bonuses, "Movement per turn", GetInt(item, "bonus_movement", 0));
         return bonuses.Count == 0 ? "" : $"\n{string.Join("\n", bonuses)}";
     }
 
@@ -3099,8 +3314,7 @@ public partial class HudController : Control
         }
 
         button.EquippedSlotKey = slotKey;
-        var name = GetString(entry, "name", GetString(entry, "label", "Equipped"));
-        button.TooltipText = BuildItemDetail(entry, true);
+        button.TooltipText = "";
         var iconPath = GetString(entry, "icon_path", "");
         var icon = string.IsNullOrEmpty(iconPath) ? GetItemIcon(entry) : GD.Load<Texture2D>(iconPath);
         button.Icon = icon;
@@ -3113,7 +3327,7 @@ public partial class HudController : Control
             _offHandSlotButton.EquippedSlotKey = slotKey;
             _offHandSlotButton.IconAlignment = HorizontalAlignment.Center;
             _offHandSlotButton.Text = icon == null ? "OFF\nHAND\nOccupied" : "";
-            _offHandSlotButton.TooltipText = $"Occupied by {name}.";
+            _offHandSlotButton.TooltipText = "";
         }
     }
 

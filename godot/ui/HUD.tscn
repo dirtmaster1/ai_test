@@ -581,6 +581,21 @@ theme_override_constants/separation = 6
 layout_mode = 2
 text = "Vendor"
 
+[node name="VendorTreasuryRow" type="HBoxContainer" parent="VendorPanel/VendorVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="VendorGoldIcon" type="TextureRect" parent="VendorPanel/VendorVBox/VendorTreasuryRow"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="VendorStatusLabel" type="Label" parent="VendorPanel/VendorVBox/VendorTreasuryRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Party: 25 gp | Vendor: 100 gp"
+
 [node name="VendorMessageLabel" type="Label" parent="VendorPanel/VendorVBox"]
 layout_mode = 2
 autowrap_mode = 3
@@ -616,11 +631,6 @@ allow_reselect = true
 [node name="SellButton" type="Button" parent="VendorPanel/VendorVBox/StoreTabs/Sell"]
 layout_mode = 2
 text = "Sell"
-
-[node name="VendorStatusLabel" type="Label" parent="VendorPanel/VendorVBox"]
-layout_mode = 2
-autowrap_mode = 3
-text = "Party: 25 gp | Vendor: 100 gp"
 
 [node name="VendorButtons" type="HBoxContainer" parent="VendorPanel/VendorVBox"]
 layout_mode = 2
