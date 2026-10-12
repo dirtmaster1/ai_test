@@ -118,6 +118,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Vector2I _pendingExplorationManualDelta;
     private bool _isPanningView;
     private bool _leftMouseClickCandidate;
+    private bool _ignoreNextCombatTargetClickRelease;
     private ulong _mouseMoveInputLockedUntilMs;
     private Vector2 _viewPanStartMouseGlobal;
     private Vector2 _viewPanStartPosition;
@@ -4329,35 +4330,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (entries.Count > 0)
         {
-            var prioritizedRecruitInteractionId = "";
-            foreach (var entry in entries)
-            {
-                var entryId = GetString(entry, "id", "");
-                if (entryId.StartsWith("npc-recruit:"))
-                {
-                    prioritizedRecruitInteractionId = entryId;
-                    break;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(prioritizedRecruitInteractionId))
-            {
-                _hasActiveLootCell = false;
-                _activeLootCell = new Vector2I(-1, -1);
-                _hud?.SetLootPanelVisible(false);
-                TryExecuteExplorationInteractionById(explorer, prioritizedRecruitInteractionId);
-                return true;
-            }
-
             var firstInteractionId = GetString(entries[0], "id", "");
             if (entries.Count == 1 && !string.IsNullOrEmpty(firstInteractionId))
             {
-                if (firstInteractionId.StartsWith("vendor:"))
-                {
-                    OpenVendor(firstInteractionId.Substring(7));
-                    return true;
-                }
-
                 if (firstInteractionId.StartsWith("npc-dialogue:"))
                 {
                     _hasActiveLootCell = false;
@@ -4873,20 +4848,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (interactionId.StartsWith("npc-dialogue:"))
         {
-            BeginNpcDialogueInteraction(interactionId.Substring(13));
-            return true;
-        }
-
-        if (interactionId.StartsWith("npc-recruit:"))
-        {
-            BeginNpcRecruitInteraction(explorer, interactionId.Substring(12));
+            BeginNpcDialogueInteraction(explorer, interactionId.Substring(13));
             return true;
         }
 
         return false;
     }
 
-    private async void BeginNpcDialogueInteraction(string npcId)
+    private async void BeginNpcDialogueInteraction(Unit explorer, string npcId)
     {
         if (_flowState != BattleFlowState.Exploration || string.IsNullOrWhiteSpace(npcId))
         {
@@ -4901,11 +4870,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var speakerName = GetString(npcProp, "name", "Traveler");
         var fallbackLine = GetString(npcProp, "interaction_text", "...");
         var dialogueId = GetString(npcProp, "dialogue_id", "");
-
         if (string.IsNullOrWhiteSpace(dialogueId))
         {
-            await ShowSimpleDialoguePageAsync(speakerName, fallbackLine, false);
-            return;
+            var recruitTemplateId = GetString(npcProp, "recruit_template_id", "").Trim().ToLowerInvariant();
+            if (recruitTemplateId == "thief" || recruitTemplateId == "theif")
+            {
+                dialogueId = "gord";
+            }
+            else if (GetString(npcProp, "npc_role", "vendor").ToLowerInvariant() is "vendor" or "hybrid")
+            {
+                dialogueId = MapLoader.GetVendorIdForNpc(npcProp);
+            }
+            else
+            {
+                dialogueId = GetString(npcProp, "npc_id", npcId);
+            }
         }
 
         var dialogue = _gameData?.GetDialogue(dialogueId) ?? new Dictionary();
@@ -4913,8 +4892,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (pages.Count == 0)
         {
             var fallbackText = GetString(dialogue, "text", fallbackLine);
-            await ShowSimpleDialoguePageAsync(speakerName, fallbackText, false);
-            return;
+            pages.Add(new Dictionary { { "text", fallbackText } });
         }
 
         var title = GetString(dialogue, "title", speakerName);
@@ -4923,19 +4901,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             var page = pages[pageIndex];
             var pageText = GetString(page, "text", fallbackLine);
-            var choices = TryGetDictionaryArray(page, "choices");
+            var pageChoices = TryGetDictionaryArray(page, "choices");
+            var choices = new Array<Dictionary>();
+            if (pageIndex == 0)
+            {
+                AddNpcDialogueActionChoices(npcProp, choices);
+            }
+
+            foreach (var choice in pageChoices)
+            {
+                choices.Add(CopyDictionary(choice));
+            }
 
             if (choices.Count == 0)
             {
                 var hasNext = pageIndex < pages.Count - 1;
-                var shouldAdvance = await ShowSimpleDialoguePageAsync(title, pageText, hasNext);
-                if (!shouldAdvance)
+                choices.Add(new Dictionary
                 {
-                    break;
-                }
-
-                pageIndex++;
-                continue;
+                    { "label", hasNext ? "Continue" : "Farewell" },
+                    { "next_page", pageIndex + 1 },
+                    { "end", !hasNext }
+                });
             }
 
             var selectedChoiceIndex = await ShowDialogueChoicesAsync(title, pageText, choices);
@@ -4945,6 +4931,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var selectedChoice = choices[selectedChoiceIndex];
+            var action = GetString(selectedChoice, "action", "");
+            if (action == "open_vendor")
+            {
+                OpenVendor(GetString(selectedChoice, "vendor_id", ""));
+                return;
+            }
+
+            if (action == "recruit")
+            {
+                BeginNpcRecruitInteraction(explorer, npcId);
+                return;
+            }
+
             if (GetBool(selectedChoice, "end", false))
             {
                 break;
@@ -4957,6 +4956,30 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             pageIndex = Mathf.Clamp(nextPage, 0, pages.Count);
+        }
+    }
+
+    private static void AddNpcDialogueActionChoices(Dictionary npcProp, Array<Dictionary> choices)
+    {
+        var npcRole = GetString(npcProp, "npc_role", "vendor").ToLowerInvariant();
+        var recruitTemplateId = GetString(npcProp, "recruit_template_id", "");
+        if (!string.IsNullOrWhiteSpace(recruitTemplateId))
+        {
+            choices.Add(new Dictionary
+            {
+                { "label", $"Recruit {GetString(npcProp, "name", "this character")}" },
+                { "action", "recruit" }
+            });
+        }
+
+        if (npcRole == "vendor" || npcRole == "hybrid")
+        {
+            choices.Add(new Dictionary
+            {
+                { "label", "Open Store" },
+                { "action", "open_vendor" },
+                { "vendor_id", MapLoader.GetVendorIdForNpc(npcProp) }
+            });
         }
     }
 
@@ -5016,13 +5039,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (recruitOnce && _recruitedNpcIds.Contains(npcId))
         {
             RejectPlayerAction($"{GetString(npcProp, "name", "This ally")} has already been recruited.");
-            return;
-        }
-
-        var recruitName = GetString(npcProp, "name", GetString(template, "name", "Ally"));
-        var shouldRecruit = await ConfirmNpcRecruitAsync(recruitName, recruitTemplateId);
-        if (!shouldRecruit || _flowState != BattleFlowState.Exploration)
-        {
             return;
         }
 
@@ -5603,7 +5619,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         contentLayout.AddChild(optionScroll);
         dialog.AddChild(dialogContent);
         dialog.GetOkButton().Visible = false;
-        dialog.AddCancelButton("End");
+        dialog.GetCancelButton().Text = "End";
         AddChild(dialog);
         TacticalTheme.ApplyDialog(dialog);
         dialogContent.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel());
@@ -5661,57 +5677,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
-    }
-
-    private async Task<bool> ConfirmNpcRecruitAsync(string recruitName, string templateId)
-    {
-        var dialog = new ConfirmationDialog
-        {
-            Title = "Recruit Companion",
-            DialogText = $"""
-            Hey I can get you past those traps in there if you can help me out with the spiders? 
-            They guarding a chest with some nifty loot in it, split it 50/50 with ya. what do you say?
-            I can also pick a lock or two when no one's looking. I can be quite handy in a fight as well.
-            {recruitName} wants to join your party as a {templateId}.
-            Recruit now?
-            """,
-            Exclusive = true
-        };
-
-        dialog.GetOkButton().Text = "Recruit";
-        dialog.AddCancelButton("Not now");
-        AddChild(dialog);
-        TacticalTheme.ApplyDialog(dialog);
-
-        var completion = new TaskCompletionSource<bool>();
-
-        void HandleConfirmed()
-        {
-            completion.TrySetResult(true);
-        }
-
-        void HandleCanceled()
-        {
-            completion.TrySetResult(false);
-        }
-
-        dialog.Confirmed += HandleConfirmed;
-        dialog.Canceled += HandleCanceled;
-        dialog.CloseRequested += HandleCanceled;
-
-        try
-        {
-            dialog.PopupCentered(new Vector2I(560, 220));
-            return await completion.Task;
-        }
-        finally
-        {
-            dialog.Confirmed -= HandleConfirmed;
-            dialog.Canceled -= HandleCanceled;
-            dialog.CloseRequested -= HandleCanceled;
-            dialog.Exclusive = false;
-            dialog.QueueFree();
-        }
     }
 
     private async Task<int> ShowPartyReplacementChoiceAsync(string prompt)

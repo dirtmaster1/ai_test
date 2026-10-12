@@ -54,7 +54,26 @@ public partial class ActionFeedbackChecks : BattleController
         CheckConsumables();
         CheckAllowedActions();
         CheckCombatEndClearsCombatStatuses();
+        CheckCombatTargetClickReleaseDoesNotMoveInExploration();
         return _failures;
+    }
+
+    private void CheckCombatTargetClickReleaseDoesNotMoveInExploration()
+    {
+        Reset(exploration: true);
+        var startCell = _actor.GridPos;
+        Set("_ignoreNextCombatTargetClickRelease", true);
+
+        Call("HandleMouseInput", new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Pressed = false
+        });
+
+        Check(_actor.GridPos == startCell
+            && !Field<bool>("_isExplorationAutoMoving")
+            && !Field<bool>("_ignoreNextCombatTargetClickRelease"),
+            "The mouse release for the combat target click must not start exploration movement after victory.");
     }
 
     private void CheckCombatEndClearsCombatStatuses()
@@ -484,6 +503,7 @@ public partial class ActionFeedbackChecks : BattleController
 
     private void CheckInteractions()
     {
+        CheckNpcDialogueInteractionEntries();
         Reset(exploration: true);
         Field<Array<Dictionary>>("_mapProps").Add(new Dictionary
         {
@@ -541,6 +561,55 @@ public partial class ActionFeedbackChecks : BattleController
         Reset(exploration: true);
         ExpectFailure(() => Call("BeginReserveRecruitInteraction", _actor, "missing", ""),
             "That reserve member is no longer available.");
+    }
+
+    private void CheckNpcDialogueInteractionEntries()
+    {
+        var npc = new Dictionary
+        {
+            { "id", "gord" }, { "npc_id", "gord" }, { "name", "Gord the Rogue" },
+            { "npc_role", "recruit" }, { "recruit_template_id", "thief" }
+        };
+        var entries = new Array<Dictionary>();
+        typeof(MapLoader).GetMethod("AddNpcInteractionEntries", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { entries, npc, "Gord the Rogue" });
+        Check(entries.Count == 1 && (string)entries[0]["id"] == "npc-dialogue:gord",
+            "Recruitable NPCs must open the shared dialogue instead of a separate recruit menu.");
+
+        var recruitChoices = new Array<Dictionary>();
+        typeof(BattleController).GetMethod("AddNpcDialogueActionChoices", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { npc, recruitChoices });
+        var gordPages = (Array<Dictionary>)Field<GameData>("_gameData").GetDialogue("gord")["pages"];
+        Check(recruitChoices.Count == 1
+            && (string)recruitChoices[0]["action"] == "recruit"
+            && (string)recruitChoices[0]["label"] == "Recruit Gord the Rogue"
+            && gordPages.Count == 1
+            && !gordPages[0].ContainsKey("choices"),
+            "Gord's welcome dialogue must have only the Recruit Gord the Rogue action.");
+
+        var vendor = new Dictionary
+        {
+            { "id", "milo" }, { "npc_id", "milo" }, { "name", "Milo the Armorer" },
+            { "npc_role", "vendor" }, { "vendor_id", "milo" }
+        };
+        var vendorChoices = new Array<Dictionary>();
+        typeof(BattleController).GetMethod("AddNpcDialogueActionChoices", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { vendor, vendorChoices });
+        var miloPages = (Array<Dictionary>)Field<GameData>("_gameData").GetDialogue("milo")["pages"];
+        Check(vendorChoices.Count == 1
+            && (string)vendorChoices[0]["action"] == "open_vendor"
+            && (string)vendorChoices[0]["vendor_id"] == "milo"
+            && (string)vendorChoices[0]["label"] == "Open Store"
+            && miloPages.Count == 1
+            && miloPages[0]["text"].AsString() == "Hello welcome to forest town! Please save us from the evil Necromancer in the Graveyard!"
+            && !miloPages[0].ContainsKey("choices"),
+            "Milo's welcome dialogue must have only the Open Store action and retain the correct vendor.");
+
+        _testHud.OpenVendorPanel("Milo the Armorer");
+        Check(_testHud.GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs").Visible
+            && _testHud.GetNodeOrNull<Button>("VendorPanel/VendorVBox/VendorChoiceButtons/TalkButton") == null
+            && typeof(BattleController).GetMethod("ConfirmNpcRecruitAsync", BindingFlags.Instance | BindingFlags.NonPublic) == null,
+            "Opening the store must show only the store interface without a talk button or recruit confirmation dialog.");
     }
 
     private void CheckConsumables()

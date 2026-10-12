@@ -179,9 +179,7 @@ public partial class HudController : Control
     private Button _closeLootButton;
     private PanelContainer _vendorPanel;
     private Label _vendorHeader;
-    private Label _vendorDialogueLabel;
-    private Button _vendorTalkButton;
-    private Button _vendorStoreButton;
+    private Label _vendorMessageLabel;
     private TabContainer _vendorStoreTabs;
     private ItemList _vendorBuyList;
     private ItemList _vendorSellList;
@@ -317,9 +315,7 @@ public partial class HudController : Control
         _closeLootButton = GetNode<Button>("LootPanel/LootVBox/LootButtons/CloseLootButton");
         _vendorPanel = GetNode<PanelContainer>("VendorPanel");
         _vendorHeader = GetNode<Label>("VendorPanel/VendorVBox/VendorHeader");
-        _vendorDialogueLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorDialogueLabel");
-        _vendorTalkButton = GetNode<Button>("VendorPanel/VendorVBox/VendorChoiceButtons/TalkButton");
-        _vendorStoreButton = GetNode<Button>("VendorPanel/VendorVBox/VendorChoiceButtons/StoreButton");
+        _vendorMessageLabel = GetNode<Label>("VendorPanel/VendorVBox/VendorMessageLabel");
         _vendorStoreTabs = GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
         _vendorBuyList = GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyList");
         _vendorSellList = GetNode<ItemList>("VendorPanel/VendorVBox/StoreTabs/Sell/SellList");
@@ -382,8 +378,6 @@ public partial class HudController : Control
         _lootItemList.ItemSelected += OnLootItemSelected;
         _confirmLootButton.Pressed += OnConfirmLootButtonPressed;
         _closeLootButton.Pressed += OnCloseLootButtonPressed;
-        _vendorTalkButton.Pressed += OnVendorTalkButtonPressed;
-        _vendorStoreButton.Pressed += OnVendorStoreButtonPressed;
         _vendorBuyButton.Pressed += OnVendorBuyButtonPressed;
         _vendorSellButton.Pressed += OnVendorSellButtonPressed;
         _closeVendorButton.Pressed += OnCloseVendorButtonPressed;
@@ -591,16 +585,6 @@ public partial class HudController : Control
         if (_closeLootButton != null)
         {
             _closeLootButton.Pressed -= OnCloseLootButtonPressed;
-        }
-
-        if (_vendorTalkButton != null)
-        {
-            _vendorTalkButton.Pressed -= OnVendorTalkButtonPressed;
-        }
-
-        if (_vendorStoreButton != null)
-        {
-            _vendorStoreButton.Pressed -= OnVendorStoreButtonPressed;
         }
 
         if (_vendorBuyButton != null)
@@ -1020,32 +1004,6 @@ public partial class HudController : Control
     private void OnCloseLootButtonPressed()
     {
         SetLootPanelVisible(false);
-    }
-
-    private void OnVendorTalkButtonPressed()
-    {
-        if (_vendorDialogueLabel != null)
-        {
-            _vendorDialogueLabel.Text = "Hello welcome to forest town! Please save us from the evil Necromancer in the Graveyard!";
-        }
-
-        if (_vendorStoreTabs != null)
-        {
-            _vendorStoreTabs.Visible = false;
-        }
-    }
-
-    private void OnVendorStoreButtonPressed()
-    {
-        if (_vendorDialogueLabel != null)
-        {
-            _vendorDialogueLabel.Text = "Take a look. The vendor buys and sells for gold.";
-        }
-
-        if (_vendorStoreTabs != null)
-        {
-            _vendorStoreTabs.Visible = true;
-        }
     }
 
     private void OnVendorBuyButtonPressed()
@@ -1629,7 +1587,7 @@ public partial class HudController : Control
         StyleBodyLabel(_inventoryCharacterSummary, bodyColor, 13);
         StyleBodyLabel(_inventoryGoldLabel, bodyColor, 14);
         StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
-        StyleBodyLabel(_vendorDialogueLabel, bodyColor, 14);
+        StyleBodyLabel(_vendorMessageLabel, bodyColor, 14);
         StyleBodyLabel(_vendorStatusLabel, mutedBodyColor, 13);
         StyleBodyLabel(_reserveDetailsLabel, mutedBodyColor, 13);
 
@@ -1662,8 +1620,6 @@ public partial class HudController : Control
         StyleButton(_consumableSlot2Button, false);
         StyleButton(_confirmLootButton, true);
         StyleButton(_closeLootButton, false);
-        StyleButton(_vendorTalkButton, true);
-        StyleButton(_vendorStoreButton, true);
         StyleButton(_vendorBuyButton, true);
         StyleButton(_vendorSellButton, true);
         StyleButton(_closeVendorButton, false);
@@ -2685,15 +2641,15 @@ public partial class HudController : Control
             _vendorHeader.Text = string.IsNullOrEmpty(vendorName) ? "Vendor" : vendorName;
         }
 
-        if (_vendorDialogueLabel != null)
-        {
-            _vendorDialogueLabel.Text = "Welcome. Would you like to talk or browse the store?";
-        }
-
         if (_vendorStoreTabs != null)
         {
-            _vendorStoreTabs.Visible = false;
+            _vendorStoreTabs.Visible = true;
             _vendorStoreTabs.CurrentTab = 0;
+        }
+
+        if (_vendorMessageLabel != null)
+        {
+            _vendorMessageLabel.Text = "";
         }
 
         SetVendorPanelVisible(true);
@@ -2721,9 +2677,9 @@ public partial class HudController : Control
 
     public void SetVendorTransactionMessage(string text)
     {
-        if (_vendorDialogueLabel != null && !string.IsNullOrEmpty(text))
+        if (_vendorMessageLabel != null && !string.IsNullOrEmpty(text))
         {
-            _vendorDialogueLabel.Text = text;
+            _vendorMessageLabel.Text = text;
         }
     }
 

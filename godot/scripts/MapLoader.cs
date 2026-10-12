@@ -1459,90 +1459,21 @@ public partial class MapLoader : Node
             || npcRole == "dialogue"
             || npcRole == "hybrid";
         var hasRecruit = !string.IsNullOrWhiteSpace(recruitTemplateId);
-        var vendorId = InferVendorIdFromProp(prop);
-        var hasVendor = !string.IsNullOrWhiteSpace(vendorId);
-
-        if (npcRole == "dialogue" || npcRole == "informational" || npcRole == "info")
+        var hasVendor = npcRole == "vendor" || npcRole == "hybrid";
+        var isInformationalRole = npcRole == "informational" || npcRole == "info";
+        if (isInformationalRole && !hasDialogue
+            || !isInformationalRole && !hasDialogue && !hasRecruit && !hasVendor)
         {
-            if (hasDialogue)
-            {
-                entries.Add(new Dictionary
-                {
-                    { "id", $"npc-dialogue:{npcId}" },
-                    { "label", $"Talk to {propName}" },
-                    { "detail", $"Speak with {propName}." },
-                    { "source_title", propName }
-                });
-            }
-
             return;
         }
 
-        if (npcRole == "recruit")
+        entries.Add(new Dictionary
         {
-            if (hasRecruit)
-            {
-                entries.Add(new Dictionary
-                {
-                    { "id", $"npc-recruit:{npcId}" },
-                    { "label", $"Recruit {propName}" },
-                    { "detail", $"Ask {propName} to join your party." },
-                    { "source_title", propName }
-                });
-            }
-
-            return;
-        }
-
-        if (npcRole == "hybrid")
-        {
-            if (hasDialogue)
-            {
-                entries.Add(new Dictionary
-                {
-                    { "id", $"npc-dialogue:{npcId}" },
-                    { "label", $"Talk to {propName}" },
-                    { "detail", $"Speak with {propName}." },
-                    { "source_title", propName }
-                });
-            }
-
-            if (hasRecruit)
-            {
-                entries.Add(new Dictionary
-                {
-                    { "id", $"npc-recruit:{npcId}" },
-                    { "label", $"Recruit {propName}" },
-                    { "detail", $"Ask {propName} to join your party." },
-                    { "source_title", propName }
-                });
-            }
-
-            if (hasVendor)
-            {
-                entries.Add(new Dictionary
-                {
-                    { "id", $"vendor:{vendorId}" },
-                    { "label", $"Trade with {propName}" },
-                    { "detail", $"Browse {propName}'s wares." },
-                    { "source_title", propName }
-                });
-            }
-
-            return;
-        }
-
-        // Backward-compatible default behavior for existing npc markers.
-        if (hasVendor)
-        {
-            entries.Add(new Dictionary
-            {
-                { "id", $"vendor:{vendorId}" },
-                { "label", propName },
-                { "detail", $"Talk or browse {propName}'s store." },
-                { "source_title", propName }
-            });
-        }
+            { "id", $"npc-dialogue:{npcId}" },
+            { "label", $"Talk to {propName}" },
+            { "detail", $"Speak with {propName}." },
+            { "source_title", propName }
+        });
     }
 
     private Texture2D GetUnitsTexture()
@@ -1604,6 +1535,11 @@ public partial class MapLoader : Node
         }
 
         return false;
+    }
+
+    public static string GetVendorIdForNpc(Dictionary prop)
+    {
+        return InferVendorIdFromProp(prop);
     }
 
     private static string InferVendorIdFromProp(Dictionary prop)

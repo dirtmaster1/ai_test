@@ -321,7 +321,31 @@
 	  "title": "Old Miner",
 	  "pages": [
 		{
-		  "text": "Them darn youngin's dug too deep and dug into a spiders nest! Now the mines are swarming with poisonous spiders killing the half of us! Don't go going in there if you like livin' boy!"
+		  "text": "Them darn youngin's dug too deep and dug into a spiders nest! Now the mines are swarming with poisonous spiders killing the half of us! Don't go going in there if you like livin' boy!",
+		  "choices": [
+			{
+			  "label": "Farewell",
+			  "end": true
+			}
+		  ]
+		}
+	  ]
+	},
+	"milo": {
+	  "id": "milo",
+	  "title": "Milo the Merchant",
+	  "pages": [
+		{
+		  "text": "Hello welcome to forest town brave heroes! I've heard you come to save us from the evil Necromancer's grasp! Please take whatever supplies you need from the chest and rack over there. I have more items for sale if you wish to browse my collection."
+		}
+	  ]
+	},
+	"gord": {
+	  "id": "gord",
+	  "title": "Gord the Rogue",
+	  "pages": [
+		{
+		  "text": "Name's Gord. I know a thing or two about traps, locks, and keeping myself alive. I can get you past that door right here if you can help me with the spiders. They are guarding a nice little shipment of goods that someone forgot about."
 		}
 	  ]
 	},
@@ -330,7 +354,7 @@
 	  "title": "Elder Rowan",
 	  "pages": [
 		{
-		  "text": "Welcome, traveler. Our roads are less safe each night with bandits and goblins. A powerful necromancer has taken up residence in the graveyard to the north. We need your help.",
+		  "text": "Welcome, traveler. Our roads are less safe each night with bandits and goblins. On top of that a powerful necromancer has taken up residence in the graveyard to the north! We need your help desperately.",
 		  "choices": [
 			{
 			  "label": "What happened here?",
@@ -347,7 +371,7 @@
 		  ]
 		},
 		{
-		  "text": "The necromancer has raised the dead from our very own graveyard and is draining the power from the land. I cannot face him as I need to preserve my strength to keep this land from falling into darkness. Please destroy him and his minions!",
+		  "text": "The necromancer is raising our very own beloved dead from our very own graveyard to build an undead army and is draining the very life force from the land to fuel his dark magic. I cannot face him yet as I need to preserve my strength to keep this land from falling into darkness any further or all is lost. Please destroy him and his minions brave adventurers!",
 		  "choices": [
 			{
 			  "label": "Back",
@@ -360,7 +384,7 @@
 		  ]
 		},
 		{
-		  "text": "Start by facing the goblins and bandits that roam the forest. They are weak, but they travel in groups. Use your wits and your weapons to defeat them. Once you have cleared the forest, you will find the graveyard to the north.",
+		  "text": "Start by looking for others in town that can help you before facing the goblins and bandits that roam the forest to the south. They are weak, but they travel in groups. Use your wits and your weapons to defeat them. Once you have cleared the forest, you will find the graveyard to the north.",
 		  "choices": [
 			{
 			  "label": "Back",
@@ -378,7 +402,7 @@
   "vendors": {
 	"milo": {
 	  "id": "milo",
-	  "display_name": "Milo the Armorer",
+	  "display_name": "Milo the Merchant",
 	  "starting_gold": 120,
 	  "buy_price_multiplier": 1.0,
 	  "sell_price_multiplier": 1.0,
@@ -468,7 +492,7 @@
 	  "cleric": {
 		"id": "cleric",
 		"class_id": "cleric",
-		"name": "Aurelia the HealBot",
+		"name": "Karenia the Righteous",
 		"race": "human",
 		"team": "player",
 		"primary_ability_id": "lesser-heal",

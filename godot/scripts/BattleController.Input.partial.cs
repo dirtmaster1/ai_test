@@ -162,6 +162,18 @@ public partial class BattleController
 
     private void HandleMouseInput(InputEventMouseButton mouseEvent)
     {
+        if (_ignoreNextCombatTargetClickRelease && mouseEvent.ButtonIndex == MouseButton.Left)
+        {
+            if (!mouseEvent.Pressed)
+            {
+                _ignoreNextCombatTargetClickRelease = false;
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            _ignoreNextCombatTargetClickRelease = false;
+        }
+
         if (mouseEvent.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
         {
             if (mouseEvent.Pressed && !ShouldIgnoreWorldMouseInput())
@@ -405,6 +417,11 @@ public partial class BattleController
         if (mouseEvent.ButtonIndex != MouseButton.Left)
         {
             return;
+        }
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            _ignoreNextCombatTargetClickRelease = true;
         }
 
         var utilityActor = _flowState == BattleFlowState.Combat

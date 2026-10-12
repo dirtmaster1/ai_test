@@ -141,12 +141,12 @@ Set these custom data keys on a tile or tile alternative:
 
 NPC markers create static interactable props, not combat units. They do not use enemy encounter grouping.
 
-Role behavior:
+All NPC roles open the same themed dialogue and choice list. Recruit and store actions are choices in that dialogue when the marker has the corresponding recruit or vendor settings.
 
-- `vendor`: opens vendor panel (backward-compatible default)
-- `dialogue`: opens a modal dialogue with paging and choices
-- `recruit`: offers recruitment into the party
-- `hybrid`: shows multiple actions (talk/recruit/trade) in the interaction list
+- `vendor`: includes a choice to browse the vendor's store
+- `dialogue`: presents the configured dialogue and its choices
+- `recruit`: includes a choice to recruit the character
+- `hybrid`: includes dialogue, recruitment, and store choices as configured
 
 ## Party Reserves UI
 
