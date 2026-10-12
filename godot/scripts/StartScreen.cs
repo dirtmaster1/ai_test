@@ -15,7 +15,16 @@ public partial class StartScreen : Control
     private Button _newGameButton;
     private Button _loadGameButton;
     private Button _deleteSaveButton;
+    private Button _settingsButton;
     private Button _quitButton;
+    private PanelContainer _settingsPanel;
+    private Button _soundFxButton;
+    private Button _settingsBackButton;
+    private PanelContainer _soundFxPanel;
+    private Label _backgroundVolumeValue;
+    private HSlider _backgroundVolumeSlider;
+    private Button _soundFxBackButton;
+    private AudioManager _audioManager;
 
     public override void _Ready()
     {
@@ -28,16 +37,32 @@ public partial class StartScreen : Control
         _newGameButton = GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton");
         _loadGameButton = GetNode<Button>("CenterPanel/VBox/Buttons/LoadGameButton");
         _deleteSaveButton = GetNode<Button>("CenterPanel/VBox/Buttons/DeleteSaveButton");
+        _settingsButton = GetNode<Button>("CenterPanel/VBox/Buttons/SettingsButton");
         _quitButton = GetNode<Button>("CenterPanel/VBox/Buttons/QuitButton");
+        _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
+        _soundFxButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
+        _settingsBackButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SettingsBackButton");
+        _soundFxPanel = GetNode<PanelContainer>("SoundFxPanel");
+        _backgroundVolumeValue = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeValue");
+        _backgroundVolumeSlider = GetNode<HSlider>("SoundFxPanel/SoundFxVBox/BackgroundVolumeSlider");
+        _soundFxBackButton = GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton");
+        _audioManager = GetNode<AudioManager>("/root/AudioManager");
 
         ApplyFantasyMenuStyling();
 
         _newGameButton.Pressed += OnNewGamePressed;
         _loadGameButton.Pressed += OnLoadGamePressed;
         _deleteSaveButton.Pressed += OnDeleteSavePressed;
+        _settingsButton.Pressed += OnSettingsPressed;
         _quitButton.Pressed += OnQuitPressed;
+        _soundFxButton.Pressed += OnSoundFxPressed;
+        _settingsBackButton.Pressed += OnSettingsBackPressed;
+        _soundFxBackButton.Pressed += OnSoundFxBackPressed;
+        _backgroundVolumeSlider.ValueChanged += OnBackgroundVolumeChanged;
 
         _savePathLabel.Text = $"Save path: {ProjectSettings.GlobalizePath(SaveFilePath)}";
+        _backgroundVolumeSlider.Value = _audioManager.BackgroundMusicVolume * 100.0f;
+        UpdateBackgroundVolumeLabel(_backgroundVolumeSlider.Value);
         RefreshSaveState();
     }
 
@@ -82,6 +107,42 @@ public partial class StartScreen : Control
         GetTree().Quit();
     }
 
+    private void OnSettingsPressed()
+    {
+        _centerPanel.Visible = false;
+        _settingsPanel.Visible = true;
+    }
+
+    private void OnSoundFxPressed()
+    {
+        _settingsPanel.Visible = false;
+        _soundFxPanel.Visible = true;
+    }
+
+    private void OnSettingsBackPressed()
+    {
+        _settingsPanel.Visible = false;
+        _centerPanel.Visible = true;
+    }
+
+    private void OnSoundFxBackPressed()
+    {
+        _soundFxPanel.Visible = false;
+        _settingsPanel.Visible = true;
+    }
+
+    private void OnBackgroundVolumeChanged(double value)
+    {
+        var volume = Mathf.Clamp((float)value / 100.0f, 0.0f, 1.0f);
+        UpdateBackgroundVolumeLabel(value);
+        _audioManager.SetBackgroundMusicVolume(volume);
+    }
+
+    private void UpdateBackgroundVolumeLabel(double value)
+    {
+        _backgroundVolumeValue.Text = $"{Mathf.RoundToInt((float)value)}%";
+    }
+
     private void TryDeleteSaveSilently()
     {
         if (!Godot.FileAccess.FileExists(SaveFilePath))
@@ -120,6 +181,43 @@ public partial class StartScreen : Control
         TacticalTheme.ApplyButton(_newGameButton, true, 16);
         TacticalTheme.ApplyButton(_loadGameButton, true, 16);
         TacticalTheme.ApplyButton(_deleteSaveButton, false, 16);
+        TacticalTheme.ApplyButton(_settingsButton, false, 16);
         TacticalTheme.ApplyButton(_quitButton, false, 16);
+        _settingsPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
+        _soundFxPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
+        var settingsTitle = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsTitle");
+        var soundFxTitle = GetNode<Label>("SoundFxPanel/SoundFxVBox/SoundFxTitle");
+        var backgroundVolumeLabel = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeLabel");
+        TacticalTheme.ApplyLabel(settingsTitle, TacticalTheme.BrassBright, 24);
+        TacticalTheme.ApplyLabel(soundFxTitle, TacticalTheme.BrassBright, 24);
+        TacticalTheme.ApplyLabel(backgroundVolumeLabel, TacticalTheme.Parchment, 16);
+        TacticalTheme.ApplyLabel(_backgroundVolumeValue, TacticalTheme.BrassBright, 16);
+        TacticalTheme.ApplyButton(_soundFxButton, true, 16);
+        TacticalTheme.ApplyButton(_settingsBackButton, false, 16);
+        TacticalTheme.ApplyButton(_soundFxBackButton, false, 16);
+        _backgroundVolumeSlider.AddThemeStyleboxOverride("slider", new StyleBoxFlat
+        {
+            BgColor = TacticalTheme.IronInset,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        });
+        _backgroundVolumeSlider.AddThemeStyleboxOverride("grabber_area", new StyleBoxFlat
+        {
+            BgColor = TacticalTheme.Brass,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        });
+        _backgroundVolumeSlider.AddThemeStyleboxOverride("grabber_area_highlight", new StyleBoxFlat
+        {
+            BgColor = TacticalTheme.BrassBright,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        });
     }
 }

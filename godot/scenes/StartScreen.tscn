@@ -38,9 +38,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -260.0
-offset_top = -200.0
+offset_top = -240.0
 offset_right = 260.0
-offset_bottom = 200.0
+offset_bottom = 240.0
 theme_override_styles/panel = SubResource("StyleBoxEmpty_menu")
 
 [node name="VBox" type="VBoxContainer" parent="CenterPanel" unique_id=1205153785]
@@ -83,6 +83,10 @@ text = "Load Game"
 layout_mode = 2
 text = "Delete Save"
 
+[node name="SettingsButton" type="Button" parent="CenterPanel/VBox/Buttons"]
+layout_mode = 2
+text = "Settings"
+
 [node name="QuitButton" type="Button" parent="CenterPanel/VBox/Buttons" unique_id=1514038511]
 layout_mode = 2
 text = "Quit"
@@ -91,3 +95,85 @@ text = "Quit"
 layout_mode = 2
 horizontal_alignment = 1
 autowrap_mode = 3
+
+[node name="SettingsPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -190.0
+offset_right = 260.0
+offset_bottom = 190.0
+
+[node name="SettingsVBox" type="VBoxContainer" parent="SettingsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SettingsTitle" type="Label" parent="SettingsPanel/SettingsVBox"]
+layout_mode = 2
+text = "Settings"
+horizontal_alignment = 1
+
+[node name="SettingsButtons" type="VBoxContainer" parent="SettingsPanel/SettingsVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="SoundFxButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+text = "Sound FX"
+
+[node name="SettingsBackButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+text = "Back"
+
+[node name="SoundFxPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -190.0
+offset_right = 280.0
+offset_bottom = 190.0
+
+[node name="SoundFxVBox" type="VBoxContainer" parent="SoundFxPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SoundFxTitle" type="Label" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+text = "Sound FX"
+horizontal_alignment = 1
+
+[node name="BackgroundVolumeRow" type="HBoxContainer" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="BackgroundVolumeLabel" type="Label" parent="SoundFxPanel/SoundFxVBox/BackgroundVolumeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Master Background Volume"
+
+[node name="BackgroundVolumeValue" type="Label" parent="SoundFxPanel/SoundFxVBox/BackgroundVolumeRow"]
+layout_mode = 2
+text = "100%"
+horizontal_alignment = 2
+
+[node name="BackgroundVolumeSlider" type="HSlider" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+min_value = 0.0
+max_value = 100.0
+value = 100.0
+tick_count = 11
+ticks_on_borders = true
+focus_mode = 2
+
+[node name="SoundFxBackButton" type="Button" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+text = "Back"

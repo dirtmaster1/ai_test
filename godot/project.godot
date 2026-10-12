@@ -22,6 +22,7 @@ config/features=PackedStringArray("4.7", "C#")
 
 EventBus="*res://autoload/EventBus.cs"
 GameData="*res://autoload/GameData.cs"
+AudioManager="*res://scripts/AudioManager.cs"
 
 [display]
 
