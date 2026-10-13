@@ -103,10 +103,18 @@ public partial class ActionFeedbackChecks : BattleController
             "Poison Strike must use the fifth column of the seventh atlas row");
         _testHud.SetAbilityButtons(new Array<Dictionary>
         {
-            new() { { "id", "poison-strike" }, { "is_enabled", 1 } }
+            new()
+            {
+                { "id", "poison-strike" },
+                { "label", "Poison Strike" },
+                { "detail", "Damages and poisons one target." },
+                { "is_enabled", 1 }
+            }
         }, true);
         Check(AbilityButton("poison-strike").Icon == icon,
             "Poison Strike action-bar button must use the shared icon mapping");
+        Check(AbilityButton("poison-strike").TooltipText == "Poison Strike",
+            "Ability icon tooltip must show only the ability name");
         Call("SyncHudFromGameState");
     }
 
@@ -207,8 +215,22 @@ public partial class ActionFeedbackChecks : BattleController
         var getIcon = typeof(HudController).GetMethod("GetGameIcon", BindingFlags.Static | BindingFlags.NonPublic);
         _testHud.SetConsumableButtons(new Array<Dictionary>
         {
-            new() { { "slot_key", "consumable-1" }, { "id", "healing-potion" }, { "is_enabled", 1 } },
-            new() { { "slot_key", "consumable-2" }, { "id", "magic-potion" }, { "is_enabled", 1 } }
+            new()
+            {
+                { "slot_key", "consumable-1" },
+                { "id", "healing-potion" },
+                { "label", "Healing Potion" },
+                { "detail", "Restores health." },
+                { "is_enabled", 1 }
+            },
+            new()
+            {
+                { "slot_key", "consumable-2" },
+                { "id", "magic-potion" },
+                { "label", "Magic Potion" },
+                { "detail", "Restores magic." },
+                { "is_enabled", 1 }
+            }
         }, true);
 
         var healingIcon = (Texture2D)getIcon.Invoke(null, new object[] { "healing-potion" });
@@ -217,6 +239,9 @@ public partial class ActionFeedbackChecks : BattleController
             "Healing potion action-bar button must use row 8, column 1");
         Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton2").Icon == magicIcon,
             "Magic potion action-bar button must use row 8, column 2");
+        Check(_testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton1").TooltipText == "Healing Potion"
+            && _testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton2").TooltipText == "Magic Potion",
+            "Consumable icon tooltips must show only their names");
         Check(Unit.DefaultConsumableSlotCount == 2,
             "Every unit must have exactly two default consumable slots");
     }
@@ -306,11 +331,64 @@ public partial class ActionFeedbackChecks : BattleController
         Check(abilityStyle != null && abilityStyle.BgColor == TacticalTheme.IronRaised
             && endTurnStyle != null && endTurnStyle.BgColor == TacticalTheme.Crimson,
             "Crimson emphasis must be reserved for End Turn, not routine ability buttons");
+        var actionPanelStyle = _testHud.GetNode<PanelContainer>("ActionPanel")
+            .GetThemeStylebox("panel", "PanelContainer") as StyleBoxFlat;
+        Check(actionPanelStyle != null
+            && actionPanelStyle.BgColor.A == 0.0f
+            && abilityStyle != null
+            && abilityStyle.BgColor.A > 0.0f,
+            "Action bar background must be transparent while action buttons remain styled");
+        var partyPanelStyle = _testHud.GetNode<PanelContainer>("PartyPanel")
+            .GetThemeStylebox("panel", "PanelContainer") as StyleBoxFlat;
+        Check(partyPanelStyle != null && partyPanelStyle.BgColor.A == 0.0f,
+            "Party list panel background must be transparent");
 
         Check(utilityPanel.Position.X >= 0.0f
             && utilityPanel.Position.X + utilityPanel.Size.X <= visibleRect.Size.X
             && _testHud.GetNode<PanelContainer>("ActionPanel").Position.X >= 0.0f,
             "Top utility row and action dock must remain within the logical viewport");
+
+        var explorationFlowField = PrivateField("_flowState");
+        var flowBeforeTabCycle = explorationFlowField.GetValue(this);
+        var selectedCharacterField = PrivateField("_selectedCharacterUnitId");
+        var previousSelectedCharacter = selectedCharacterField.GetValue(this);
+        explorationFlowField.SetValue(this, Enum.Parse(explorationFlowField.FieldType, "Exploration"));
+        selectedCharacterField.SetValue(this, _actor.UnitId);
+        _Input(new InputEventKey { Pressed = true, Keycode = Key.Tab });
+        Check(Field<string>("_selectedCharacterUnitId") == _ally.UnitId,
+            "Tab must select the next living party member during exploration");
+        _Input(new InputEventKey { Pressed = true, Keycode = Key.Tab, ShiftPressed = true });
+        Check(Field<string>("_selectedCharacterUnitId") == _actor.UnitId,
+            "Shift+Tab must select the previous living party member during exploration");
+        explorationFlowField.SetValue(this, flowBeforeTabCycle);
+        selectedCharacterField.SetValue(this, previousSelectedCharacter);
+        Call("SyncHudFromGameState");
+        var partyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
+        StyleBoxFlat actorCardStyle = null;
+        StyleBoxFlat allyCardStyle = null;
+        foreach (var child in partyCards.GetChildren())
+        {
+            if (child is not PartyCard card)
+            {
+                continue;
+            }
+
+            var cardStyle = card.GetThemeStylebox("normal", "Button") as StyleBoxFlat;
+            if (card.UnitId == _actor.UnitId)
+            {
+                actorCardStyle = cardStyle;
+            }
+            else if (card.UnitId == _ally.UnitId)
+            {
+                allyCardStyle = cardStyle;
+            }
+        }
+        Check(actorCardStyle != null
+            && allyCardStyle != null
+            && actorCardStyle.BgColor.R > allyCardStyle.BgColor.R
+            && actorCardStyle.BgColor.G > allyCardStyle.BgColor.G
+            && actorCardStyle.BgColor.B > allyCardStyle.BgColor.B,
+            "Selected party member card must have a slightly lighter background");
 
         var combatLogMinimizeButton = _testHud.GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogMinimizeButton");
         combatLogMinimizeButton.EmitSignal(Button.SignalName.Pressed);

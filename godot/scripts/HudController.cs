@@ -673,13 +673,14 @@ public partial class HudController : Control
             }
 
             var icon = GetItemIcon(entry);
+            var label = GetString(entry, "label", itemId);
             button.Icon = icon;
-            button.Text = icon == null ? GetString(entry, "label", itemId) : "";
+            button.Text = icon == null ? label : "";
             button.IconAlignment = HorizontalAlignment.Center;
             var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
             button.Disabled = !canUseAnyConsumable || !isEnabled;
             button.SelfModulate = button.Disabled ? new Color(0.5f, 0.5f, 0.5f) : Colors.White;
-            button.TooltipText = GetString(entry, "detail", GetString(entry, "label", itemId));
+            button.TooltipText = label;
             _consumableSlotKeysByButton[button] = slotKey;
         }
     }
@@ -1580,8 +1581,8 @@ public partial class HudController : Control
             ContentMarginLeft = 8
         };
         StylePanel(_utilityPanel, transparentUtilityStyle);
-        StylePanel(_actionPanel, persistentPanelStyle);
-        StylePanel(_partyPanel, persistentPanelStyle);
+        StylePanel(_actionPanel, transparentUtilityStyle);
+        StylePanel(_partyPanel, transparentUtilityStyle);
         StylePanel(_combatLogPanel, transparentUtilityStyle);
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
@@ -1982,7 +1983,6 @@ public partial class HudController : Control
             var entry = abilities[i];
             var abilityId = GetString(entry, "id", "");
             var label = GetString(entry, "label", abilityId);
-            var detail = GetString(entry, "detail", label);
             var cooldownRemaining = GetInt(entry, "cooldown_remaining", 0);
             var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
             var isSelected = GetInt(entry, "is_selected", 0) == 1;
@@ -1995,7 +1995,7 @@ public partial class HudController : Control
             button.SelfModulate = !isAvailable
                 ? new Color(0.5f, 0.5f, 0.5f)
                 : isSelected ? TacticalTheme.BrassBright : Colors.White;
-            button.TooltipText = detail;
+            button.TooltipText = label;
             button.Disabled = !canUseAnyAbility;
             _abilityIdsByButton[button] = abilityId;
         }
@@ -2272,6 +2272,9 @@ public partial class HudController : Control
         var accent = unit.IsDead
             ? new Color(0.35f, 0.35f, 0.35f, 1.0f)
             : new Color(0.72f, 0.58f, 0.3f, 1.0f);
+        var cardBackground = selected
+            ? new Color(0.1f, 0.105f, 0.11f, 0.98f)
+            : new Color(0.055f, 0.06f, 0.065f, 0.97f);
         var card = new PartyCard
         {
             UnitId = unit.UnitId,
@@ -2283,7 +2286,7 @@ public partial class HudController : Control
                 ? $"Open {unit.UnitName}\nDrag to change marching order"
                 : $"Open {unit.UnitName}"
         };
-        card.AddThemeStyleboxOverride("normal", CreatePartyCardStyle(new Color(0.055f, 0.06f, 0.065f, 0.97f), accent, selected ? 2 : 1));
+        card.AddThemeStyleboxOverride("normal", CreatePartyCardStyle(cardBackground, accent, selected ? 2 : 1));
         card.AddThemeStyleboxOverride("hover", CreatePartyCardStyle(new Color(0.09f, 0.095f, 0.1f, 1.0f), new Color(0.88f, 0.73f, 0.4f, 1.0f), 2));
         card.AddThemeStyleboxOverride("pressed", CreatePartyCardStyle(new Color(0.035f, 0.04f, 0.045f, 1.0f), accent, 2));
         card.AddThemeStyleboxOverride("focus", CreatePartyCardStyle(new Color(0.075f, 0.08f, 0.085f, 1.0f), new Color(0.95f, 0.82f, 0.5f, 1.0f), 2));

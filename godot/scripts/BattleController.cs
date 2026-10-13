@@ -3404,11 +3404,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var profile = ResolveActionProfile(unit, abilityId);
-            if (explorationOnly && !IsExplorationAction(profile.ActionType))
-            {
-                continue;
-            }
-
             var actionName = string.IsNullOrEmpty(profile.ActionName) ? GetActionDisplayName(abilityId) : profile.ActionName;
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
             var valueText = profile.ActionType == "disarm_trap"
@@ -3447,7 +3442,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     ? "Requirement: melee weapon equipped (or no weapon equipped)"
                 : "Requirement: none";
             var isEnabled = explorationOnly
-                ? string.IsNullOrEmpty(GetActionFailureReason(unit, profile))
+                ? IsExplorationAction(profile.ActionType) && string.IsNullOrEmpty(GetActionFailureReason(unit, profile))
                 : CanUseActionProfileNow(unit, profile);
             var failureReason = GetActionFailureReason(unit, profile);
             var stateLabel = string.IsNullOrEmpty(failureReason) ? "Status: ready" : $"Status: {failureReason}";

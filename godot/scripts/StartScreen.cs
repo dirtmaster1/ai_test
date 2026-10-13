@@ -8,10 +8,11 @@ public partial class StartScreen : Control
 
     private PanelContainer _centerPanel;
     private Label _titleLabel;
-    private Label _subtitleLabel;
+    private Label _versionLabel;
     private Label _statusLabel;
     private Label _savePathLabel;
     private Label _saveExistsLabel;
+    private Button _savePathToggleButton;
     private Button _newGameButton;
     private Button _loadGameButton;
     private Button _deleteSaveButton;
@@ -30,10 +31,11 @@ public partial class StartScreen : Control
     {
         _centerPanel = GetNode<PanelContainer>("CenterPanel");
         _titleLabel = GetNode<Label>("CenterPanel/VBox/Title");
-        _subtitleLabel = GetNode<Label>("CenterPanel/VBox/Subtitle");
+        _versionLabel = GetNode<Label>("CenterPanel/VBox/Buttons/VersionLabel");
         _statusLabel = GetNode<Label>("CenterPanel/VBox/StatusLabel");
         _savePathLabel = GetNode<Label>("CenterPanel/VBox/SavePathLabel");
         _saveExistsLabel = GetNode<Label>("CenterPanel/VBox/SaveExistsLabel");
+        _savePathToggleButton = GetNode<Button>("CenterPanel/VBox/SavePathToggleButton");
         _newGameButton = GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton");
         _loadGameButton = GetNode<Button>("CenterPanel/VBox/Buttons/LoadGameButton");
         _deleteSaveButton = GetNode<Button>("CenterPanel/VBox/Buttons/DeleteSaveButton");
@@ -49,10 +51,13 @@ public partial class StartScreen : Control
         _audioManager = GetNode<AudioManager>("/root/AudioManager");
 
         ApplyFantasyMenuStyling();
+        SizeMainMenuButtons();
+        _versionLabel.Text = $"Version {ProjectSettings.GetSetting("application/config/version").AsString()}";
 
         _newGameButton.Pressed += OnNewGamePressed;
         _loadGameButton.Pressed += OnLoadGamePressed;
         _deleteSaveButton.Pressed += OnDeleteSavePressed;
+        _savePathToggleButton.Pressed += OnSavePathTogglePressed;
         _settingsButton.Pressed += OnSettingsPressed;
         _quitButton.Pressed += OnQuitPressed;
         _soundFxButton.Pressed += OnSoundFxPressed;
@@ -105,6 +110,12 @@ public partial class StartScreen : Control
     private void OnQuitPressed()
     {
         GetTree().Quit();
+    }
+
+    private void OnSavePathTogglePressed()
+    {
+        _savePathLabel.Visible = !_savePathLabel.Visible;
+        _savePathToggleButton.Text = _savePathLabel.Visible ? "Hide Save Path" : "Show Save Path";
     }
 
     private void OnSettingsPressed()
@@ -171,9 +182,8 @@ public partial class StartScreen : Control
 
     private void ApplyFantasyMenuStyling()
     {
-        _centerPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
         TacticalTheme.ApplyLabel(_titleLabel, TacticalTheme.BrassBright, 32);
-        TacticalTheme.ApplyLabel(_subtitleLabel, TacticalTheme.Parchment, 16);
+        TacticalTheme.ApplyLabel(_versionLabel, TacticalTheme.ParchmentMuted, 11);
         TacticalTheme.ApplyLabel(_saveExistsLabel, TacticalTheme.Parchment, 14);
         TacticalTheme.ApplyLabel(_savePathLabel, TacticalTheme.ParchmentMuted, 12);
         TacticalTheme.ApplyLabel(_statusLabel, TacticalTheme.BrassBright, 14);
@@ -181,6 +191,7 @@ public partial class StartScreen : Control
         TacticalTheme.ApplyButton(_newGameButton, true, 16);
         TacticalTheme.ApplyButton(_loadGameButton, true, 16);
         TacticalTheme.ApplyButton(_deleteSaveButton, false, 16);
+        TacticalTheme.ApplyButton(_savePathToggleButton, false, 16);
         TacticalTheme.ApplyButton(_settingsButton, false, 16);
         TacticalTheme.ApplyButton(_quitButton, false, 16);
         _settingsPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
@@ -219,5 +230,28 @@ public partial class StartScreen : Control
             CornerRadiusBottomRight = 3,
             CornerRadiusBottomLeft = 3
         });
+    }
+
+    private void SizeMainMenuButtons()
+    {
+        var buttons = new[] { _newGameButton, _loadGameButton, _deleteSaveButton, _savePathToggleButton, _settingsButton, _quitButton };
+        var widestButton = 0.0f;
+        foreach (var button in buttons)
+        {
+            widestButton = Mathf.Max(widestButton, button.GetCombinedMinimumSize().X);
+        }
+
+        var originalToggleText = _savePathToggleButton.Text;
+        _savePathToggleButton.Text = "Hide Save Path";
+        widestButton = Mathf.Max(widestButton, _savePathToggleButton.GetCombinedMinimumSize().X);
+        _savePathToggleButton.Text = originalToggleText;
+
+        foreach (var button in buttons)
+        {
+            button.CustomMinimumSize = new Vector2(widestButton, button.CustomMinimumSize.Y);
+            button.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        }
+
+        _versionLabel.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
     }
 }

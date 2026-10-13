@@ -100,7 +100,7 @@ public partial class UtilityAbilityChecks : BattleController
             CheckTrapLootExclusion();
             Check(_thief.HasAbility("disarm-trap") && _thief.HasAbility("pick-lock"), "Saved thief must gain both utility abilities");
             var entries = (Array<Dictionary>)Call("BuildAbilityEntriesForHud", _thief, true);
-            Check(entries.Count == 2, "Exploration action bar must contain both utility actions, not attacks");
+            Check(entries.Count == 5, "Exploration action bar must show all of the thief's non-passive skills");
             entries = (Array<Dictionary>)Call("BuildAbilityEntriesForHud", _thief, false);
             Check(entries.Count == 5, "Combat action bar must retain the thief's existing three actions");
 
@@ -120,6 +120,21 @@ public partial class UtilityAbilityChecks : BattleController
             Check(!(bool)Call("TryUnlockDoorWithKey", _thief, door), "A locked door must reject an absent key");
 
             AttachHud();
+            var actionButtons = (System.Collections.Generic.Dictionary<Button, string>)typeof(HudController)
+                .GetField("_abilityIdsByButton", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            var meleeVisibleAndGreyedOut = false;
+            foreach (var entry in actionButtons)
+            {
+                if (entry.Value == "melee")
+                {
+                    meleeVisibleAndGreyedOut = entry.Key.Visible
+                        && !entry.Key.Disabled
+                        && entry.Key.SelfModulate == new Color(0.5f, 0.5f, 0.5f);
+                    break;
+                }
+            }
+            Check(meleeVisibleAndGreyedOut,
+                "Combat-only skills must remain visible and greyed out in exploration.");
             Choose("pick-lock");
             Click(_doorCell);
             Check(Dialog() == null, "A keyed door must not open a pick-lock confirmation");

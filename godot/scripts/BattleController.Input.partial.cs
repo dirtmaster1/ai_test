@@ -75,6 +75,13 @@ public partial class BattleController
                 return;
             }
 
+            if (keyEvent.Keycode == Key.Tab && _hud != null)
+            {
+                CycleInventoryTarget(keyEvent.ShiftPressed ? -1 : 1);
+                SyncHudFromGameState();
+                return;
+            }
+
             HandleExplorationInput(keyEvent);
             return;
         }

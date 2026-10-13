@@ -40,9 +40,93 @@ public partial class AudioSettingsChecks : Node
         var startScreen = GD.Load<PackedScene>("res://scenes/StartScreen.tscn").Instantiate<StartScreen>();
         AddChild(startScreen);
 
+        var backdrop = startScreen.GetNode<TextureRect>("Backdrop");
+        if (backdrop.StretchMode != TextureRect.StretchModeEnum.KeepAspectCentered)
+        {
+            failures.Add("Launch screen backdrop must fit the full image within the viewport.");
+        }
+
         var centerPanel = startScreen.GetNode<PanelContainer>("CenterPanel");
         var settingsPanel = startScreen.GetNode<PanelContainer>("SettingsPanel");
         var soundFxPanel = startScreen.GetNode<PanelContainer>("SoundFxPanel");
+        var centerPanelStyle = centerPanel.GetThemeStylebox("panel", "PanelContainer");
+        var menuButtons = new[]
+        {
+            startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton"),
+            startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/LoadGameButton"),
+            startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/DeleteSaveButton"),
+            startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/SettingsButton"),
+            startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/QuitButton"),
+            startScreen.GetNode<Button>("CenterPanel/VBox/SavePathToggleButton")
+        };
+        var newGameButtonStyle = startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton")
+            .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
+        if (centerPanelStyle is not StyleBoxEmpty)
+        {
+            failures.Add("The launch menu background must remain transparent.");
+        }
+
+        if (centerPanel.AnchorLeft != 1.0f
+            || centerPanel.AnchorTop != 1.0f
+            || centerPanel.AnchorRight != 1.0f
+            || centerPanel.AnchorBottom != 1.0f
+            || centerPanel.OffsetRight != -24.0f
+            || centerPanel.OffsetBottom != -24.0f)
+        {
+            failures.Add("The launch menu must be anchored at the bottom-right with a small inset.");
+        }
+
+        if (startScreen.GetNodeOrNull<Label>("CenterPanel/VBox/Subtitle") != null)
+        {
+            failures.Add("The launch menu subtitle must be removed.");
+        }
+
+        var expectedButtonWidth = 0.0f;
+        foreach (var button in menuButtons)
+        {
+            expectedButtonWidth = Mathf.Max(expectedButtonWidth, button.GetCombinedMinimumSize().X);
+        }
+
+        foreach (var button in menuButtons)
+        {
+            if (!Mathf.IsEqualApprox(button.CustomMinimumSize.X, expectedButtonWidth)
+                || button.SizeFlagsHorizontal != Control.SizeFlags.ShrinkCenter)
+            {
+                failures.Add("Launch menu buttons must share the width of the longest button text.");
+                break;
+            }
+        }
+
+        if (newGameButtonStyle == null || newGameButtonStyle.BgColor.A <= 0.0f)
+        {
+            failures.Add("Launch menu buttons must retain their styled backgrounds.");
+        }
+
+        var versionLabel = startScreen.GetNode<Label>("CenterPanel/VBox/Buttons/VersionLabel");
+        if (versionLabel.Text != "Version 0.1.0" || versionLabel.GetThemeFontSize("font_size") > 12)
+        {
+            failures.Add("The launch menu must show the current version beneath Quit in small text.");
+        }
+
+        var savePathLabel = startScreen.GetNode<Label>("CenterPanel/VBox/SavePathLabel");
+        var savePathToggleButton = startScreen.GetNode<Button>("CenterPanel/VBox/SavePathToggleButton");
+        if (savePathLabel.Visible || savePathToggleButton.Text != "Show Save Path")
+        {
+            failures.Add("The full save path must be hidden initially with an option to show it.");
+        }
+
+        savePathToggleButton.EmitSignal(Button.SignalName.Pressed);
+        if (!savePathLabel.Visible || savePathToggleButton.Text != "Hide Save Path")
+        {
+            failures.Add("The save path toggle must show the full path when requested.");
+        }
+
+        savePathToggleButton.EmitSignal(Button.SignalName.Pressed);
+        if (savePathLabel.Visible || savePathToggleButton.Text != "Show Save Path")
+        {
+            failures.Add("The save path toggle must hide the full path again when requested.");
+        }
+
         startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/SettingsButton").EmitSignal(Button.SignalName.Pressed);
         if (centerPanel.Visible || !settingsPanel.Visible)
         {
