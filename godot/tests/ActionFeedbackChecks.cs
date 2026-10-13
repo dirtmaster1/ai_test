@@ -256,13 +256,35 @@ public partial class ActionFeedbackChecks : BattleController
             "Action bar must provide a visible draggable grip");
 
         var utilityPanel = _testHud.GetNode<PanelContainer>("UtilityPanel");
-        var utilityRow = _testHud.GetNode<HBoxContainer>("UtilityPanel/UtilityVBox");
-        Check(utilityPanel.Size.Y >= 64.0f
-            && utilityPanel.Size.X >= utilityRow.GetCombinedMinimumSize().X,
-            "Utility controls must fit in a single, content-sized row");
-        Check(_testHud.GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader").GetParent() == utilityRow
-            && _testHud.GetNode<HBoxContainer>("UtilityPanel/UtilityVBox/UtilityButtons").GetParent() == utilityRow,
-            "Utility heading and buttons must share one horizontal row");
+        var utilityMenu = _testHud.GetNode<VBoxContainer>("UtilityPanel/UtilityVBox");
+        var utilityButtons = _testHud.GetNode<VBoxContainer>("UtilityPanel/UtilityVBox/UtilityButtons");
+        var visibleRect = _testHud.GetViewport().GetVisibleRect();
+        Check(Mathf.IsEqualApprox(utilityPanel.Position.Y, 12.0f)
+            && Mathf.IsEqualApprox(utilityPanel.Position.X + utilityPanel.Size.X, visibleRect.Size.X - 24.0f),
+            "Utility menu must be aligned to the top-right corner");
+        Check(_testHud.GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader").GetParent() == utilityMenu
+            && utilityButtons.GetParent() == utilityMenu,
+            "Utility heading and buttons must share one vertical menu");
+        var widestUtilityButtonWidth = Mathf.Max(
+            Mathf.Max(
+                _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton").GetCombinedMinimumSize().X,
+                _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton").GetCombinedMinimumSize().X),
+            Mathf.Max(
+                Mathf.Max(
+                    _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton").GetCombinedMinimumSize().X,
+                    _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/LoadButton").GetCombinedMinimumSize().X),
+                _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/ReserveButton").GetCombinedMinimumSize().X));
+        Check(utilityPanel.Size.X >= widestUtilityButtonWidth
+            && utilityPanel.Size.X - widestUtilityButtonWidth <= 20.1f,
+            "Utility menu width must fit the widest button with only modest padding");
+        var utilityPanelStyle = utilityPanel.GetThemeStylebox("panel", "PanelContainer") as StyleBoxFlat;
+        var utilityButtonStyle = _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton")
+            .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
+        Check(utilityPanelStyle != null
+            && utilityPanelStyle.BgColor.A == 0.0f
+            && utilityButtonStyle != null
+            && utilityButtonStyle.BgColor.A > 0.0f,
+            "Utility panel background must be transparent while buttons remain styled");
 
         var abilityStyle = _testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1")
             .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
@@ -272,7 +294,6 @@ public partial class ActionFeedbackChecks : BattleController
             && endTurnStyle != null && endTurnStyle.BgColor == TacticalTheme.Crimson,
             "Crimson emphasis must be reserved for End Turn, not routine ability buttons");
 
-        var visibleRect = _testHud.GetViewport().GetVisibleRect();
         Check(utilityPanel.Position.X >= 0.0f
             && utilityPanel.Position.X + utilityPanel.Size.X <= visibleRect.Size.X
             && _testHud.GetNode<PanelContainer>("ActionPanel").Position.X >= 0.0f,

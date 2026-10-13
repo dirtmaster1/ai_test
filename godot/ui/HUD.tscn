@@ -16,23 +16,23 @@ script = ExtResource("1_ynpr3")
 [node name="UtilityPanel" type="PanelContainer" parent="."]
 layout_mode = 0
 anchor_right = 1.0
-offset_left = 1292.0
+anchor_left = 1.0
+offset_left = -220.0
 offset_top = 12.0
 offset_right = -24.0
-offset_bottom = 76.0
+offset_bottom = 270.0
 
-[node name="UtilityVBox" type="HBoxContainer" parent="UtilityPanel"]
+[node name="UtilityVBox" type="VBoxContainer" parent="UtilityPanel"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="UtilityHeader" type="Label" parent="UtilityPanel/UtilityVBox"]
-custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "Utility"
 
-[node name="UtilityButtons" type="HBoxContainer" parent="UtilityPanel/UtilityVBox"]
+[node name="UtilityButtons" type="VBoxContainer" parent="UtilityPanel/UtilityVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6

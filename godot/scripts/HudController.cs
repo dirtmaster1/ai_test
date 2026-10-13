@@ -1317,13 +1317,14 @@ public partial class HudController : Control
         var sidebarLeft = Mathf.Max(GridPixelWidth + Margin, sidebarRight - SidebarWidth);
 
         const float panelGap = 10.0f;
-        const float utilityHeight = 64.0f;
         const float helpHeight = 220.0f;
         const float actionWidth = 720.0f;
         const float actionHeight = 78.0f;
 
         var utilityTop = Margin;
-        var utilityWidth = Mathf.Min(604.0f, Mathf.Max(1.0f, size.X - Margin - SidebarRightInset));
+        var utilityMinimumSize = _utilityPanel.GetCombinedMinimumSize();
+        var utilityWidth = Mathf.Min(utilityMinimumSize.X, Mathf.Max(1.0f, size.X - Margin - SidebarRightInset));
+        var utilityHeight = utilityMinimumSize.Y;
         var utilityLeft = size.X - SidebarRightInset - utilityWidth;
         var detailsTop = utilityTop + utilityHeight + panelGap + 30.0f;
         var combatTop = detailsTop;
@@ -1562,7 +1563,16 @@ public partial class HudController : Control
 
         var panelStyle = TacticalTheme.CreateFramePanel();
         var persistentPanelStyle = TacticalTheme.CreatePanel(false, 8);
-        StylePanel(_utilityPanel, persistentPanelStyle);
+        var transparentUtilityStyle = new StyleBoxFlat
+        {
+            BgColor = Colors.Transparent,
+            BorderColor = Colors.Transparent,
+            ContentMarginTop = 8,
+            ContentMarginRight = 8,
+            ContentMarginBottom = 8,
+            ContentMarginLeft = 8
+        };
+        StylePanel(_utilityPanel, transparentUtilityStyle);
         StylePanel(_actionPanel, persistentPanelStyle);
         StylePanel(_partyPanel, persistentPanelStyle);
         StylePanel(_combatLogPanel, persistentPanelStyle);
