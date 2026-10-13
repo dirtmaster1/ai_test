@@ -1335,8 +1335,13 @@ public partial class HudController : Control
         var actionPosition = new Vector2((size.X - dockWidth) * 0.5f, size.Y - actionHeight - 32.0f);
         ApplyPanelRect(_actionPanel, new Rect2(actionPosition, new Vector2(dockWidth, actionHeight)), size);
         ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, helpHeight)), size);
-        var combatLogWidth = Mathf.Min(SidebarWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
-        var combatLogPosition = new Vector2(size.X - combatLogWidth - SidebarRightInset, size.Y - combatHeight - 40.0f);
+        var combatLogWidth = _combatLogMinimized
+            ? 220.0f
+            : Mathf.Min(SidebarWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
+        var combatLogHeight = _combatLogMinimized ? 64.0f : combatHeight;
+        var combatLogPosition = _combatLogMinimized
+            ? new Vector2(size.X - combatLogWidth - Margin, size.Y - combatLogHeight - Margin)
+            : new Vector2(size.X - combatLogWidth - SidebarRightInset, size.Y - combatHeight - 40.0f);
         ApplyPanelRect(_combatLogPanel, new Rect2(combatLogPosition, new Vector2(combatLogWidth, combatHeight)), size);
         ApplyPanelRect(_lootPanel, new Rect2(new Vector2(Margin, Mathf.Max(140.0f, size.Y - 286.0f)), new Vector2(420.0f, 274.0f)), size);
         ApplyPanelRect(_vendorPanel, new Rect2(new Vector2(Mathf.Max(Margin, (size.X - 480.0f) * 0.5f), Mathf.Max(Margin, (size.Y - 440.0f) * 0.5f)), new Vector2(480.0f, 440.0f)), size);
@@ -1526,7 +1531,9 @@ public partial class HudController : Control
             : baseRect.Size;
 
         var isResizablePanel = panel == _combatLogPanel;
-        var minWidth = isResizablePanel ? MinResizablePanelWidth : 1.0f;
+        var minWidth = isResizablePanel
+            ? (_combatLogMinimized ? 220.0f : MinResizablePanelWidth)
+            : 1.0f;
         var minHeight = isResizablePanel
             ? (_combatLogMinimized ? 64.0f : MinResizablePanelHeight)
             : 1.0f;
@@ -1575,7 +1582,7 @@ public partial class HudController : Control
         StylePanel(_utilityPanel, transparentUtilityStyle);
         StylePanel(_actionPanel, persistentPanelStyle);
         StylePanel(_partyPanel, persistentPanelStyle);
-        StylePanel(_combatLogPanel, persistentPanelStyle);
+        StylePanel(_combatLogPanel, transparentUtilityStyle);
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
@@ -1653,6 +1660,7 @@ public partial class HudController : Control
         StyleButton(_closeReserveButton, false);
 
         StyleItemList(_combatLog, bodyColor, mutedBodyColor);
+        _combatLog.AddThemeStyleboxOverride("panel", (StyleBox)transparentUtilityStyle.Duplicate());
         StyleItemList(_inventoryEquippedItemList, bodyColor, mutedBodyColor);
         StyleItemList(_inventoryItemList, bodyColor, mutedBodyColor);
         StyleItemList(_inventoryAbilityList, bodyColor, mutedBodyColor);

@@ -285,6 +285,19 @@ public partial class ActionFeedbackChecks : BattleController
             && utilityButtonStyle != null
             && utilityButtonStyle.BgColor.A > 0.0f,
             "Utility panel background must be transparent while buttons remain styled");
+        var combatLogPanel = _testHud.GetNode<PanelContainer>("CombatLogPanel");
+        var combatLogPanelStyle = combatLogPanel.GetThemeStylebox("panel", "PanelContainer") as StyleBoxFlat;
+        var combatLogListStyle = _testHud.GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog")
+            .GetThemeStylebox("panel", "ItemList") as StyleBoxFlat;
+        var combatLogButtonStyle = _testHud.GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogMinimizeButton")
+            .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
+        Check(combatLogPanelStyle != null
+            && combatLogPanelStyle.BgColor.A == 0.0f
+            && combatLogListStyle != null
+            && combatLogListStyle.BgColor.A == 0.0f
+            && combatLogButtonStyle != null
+            && combatLogButtonStyle.BgColor.A > 0.0f,
+            "Combat log backgrounds must be transparent while its button remains styled");
 
         var abilityStyle = _testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1")
             .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
@@ -298,6 +311,15 @@ public partial class ActionFeedbackChecks : BattleController
             && utilityPanel.Position.X + utilityPanel.Size.X <= visibleRect.Size.X
             && _testHud.GetNode<PanelContainer>("ActionPanel").Position.X >= 0.0f,
             "Top utility row and action dock must remain within the logical viewport");
+
+        var combatLogMinimizeButton = _testHud.GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogMinimizeButton");
+        combatLogMinimizeButton.EmitSignal(Button.SignalName.Pressed);
+        Check(Mathf.IsEqualApprox(combatLogPanel.Position.X + combatLogPanel.Size.X, visibleRect.Size.X - 12.0f)
+            && Mathf.IsEqualApprox(combatLogPanel.Position.Y + combatLogPanel.Size.Y, visibleRect.Size.Y - 12.0f),
+            "Minimized combat log must sit in the bottom-right corner with a slight inset");
+        combatLogMinimizeButton.EmitSignal(Button.SignalName.Pressed);
+        Check(combatLogPanel.Size.X >= 260.0f && combatLogPanel.Size.Y >= 160.0f,
+            "Restoring the combat log must restore its expanded minimum size");
     }
 
     private void SetupFixture()
