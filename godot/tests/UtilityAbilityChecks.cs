@@ -70,13 +70,17 @@ public partial class UtilityAbilityChecks : BattleController
     {
         Click(_renderedDisarm ? _trapCell : _doorCell);
         var dialog = RequireDialog(_renderedDisarm ? "Disarm Trap" : "Pick Lock");
-        var foundFrame = false;
+        var foundGoldBorder = false;
         foreach (var child in dialog.GetChildren(true))
         {
-            if (child is Panel panel && panel.GetNodeOrNull<NinePatchRect>("TacticalDialogFrame") is NinePatchRect frame)
-                foundFrame = frame.Texture != null;
+            if (child is Panel panel
+                && panel.GetThemeStylebox("panel") is StyleBoxFlat panelStyle
+                && panelStyle.BorderColor == TacticalTheme.Brass)
+            {
+                foundGoldBorder = true;
+            }
         }
-        Check(foundFrame, "Utility dialog must display the shared decorative gold frame");
+        Check(foundGoldBorder, "Utility dialog must display the shared flat gold border");
     }
 
     public void ConfirmRenderedAction()

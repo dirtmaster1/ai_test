@@ -32,13 +32,11 @@ public partial class DialogThemeChecks : Node
             failures.Add("Confirmation dialog background must use the shared brass frame and opaque iron fill");
         }
 
-        if (background?.GetNodeOrNull<NinePatchRect>("TacticalDialogFrame") is not NinePatchRect frame
-            || frame.Texture == null
-            || frame.PatchMarginLeft != 32
-            || frame.PatchMarginTop != 32
-            || frame.MouseFilter != Control.MouseFilterEnum.Ignore)
+        if (dialog.GetThemeStylebox("embedded_border") is not StyleBoxFlat dialogBorder
+            || dialogBorder.BorderColor != TacticalTheme.Brass
+            || dialogBorder.BorderWidthTop != 1)
         {
-            failures.Add("Confirmation dialog must overlay the decorative iron-and-brass nine-patch frame");
+            failures.Add("Confirmation dialog must use the shared flat brass border");
         }
 
         if (dialog.GetOkButton().GetThemeStylebox("normal") is not StyleBoxFlat buttonStyle

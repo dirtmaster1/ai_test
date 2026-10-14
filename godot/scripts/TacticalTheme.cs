@@ -40,19 +40,25 @@ public static class TacticalTheme
         };
     }
 
-    public static StyleBoxTexture CreateFramePanel(int margin = 12)
+    public static StyleBoxFlat CreateFramePanel(int margin = 12)
     {
-        return new StyleBoxTexture
+        return new StyleBoxFlat
         {
-            Texture = GD.Load<Texture2D>("res://assets/ui/iron_brass_frame.png"),
-            TextureMarginLeft = 32,
-            TextureMarginTop = 32,
-            TextureMarginRight = 32,
-            TextureMarginBottom = 32,
+            BgColor = Iron,
+            BorderColor = Brass,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            CornerRadiusTopLeft = 2,
+            CornerRadiusTopRight = 2,
+            CornerRadiusBottomRight = 2,
+            CornerRadiusBottomLeft = 2,
             ContentMarginLeft = margin,
             ContentMarginTop = margin + 2,
             ContentMarginRight = margin,
-            ContentMarginBottom = margin + 2
+            ContentMarginBottom = margin + 2,
+            AntiAliasing = true
         };
     }
 
@@ -103,33 +109,10 @@ public static class TacticalTheme
                 var dialogPanelStyle = CreatePanel(false, 12);
                 dialogPanelStyle.BgColor = new Color(Iron.R, Iron.G, Iron.B, 1.0f);
                 panel.AddThemeStyleboxOverride("panel", dialogPanelStyle);
-                ApplyDecorativeDialogFrame(panel);
             }
 
             ApplyDialogContent(child);
         }
-    }
-
-    private static void ApplyDecorativeDialogFrame(Panel panel)
-    {
-        if (panel.GetNodeOrNull<NinePatchRect>("TacticalDialogFrame") != null)
-        {
-            return;
-        }
-
-        panel.AddChild(new NinePatchRect
-        {
-            Name = "TacticalDialogFrame",
-            Texture = GD.Load<Texture2D>("res://assets/ui/iron_brass_frame.png"),
-            PatchMarginLeft = 32,
-            PatchMarginTop = 32,
-            PatchMarginRight = 32,
-            PatchMarginBottom = 32,
-            AnchorRight = 1.0f,
-            AnchorBottom = 1.0f,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            TextureFilter = CanvasItem.TextureFilterEnum.Nearest
-        });
     }
 
     public static void ApplyLabel(Label label, Color color, int fontSize)
