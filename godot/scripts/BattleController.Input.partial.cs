@@ -312,7 +312,7 @@ public partial class BattleController
             return;
         }
 
-        SetMovementHoverState(hoveredCell, reachable: true, pathCost: previewPath.Count);
+        SetMovementHoverState(hoveredCell, reachable: true, pathCost: GetPathMovementCost(active.GridPos, previewPath));
         SetMovementPreviewPath(previewPath);
     }
 

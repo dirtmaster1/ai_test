@@ -135,6 +135,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         new(1, 0)
     };
 
+    private static readonly Vector2I[] MovementDirections =
+    {
+        new(-1, -1),
+        new(1, -1),
+        new(-1, 1),
+        new(1, 1),
+        new(0, -1),
+        new(0, 1),
+        new(-1, 0),
+        new(1, 0)
+    };
+
     private readonly struct CombatActionResult
     {
         public bool Success { get; }
@@ -2151,6 +2163,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
+        var movementCost = GetStepMovementCost(unit.GridPos, targetCell);
+        if (_flowState == BattleFlowState.Combat && unit.RemainingMovement < movementCost)
+        {
+            return CombatActionResult.Failed;
+        }
+
         if (!TryMoveUnit(unit, targetCell))
         {
             return CombatActionResult.Failed;
@@ -2172,7 +2190,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
             }
 
-            unit.TrySpendMovement();
+            unit.TrySpendMovement(movementCost);
             EnlistNearbyCombatEnemies();
             SetStatusHelp();
         }
@@ -2775,49 +2793,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     }
 
     // Math and data helpers
-    private Array<Vector2I> FindPath(Unit mover, Vector2I start, Vector2I goal, int maxSteps)
+    private Array<Vector2I> FindPath(Unit mover, Vector2I start, Vector2I goal, int maxMovementCost)
     {
         var path = new Array<Vector2I>();
-        if (maxSteps <= 0 || start == goal || !CanUnitStandAt(mover, goal))
+        if (maxMovementCost <= 0 || start == goal || !CanUnitStandAt(mover, goal))
         {
             return path;
         }
 
-        var frontier = new Queue<Vector2I>();
-        var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
-        var distance = new System.Collections.Generic.Dictionary<Vector2I, int>();
-        frontier.Enqueue(start);
-        distance[start] = 0;
+        FindReachablePaths(mover, start, maxMovementCost, out var cameFrom, out var movementCosts);
 
-        while (frontier.Count > 0)
-        {
-            var current = frontier.Dequeue();
-            var currentDistance = distance[current];
-            if (current == goal)
-            {
-                break;
-            }
-
-            if (currentDistance >= maxSteps)
-            {
-                continue;
-            }
-
-            foreach (var dir in AttackDirections)
-            {
-                var next = current + dir;
-                if (distance.ContainsKey(next) || !CanUnitStandAt(mover, next))
-                {
-                    continue;
-                }
-
-                distance[next] = currentDistance + 1;
-                cameFrom[next] = current;
-                frontier.Enqueue(next);
-            }
-        }
-
-        if (!distance.ContainsKey(goal))
+        if (!movementCosts.ContainsKey(goal))
         {
             return path;
         }
@@ -2825,50 +2811,83 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return BuildPath(start, goal, cameFrom);
     }
 
-    private System.Func<Vector2I, Array<Vector2I>> CreatePathFinder(Unit mover, Vector2I start, int maxSteps)
+    private System.Func<Vector2I, Array<Vector2I>> CreatePathFinder(Unit mover, Vector2I start, int maxMovementCost)
     {
-        var cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
-        var distance = new System.Collections.Generic.Dictionary<Vector2I, int>();
-
-        if (maxSteps > 0 && CanUnitStandAt(mover, start))
-        {
-            var frontier = new Queue<Vector2I>();
-            frontier.Enqueue(start);
-            distance[start] = 0;
-
-            while (frontier.Count > 0)
-            {
-                var current = frontier.Dequeue();
-                var currentDistance = distance[current];
-                if (currentDistance >= maxSteps)
-                {
-                    continue;
-                }
-
-                foreach (var dir in AttackDirections)
-                {
-                    var next = current + dir;
-                    if (distance.ContainsKey(next) || !CanUnitStandAt(mover, next))
-                    {
-                        continue;
-                    }
-
-                    distance[next] = currentDistance + 1;
-                    cameFrom[next] = current;
-                    frontier.Enqueue(next);
-                }
-            }
-        }
+        FindReachablePaths(mover, start, maxMovementCost, out var cameFrom, out var movementCosts);
 
         return goal =>
         {
-            if (goal == start || !distance.ContainsKey(goal) || !CanUnitStandAt(mover, goal))
+            if (goal == start || !movementCosts.ContainsKey(goal) || !CanUnitStandAt(mover, goal))
             {
                 return new Array<Vector2I>();
             }
 
             return BuildPath(start, goal, cameFrom);
         };
+    }
+
+    private void FindReachablePaths(
+        Unit mover,
+        Vector2I start,
+        int maxMovementCost,
+        out System.Collections.Generic.Dictionary<Vector2I, Vector2I> cameFrom,
+        out System.Collections.Generic.Dictionary<Vector2I, int> movementCosts)
+    {
+        cameFrom = new System.Collections.Generic.Dictionary<Vector2I, Vector2I>();
+        movementCosts = new System.Collections.Generic.Dictionary<Vector2I, int>();
+        if (maxMovementCost <= 0 || !CanUnitStandAt(mover, start))
+        {
+            return;
+        }
+
+        var frontier = new System.Collections.Generic.PriorityQueue<Vector2I, int>();
+        frontier.Enqueue(start, 0);
+        movementCosts[start] = 0;
+
+        while (frontier.TryDequeue(out var current, out var currentCost))
+        {
+            if (currentCost != movementCosts[current])
+            {
+                continue;
+            }
+
+            foreach (var direction in MovementDirections)
+            {
+                var next = current + direction;
+                var nextCost = currentCost + GetStepMovementCost(current, next);
+                if (nextCost > maxMovementCost || !CanUnitStandAt(mover, next))
+                {
+                    continue;
+                }
+
+                if (movementCosts.TryGetValue(next, out var knownCost) && knownCost <= nextCost)
+                {
+                    continue;
+                }
+
+                movementCosts[next] = nextCost;
+                cameFrom[next] = current;
+                frontier.Enqueue(next, nextCost);
+            }
+        }
+    }
+
+    private static int GetStepMovementCost(Vector2I from, Vector2I to)
+    {
+        return from.X != to.X && from.Y != to.Y ? 2 : 1;
+    }
+
+    private static int GetPathMovementCost(Vector2I start, Array<Vector2I> path)
+    {
+        var totalCost = 0;
+        var previous = start;
+        foreach (var step in path)
+        {
+            totalCost += GetStepMovementCost(previous, step);
+            previous = step;
+        }
+
+        return totalCost;
     }
 
     private static Array<Vector2I> BuildPath(Vector2I start, Vector2I goal, System.Collections.Generic.Dictionary<Vector2I, Vector2I> cameFrom)

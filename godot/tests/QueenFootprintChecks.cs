@@ -17,6 +17,9 @@ public partial class QueenFootprintChecks : RefCounted
         var heroSnapshot = hero.BuildRuntimeSnapshot();
         var controller = new BattleController();
         var director = new AiDirector();
+        var upperBlocker = new Unit();
+        var rightBlocker = new Unit();
+        var units = Field<Array<Unit>>(controller, "_allUnits");
         try
         {
             Check(queen.FootprintSize == 2, "Queen must occupy a 2x2 footprint");
@@ -42,7 +45,6 @@ public partial class QueenFootprintChecks : RefCounted
 
             var walkable = Field<HashSet<Vector2I>>(controller, "_walkableCells");
             var walls = Field<HashSet<Vector2I>>(controller, "_wallCellSet");
-            var units = Field<Array<Unit>>(controller, "_allUnits");
             var doors = Field<System.Collections.Generic.Dictionary<Vector2I, Godot.Collections.Dictionary>>(controller, "_mapDoorByCell");
             units.Add(queen);
             units.Add(hero);
@@ -94,7 +96,8 @@ public partial class QueenFootprintChecks : RefCounted
             foreach (var cell in path)
             {
                 Check(Stand(controller, queen, cell), "Every path step must fit all four cells");
-                Check((cell - previous).Abs().X + (cell - previous).Abs().Y == 1, "Queen movement must use adjacent anchor steps");
+                Check(Mathf.Max(Mathf.Abs(cell.X - previous.X), Mathf.Abs(cell.Y - previous.Y)) == 1,
+                    "Queen movement must use adjacent anchor steps");
                 previous = cell;
             }
             var finder = (System.Func<Vector2I, Array<Vector2I>>)Call(controller, "CreatePathFinder", queen, queen.GridPos, 100);
@@ -106,9 +109,35 @@ public partial class QueenFootprintChecks : RefCounted
             var choseStep = director.TryChooseStepTowardActionRange(queen, new Array<Unit> { hero }, options,
                 target => target == hero, cell => Stand(controller, queen, cell), (_, _) => true, finder, out var step);
             Check(choseStep && Stand(controller, queen, step), "Queen AI must choose a legal movement step");
+            upperBlocker.Setup(new Godot.Collections.Dictionary
+            {
+                { "id", "upper-blocker" },
+                { "team", "enemy" },
+                { "grid_pos", new Vector2I(4, 3) }
+            });
+            rightBlocker.Setup(new Godot.Collections.Dictionary
+            {
+                { "id", "right-blocker" },
+                { "team", "enemy" },
+                { "grid_pos", new Vector2I(5, 4) }
+            });
+            hero.SetGridPos(new Vector2I(4, 4));
+            var diagonalGoal = new Vector2I(5, 3);
+            var openDiagonalPath = Path(controller, hero, diagonalGoal, 2);
+            Check(openDiagonalPath.Count == 1 && openDiagonalPath[0] == diagonalGoal,
+                "An unobstructed diagonal destination must use one diagonal step");
+            Check(Path(controller, hero, diagonalGoal, 1).Count == 0,
+                "A diagonal step must cost two movement points");
+            units.Add(upperBlocker);
+            units.Add(rightBlocker);
+            Check(!Stand(controller, hero, upperBlocker.GridPos) && !Stand(controller, hero, rightBlocker.GridPos),
+                "Diagonal movement test blockers must occupy the two orthogonal tiles");
+            var diagonalPath = Path(controller, hero, diagonalGoal, 2);
+            Check(diagonalPath.Count == 1 && diagonalPath[0] == diagonalGoal,
+                "A diagonal step must pass between occupied orthogonal tiles");
             queen.ResetTurnResources();
             var movement = queen.RemainingMovement;
-            Check(queen.TrySpendMovement() && queen.RemainingMovement == movement - 1, "Moving a large unit costs one movement per step");
+            Check(queen.TrySpendMovement() && queen.RemainingMovement == movement - 1, "Spending one movement point reduces movement by one");
             var snapshot = queen.BuildRuntimeSnapshot();
             queen.SetGridPos(new Vector2I(6, 6));
             queen.ApplyRuntimeSnapshot(snapshot);
@@ -116,6 +145,10 @@ public partial class QueenFootprintChecks : RefCounted
         }
         finally
         {
+            units.Remove(upperBlocker);
+            units.Remove(rightBlocker);
+            upperBlocker.Free();
+            rightBlocker.Free();
             queen.ApplyRuntimeSnapshot(queenSnapshot);
             hero.ApplyRuntimeSnapshot(heroSnapshot);
             director.Free();
@@ -133,6 +166,6 @@ public partial class QueenFootprintChecks : RefCounted
     private static bool Stand(BattleController controller, Unit unit, Vector2I cell) =>
         (bool)Call(controller, "CanUnitStandAt", unit, cell);
 
-    private static Array<Vector2I> Path(BattleController controller, Unit unit, Vector2I goal) =>
-        (Array<Vector2I>)Call(controller, "FindPath", unit, unit.GridPos, goal, 100);
+    private static Array<Vector2I> Path(BattleController controller, Unit unit, Vector2I goal, int maxMovementCost = 100) =>
+        (Array<Vector2I>)Call(controller, "FindPath", unit, unit.GridPos, goal, maxMovementCost);
 }
