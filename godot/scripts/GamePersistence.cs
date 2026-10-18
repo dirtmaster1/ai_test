@@ -119,6 +119,11 @@ public sealed class GamePersistence
         var partyRoster = _host.BuildPartyRoster();
         var reserveRoster = _host.BuildReserveRoster();
         var recruitedNpcIds = _host.BuildRecruitedNpcIds();
+        var triggeredEventIds = new Array<string>();
+        foreach (var eventId in _host.TriggeredEventIds)
+        {
+            triggeredEventIds.Add(eventId);
+        }
 
         return new Dictionary
         {
@@ -142,6 +147,8 @@ public sealed class GamePersistence
             { "looted_bag_ids_by_map", BuildSetMapSnapshot(_host.LootedBagIdsByMap) },
             { "revealed_fog_cell_ids_by_map", BuildSetMapSnapshot(_host.RevealedFogCellIdsByMap) },
             { "loot_bags_by_map", BuildLootBagsByMapSnapshot(_host.LootBagsByMap) },
+            { "triggered_event_ids", triggeredEventIds },
+            { "event_spawned_unit_configs_by_map", BuildEventSpawnedUnitConfigsSnapshot(_host.EventSpawnedUnitConfigsByMap) },
             { "party_roster", partyRoster },
             { "reserve_roster", reserveRoster },
             { "recruited_npc_ids", recruitedNpcIds },
@@ -164,6 +171,8 @@ public sealed class GamePersistence
         _host.LootedBagIdsByMap.Clear();
         _host.RevealedFogCellIdsByMap.Clear();
         _host.LootBagsByMap.Clear();
+        _host.TriggeredEventIds.Clear();
+        _host.EventSpawnedUnitConfigsByMap.Clear();
 
         _host.CurrentMapId = GetString(saveData, "current_map_id", "forest-town");
         _host.ActiveEncounterId = GetString(saveData, "active_encounter_id", "");
@@ -178,6 +187,8 @@ public sealed class GamePersistence
         RestoreSetMapSnapshot(GetDictionary(saveData, "looted_bag_ids_by_map"), _host.LootedBagIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "revealed_fog_cell_ids_by_map"), _host.RevealedFogCellIdsByMap);
         RestoreLootBagsByMapSnapshot(GetDictionary(saveData, "loot_bags_by_map"), _host.LootBagsByMap);
+        RestoreTriggeredEventIds(GetStringArray(saveData, "triggered_event_ids"));
+        RestoreEventSpawnedUnitConfigs(GetDictionary(saveData, "event_spawned_unit_configs_by_map"));
         _host.RestoreRecruitedNpcIds(GetStringArray(saveData, "recruited_npc_ids"));
 
         _host.SpawnMapEncounter(_host.CurrentMapId);
@@ -236,6 +247,23 @@ public sealed class GamePersistence
             }
 
             snapshot[entry.Key] = bags;
+        }
+
+        return snapshot;
+    }
+
+    private static Dictionary BuildEventSpawnedUnitConfigsSnapshot(System.Collections.Generic.Dictionary<string, Array<Dictionary>> source)
+    {
+        var snapshot = new Dictionary();
+        foreach (var entry in source)
+        {
+            var configs = new Array<Dictionary>();
+            foreach (var config in entry.Value)
+            {
+                configs.Add(CopyDictionary(config));
+            }
+
+            snapshot[entry.Key] = configs;
         }
 
         return snapshot;
@@ -329,6 +357,38 @@ public sealed class GamePersistence
             }
 
             _host.VendorInventoryItemIdsById[vendorId] = itemIds;
+        }
+    }
+
+    private void RestoreTriggeredEventIds(Array<string> snapshot)
+    {
+        foreach (var eventId in snapshot)
+        {
+            if (!string.IsNullOrWhiteSpace(eventId))
+            {
+                _host.TriggeredEventIds.Add(eventId);
+            }
+        }
+    }
+
+    private void RestoreEventSpawnedUnitConfigs(Dictionary snapshot)
+    {
+        foreach (var key in snapshot.Keys)
+        {
+            var mapId = ((Variant)key).AsString();
+            if (string.IsNullOrWhiteSpace(mapId))
+            {
+                continue;
+            }
+
+            var configs = GetDictionaryArray(snapshot, mapId);
+            var restoredConfigs = new Array<Dictionary>();
+            foreach (var config in configs)
+            {
+                restoredConfigs.Add(CopyDictionary(config));
+            }
+
+            _host.EventSpawnedUnitConfigsByMap[mapId] = restoredConfigs;
         }
     }
 

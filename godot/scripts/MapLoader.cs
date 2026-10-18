@@ -91,6 +91,7 @@ public partial class MapLoader : Node
             { "walkable_cells", new Array<Vector2I>() },
             { "players", BuildPlayersFromMarkerSpawns(new System.Collections.Generic.Dictionary<int, Vector2I>(), null) },
             { "encounters", new Array<Dictionary>() },
+            { "event_triggers", new Array<Dictionary>() },
             { "props", new Array<Dictionary>() },
             { "transitions", new Array<Dictionary>() }
         };
@@ -213,7 +214,7 @@ public partial class MapLoader : Node
 
             var markerType = GetTileString(markerLayer, tileData, "marker_type", "").ToLowerInvariant();
             var usesTileVisual = GetTileBool(markerLayer, tileData, "uses_tile_visual", markerType == "npc");
-            if (!usesTileVisual || markerType == "enemy_spawn" || markerType == "player_spawn")
+            if (!usesTileVisual || markerType == "enemy_spawn" || markerType == "player_spawn" || markerType == "event_trigger")
             {
                 continue;
             }
@@ -501,11 +502,13 @@ public partial class MapLoader : Node
         }
 
         var transitions = new Array<Dictionary>();
+        var eventTriggers = new Array<Dictionary>();
         var props = new Array<Dictionary>();
         var playerSpawnBySlot = new System.Collections.Generic.Dictionary<int, Vector2I>();
         Vector2I? playerLeaderSpawn = null;
 
         var encountersById = new System.Collections.Generic.Dictionary<string, Dictionary>();
+        var eventDefinitionsById = new System.Collections.Generic.Dictionary<string, Dictionary>(System.StringComparer.Ordinal);
 
         for (var y = usedRect.Position.Y; y < usedRect.End.Y; y++)
         {
@@ -633,6 +636,45 @@ public partial class MapLoader : Node
                         GD.Print($"[MapLoader] enemy_spawn map={mapId} cell=({cell.X},{cell.Y}) atlas={atlasCoords} alt={markerLayer.GetCellAlternativeTile(cell)} template_id='{templateId}' enemy_id='{GetString(enemy, "id", "")}' enemy_name='{GetString(enemy, "name", "")}'");
                         break;
                     }
+                    case "event_trigger":
+                    {
+                        var eventId = GetTileString(markerLayer, tileData, "event_id", "");
+                        var eventType = GetTileString(markerLayer, tileData, "event_type", "").ToLowerInvariant();
+                        if (string.IsNullOrEmpty(eventId) || string.IsNullOrEmpty(eventType))
+                        {
+                            GD.PushWarning($"MapLoader event trigger at {mapId} ({cell.X},{cell.Y}) requires event_id and event_type.");
+                            break;
+                        }
+
+                        var eventTrigger = new Dictionary
+                        {
+                            { "event_id", eventId },
+                            { "event_type", eventType },
+                            { "grid_pos", cell }
+                        };
+                        if (eventType == "spawn_enemies")
+                        {
+                            eventTrigger["enemy_unit_id"] = GetTileString(markerLayer, tileData, "enemy_unit_id", "");
+                            eventTrigger["enemy_count"] = GetTileInt(markerLayer, tileData, "enemy_count", 0);
+                            eventTrigger["aggro_range"] = GetTileInt(markerLayer, tileData, "aggro_range", 4);
+                        }
+
+                        if (eventDefinitionsById.TryGetValue(eventId, out var existingDefinition))
+                        {
+                            if (!HaveSameEventDefinition(existingDefinition, eventTrigger))
+                            {
+                                GD.PushError($"Map event '{eventId}' has conflicting definitions; every marker with the same event_id must use the same event settings.");
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            eventDefinitionsById[eventId] = CopyDictionary(eventTrigger);
+                        }
+
+                        eventTriggers.Add(eventTrigger);
+                        break;
+                    }
                     case "prop":
                     case "chest":
                     case "sign":
@@ -719,6 +761,11 @@ public partial class MapLoader : Node
             mapData["transitions"] = transitions;
         }
 
+        if (eventTriggers.Count > 0)
+        {
+            mapData["event_triggers"] = eventTriggers;
+        }
+
         if (props.Count > 0)
         {
             mapData["props"] = props;
@@ -790,6 +837,15 @@ public partial class MapLoader : Node
 
         var fallbackText = value.ToString().Trim();
         return string.IsNullOrEmpty(fallbackText) ? fallback : fallbackText;
+    }
+
+    private static bool HaveSameEventDefinition(Dictionary left, Dictionary right)
+    {
+        return GetString(left, "event_id", "") == GetString(right, "event_id", "")
+            && GetString(left, "event_type", "") == GetString(right, "event_type", "")
+            && GetString(left, "enemy_unit_id", "") == GetString(right, "enemy_unit_id", "")
+            && GetInt(left, "enemy_count", 0) == GetInt(right, "enemy_count", 0)
+            && GetInt(left, "aggro_range", 4) == GetInt(right, "aggro_range", 4);
     }
 
     private static int GetTileInt(TileMapLayer layer, TileData tileData, string key, int fallback)

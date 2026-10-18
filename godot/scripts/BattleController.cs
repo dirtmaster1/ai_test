@@ -57,6 +57,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly HashSet<Vector2I> _wallCellSet = new();
     private readonly System.Collections.Generic.Dictionary<Vector2I, Dictionary> _mapDoorByCell = new();
     private readonly Array<Dictionary> _mapTransitions = new();
+    private readonly System.Collections.Generic.Dictionary<Vector2I, Dictionary> _mapEventTriggersByCell = new();
     private readonly Array<Dictionary> _mapProps = new();
     private readonly Array<Dictionary> _lootBags = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
@@ -66,6 +67,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, int> _vendorGoldById = new();
     private readonly System.Collections.Generic.Dictionary<string, List<string>> _vendorInventoryItemIdsById = new();
     private readonly HashSet<string> _recruitedNpcIds = new();
+    private readonly HashSet<string> _triggeredEventIds = new(System.StringComparer.Ordinal);
     private readonly HashSet<string> _clearedEncounterIds = new();
     private readonly HashSet<string> _activeCombatEnemyUnitIds = new();
     private readonly HashSet<string> _activeCombatEncounterIds = new();
@@ -81,6 +83,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _lootedBagIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _revealedFogCellIdsByMap = new();
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _lootBagsByMap = new();
+    private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _eventSpawnedUnitConfigsByMap = new(System.StringComparer.OrdinalIgnoreCase);
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _pendingLevelUpNoticesByUnitId = new();
     private readonly RandomNumberGenerator _lootRng = new();
 
@@ -1916,6 +1919,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mapDoors.Clear();
         _mapDoorByCell.Clear();
         _mapTransitions.Clear();
+        _mapEventTriggersByCell.Clear();
         _mapProps.Clear();
         _lootBags.Clear();
         _encounterAggroRanges.Clear();
@@ -1975,6 +1979,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _mapTransitions.Add(transition);
         }
 
+        LoadEventTriggersFromMapData(mapData);
         LoadPropsFromMap(mapData);
         SyncDoorVisualStateForCurrentMap();
 
@@ -1988,6 +1993,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         SpawnEnemiesFromMap(mapData);
+        SpawnPreviouslyTriggeredEventEnemies(_currentMapId);
         CenterViewOnCurrentFocus();
     }
 
@@ -2030,6 +2036,229 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
+    private void LoadEventTriggersFromMapData(Dictionary mapData)
+        {
+            _mapEventTriggersByCell.Clear();
+            foreach (var trigger in TryGetDictionaryArray(mapData, "event_triggers"))
+            {
+                var eventId = GetString(trigger, "event_id", "");
+                var cell = GetVector2I(trigger, "grid_pos", new Vector2I(-9999, -9999));
+                if (string.IsNullOrWhiteSpace(eventId) || !IsInBounds(cell))
+                {
+                    GD.PushWarning($"Map '{_currentMapId}' contains an event trigger with an invalid event_id or grid_pos.");
+                    continue;
+                }
+
+                _mapEventTriggersByCell[cell] = CopyDictionary(trigger);
+            }
+        }
+
+        private void TriggerMapEventAtCell(Vector2I cell)
+        {
+            if (!_mapEventTriggersByCell.TryGetValue(cell, out var trigger))
+            {
+                return;
+            }
+
+            var eventId = GetString(trigger, "event_id", "");
+            if (string.IsNullOrWhiteSpace(eventId) || _triggeredEventIds.Contains(eventId))
+            {
+                return;
+            }
+
+            if (!ExecuteMapEvent(trigger))
+            {
+                return;
+            }
+
+            _triggeredEventIds.Add(eventId);
+            _persistence?.PersistSaveGame(false);
+        }
+
+        private bool ExecuteMapEvent(Dictionary trigger)
+        {
+            var eventType = GetString(trigger, "event_type", "").ToLowerInvariant();
+            switch (eventType)
+            {
+                case "spawn_enemies":
+                    return SpawnEnemiesForMapEvent(trigger);
+                default:
+                    GD.PushWarning($"Map event '{GetString(trigger, "event_id", "")}' has unsupported event_type '{eventType}'.");
+                    return false;
+            }
+        }
+
+        private bool SpawnEnemiesForMapEvent(Dictionary trigger)
+        {
+            var eventId = GetString(trigger, "event_id", "");
+            var enemyUnitId = GetString(trigger, "enemy_unit_id", "");
+            var enemyCount = GetInt(trigger, "enemy_count", 0);
+            if (_gameData == null || string.IsNullOrWhiteSpace(enemyUnitId) || enemyCount <= 0)
+            {
+                GD.PushError($"Map event '{eventId}' must specify a valid enemy_unit_id and positive enemy_count.");
+                return false;
+            }
+
+            var enemyTemplate = _gameData.GetCharacterTemplate(enemyUnitId);
+            if (enemyTemplate.Count == 0 || GetString(enemyTemplate, "team", "") != "enemy")
+            {
+                GD.PushError($"Map event '{eventId}' references unknown or non-enemy character template '{enemyUnitId}'.");
+                return false;
+            }
+
+            var footprintSize = Mathf.Clamp(GetInt(enemyTemplate, "footprint_size", 1), 1, 4);
+            var spawnCells = FindAvailableEventSpawnCells(
+                GetVector2I(trigger, "grid_pos", Vector2I.Zero),
+                footprintSize,
+                enemyCount);
+            if (spawnCells.Count < enemyCount)
+            {
+                GD.PushWarning($"Map event '{eventId}' needs {enemyCount} valid spawn cells but only {spawnCells.Count} are available.");
+                return false;
+            }
+
+            var aggroRange = Mathf.Max(0, GetInt(trigger, "aggro_range", DefaultAggroTriggerRange));
+            var spawnConfigs = new Array<Dictionary>();
+            for (var i = 0; i < enemyCount; i++)
+            {
+                var unitId = $"{eventId}-spawn-{i + 1}";
+                if (FindUnitById(unitId) != null)
+                {
+                    GD.PushError($"Map event '{eventId}' cannot spawn duplicate unit id '{unitId}'.");
+                    return false;
+                }
+
+                var config = CopyDictionary(enemyTemplate);
+                config["id"] = unitId;
+                config["team"] = "enemy";
+                config["grid_pos"] = spawnCells[i];
+                config["encounter_id"] = eventId;
+                config["aggro_range"] = aggroRange;
+                spawnConfigs.Add(config);
+            }
+
+            if (!_eventSpawnedUnitConfigsByMap.TryGetValue(_currentMapId, out var storedConfigs))
+            {
+                storedConfigs = new Array<Dictionary>();
+                _eventSpawnedUnitConfigsByMap[_currentMapId] = storedConfigs;
+            }
+
+            foreach (var config in spawnConfigs)
+            {
+                storedConfigs.Add(CopyDictionary(config));
+                var previousEnemyCount = _enemyUnits.Count;
+                SpawnUnit(config);
+                if (_flowState == BattleFlowState.Combat)
+                {
+                    EnlistCombatEnemy(_enemyUnits[previousEnemyCount]);
+                }
+            }
+
+            _encounterAggroRanges[eventId] = aggroRange;
+            return true;
+        }
+
+        private List<Vector2I> FindAvailableEventSpawnCells(Vector2I start, int footprintSize, int requestedCount)
+        {
+            var availableCells = new List<Vector2I>();
+            var reservedCells = new HashSet<Vector2I>();
+            var visited = new HashSet<Vector2I> { start };
+            var frontier = new System.Collections.Generic.Queue<Vector2I>();
+            frontier.Enqueue(start);
+
+            while (frontier.Count > 0 && availableCells.Count < requestedCount)
+            {
+                var current = frontier.Dequeue();
+                if (IsEventSpawnFootprintAvailable(current, footprintSize, reservedCells))
+                {
+                    availableCells.Add(current);
+                    foreach (var occupiedCell in GetFootprintCells(current, footprintSize))
+                    {
+                        reservedCells.Add(occupiedCell);
+                    }
+                }
+
+                foreach (var direction in MovementDirections)
+                {
+                    var next = current + direction;
+                    if (!visited.Add(next) || !IsInBounds(next) || IsBlockedCell(next))
+                    {
+                        continue;
+                    }
+
+                    frontier.Enqueue(next);
+                }
+            }
+
+            return availableCells;
+        }
+
+        private bool IsEventSpawnFootprintAvailable(Vector2I origin, int footprintSize, HashSet<Vector2I> reservedCells)
+        {
+            foreach (var cell in GetFootprintCells(origin, footprintSize))
+            {
+                if (!IsInBounds(cell) || IsBlockedCell(cell) || IsOccupied(cell) || reservedCells.Contains(cell))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static IEnumerable<Vector2I> GetFootprintCells(Vector2I origin, int footprintSize)
+        {
+            for (var y = 0; y < footprintSize; y++)
+            {
+                for (var x = 0; x < footprintSize; x++)
+                {
+                    yield return origin + new Vector2I(x, y);
+                }
+            }
+        }
+
+        private void SpawnPreviouslyTriggeredEventEnemies(string mapId)
+        {
+            if (!_eventSpawnedUnitConfigsByMap.TryGetValue(mapId, out var storedConfigs))
+            {
+                return;
+            }
+
+            foreach (var storedConfig in storedConfigs)
+            {
+                var unitId = GetString(storedConfig, "id", "");
+                var eventId = GetString(storedConfig, "encounter_id", "");
+                if (string.IsNullOrEmpty(unitId)
+                    || !_triggeredEventIds.Contains(eventId)
+                    || _defeatedEnemyIds.Contains(unitId)
+                    || _clearedEncounterIds.Contains(eventId)
+                    || FindUnitById(unitId) != null)
+                {
+                    continue;
+                }
+
+                var config = CopyDictionary(storedConfig);
+                var footprintSize = Mathf.Clamp(GetInt(config, "footprint_size", 1), 1, 4);
+                var spawnCell = GetVector2I(config, "grid_pos", Vector2I.Zero);
+                if (!IsEventSpawnFootprintAvailable(spawnCell, footprintSize, new HashSet<Vector2I>()))
+                {
+                    var availableCells = FindAvailableEventSpawnCells(spawnCell, footprintSize, 1);
+                    if (availableCells.Count == 0)
+                    {
+                        GD.PushWarning($"Could not restore event-spawned unit '{unitId}' on map '{mapId}': no valid spawn cell is available.");
+                        continue;
+                    }
+
+                    spawnCell = availableCells[0];
+                    config["grid_pos"] = spawnCell;
+                    storedConfig["grid_pos"] = spawnCell;
+                }
+
+                _encounterAggroRanges[eventId] = Mathf.Max(0, GetInt(config, "aggro_range", DefaultAggroTriggerRange));
+                SpawnUnit(config);
+            }
+    }
+
     private void SpawnUnit(Dictionary config)
     {
         var unit = _unitScene.Instantiate<Unit>();
@@ -2069,6 +2298,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         unit.SetGridPos(targetCell);
         UpdateFogOfWar();
         _eventBus?.EmitSignal(EventBus.SignalName.UnitMoved, unit, fromCell, targetCell);
+        if (unit.Team == "player")
+        {
+            TriggerMapEventAtCell(targetCell);
+        }
         SetStatusHelp();
         QueueRedraw();
         return true;
@@ -7323,10 +7556,28 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
+        TriggerEventsForMovedPartyMembers(priorPositions, orderedParty);
         ResolveExplorationTraps();
         CenterViewOnCurrentFocus();
         QueueRedraw();
         return true;
+    }
+
+    private void TriggerEventsForMovedPartyMembers(
+        System.Collections.Generic.Dictionary<Unit, Vector2I> priorPositions,
+        List<Unit> orderedParty)
+    {
+        foreach (var member in orderedParty)
+        {
+            if (!IsUsableUnit(member) || member.IsDead
+                || !priorPositions.TryGetValue(member, out var priorPosition)
+                || member.GridPos == priorPosition)
+            {
+                continue;
+            }
+
+            TriggerMapEventAtCell(member.GridPos);
+        }
     }
 
     private async void BeginExplorationClickMove(Vector2I targetCell)
@@ -7659,6 +7910,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _fogPreviousOverlayTexture = null;
             SetFogStepBlend(1.0f);
         }
+        TriggerEventsForMovedPartyMembers(priorPositions, orderedParty);
         ResolveExplorationTraps();
         QueueRedraw();
         return true;
@@ -8052,6 +8304,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.RevealedFogCellIdsByMap => _revealedFogCellIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;
+    HashSet<string> IGamePersistenceHost.TriggeredEventIds => _triggeredEventIds;
+    System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.EventSpawnedUnitConfigsByMap => _eventSpawnedUnitConfigsByMap;
 
     string IGamePersistenceHost.GetFlowStateToken() => _flowState == BattleFlowState.Combat ? "combat" : (_flowState == BattleFlowState.Defeat ? "defeat" : "exploration");
     string IGamePersistenceHost.GetExplorerUnitId() => _explorerUnit?.UnitId ?? "";

@@ -22,6 +22,8 @@ public interface IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> LootedBagIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, HashSet<string>> RevealedFogCellIdsByMap { get; }
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> LootBagsByMap { get; }
+    HashSet<string> TriggeredEventIds { get; }
+    System.Collections.Generic.Dictionary<string, Array<Dictionary>> EventSpawnedUnitConfigsByMap { get; }
 
     string GetFlowStateToken();
     string GetExplorerUnitId();

@@ -123,6 +123,21 @@ Enemies with the same `encounter_id` enter combat and persist as one encounter. 
 
 Enemy units inherit the marker's horizontal flip, vertical flip, and transpose (rotation), including transforms on tile alternatives. These affect the world sprite, follow the unit when it moves, and persist in saves. Turn-order portraits remain upright. `uses_tile_visual` is for static props and cosmetics; it is ignored on enemy and party spawn markers to avoid drawing a second, stationary copy. Test map edits in a new run, since saved encounters can restore previous unit state.
 
+### Event trigger markers
+
+Event triggers are hidden authoring markers: they do not appear as map visuals or hoverable interactables. A trigger runs when any party member moves onto its cell.
+
+Set these custom data keys on an event trigger tile or tile alternative:
+
+- `marker_type`: `event_trigger`
+- `event_id`: stable, globally unique ID shared by all tiles that activate the same one-time event
+- `event_type`: currently `spawn_enemies`
+- `enemy_unit_id`: enemy character template ID from `characters.templates` in `resources/game_data.json`
+- `enemy_count`: number of enemies to spawn
+- `aggro_range`: optional detection range; defaults to `4`
+
+Create tile alternatives when configuring different events so editing one event does not change other markers that share the base tile. Tiles with the same `event_id` execute only once, even if the party enters another linked tile or reloads the save. `spawn_enemies` places the requested enemies in the nearest valid, unoccupied cells around the tile that triggered the event. Spawned units use the `event_id` as their encounter ID and are restored with the map.
+
 ### NPC markers
 
 Set these custom data keys on a tile or tile alternative:
