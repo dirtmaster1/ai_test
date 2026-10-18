@@ -22,12 +22,36 @@ public partial class AudioSettingsChecks : Node
             failures.Add("Background music must use an amplified, limited bus to maintain loudness without clipping.");
         }
 
-        if (musicPlayer.Stream is not AudioStreamWav music
-            || music.LoopMode != AudioStreamWav.LoopModeEnum.Forward
-            || Mathf.Abs((float)music.GetLength() - 180.0f) > 5.0f
-            || music.LoopEnd != Mathf.RoundToInt((float)(music.GetLength() * music.MixRate)))
+        var explorationMusic = musicPlayer.Stream as AudioStreamWav;
+        if (explorationMusic == null
+            || explorationMusic.LoopMode != AudioStreamWav.LoopModeEnum.Forward
+            || explorationMusic.GetLength() <= 0.0
+            || explorationMusic.LoopBegin != 0
+            || explorationMusic.LoopEnd != Mathf.RoundToInt((float)(explorationMusic.GetLength() * explorationMusic.MixRate)))
         {
             failures.Add("The forest town music must loop through the full track duration.");
+        }
+
+        var combatMusic = GD.Load<AudioStreamWav>("res://assets/audio/combat_1.wav");
+        if (combatMusic == null
+            || combatMusic.LoopMode != AudioStreamWav.LoopModeEnum.Forward
+            || combatMusic.LoopBegin != 0
+            || combatMusic.LoopEnd != Mathf.RoundToInt((float)(combatMusic.GetLength() * combatMusic.MixRate)))
+        {
+            failures.Add("The combat music must loop through the full track duration.");
+        }
+
+        var eventBus = GetNode<EventBus>("/root/EventBus");
+        eventBus.EmitSignal(EventBus.SignalName.CombatStarted);
+        if (musicPlayer.Stream != combatMusic || !musicPlayer.Playing)
+        {
+            failures.Add("Combat start must switch the music player to the looping combat soundtrack.");
+        }
+
+        eventBus.EmitSignal(EventBus.SignalName.CombatEnded);
+        if (musicPlayer.Stream != explorationMusic || !musicPlayer.Playing)
+        {
+            failures.Add("Combat end must restore the exploration soundtrack.");
         }
 
         var originalVolume = audioManager.BackgroundMusicVolume;

@@ -2,13 +2,16 @@ using Godot;
 
 public partial class AudioManager : Node
 {
-    private const string MusicPath = "res://assets/audio/forest_town_theme.wav";
+    private const string ExplorationMusicPath = "res://assets/audio/forest_town_theme.wav";
+    private const string CombatMusicPath = "res://assets/audio/combat_1.wav";
     private const string SettingsPath = "user://dark_dungeon_tactics_audio.cfg";
     private const string MusicBusName = "BackgroundMusic";
     private const float SilentVolumeDb = -80.0f;
     private const float MusicMakeupGainDb = 4.0f;
 
     private AudioStreamPlayer _musicPlayer;
+    private AudioStreamWav _explorationMusic;
+    private AudioStreamWav _combatMusic;
     private float _backgroundMusicVolume = 1.0f;
 
     public float BackgroundMusicVolume => _backgroundMusicVolume;
@@ -18,27 +21,69 @@ public partial class AudioManager : Node
         ProcessMode = ProcessModeEnum.Always;
         _backgroundMusicVolume = LoadBackgroundMusicVolume();
 
-        var music = GD.Load<AudioStreamWav>(MusicPath);
-        if (music == null)
+        _explorationMusic = LoadLoopingMusic(ExplorationMusicPath);
+        if (_explorationMusic == null)
         {
-            GD.PushError($"Could not load background music at '{MusicPath}'.");
             return;
         }
 
-        ConfigureMusicBus();
-        music.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
-        music.LoopBegin = 0;
-        music.LoopEnd = Mathf.RoundToInt((float)(music.GetLength() * music.MixRate));
+        _combatMusic = LoadLoopingMusic(CombatMusicPath);
 
+        var eventBus = GetNode<EventBus>("/root/EventBus");
+        eventBus.CombatStarted += SwitchToCombatMusic;
+        eventBus.CombatEnded += SwitchToExplorationMusic;
+
+        ConfigureMusicBus();
         _musicPlayer = new AudioStreamPlayer
         {
             Name = "BackgroundMusicPlayer",
-            Stream = music,
+            Stream = _explorationMusic,
             Bus = MusicBusName,
             ProcessMode = ProcessModeEnum.Always
         };
         AddChild(_musicPlayer);
         ApplyBackgroundMusicVolume();
+        _musicPlayer.Play();
+    }
+
+    private static AudioStreamWav LoadLoopingMusic(string path)
+    {
+        var music = GD.Load<AudioStreamWav>(path);
+        if (music == null)
+        {
+            GD.PushError($"Could not load music at '{path}'.");
+            return null;
+        }
+
+        music.LoopMode = AudioStreamWav.LoopModeEnum.Forward;
+        music.LoopBegin = 0;
+        music.LoopEnd = Mathf.RoundToInt((float)(music.GetLength() * music.MixRate));
+        return music;
+    }
+
+    private void SwitchToCombatMusic()
+    {
+        SwitchMusic(_combatMusic);
+    }
+
+    private void SwitchToExplorationMusic()
+    {
+        SwitchMusic(_explorationMusic);
+    }
+
+    private void SwitchMusic(AudioStreamWav music)
+    {
+        if (_musicPlayer == null || music == null)
+        {
+            return;
+        }
+
+        if (_musicPlayer.Stream == music && _musicPlayer.Playing)
+        {
+            return;
+        }
+
+        _musicPlayer.Stream = music;
         _musicPlayer.Play();
     }
 
