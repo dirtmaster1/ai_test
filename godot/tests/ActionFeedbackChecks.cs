@@ -130,6 +130,8 @@ public partial class ActionFeedbackChecks : BattleController
             ["magic-potion"] = new(1, 7),
             ["gold"] = new(0, 8),
             ["rusty-key"] = new(1, 8),
+            ["pick-lock"] = new(2, 8),
+            ["disarm-trap"] = new(3, 8),
             ["small-shield"] = new(0, 2),
             ["poison-strike"] = new(4, 6)
         };

@@ -96,6 +96,8 @@ public partial class HudController : Control
         ["healing-potion"] = new(0, 7),
         ["magic-potion"] = new(1, 7),
         ["rusty-key"] = new(1, 8),
+        ["pick-lock"] = new(2, 8),
+        ["disarm-trap"] = new(3, 8),
         ["melee"] = new(3, 5),
         ["ranged"] = new(5, 5),
         ["defend"] = new(6, 5),

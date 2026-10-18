@@ -90,10 +90,15 @@ The atlas is now 224x288px. Headgear and the appended 2x2 block use these cells:
 | `magic-potion` | `(1, 7)` | Row 8, column 2 |
 | `gold` | `(0, 8)` | Row 9, column 1 |
 | `rusty-key` | `(1, 8)` | Row 9, column 2 |
+| `pick-lock` | `(2, 8)` | Row 9, column 3 |
+| `disarm-trap` | `(3, 8)` | Row 9, column 4 |
 
 The Healer's Circlet mapping uses the requested first headgear sprite, and the
 Mage's Amulet uses the second. `gold` intentionally replaces the previous
-shield-cell mapping; other icon coordinates remain unchanged.
+shield-cell mapping; other icon coordinates remain unchanged. The `pick-lock`
+(padlock with an inserted key) and `disarm-trap` (bear trap crossed out in red)
+cells supply the thief utility ability icons for the action bar and the party
+menu abilities tab.
 After a C# build, run
 `godot --headless --path . --script res://tests/action_feedback_test.gd -- --icon-only`
 to check shared regions, new cell artwork, and the Poison Strike action-bar icon.
