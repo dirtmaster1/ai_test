@@ -42,10 +42,10 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Party (P)"
 
-[node name="HelpButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+[node name="ReserveButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Help (H)"
+text = "Reserves (R)"
 
 [node name="SaveButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
@@ -57,10 +57,99 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Load"
 
-[node name="ReserveButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+[node name="SettingsButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Reserves (R)"
+text = "Settings"
+
+[node name="SettingsPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -210.0
+offset_top = -130.0
+offset_right = 210.0
+offset_bottom = 130.0
+
+[node name="SettingsVBox" type="VBoxContainer" parent="SettingsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SettingsHeader" type="Label" parent="SettingsPanel/SettingsVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Settings"
+
+[node name="SettingsButtons" type="VBoxContainer" parent="SettingsPanel/SettingsVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="HelpButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Help (H)"
+
+[node name="SoundFxButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sound FX"
+
+[node name="CloseSettingsButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Close"
+
+[node name="SoundFxPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -130.0
+offset_right = 260.0
+offset_bottom = 130.0
+
+[node name="SoundFxVBox" type="VBoxContainer" parent="SoundFxPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SoundFxHeader" type="Label" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Sound FX"
+
+[node name="BackgroundVolumeRow" type="HBoxContainer" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="BackgroundVolumeLabel" type="Label" parent="SoundFxPanel/SoundFxVBox/BackgroundVolumeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Background Volume"
+
+[node name="BackgroundVolumeValue" type="Label" parent="SoundFxPanel/SoundFxVBox/BackgroundVolumeRow"]
+layout_mode = 2
+text = "100%"
+horizontal_alignment = 2
+
+[node name="BackgroundVolumeSlider" type="HSlider" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+min_value = 0.0
+max_value = 100.0
+value = 100.0
+tick_count = 11
+ticks_on_borders = true
+focus_mode = 2
+
+[node name="SoundFxBackButton" type="Button" parent="SoundFxPanel/SoundFxVBox"]
+layout_mode = 2
+text = "Back"
 
 [node name="HelpPanel" type="PanelContainer" parent="."]
 visible = false

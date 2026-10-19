@@ -292,10 +292,18 @@ public partial class ActionFeedbackChecks : BattleController
         Check(_testHud.GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader").GetParent() == utilityMenu
             && utilityButtons.GetParent() == utilityMenu,
             "Utility heading and buttons must share one vertical menu");
+        var expectedUtilityButtons = new[] { "InventoryButton", "ReserveButton", "SaveButton", "LoadButton", "SettingsButton" };
+        Check(utilityButtons.GetChildCount() == expectedUtilityButtons.Length,
+            "Utility menu must contain only the five requested controls");
+        for (var buttonIndex = 0; buttonIndex < expectedUtilityButtons.Length; buttonIndex++)
+        {
+            Check(utilityButtons.GetChild(buttonIndex).Name == expectedUtilityButtons[buttonIndex],
+                "Utility controls must be ordered Party, Reserves, Save, Load, Settings");
+        }
         var widestUtilityButtonWidth = Mathf.Max(
             Mathf.Max(
                 _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton").GetCombinedMinimumSize().X,
-                _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton").GetCombinedMinimumSize().X),
+                _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton").GetCombinedMinimumSize().X),
             Mathf.Max(
                 Mathf.Max(
                     _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton").GetCombinedMinimumSize().X,
@@ -305,13 +313,27 @@ public partial class ActionFeedbackChecks : BattleController
             && utilityPanel.Size.X - widestUtilityButtonWidth <= 20.1f,
             "Utility menu width must fit the widest button with only modest padding");
         var utilityPanelStyle = utilityPanel.GetThemeStylebox("panel", "PanelContainer") as StyleBoxFlat;
-        var utilityButtonStyle = _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton")
+        var utilityButtonStyle = _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton")
             .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
         Check(utilityPanelStyle != null
             && utilityPanelStyle.BgColor.A == 0.0f
             && utilityButtonStyle != null
             && utilityButtonStyle.BgColor.A > 0.0f,
             "Utility panel background must be transparent while buttons remain styled");
+        var settingsPanel = _testHud.GetNode<PanelContainer>("SettingsPanel");
+        var helpButton = _testHud.GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/HelpButton");
+        var soundFxButton = _testHud.GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
+        _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton").EmitSignal(Button.SignalName.Pressed);
+        Check(settingsPanel.Visible && helpButton.Visible && soundFxButton.Visible,
+            "Settings must open a submenu containing Help and Sound FX");
+        soundFxButton.EmitSignal(Button.SignalName.Pressed);
+        Check(!settingsPanel.Visible && _testHud.GetNode<PanelContainer>("SoundFxPanel").Visible,
+            "Sound FX must open its submenu from Settings");
+        _testHud.GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton").EmitSignal(Button.SignalName.Pressed);
+        helpButton.EmitSignal(Button.SignalName.Pressed);
+        Check(!settingsPanel.Visible && _testHud.GetNode<PanelContainer>("HelpPanel").Visible,
+            "Help must open from Settings instead of the utility controls");
+        _testHud.GetNode<Button>("HelpPanel/HelpVBox/HelpButtons/CloseHelpButton").EmitSignal(Button.SignalName.Pressed);
         var combatLogPanel = _testHud.GetNode<PanelContainer>("CombatLogPanel");
         var combatLogPanelStyle = combatLogPanel.GetThemeStylebox("panel", "PanelContainer") as StyleBoxFlat;
         var combatLogListStyle = _testHud.GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog")

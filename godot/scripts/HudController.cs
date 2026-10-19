@@ -116,6 +116,18 @@ public partial class HudController : Control
     private PanelContainer _utilityPanel;
     private Label _utilityHeader;
     private Button _helpButton;
+    private Button _settingsButton;
+    private Button _soundFxButton;
+    private Button _closeSettingsButton;
+    private PanelContainer _settingsPanel;
+    private Label _settingsHeader;
+    private PanelContainer _soundFxPanel;
+    private Label _soundFxHeader;
+    private Label _backgroundVolumeLabel;
+    private Label _backgroundVolumeValue;
+    private HSlider _backgroundVolumeSlider;
+    private Button _soundFxBackButton;
+    private AudioManager _audioManager;
     private Button _saveButton;
     private Button _loadButton;
     private PanelContainer _helpPanel;
@@ -253,7 +265,21 @@ public partial class HudController : Control
 
         _utilityPanel = GetNode<PanelContainer>("UtilityPanel");
         _utilityHeader = GetNode<Label>("UtilityPanel/UtilityVBox/UtilityHeader");
-        _helpButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/HelpButton");
+        _helpButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/HelpButton");
+        _settingsButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton");
+        _soundFxButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
+        _closeSettingsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/CloseSettingsButton");
+        _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
+        _settingsHeader = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsHeader");
+        _soundFxPanel = GetNode<PanelContainer>("SoundFxPanel");
+        _soundFxHeader = GetNode<Label>("SoundFxPanel/SoundFxVBox/SoundFxHeader");
+        _backgroundVolumeLabel = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeLabel");
+        _backgroundVolumeValue = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeValue");
+        _backgroundVolumeSlider = GetNode<HSlider>("SoundFxPanel/SoundFxVBox/BackgroundVolumeSlider");
+        _soundFxBackButton = GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton");
+        _audioManager = GetNode<AudioManager>("/root/AudioManager");
+        _backgroundVolumeSlider.Value = _audioManager.BackgroundMusicVolume * 100.0f;
+        UpdateBackgroundVolumeLabel(_backgroundVolumeSlider.Value);
         _saveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton");
         _loadButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/LoadButton");
         _helpPanel = GetNode<PanelContainer>("HelpPanel");
@@ -361,7 +387,12 @@ public partial class HudController : Control
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
         _reserveButton.Pressed += OnReserveButtonPressed;
+        _settingsButton.Pressed += OnSettingsButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
+        _soundFxButton.Pressed += OnSoundFxButtonPressed;
+        _closeSettingsButton.Pressed += OnCloseSettingsButtonPressed;
+        _soundFxBackButton.Pressed += OnSoundFxBackButtonPressed;
+        _backgroundVolumeSlider.ValueChanged += OnBackgroundVolumeChanged;
         _saveButton.Pressed += OnSaveButtonPressed;
         _loadButton.Pressed += OnLoadButtonPressed;
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
@@ -482,6 +513,31 @@ public partial class HudController : Control
         if (_helpButton != null)
         {
             _helpButton.Pressed -= OnHelpButtonPressed;
+        }
+
+        if (_settingsButton != null)
+        {
+            _settingsButton.Pressed -= OnSettingsButtonPressed;
+        }
+
+        if (_soundFxButton != null)
+        {
+            _soundFxButton.Pressed -= OnSoundFxButtonPressed;
+        }
+
+        if (_closeSettingsButton != null)
+        {
+            _closeSettingsButton.Pressed -= OnCloseSettingsButtonPressed;
+        }
+
+        if (_soundFxBackButton != null)
+        {
+            _soundFxBackButton.Pressed -= OnSoundFxBackButtonPressed;
+        }
+
+        if (_backgroundVolumeSlider != null)
+        {
+            _backgroundVolumeSlider.ValueChanged -= OnBackgroundVolumeChanged;
         }
 
         if (_saveButton != null)
@@ -762,9 +818,49 @@ public partial class HudController : Control
         ToggleReserveVisible();
     }
 
+    private void OnSettingsButtonPressed()
+    {
+        _settingsPanel.Visible = !_settingsPanel.Visible;
+        if (_settingsPanel.Visible)
+        {
+            _settingsPanel.MoveToFront();
+        }
+    }
+
     private void OnHelpButtonPressed()
     {
+        _settingsPanel.Visible = false;
         ToggleHelpVisible();
+    }
+
+    private void OnSoundFxButtonPressed()
+    {
+        _settingsPanel.Visible = false;
+        _soundFxPanel.Visible = true;
+        _soundFxPanel.MoveToFront();
+    }
+
+    private void OnCloseSettingsButtonPressed()
+    {
+        _settingsPanel.Visible = false;
+    }
+
+    private void OnSoundFxBackButtonPressed()
+    {
+        _soundFxPanel.Visible = false;
+        _settingsPanel.Visible = true;
+        _settingsPanel.MoveToFront();
+    }
+
+    private void OnBackgroundVolumeChanged(double value)
+    {
+        UpdateBackgroundVolumeLabel(value);
+        _audioManager.SetBackgroundMusicVolume(Mathf.Clamp((float)value / 100.0f, 0.0f, 1.0f));
+    }
+
+    private void UpdateBackgroundVolumeLabel(double value)
+    {
+        _backgroundVolumeValue.Text = $"{Mathf.RoundToInt((float)value)}%";
     }
 
     private void OnSaveButtonPressed()
@@ -1352,6 +1448,12 @@ public partial class HudController : Control
         var inventorySize = new Vector2(Mathf.Min(1040.0f, size.X - Margin * 2.0f), Mathf.Min(620.0f, size.Y - Margin * 2.0f));
         var inventoryPosition = new Vector2((size.X - inventorySize.X) * 0.5f, (size.Y - inventorySize.Y) * 0.5f);
         ApplyPanelRect(_inventoryPanel, new Rect2(inventoryPosition, inventorySize), size);
+        var settingsSize = new Vector2(420.0f, 260.0f);
+        var settingsPosition = (size - settingsSize) * 0.5f;
+        ApplyPanelRect(_settingsPanel, new Rect2(settingsPosition, settingsSize), size);
+        var soundFxSize = new Vector2(520.0f, 260.0f);
+        var soundFxPosition = (size - soundFxSize) * 0.5f;
+        ApplyPanelRect(_soundFxPanel, new Rect2(soundFxPosition, soundFxSize), size);
     }
 
     private void RegisterDraggable(Control handle, Control panel)
@@ -1588,6 +1690,8 @@ public partial class HudController : Control
         StylePanel(_combatLogPanel, transparentUtilityStyle);
         StylePanel(_inventoryPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
+        StylePanel(_settingsPanel, panelStyle);
+        StylePanel(_soundFxPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
         StylePanel(_vendorPanel, panelStyle);
         StylePanel(_reservePanel, panelStyle);
@@ -1595,6 +1699,8 @@ public partial class HudController : Control
 
         StyleHeaderLabel(_utilityHeader, headerColor);
         StyleHeaderLabel(_helpHeader, headerColor);
+        StyleHeaderLabel(_settingsHeader, headerColor);
+        StyleHeaderLabel(_soundFxHeader, headerColor);
         StyleHeaderLabel(_partyHeader, headerColor);
         StyleHeaderLabel(_combatLogHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
@@ -1613,6 +1719,8 @@ public partial class HudController : Control
         StyleBodyLabel(_movementCounterLabel, bodyColor, 14);
         TacticalTheme.ApplyLabel(_actionDragHandle, headerColor, 22);
         StyleBodyLabel(_helpBody, bodyColor, 14);
+        StyleBodyLabel(_backgroundVolumeLabel, bodyColor, 14);
+        StyleBodyLabel(_backgroundVolumeValue, headerColor, 14);
         TacticalTheme.ApplyLabel(_inventoryUnitLabel, TacticalTheme.BrassBright, 20);
         _inventoryUnitLabel.AddThemeFontOverride("font", new FontVariation
         {
@@ -1628,6 +1736,10 @@ public partial class HudController : Control
 
         StyleButton(_inventoryButton, false);
         StyleButton(_helpButton, false);
+        StyleButton(_settingsButton, false);
+        StyleButton(_soundFxButton, false);
+        StyleButton(_closeSettingsButton, false);
+        StyleButton(_soundFxBackButton, false);
         StyleButton(_saveButton, false);
         StyleButton(_loadButton, false);
         StyleButton(_reserveButton, false);
