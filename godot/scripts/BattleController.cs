@@ -119,6 +119,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Vector2I _pendingExplorationClickTarget;
     private bool _hasPendingExplorationManualMove;
     private Vector2I _pendingExplorationManualDelta;
+    private bool _isPlayerMovementAnimating;
     private bool _isPanningView;
     private bool _leftMouseClickCandidate;
     private bool _ignoreNextCombatTargetClickRelease;
@@ -1129,7 +1130,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _persistence.PersistSaveGame(false);
     }
 
-    private void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
+    private async void TryResolvePlayerActionAtCell(Unit active, Vector2I targetCell)
     {
         UpdateFogOfWar();
         EnlistNearbyCombatEnemies();
@@ -1208,14 +1209,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (actionProfile.ActionType == "charge")
         {
-            if (!TryUseCharge(active, targetCell, actionProfile))
+            if (_isPlayerMovementAnimating)
             {
                 return;
             }
 
-            var result = ResolveSuccessfulAction("attack");
-            ApplyActionResult(result);
-            BeginPostPlayerActionMouseMoveLock();
+            _isPlayerMovementAnimating = true;
+            try
+            {
+                if (!await TryUseChargeAsync(active, targetCell, actionProfile))
+                {
+                    return;
+                }
+
+                var result = ResolveSuccessfulAction("attack");
+                ApplyActionResult(result);
+                BeginPostPlayerActionMouseMoveLock();
+            }
+            finally
+            {
+                _isPlayerMovementAnimating = false;
+            }
             return;
         }
 
@@ -1277,13 +1291,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        var moveResult = ResolveMoveAction(active, targetCell, endTurnOnSuccess: false);
-        if (moveResult.Success)
+        if (_isPlayerMovementAnimating)
         {
-            ApplyActionResult(moveResult);
+            return;
         }
-        else
+
+        _isPlayerMovementAnimating = true;
+        try
         {
+            var moveResult = await ResolvePlayerMoveActionAsync(active, targetCell, endTurnOnSuccess: false);
+            if (moveResult.Success)
+            {
+                ApplyActionResult(moveResult);
+            }
+        }
+        finally
+        {
+            _isPlayerMovementAnimating = false;
         }
     }
 
@@ -1503,7 +1527,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
-    private bool TryUseCharge(Unit attacker, Vector2I targetCell, ActionProfile actionProfile)
+    private async Task<bool> TryUseChargeAsync(Unit attacker, Vector2I targetCell, ActionProfile actionProfile)
     {
         if (!IsUsableUnit(attacker) || attacker.IsDead || _flowState != BattleFlowState.Combat)
         {
@@ -1534,8 +1558,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (destinationCell != attacker.GridPos)
         {
+            var fromCell = attacker.GridPos;
+            await attacker.AnimateWalkToAsync(destinationCell, ExplorationStepSeconds * cellsUsed);
             if (!TryMoveUnit(attacker, destinationCell))
             {
+                attacker.SetGridPos(fromCell);
                 return false;
             }
 
@@ -2429,6 +2456,54 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return endTurnOnSuccess ? CombatActionResult.MoveAndEndTurnResolved : CombatActionResult.MoveResolved;
+    }
+
+    private async void MovePlayerCombatStep(Unit unit, Vector2I targetCell)
+    {
+        if (_isPlayerMovementAnimating)
+        {
+            return;
+        }
+
+        _isPlayerMovementAnimating = true;
+        try
+        {
+            var moveResult = await ResolvePlayerMoveActionAsync(unit, targetCell, endTurnOnSuccess: false);
+            ApplyActionResult(moveResult);
+        }
+        finally
+        {
+            _isPlayerMovementAnimating = false;
+        }
+    }
+
+    private async Task<CombatActionResult> ResolvePlayerMoveActionAsync(Unit unit, Vector2I targetCell, bool endTurnOnSuccess)
+    {
+        if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != "player" || !CanUnitStandAt(unit, targetCell))
+        {
+            return CombatActionResult.Failed;
+        }
+
+        if (_flowState == BattleFlowState.Combat && !unit.CanMoveThisTurn())
+        {
+            return CombatActionResult.Failed;
+        }
+
+        var movementCost = GetStepMovementCost(unit.GridPos, targetCell);
+        if (_flowState == BattleFlowState.Combat && unit.RemainingMovement < movementCost)
+        {
+            return CombatActionResult.Failed;
+        }
+
+        var fromCell = unit.GridPos;
+        await unit.AnimateWalkToAsync(targetCell, ExplorationStepSeconds);
+        var result = ResolveMoveAction(unit, targetCell, endTurnOnSuccess);
+        if (!result.Success)
+        {
+            unit.SetGridPos(fromCell);
+        }
+
+        return result;
     }
 
     private void EnlistCombatEnemyAtCell(Unit attacker, Vector2I targetCell)
@@ -7501,68 +7576,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private bool TryMoveExplorationParty(Vector2I delta)
-    {
-        if (_flowState != BattleFlowState.Exploration)
-        {
-            return false;
-        }
-
-        var leader = GetExplorerUnit();
-        if (!IsUsableUnit(leader) || leader.IsDead)
-        {
-            return false;
-        }
-
-        var orderedParty = new List<Unit>();
-        var priorPositions = new System.Collections.Generic.Dictionary<Unit, Vector2I>();
-
-        orderedParty.Add(leader);
-        priorPositions[leader] = leader.GridPos;
-
-        foreach (var player in _playerUnits)
-        {
-            if (!IsUsableUnit(player) || player.IsDead || player == leader)
-            {
-                continue;
-            }
-
-            orderedParty.Add(player);
-            priorPositions[player] = player.GridPos;
-        }
-
-        var partySet = new HashSet<Unit>(orderedParty);
-        var leaderNextCell = priorPositions[leader] + delta;
-        if (!CanExplorationLeaderEnterCell(leaderNextCell, partySet))
-        {
-            return false;
-        }
-
-        leader.SetGridPos(leaderNextCell);
-
-        for (var i = 1; i < orderedParty.Count; i++)
-        {
-            var follower = orderedParty[i];
-            var nextCell = priorPositions[orderedParty[i - 1]];
-
-            if (!IsUsableUnit(follower) || follower.IsDead)
-            {
-                continue;
-            }
-
-            if (CanExplorationFollowerEnterCell(nextCell, partySet))
-            {
-                follower.SetGridPos(nextCell);
-            }
-        }
-
-        TriggerEventsForMovedPartyMembers(priorPositions, orderedParty);
-        ResolveExplorationTraps();
-        CenterViewOnCurrentFocus();
-        QueueRedraw();
-        return true;
-    }
-
     private void TriggerEventsForMovedPartyMembers(
         System.Collections.Generic.Dictionary<Unit, Vector2I> priorPositions,
         List<Unit> orderedParty)
@@ -7726,19 +7739,40 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private async void ContinueExplorationManualMove(Vector2I delta)
     {
-        if (!TryMoveExplorationParty(delta))
+        if (_flowState != BattleFlowState.Exploration || _isExplorationAutoMoving)
         {
             return;
         }
 
-        var transitionOutcome = await TryHandleMapTransitionAsync();
-        if (transitionOutcome == MapTransitionOutcome.Transitioned)
+        var leader = GetExplorerUnit();
+        if (!IsUsableUnit(leader) || leader.IsDead)
         {
             return;
         }
 
-        SetStatusHelp();
-        TryStartCombatFromAggro();
+        _isExplorationAutoMoving = true;
+        try
+        {
+            var party = BuildExplorationPartyOrdered(leader);
+            if (!await TryMoveExplorationPartyStepAnimated(leader.GridPos + delta, party))
+            {
+                return;
+            }
+
+            var transitionOutcome = await TryHandleMapTransitionAsync();
+            if (transitionOutcome == MapTransitionOutcome.Transitioned)
+            {
+                return;
+            }
+
+            SetStatusHelp();
+            TryStartCombatFromAggro();
+        }
+        finally
+        {
+            _isExplorationAutoMoving = false;
+            ContinuePendingExplorationMove();
+        }
     }
 
     private List<Unit> BuildExplorationPartyOrdered(Unit leader)
@@ -7889,6 +7923,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         tween.SetTrans(Tween.TransitionType.Linear);
         foreach (var pair in visualTo)
         {
+            pair.Key.BeginWalking(pair.Value - visualFrom[pair.Key]);
             tween.Parallel().TweenProperty(pair.Key, "position", pair.Value, ExplorationStepSeconds);
         }
 
@@ -7904,7 +7939,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }),
             0.0f, 1.0f, ExplorationStepSeconds);
 
-        await ToSignal(tween, Tween.SignalName.Finished);
+        try
+        {
+            await ToSignal(tween, Tween.SignalName.Finished);
+        }
+        finally
+        {
+            foreach (var unit in visualTo.Keys)
+            {
+                unit.EndWalking();
+            }
+        }
         if (_fogOverlayTexture == stepFogTexture)
         {
             _fogPreviousOverlayTexture = null;

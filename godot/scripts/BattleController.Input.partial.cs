@@ -14,6 +14,12 @@ public partial class BattleController
             return;
         }
 
+        if (_isPlayerMovementAnimating)
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         UpdateFogOfWar();
         if (_flowState == BattleFlowState.Defeat)
         {
@@ -163,8 +169,7 @@ public partial class BattleController
             return;
         }
 
-        var moveResult = ResolveMoveAction(active, active.GridPos + delta, endTurnOnSuccess: false);
-        ApplyActionResult(moveResult);
+        MovePlayerCombatStep(active, active.GridPos + delta);
     }
 
     private void HandleMouseInput(InputEventMouseButton mouseEvent)
@@ -316,7 +321,7 @@ public partial class BattleController
         SetMovementPreviewPath(previewPath);
     }
 
-    private void HandleMouseMoveInput(InputEventMouseButton mouseEvent)
+    private async void HandleMouseMoveInput(InputEventMouseButton mouseEvent)
     {
         if (_flowState != BattleFlowState.Combat || mouseEvent.Pressed || mouseEvent.ButtonIndex != MouseButton.Left)
         {
@@ -352,19 +357,30 @@ public partial class BattleController
             return;
         }
 
-        foreach (var step in path)
+        _isPlayerMovementAnimating = true;
+        try
         {
-            var moveResult = ResolveMoveAction(active, step, endTurnOnSuccess: false);
-            if (!moveResult.Success)
+            foreach (var step in path)
             {
-                break;
+                var moveResult = await ResolvePlayerMoveActionAsync(active, step, endTurnOnSuccess: false);
+                if (!moveResult.Success)
+                {
+                    break;
+                }
+
+                ApplyActionResult(moveResult);
+                if (_flowState != BattleFlowState.Combat)
+                {
+                    break;
+                }
             }
-
-            ApplyActionResult(moveResult);
         }
-
-        ClearMovementPreviewPath();
-        SetStatusHelp();
+        finally
+        {
+            _isPlayerMovementAnimating = false;
+            ClearMovementPreviewPath();
+            SetStatusHelp();
+        }
     }
 
     private bool ShouldIgnoreWorldMouseInput()
@@ -392,20 +408,30 @@ public partial class BattleController
             return;
         }
 
-        if (!TryMoveExplorationParty(delta))
+        _isExplorationAutoMoving = true;
+        try
         {
-            ValidatePlayerMovement(explorer, explorer.GridPos + delta, pathing: false);
-            return;
-        }
+            var party = BuildExplorationPartyOrdered(explorer);
+            if (!await TryMoveExplorationPartyStepAnimated(explorer.GridPos + delta, party))
+            {
+                ValidatePlayerMovement(explorer, explorer.GridPos + delta, pathing: false);
+                return;
+            }
 
-        var transitionOutcome = await TryHandleMapTransitionAsync();
-        if (transitionOutcome == MapTransitionOutcome.Transitioned)
+            var transitionOutcome = await TryHandleMapTransitionAsync();
+            if (transitionOutcome == MapTransitionOutcome.Transitioned)
+            {
+                return;
+            }
+
+            SetStatusHelp();
+            TryStartCombatFromAggro();
+        }
+        finally
         {
-            return;
+            _isExplorationAutoMoving = false;
+            ContinuePendingExplorationMove();
         }
-
-        SetStatusHelp();
-        TryStartCombatFromAggro();
     }
 
     private void HandleMouseAttackInput(InputEventMouseButton mouseEvent)

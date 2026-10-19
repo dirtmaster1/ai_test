@@ -1,5 +1,6 @@
 using Godot;
 using Godot.Collections;
+using System.Threading.Tasks;
 
 public partial class Unit : Node2D
 {
@@ -28,6 +29,8 @@ public partial class Unit : Node2D
     private const int CellSize = 64;
     private const int AtlasTileSize = 64;
     private const string UnitAtlasPath = "res://assets/tilesets/units_2_64.png";
+    private const int WalkAnimationFrameCount = 4;
+    private const float WalkAnimationFrameSeconds = 0.035f;
     public const int MaxMovementPerTurn = 3;
     public const int DefendDamageReductionPercent = 10;
 
@@ -106,8 +109,13 @@ public partial class Unit : Node2D
     private Sprite2D _sprite;
     private bool _isSelectionHighlighted;
     private Texture2D _unitAtlas;
+    private Texture2D _walkAtlas;
     private Texture2D _customSpriteTexture;
     private string _spriteTexturePath = "";
+    private bool _isWalking;
+    private float _walkAnimationElapsed;
+    private int _walkAnimationFrame = -1;
+    private int _walkAnimationDirection;
     private bool _spriteFlipH;
     private bool _spriteFlipV;
     private bool _spriteTranspose;
@@ -134,6 +142,24 @@ public partial class Unit : Node2D
         ConfigureSpriteRegion();
     }
 
+    public override void _Process(double delta)
+    {
+        if (!_isWalking || _walkAtlas == null)
+        {
+            return;
+        }
+
+        _walkAnimationElapsed += (float)delta;
+        var frame = (int)(_walkAnimationElapsed / WalkAnimationFrameSeconds) % WalkAnimationFrameCount;
+        if (frame == _walkAnimationFrame)
+        {
+            return;
+        }
+
+        _walkAnimationFrame = frame;
+        ConfigureSpriteRegion();
+    }
+
     public void Setup(Dictionary config)
     {
         UnitId = GetString(config, "id", "unit");
@@ -147,6 +173,16 @@ public partial class Unit : Node2D
         _spriteFlipV = GetBool(config, "sprite_flip_v", false);
         _spriteTranspose = GetBool(config, "sprite_transpose", false);
         _customSpriteTexture = string.IsNullOrEmpty(_spriteTexturePath) ? null : GD.Load<Texture2D>(_spriteTexturePath);
+        var walkAtlasPath = Team == "player" ? GetWalkAtlasPath(ClassId) : "";
+        _walkAtlas = null;
+        if (!string.IsNullOrEmpty(walkAtlasPath))
+        {
+            _walkAtlas = GD.Load<Texture2D>(walkAtlasPath);
+            if (_walkAtlas == null)
+            {
+                GD.PushError($"Missing walk animation atlas at '{walkAtlasPath}'.");
+            }
+        }
         EncounterId = GetString(config, "encounter_id", "");
         AggroRange = Mathf.Max(0, GetInt(config, "aggro_range", 4));
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
@@ -989,6 +1025,53 @@ public partial class Unit : Node2D
         SyncWorldPosition();
     }
 
+    public void BeginWalking(Vector2 direction)
+    {
+        if (Team != "player" || _walkAtlas == null)
+        {
+            return;
+        }
+
+        _walkAnimationDirection = Mathf.Abs(direction.X) >= Mathf.Abs(direction.Y)
+            ? direction.X >= 0.0f ? 1 : 3
+            : direction.Y >= 0.0f ? 2 : 0;
+        _walkAnimationElapsed = 0.0f;
+        _walkAnimationFrame = 0;
+        _isWalking = true;
+        ConfigureSpriteRegion();
+    }
+
+    public void EndWalking()
+    {
+        if (!_isWalking)
+        {
+            return;
+        }
+
+        _isWalking = false;
+        _walkAnimationElapsed = 0.0f;
+        _walkAnimationFrame = -1;
+        ConfigureSpriteRegion();
+    }
+
+    public async Task AnimateWalkToAsync(Vector2I targetCell, float duration)
+    {
+        var targetPosition = GetWorldCenterAt(targetCell);
+        BeginWalking(targetPosition - Position);
+        var tween = CreateTween();
+        tween.SetTrans(Tween.TransitionType.Sine);
+        tween.SetEase(Tween.EaseType.InOut);
+        tween.TweenProperty(this, "position", targetPosition, duration);
+        try
+        {
+            await ToSignal(tween, Tween.SignalName.Finished);
+        }
+        finally
+        {
+            EndWalking();
+        }
+    }
+
     public bool OccupiesCell(Vector2I cell)
     {
         return new Rect2I(GridPos, Vector2I.One * FootprintSize).HasPoint(cell);
@@ -1222,6 +1305,20 @@ public partial class Unit : Node2D
             return;
         }
 
+        if (_isWalking && _walkAtlas != null)
+        {
+            _sprite.Texture = _walkAtlas;
+            _sprite.RegionEnabled = true;
+            ConfigureSpriteTransform(Vector2.One * FootprintSize);
+            _sprite.RegionRect = new Rect2(
+                _walkAnimationFrame * AtlasTileSize,
+                _walkAnimationDirection * AtlasTileSize,
+                AtlasTileSize,
+                AtlasTileSize
+            );
+            return;
+        }
+
         _sprite.Texture = _unitAtlas;
         _sprite.RegionEnabled = true;
         ConfigureSpriteTransform(Vector2.One * FootprintSize);
@@ -1301,6 +1398,19 @@ public partial class Unit : Node2D
         return Team == "enemy"
             ? new Vector2I(3, 1)
             : new Vector2I(1, 0);
+    }
+
+    private static string GetWalkAtlasPath(string classId)
+    {
+        return classId.Trim().ToLowerInvariant() switch
+        {
+            "wizard" => "res://assets/animations/player/wizard_walk.png",
+            "warrior" => "res://assets/animations/player/warrior_walk.png",
+            "cleric" => "res://assets/animations/player/cleric_walk.png",
+            "ranger" => "res://assets/animations/player/ranger_walk.png",
+            "thief" => "res://assets/animations/player/thief_walk.png",
+            _ => "",
+        };
     }
 
     private static string NormalizeToken(string value)
