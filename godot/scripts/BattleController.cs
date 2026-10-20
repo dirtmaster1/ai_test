@@ -4214,7 +4214,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 ? new Color(0.78f, 1.0f, 0.86f, 1.0f)
                 : new Color(1.0f, 0.72f, 0.72f, 1.0f);
             var labelPos = new Vector2(_movementHoverCell.X * CellSize + CellSize / 2.0f, _movementHoverCell.Y * CellSize + CellSize - 10.0f);
-            canvas.DrawString(ThemeDB.FallbackFont, labelPos, label, HorizontalAlignment.Center, CellSize - 8.0f, ThemeDB.FallbackFontSize, labelColor);
+            canvas.DrawString(TacticalTheme.BodyFont, labelPos, label, HorizontalAlignment.Center, CellSize - 8.0f, ThemeDB.FallbackFontSize, labelColor);
         }
 
         if (_movementPreviewPath.Count == 0)

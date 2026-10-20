@@ -1,0 +1,10 @@
+[gd_resource type="Theme" load_steps=3 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/IMFeENrm28P.ttf" id="1_body"]
+[ext_resource type="FontFile" path="res://assets/fonts/GrenzeGotisch-wght.ttf" id="2_header"]
+
+[resource]
+default_font = ExtResource("1_body")
+default_font_size = 16
+Window/fonts/title_font = ExtResource("2_header")
+Window/font_sizes/title_font_size = 20

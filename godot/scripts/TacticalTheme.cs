@@ -1,7 +1,14 @@
+using System;
 using Godot;
 
 public static class TacticalTheme
 {
+    private static FontFile _bodyFont;
+    private static FontFile _headerFont;
+
+    public static FontFile BodyFont => _bodyFont ??= LoadFont("res://assets/fonts/IMFeENrm28P.ttf");
+    public static FontFile HeaderFont => _headerFont ??= LoadFont("res://assets/fonts/GrenzeGotisch-wght.ttf");
+
     public static readonly Color Backdrop = new(0.035f, 0.04f, 0.045f, 1.0f);
     public static readonly Color Iron = new(0.075f, 0.08f, 0.085f, 0.98f);
     public static readonly Color IronRaised = new(0.115f, 0.12f, 0.12f, 0.98f);
@@ -137,11 +144,21 @@ public static class TacticalTheme
             return;
         }
 
+        label.AddThemeFontOverride("font", BodyFont);
         label.AddThemeColorOverride("font_color", color);
         label.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.75f));
         label.AddThemeConstantOverride("shadow_offset_x", 1);
         label.AddThemeConstantOverride("shadow_offset_y", 1);
         label.AddThemeFontSizeOverride("font_size", fontSize);
+    }
+
+    public static void ApplyHeaderLabel(Label label, Color color, int fontSize)
+    {
+        ApplyLabel(label, color, fontSize);
+        if (label != null)
+        {
+            label.AddThemeFontOverride("font", HeaderFont);
+        }
     }
 
     public static void ApplyButton(Button button, bool primary = false, int fontSize = 14)
@@ -165,7 +182,14 @@ public static class TacticalTheme
         button.AddThemeColorOverride("font_focus_color", new Color(1.0f, 0.94f, 0.76f, 1.0f));
         button.AddThemeColorOverride("font_pressed_color", ParchmentMuted);
         button.AddThemeColorOverride("font_disabled_color", new Color(0.38f, 0.37f, 0.33f, 1.0f));
+        button.AddThemeFontOverride("font", BodyFont);
         button.AddThemeFontSizeOverride("font_size", fontSize);
+    }
+
+    private static FontFile LoadFont(string path)
+    {
+        return GD.Load<FontFile>(path)
+            ?? throw new InvalidOperationException($"Required UI font could not be loaded: {path}");
     }
 
     private static StyleBoxFlat CreateButton(Color background, Color border, int borderWidth = 1)

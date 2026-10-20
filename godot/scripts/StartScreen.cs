@@ -182,7 +182,7 @@ public partial class StartScreen : Control
 
     private void ApplyFantasyMenuStyling()
     {
-        TacticalTheme.ApplyLabel(_titleLabel, TacticalTheme.BrassBright, 32);
+        TacticalTheme.ApplyHeaderLabel(_titleLabel, TacticalTheme.BrassBright, 32);
         TacticalTheme.ApplyLabel(_versionLabel, TacticalTheme.ParchmentMuted, 11);
         TacticalTheme.ApplyLabel(_saveExistsLabel, TacticalTheme.Parchment, 14);
         TacticalTheme.ApplyLabel(_savePathLabel, TacticalTheme.ParchmentMuted, 12);
@@ -199,8 +199,8 @@ public partial class StartScreen : Control
         var settingsTitle = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsTitle");
         var soundFxTitle = GetNode<Label>("SoundFxPanel/SoundFxVBox/SoundFxTitle");
         var backgroundVolumeLabel = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeLabel");
-        TacticalTheme.ApplyLabel(settingsTitle, TacticalTheme.BrassBright, 24);
-        TacticalTheme.ApplyLabel(soundFxTitle, TacticalTheme.BrassBright, 24);
+        TacticalTheme.ApplyHeaderLabel(settingsTitle, TacticalTheme.BrassBright, 24);
+        TacticalTheme.ApplyHeaderLabel(soundFxTitle, TacticalTheme.BrassBright, 24);
         TacticalTheme.ApplyLabel(backgroundVolumeLabel, TacticalTheme.Parchment, 16);
         TacticalTheme.ApplyLabel(_backgroundVolumeValue, TacticalTheme.BrassBright, 16);
         TacticalTheme.ApplyButton(_soundFxButton, true, 16);

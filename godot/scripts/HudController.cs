@@ -1313,11 +1313,8 @@ public partial class HudController : Control
         }
 
         var viewport = GetViewportRect().Size;
-        var font = ThemeDB.FallbackFont;
-        if (font == null)
-        {
-            return;
-        }
+        var headerFont = TacticalTheme.HeaderFont;
+        var bodyFont = TacticalTheme.BodyFont;
 
         const int titleFontSize = 15;
         const int detailsFontSize = 13;
@@ -1329,10 +1326,10 @@ public partial class HudController : Control
         const float bottomPadding = 12.0f;
 
         var detailLines = _worldHoverDetails.Split('\n');
-        var contentWidth = font.GetStringSize(_worldHoverTitle, HorizontalAlignment.Left, -1, titleFontSize).X;
+        var contentWidth = headerFont.GetStringSize(_worldHoverTitle, HorizontalAlignment.Left, -1, titleFontSize).X;
         foreach (var line in detailLines)
         {
-            contentWidth = Mathf.Max(contentWidth, font.GetStringSize(line, HorizontalAlignment.Left, -1, detailsFontSize).X);
+            contentWidth = Mathf.Max(contentWidth, bodyFont.GetStringSize(line, HorizontalAlignment.Left, -1, detailsFontSize).X);
         }
 
         var panelSize = new Vector2(
@@ -1372,7 +1369,7 @@ public partial class HudController : Control
 
         var textX = cursor.X + horizontalPadding;
         var titleBaseline = cursor.Y + topPadding + titleFontSize;
-        DrawString(font, new Vector2(textX, titleBaseline), _worldHoverTitle, HorizontalAlignment.Left, -1, titleFontSize, _worldHoverTitleColor);
+        DrawString(headerFont, new Vector2(textX, titleBaseline), _worldHoverTitle, HorizontalAlignment.Left, -1, titleFontSize, _worldHoverTitleColor);
 
         var separatorY = cursor.Y + topPadding + titleLineHeight + 3.0f;
         DrawLine(
@@ -1385,7 +1382,7 @@ public partial class HudController : Control
         var detailBaseline = cursor.Y + topPadding + titleLineHeight + sectionGap + detailsFontSize;
         foreach (var line in detailLines)
         {
-            DrawString(font, new Vector2(textX, detailBaseline), line, HorizontalAlignment.Left, -1, detailsFontSize, _worldHoverDetailsColor);
+            DrawString(bodyFont, new Vector2(textX, detailBaseline), line, HorizontalAlignment.Left, -1, detailsFontSize, _worldHoverDetailsColor);
             detailBaseline += detailsLineHeight;
         }
     }
@@ -1712,6 +1709,7 @@ public partial class HudController : Control
 
         if (_combatBannerLabel != null)
         {
+            _combatBannerLabel.AddThemeFontOverride("font", TacticalTheme.HeaderFont);
             _combatBannerLabel.AddThemeColorOverride("font_color", TacticalTheme.BrassBright);
             _combatBannerLabel.AddThemeColorOverride("font_shadow_color", new Color(0.0f, 0.0f, 0.0f, 0.55f));
             _combatBannerLabel.AddThemeConstantOverride("shadow_offset_x", 1);
@@ -1724,10 +1722,10 @@ public partial class HudController : Control
         StyleBodyLabel(_helpBody, bodyColor, 14);
         StyleBodyLabel(_backgroundVolumeLabel, bodyColor, 14);
         StyleBodyLabel(_backgroundVolumeValue, headerColor, 14);
-        TacticalTheme.ApplyLabel(_inventoryUnitLabel, TacticalTheme.BrassBright, 20);
+        TacticalTheme.ApplyHeaderLabel(_inventoryUnitLabel, TacticalTheme.BrassBright, 20);
         _inventoryUnitLabel.AddThemeFontOverride("font", new FontVariation
         {
-            BaseFont = _inventoryUnitLabel.GetThemeFont("font"),
+            BaseFont = TacticalTheme.HeaderFont,
             VariationEmbolden = 0.2f
         });
         StyleBodyLabel(_inventoryCharacterSummary, bodyColor, 13);
@@ -1860,7 +1858,7 @@ public partial class HudController : Control
             return;
         }
 
-        TacticalTheme.ApplyLabel(label, color, 16);
+        TacticalTheme.ApplyHeaderLabel(label, color, 16);
     }
 
     private static void StyleBodyLabel(Label label, Color color, int fontSize)
@@ -2471,6 +2469,7 @@ public partial class HudController : Control
             Text = unit.IsDead ? $"{unit.UnitName} (Down)" : unit.UnitName,
             MouseFilter = MouseFilterEnum.Ignore
         };
+        name.AddThemeFontOverride("font", TacticalTheme.HeaderFont);
         name.AddThemeColorOverride("font_color", unit.IsDead ? new Color(0.55f, 0.55f, 0.55f) : new Color(0.9f, 0.82f, 0.64f));
         name.AddThemeFontSizeOverride("font_size", 13);
         details.AddChild(name);
@@ -3209,6 +3208,7 @@ public partial class HudController : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         _itemHoverTooltipTitle.AddThemeColorOverride("font_color", TacticalTheme.BrassBright);
+        _itemHoverTooltipTitle.AddThemeFontOverride("font", TacticalTheme.HeaderFont);
         _itemHoverTooltipTitle.AddThemeFontSizeOverride("font_size", 15);
         content.AddChild(_itemHoverTooltipTitle);
 
@@ -3760,7 +3760,7 @@ public partial class HudController : Control
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        TacticalTheme.ApplyLabel(title, TacticalTheme.Parchment, 16);
+        TacticalTheme.ApplyHeaderLabel(title, TacticalTheme.Parchment, 16);
         titleRow.AddChild(title);
 
         content.AddChild(titleRow);
@@ -3948,13 +3948,8 @@ public partial class HudController : Control
         }
 
         var maxWidth = Mathf.Max(40.0f, Mathf.Min(_combatLog.Size.X - CombatLogTextPadding, CombatLogMaxWrapWidth));
-        var font = ThemeDB.FallbackFont;
+        var font = TacticalTheme.BodyFont;
         var fontSize = ThemeDB.FallbackFontSize;
-        if (font == null)
-        {
-            yield return text;
-            yield break;
-        }
 
         var normalized = text.Replace("\r", "");
         var sourceLines = normalized.Split('\n');
