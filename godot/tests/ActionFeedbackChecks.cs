@@ -47,6 +47,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckCompactActionBar();
         CheckResources();
         CheckEquipmentStatBonuses();
+        CheckActionPointsAndLevelUp();
         CheckTargets();
         CheckUtilities();
         CheckMovement();
@@ -260,8 +261,9 @@ public partial class ActionFeedbackChecks : BattleController
         {
             flowField.SetValue(this, Enum.Parse(flowField.FieldType, flowName));
             Call("SyncHudFromGameState");
-            Check(movementCounter.Text == $"Move {_actor.RemainingMovement}/{_actor.MovementPerTurn}",
-                $"{flowName} action bar must show the active unit's movement counter");
+            Check(movementCounter.Text
+                == $"Move {_actor.RemainingMovement}/{_actor.MovementPerTurn}   AP {_actor.RemainingActionPoints}/{_actor.ActionPoints}",
+                $"{flowName} action bar must show the active unit's movement and action-point counters");
         }
         flowField.SetValue(this, previousFlow);
         Call("SyncHudFromGameState");
@@ -468,6 +470,8 @@ public partial class ActionFeedbackChecks : BattleController
         _testHud.ConsumablePressed += slotKey => Call("OnHudConsumablePressed", slotKey);
         _testHud.EquipItemRequested += itemId => Call("OnHudEquipItemRequested", itemId);
         _testHud.UnequipItemRequested += slotKey => Call("OnHudUnequipItemRequested", slotKey);
+        _testHud.LevelUpRequested += unitId => Call("OnHudLevelUpRequested", unitId);
+        _testHud.LevelUpStatSelected += (unitId, statName) => Call("OnHudLevelUpStatSelected", unitId, statName);
         _banner = _testHud.GetNode<Label>("CombatBanner/CombatBannerLabel");
         _log = HudField<ItemList>("_combatLog");
         Reset();
@@ -558,6 +562,189 @@ public partial class ActionFeedbackChecks : BattleController
             { "grid_pos", new Vector2I(2, 2) }, { "ability_ids", new Array<string> { "melee" } }
         });
         ExpectFailure(() => Call("OnHudAbilityPressed", "fireball"), "caster has not learned Fireball.");
+    }
+
+    private void CheckActionPointsAndLevelUp()
+    {
+        var defaultConfig = Config("caster", "player", new Vector2I(2, 2));
+        _actor.Setup(defaultConfig);
+        Check(_actor.ActionPoints == 1 && _actor.RemainingActionPoints == 1,
+            "Units must default to one action point.");
+
+        var enemyConfig = Config("enemy", "enemy", new Vector2I(5, 2));
+        _enemy.Setup(enemyConfig);
+        Check(_enemy.ActionPoints == 1 && _enemy.RemainingActionPoints == 1,
+            "Enemy units must also default to one action point.");
+        enemyConfig["action_points"] = 3;
+        _enemy.Setup(enemyConfig);
+        Check(_enemy.ActionPoints == 3 && _enemy.RemainingActionPoints == 3,
+            "Configured action points must apply to enemy units.");
+        _enemy.MarkAbilityUsed("melee");
+        _enemy.MarkAbilityUsed("melee");
+        Check(_enemy.CanUseAbilityThisTurn() && _enemy.RemainingActionPoints == 1,
+            "Units must be able to spend multiple action points in a turn.");
+        _enemy.ResetTurnResources();
+        Check(_enemy.RemainingActionPoints == 3,
+            "Turn reset must restore all configured action points.");
+
+        var levelOneConfig = Config("caster", "player", new Vector2I(2, 2));
+        _actor.Setup(levelOneConfig);
+        Check(_actor.GrantExperience(700) == 3 && _actor.Level == 4,
+            "Experience thresholds must grant multiple levels in one award.");
+        Check(_actor.ActionPoints == 2 && _actor.RemainingActionPoints == 2,
+            "Reaching level 4 must grant an additional action point.");
+        Check(_actor.UnallocatedStatPoints == 3,
+            "Each level gained must grant one unallocated stat point.");
+        var initialStrength = _actor.Strength;
+        var initialIntelligence = _actor.Intelligence;
+        var initialWisdom = _actor.Wisdom;
+        Check(_actor.TryAllocateStatPoint("str")
+            && _actor.TryAllocateStatPoint("intelligence")
+            && _actor.TryAllocateStatPoint("wisdom")
+            && !_actor.TryAllocateStatPoint("luck"),
+            "Stat points must allocate only to supported stats and reject invalid choices.");
+        Check(_actor.Strength == initialStrength + 1
+            && _actor.Intelligence == initialIntelligence + 1
+            && _actor.Wisdom == initialWisdom + 1
+            && _actor.UnallocatedStatPoints == 0,
+            "Stat allocation must increase the chosen stat and consume one point.");
+
+        var levelEightConfig = Config("caster", "player", new Vector2I(2, 2));
+        levelEightConfig["level"] = 8;
+        levelEightConfig["action_points"] = 2;
+        _actor.Setup(levelEightConfig);
+        _actor.MarkAbilityUsed("defend");
+        _actor.GrantExperience(_actor.ExperienceToNextLevel);
+        Check(_actor.Level == 9 && _actor.ActionPoints == 3 && _actor.RemainingActionPoints == 2,
+            "Reaching level 9 must grant an additional action point without restoring spent points.");
+
+        var snapshot = _actor.BuildRuntimeSnapshot();
+        _actor.Setup(defaultConfig);
+        _actor.ApplyRuntimeSnapshot(snapshot);
+        Check(_actor.ActionPoints == 3 && _actor.RemainingActionPoints == 2
+            && _actor.UnallocatedStatPoints == 1 && _actor.Level == 9,
+            "Runtime snapshots must preserve action points and unallocated stat points.");
+
+        var legacySnapshot = new Dictionary
+        {
+            { "action_points", 2 },
+            { "has_used_ability_this_turn", true }
+        };
+        _actor.Setup(defaultConfig);
+        _actor.ApplyRuntimeSnapshot(legacySnapshot);
+        Check(_actor.RemainingActionPoints == 0,
+            "Older snapshots must still restore the previously used-action state.");
+        Reset();
+    }
+
+    public void StartLevelUpChecks(bool createFixture)
+    {
+        if (createFixture)
+            SetupFixture();
+        Reset(exploration: true);
+        _actor.GrantExperience(700);
+        Call("SyncHudFromGameState");
+        OpenPendingLevelUp();
+    }
+
+    public void OpenPendingLevelUp() =>
+        _testHud.EmitSignal(HudController.SignalName.LevelUpRequested, _actor.UnitId);
+
+    public void CheckLevelUpLayout()
+    {
+        var overlay = _testHud.GetNode<Control>("LevelUpOverlay");
+        var panels = overlay.FindChildren("*", "PanelContainer", true, false);
+        Check(panels.Count == 1, "The level-up overlay must contain exactly one panel.");
+        var panel = (PanelContainer)panels[0];
+        var title = panel.GetNodeOrNull<Label>("VBoxContainer/LevelUpHeader/LevelUpCharacterTitle");
+        Check(title != null && title.Text == $"{_actor.UnitName} - Level {_actor.Level}",
+            "The character name and level must appear at the top inside the dialog border.");
+        var labels = panel.FindChildren("*", "Label", true, false);
+        Control lastRow = null;
+        var rowCount = 0;
+        float? buttonX = null;
+        foreach (var child in labels)
+        {
+            var label = (Label)child;
+            if (!label.Text.Contains("): "))
+                continue;
+            rowCount++;
+            var row = (HBoxContainer)label.GetParent();
+            var button = row.GetChild<Button>(1);
+            Check(button.Text == "+" && button.GetThemeStylebox("normal") is StyleBoxFlat style
+                && style.BorderColor == TacticalTheme.Brass,
+                "Each stat row must have a shared-style plus button.");
+            if (buttonX.HasValue)
+                Check(Mathf.IsEqualApprox(button.GlobalPosition.X, buttonX.Value), "Stat plus buttons must align vertically.");
+            buttonX = button.GlobalPosition.X;
+            lastRow = row;
+        }
+        Check(rowCount == 5, "The level-up panel must list all five stats.");
+        var closeButton = panel.GetNodeOrNull<Button>("VBoxContainer/LevelUpCloseButton");
+        Check(closeButton != null && closeButton.Text == "Close"
+            && closeButton.GetIndex() == closeButton.GetParent().GetChildCount() - 1,
+            "The level-up menu must provide a bottom-aligned Close button.");
+        var gap = panel.GetGlobalRect().End.Y - closeButton.GetGlobalRect().End.Y;
+        var padding = panel.GetThemeStylebox("panel").GetContentMargin(Side.Bottom);
+        var statToCloseGap = closeButton.GetGlobalRect().Position.Y - lastRow.GetGlobalRect().End.Y;
+        GD.Print($"LEVEL_UP_LAYOUT height={panel.Size.Y} minimum={panel.GetCombinedMinimumSize().Y} stat_close_gap={statToCloseGap} close_bottom_gap={gap} padding={padding}");
+        Check(Mathf.Abs(gap - padding) <= 1.0f,
+            $"Panel must end at the Close button plus padding ({padding}px), not leave {gap}px below it.");
+        Check(statToCloseGap >= 0 && statToCloseGap <= 12,
+            $"The Close button must follow the final stat with a small gap; got {statToCloseGap}px.");
+        Check(Mathf.Abs(panel.Size.Y - panel.GetCombinedMinimumSize().Y) <= 1.0f,
+            "Panel height must track its settled content minimum.");
+        Check(panel.GetGlobalRect().Position.Y >= 0 && panel.GetGlobalRect().End.Y <= overlay.Size.Y,
+            "The level-up panel must fit vertically inside the viewport.");
+        Check(panel.GetGlobalRect().GetCenter().DistanceTo(overlay.GetGlobalRect().GetCenter()) <= 2.0f,
+            "The compact panel must remain centered after layout and viewport resizing.");
+    }
+
+    public void ChooseLevelUpStat(int remainingPoints)
+    {
+        var overlay = _testHud.GetNode<Control>("LevelUpOverlay");
+        var strength = _actor.Strength;
+        foreach (var child in overlay.FindChildren("*", "Label", true, false))
+        {
+            var label = (Label)child;
+            if (!label.Text.StartsWith("Strength (STR):", StringComparison.Ordinal))
+                continue;
+            Check(label.Text == $"Strength (STR): {strength}", "Reopened level-up must show the updated stat value.");
+            label.GetParent().GetChild<Button>(1).EmitSignal(Button.SignalName.Pressed);
+            break;
+        }
+        Check(_actor.Strength == strength + 1 && _actor.UnallocatedStatPoints == remainingPoints - 1,
+            "A stat click must permanently spend exactly one level-up point.");
+        Check(_testHud.GetNodeOrNull("LevelUpOverlay") == overlay,
+            "Choosing a stat must keep the level-up dialog open.");
+        var updatedLabel = (Label)overlay.FindChildren("LevelUpStat_strength", "Label", true, false)[0];
+        var prompt = (Label)overlay.FindChildren("LevelUpAllocationPrompt", "Label", true, false)[0];
+        Check(updatedLabel.Text == $"Strength (STR): {strength + 1}"
+            && (remainingPoints > 1
+                ? prompt.Text.Contains($"Points remaining: {remainingPoints - 1}")
+                : prompt.Text == "All stat points have been allocated."),
+            $"The open dialog must immediately show the increased stat and remaining point count: {updatedLabel.Text}; {prompt.Text}.");
+        Check(_actor.BuildRuntimeSnapshot()["strength"].AsInt32() == strength + 1,
+            "The allocated stat must be included in saved state.");
+    }
+
+    public void CheckLevelUpClosed(int remainingPoints)
+    {
+        var pending = (Array<string>)Call("BuildPendingLevelUpUnitIds");
+        Check(pending.Contains(_actor.UnitId) == (remainingPoints > 0),
+            "The portrait plus must remain available until the final point is spent.");
+        if (remainingPoints > 0)
+        {
+            Check(_testHud.GetNodeOrNull("LevelUpOverlay") != null,
+                "The level-up menu must remain open while there are points to spend.");
+            return;
+        }
+
+        var closeButton = (Button)_testHud.GetNode<Control>("LevelUpOverlay")
+            .FindChildren("LevelUpCloseButton", "Button", true, false)[0];
+        closeButton.EmitSignal(Button.SignalName.Pressed);
+        Check(_testHud.GetNode<Control>("LevelUpOverlay").IsQueuedForDeletion(),
+            "The bottom Close button must dismiss the level-up dialog after all points are spent.");
     }
 
     private void CheckTargets()

@@ -243,6 +243,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.PartyUnitSelected += OnHudPartyUnitSelected;
             _hud.PartyOrderRequested += OnHudPartyOrderRequested;
             _hud.LevelUpRequested += OnHudLevelUpRequested;
+            _hud.LevelUpStatSelected += OnHudLevelUpStatSelected;
         }
 
         EnsureDefaultVendorState();
@@ -286,6 +287,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.PartyUnitSelected -= OnHudPartyUnitSelected;
             _hud.PartyOrderRequested -= OnHudPartyOrderRequested;
             _hud.LevelUpRequested -= OnHudLevelUpRequested;
+            _hud.LevelUpStatSelected -= OnHudLevelUpStatSelected;
         }
 
         UpdateFogOfWar();
@@ -617,12 +619,53 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void OnHudLevelUpRequested(string unitId)
     {
-        if (string.IsNullOrWhiteSpace(unitId) || !_pendingLevelUpNoticesByUnitId.Remove(unitId, out var notice))
+        var unit = FindUnitById(unitId);
+        if (!IsUsableUnit(unit) || unit.Team != "player" || unit.UnallocatedStatPoints <= 0)
         {
             return;
         }
 
+        if (!_pendingLevelUpNoticesByUnitId.TryGetValue(unitId, out var notice))
+        {
+            notice = BuildLevelUpNotice(unit);
+            _pendingLevelUpNoticesByUnitId[unitId] = notice;
+        }
+
         _hud?.ShowLevelUpDialog(notice);
+        SyncHudFromGameState();
+    }
+
+    private void OnHudLevelUpStatSelected(string unitId, string statName)
+    {
+        var unit = FindUnitById(unitId);
+        if (!IsUsableUnit(unit) || unit.Team != "player")
+        {
+            return;
+        }
+
+        if (!_pendingLevelUpNoticesByUnitId.TryGetValue(unitId, out var notice))
+        {
+            notice = BuildLevelUpNotice(unit);
+            _pendingLevelUpNoticesByUnitId[unitId] = notice;
+        }
+
+        if (!unit.TryAllocateStatPoint(statName))
+        {
+            return;
+        }
+
+        notice["unallocated_stat_points"] = unit.UnallocatedStatPoints;
+        notice["strength"] = unit.Strength;
+        notice["dexterity"] = unit.Dexterity;
+        notice["constitution"] = unit.Constitution;
+        notice["intelligence"] = unit.Intelligence;
+        notice["wisdom"] = unit.Wisdom;
+        _hud?.UpdateLevelUpDialog(notice);
+        if (unit.UnallocatedStatPoints <= 0)
+        {
+            _pendingLevelUpNoticesByUnitId.Remove(unitId);
+        }
+
         SyncHudFromGameState();
     }
 
@@ -1763,9 +1806,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
-            var actionAfterMove = TryExecuteAiAction(enemyUnit);
-            if (actionAfterMove.Success)
+            while (_flowState == BattleFlowState.Combat
+                && IsCurrentActiveUnit(enemyUnit)
+                && enemyUnit.CanUseAbilityThisTurn())
             {
+                var actionAfterMove = TryExecuteAiAction(enemyUnit);
+                if (!actionAfterMove.Success)
+                {
+                    break;
+                }
+
                 ApplyActionResult(actionAfterMove);
                 if (actionAfterMove.CombatEnded)
                 {
@@ -2687,6 +2737,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var previousMaxHitPoints = unit.MaxHitPoints;
             var previousMaxMagicPoints = unit.MaxMagicPoints;
             var previousMagicRegen = unit.MagicPointRegenPerTurn;
+            var previousActionPoints = unit.ActionPoints;
             var levelsGained = unit.GrantExperience(xpReward);
             if (levelsGained > 0)
             {
@@ -2697,7 +2748,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     levelsGained,
                     unit.MaxHitPoints - previousMaxHitPoints,
                     unit.MaxMagicPoints - previousMaxMagicPoints,
-                    unit.MagicPointRegenPerTurn - previousMagicRegen);
+                    unit.MagicPointRegenPerTurn - previousMagicRegen,
+                    unit.ActionPoints - previousActionPoints);
                 _hud?.ShowCombatBanner($"LEVEL UP - {unit.UnitName} - LEVEL {unit.Level}", TacticalTheme.BrassBright);
             }
         }
@@ -2710,7 +2762,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return $"Each living party member gains {xpReward} XP.";
     }
 
-    private void RecordLevelUpNotice(Unit unit, int previousLevel, int levelsGained, int maxHitPointGain, int maxMagicPointGain, int magicRegenGain)
+    private void RecordLevelUpNotice(Unit unit, int previousLevel, int levelsGained, int maxHitPointGain, int maxMagicPointGain, int magicRegenGain, int actionPointGain)
     {
         if (!_pendingLevelUpNoticesByUnitId.TryGetValue(unit.UnitId, out var notice))
         {
@@ -2722,7 +2774,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 { "levels_gained", 0 },
                 { "max_hp_gain", 0 },
                 { "max_mp_gain", 0 },
-                { "mp_regen_gain", 0 }
+                { "mp_regen_gain", 0 },
+                { "action_point_gain", 0 }
             };
             _pendingLevelUpNoticesByUnitId[unit.UnitId] = notice;
         }
@@ -2732,11 +2785,35 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         notice["max_hp_gain"] = GetInt(notice, "max_hp_gain", 0) + maxHitPointGain;
         notice["max_mp_gain"] = GetInt(notice, "max_mp_gain", 0) + maxMagicPointGain;
         notice["mp_regen_gain"] = GetInt(notice, "mp_regen_gain", 0) + magicRegenGain;
+        notice["action_point_gain"] = GetInt(notice, "action_point_gain", 0) + actionPointGain;
+        notice["unallocated_stat_points"] = unit.UnallocatedStatPoints;
         notice["strength"] = unit.Strength;
         notice["dexterity"] = unit.Dexterity;
         notice["constitution"] = unit.Constitution;
         notice["intelligence"] = unit.Intelligence;
         notice["wisdom"] = unit.Wisdom;
+    }
+
+    private static Dictionary BuildLevelUpNotice(Unit unit)
+    {
+        return new Dictionary
+        {
+            { "unit_id", unit.UnitId },
+            { "unit_name", unit.UnitName },
+            { "previous_level", unit.Level },
+            { "level", unit.Level },
+            { "levels_gained", 0 },
+            { "max_hp_gain", 0 },
+            { "max_mp_gain", 0 },
+            { "mp_regen_gain", 0 },
+            { "action_point_gain", 0 },
+            { "unallocated_stat_points", unit.UnallocatedStatPoints },
+            { "strength", unit.Strength },
+            { "dexterity", unit.Dexterity },
+            { "constitution", unit.Constitution },
+            { "intelligence", unit.Intelligence },
+            { "wisdom", unit.Wisdom }
+        };
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)

@@ -26,7 +26,7 @@ public partial class BattleController
             return $"{actor.UnitName} cannot act while {status.ToLowerInvariant()}.";
         }
 
-        if (_flowState == BattleFlowState.Combat && !profile.IgnoresActionCost && actor.HasUsedAbilityThisTurn)
+        if (_flowState == BattleFlowState.Combat && !profile.IgnoresActionCost && actor.RemainingActionPoints <= 0)
         {
             return $"No action points left to use {profile.ActionName}.";
         }

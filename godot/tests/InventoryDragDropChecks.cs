@@ -22,6 +22,14 @@ public partial class InventoryDragDropChecks : Node
         var summaryUnit = new Unit();
         summaryUnit.Setup(new Dictionary { { "id", "summary-test-unit" }, { "team", "player" } });
         var characterSummary = hud.BuildCharacterSummary(summaryUnit, "", "", includeActionNames: false);
+        var movementIndex = characterSummary.IndexOf("Movement:");
+        var actionPointsIndex = characterSummary.IndexOf("Action Points:");
+        var armorClassIndex = characterSummary.IndexOf("Armor Class:");
+        Check(movementIndex >= 0
+            && actionPointsIndex > movementIndex
+            && armorClassIndex > actionPointsIndex
+            && characterSummary.Contains($"Action Points: {summaryUnit.RemainingActionPoints}/{summaryUnit.ActionPoints}"),
+            "Party info must show remaining and maximum action points below Movement.");
         var classIndex = characterSummary.IndexOf("Class:");
         var levelIndex = characterSummary.IndexOf("Level:");
         var experienceIndex = characterSummary.IndexOf("Experience:");

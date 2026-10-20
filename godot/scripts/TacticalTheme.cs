@@ -69,16 +69,31 @@ public static class TacticalTheme
             return;
         }
 
-        var frame = CreateFramePanel();
-        dialog.AddThemeStyleboxOverride("embedded_border", frame);
-        dialog.AddThemeStyleboxOverride("embedded_unfocused_border", (StyleBox)frame.Duplicate());
-        ApplyDialogContent(dialog);
-        ApplyButton(dialog.GetOkButton(), true, 15);
+        ApplyAcceptDialog(dialog);
         var cancelButton = dialog.GetCancelButton();
         if (cancelButton != null)
         {
             ApplyButton(cancelButton, false, 14);
         }
+    }
+
+    public static void ApplyDialog(AcceptDialog dialog)
+    {
+        if (dialog == null)
+        {
+            return;
+        }
+
+        ApplyAcceptDialog(dialog);
+    }
+
+    private static void ApplyAcceptDialog(AcceptDialog dialog)
+    {
+        var frame = CreateFramePanel();
+        dialog.AddThemeStyleboxOverride("embedded_border", frame);
+        dialog.AddThemeStyleboxOverride("embedded_unfocused_border", (StyleBox)frame.Duplicate());
+        ApplyDialogContent(dialog);
+        ApplyButton(dialog.GetOkButton(), true, 15);
     }
 
     private static void ApplyDialogContent(Node parent)

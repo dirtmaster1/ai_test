@@ -88,9 +88,12 @@ public partial class BattleController
     private Godot.Collections.Array<string> BuildPendingLevelUpUnitIds()
     {
         var unitIds = new Godot.Collections.Array<string>();
-        foreach (var unitId in _pendingLevelUpNoticesByUnitId.Keys)
+        foreach (var unit in _playerUnits)
         {
-            unitIds.Add(unitId);
+            if (IsUsableUnit(unit) && unit.UnallocatedStatPoints > 0)
+            {
+                unitIds.Add(unit.UnitId);
+            }
         }
 
         return unitIds;

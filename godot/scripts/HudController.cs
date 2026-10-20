@@ -61,6 +61,9 @@ public partial class HudController : Control
     public delegate void LevelUpRequestedEventHandler(string unitId);
 
     [Signal]
+    public delegate void LevelUpStatSelectedEventHandler(string unitId, string statName);
+
+    [Signal]
     public delegate void ReserveStoreRequestedEventHandler(string partyUnitId);
 
     [Signal]
@@ -1986,6 +1989,7 @@ public partial class HudController : Control
             $"MP: {unit.MagicPoints}/{unit.MaxMagicPoints}\n" +
             $"MP Regeneration: {unit.ScaledMagicPointRegenPerTurn}/turn\n" +
             $"Movement: {unit.RemainingMovement}/{unit.MovementPerTurn}\n" +
+            $"Action Points: {unit.RemainingActionPoints}/{unit.ActionPoints}\n" +
             $"Armor Class: {unit.ArmorClass}\n" +
             $"\n" +
             $"Strength: {unit.Strength} ({FormatModifier(unit.StrengthModifier)})\n" +
@@ -2128,7 +2132,8 @@ public partial class HudController : Control
             return;
         }
 
-        _movementCounterLabel.Text = $"Move {active.RemainingMovement}/{active.MovementPerTurn}";
+        _movementCounterLabel.Text =
+            $"Move {active.RemainingMovement}/{active.MovementPerTurn}   AP {active.RemainingActionPoints}/{active.ActionPoints}";
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)
@@ -3728,44 +3733,179 @@ public partial class HudController : Control
 
         var unitName = GetString(notice, "unit_name", "Hero");
         var level = GetInt(notice, "level", 1);
-        var dialog = new AcceptDialog
+        var overlay = new CenterContainer
         {
-            Title = $"{unitName} - Level {level}",
-            DialogText = "",
-            Exclusive = true,
-            MinSize = new Vector2I(440, 360)
+            Name = "LevelUpOverlay",
+            MouseFilter = MouseFilterEnum.Stop,
+            ZIndex = 100
         };
+        overlay.SetMeta("unit_id", GetString(notice, "unit_id", ""));
+        AddChild(overlay);
+        overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
-        var content = new PanelContainer
+        var panel = new PanelContainer { Name = "PanelContainer" };
+        panel.AddThemeStyleboxOverride("panel", TacticalTheme.CreatePanel(false, 10));
+        overlay.AddChild(panel);
+
+        var content = new VBoxContainer { Name = "VBoxContainer" };
+        content.AddThemeConstantOverride("separation", 4);
+
+        var titleRow = new HBoxContainer { Name = "LevelUpHeader" };
+        titleRow.AddThemeConstantOverride("separation", 8);
+        var title = new Label
         {
-            CustomMinimumSize = new Vector2(400.0f, 270.0f)
+            Name = "LevelUpCharacterTitle",
+            Text = $"{unitName} - Level {level}",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
         };
-        content.AddThemeStyleboxOverride("panel", TacticalTheme.CreatePanel(false, 18));
+        TacticalTheme.ApplyLabel(title, TacticalTheme.Parchment, 16);
+        titleRow.AddChild(title);
+
+        content.AddChild(titleRow);
 
         var details = new Label
         {
             Text =
-                $"LEVEL {GetInt(notice, "previous_level", level - 1)}  >  LEVEL {level}\n\n" +
-                $"MAXIMUM HEALTH     +{GetInt(notice, "max_hp_gain", 0)}\n" +
-                $"MAXIMUM MAGIC      +{GetInt(notice, "max_mp_gain", 0)}\n" +
-                $"MAGIC REGEN        +{GetInt(notice, "mp_regen_gain", 0)} per turn\n\n" +
-                $"STR  {GetInt(notice, "strength", 0)}     DEX  {GetInt(notice, "dexterity", 0)}     CON  {GetInt(notice, "constitution", 0)}\n" +
-                $"INT  {GetInt(notice, "intelligence", 0)}     WIS  {GetInt(notice, "wisdom", 0)}",
+                $"LEVEL {GetInt(notice, "previous_level", level - 1)} > {level}  |  " +
+                $"HP +{GetInt(notice, "max_hp_gain", 0)}  MP +{GetInt(notice, "max_mp_gain", 0)}  " +
+                $"Regen +{GetInt(notice, "mp_regen_gain", 0)}  AP +{GetInt(notice, "action_point_gain", 0)}",
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        TacticalTheme.ApplyLabel(details, TacticalTheme.Parchment, 16);
         content.AddChild(details);
-        dialog.AddChild(content);
-        AddChild(dialog);
 
-        var closeButton = dialog.GetOkButton();
-        closeButton.Text = "Close";
-        TacticalTheme.ApplyButton(closeButton, primary: true);
-        dialog.Confirmed += dialog.QueueFree;
-        dialog.CloseRequested += dialog.QueueFree;
-        dialog.PopupCentered(new Vector2I(460, 380));
+        var remainingPoints = Mathf.Max(0, GetInt(notice, "unallocated_stat_points", 0));
+        var allocationPrompt = new Label
+        {
+            Name = "LevelUpAllocationPrompt",
+            Text = remainingPoints > 0
+                ? $"Choose one stat to increase by 1. Points remaining: {remainingPoints}"
+                : "All stat points have been allocated.",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        content.AddChild(allocationPrompt);
+
+        if (remainingPoints > 0)
+        {
+            var statRows = new VBoxContainer { Name = "LevelUpStatRows" };
+            statRows.AddThemeConstantOverride("separation", 2);
+            var statOptions = new[]
+            {
+                ("intelligence", "INT", "Intelligence"),
+                ("strength", "STR", "Strength"),
+                ("wisdom", "WIS", "Wisdom"),
+                ("dexterity", "DEX", "Dexterity"),
+                ("constitution", "CON", "Constitution")
+            };
+            foreach (var (statName, abbreviation, label) in statOptions)
+            {
+                var currentValue = GetInt(notice, statName, 0);
+                var statRow = new HBoxContainer { Name = $"LevelUpStatRow_{statName}" };
+                statRow.AddThemeConstantOverride("separation", 8);
+                var statLabel = new Label
+                {
+                    Name = $"LevelUpStat_{statName}",
+                    Text = $"{label} ({abbreviation}): {currentValue}",
+                    SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    MouseFilter = MouseFilterEnum.Ignore
+                };
+                var increaseButton = new Button
+                {
+                    Name = $"LevelUpStatButton_{statName}",
+                    Text = "+",
+                    TooltipText = $"Increase {label} by 1",
+                    CustomMinimumSize = new Vector2(24.0f, 24.0f),
+                    FocusMode = FocusModeEnum.None,
+                    MouseDefaultCursorShape = CursorShape.PointingHand
+                };
+                TacticalTheme.ApplyButton(increaseButton, fontSize: 16);
+                increaseButton.AddThemeColorOverride("font_color", TacticalTheme.BrassBright);
+                increaseButton.AddThemeColorOverride("font_hover_color", Colors.White);
+                increaseButton.Pressed += () =>
+                    EmitSignal(SignalName.LevelUpStatSelected, GetString(notice, "unit_id", ""), statName);
+                statRow.AddChild(statLabel);
+                statRow.AddChild(increaseButton);
+                statRows.AddChild(statRow);
+            }
+            content.AddChild(statRows);
+        }
+
+        var closeButton = new Button
+        {
+            Name = "LevelUpCloseButton",
+            Text = "Close",
+            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+            CustomMinimumSize = new Vector2(100.0f, 30.0f),
+            FocusMode = FocusModeEnum.None,
+            MouseDefaultCursorShape = CursorShape.PointingHand
+        };
+        TacticalTheme.ApplyButton(closeButton);
+        closeButton.Pressed += overlay.QueueFree;
+        content.AddChild(closeButton);
+
+        panel.AddChild(content);
+    }
+
+    public void UpdateLevelUpDialog(Dictionary notice)
+    {
+        var overlay = GetNodeOrNull<CenterContainer>("LevelUpOverlay");
+        if (overlay == null || notice == null || notice.Count == 0)
+        {
+            return;
+        }
+
+        var unitId = GetString(notice, "unit_id", "");
+        if (overlay.GetMeta("unit_id", "").AsString() != unitId)
+        {
+            return;
+        }
+
+        var level = GetInt(notice, "level", 1);
+        var titleNodes = overlay.FindChildren("LevelUpCharacterTitle", "Label", true, false);
+        var title = titleNodes.Count > 0 ? (Label)titleNodes[0] : null;
+        if (title != null)
+        {
+            title.Text = $"{GetString(notice, "unit_name", "Hero")} - Level {level}";
+        }
+
+        var points = Mathf.Max(0, GetInt(notice, "unallocated_stat_points", 0));
+        var promptNodes = overlay.FindChildren("LevelUpAllocationPrompt", "Label", true, false);
+        var prompt = promptNodes.Count > 0 ? (Label)promptNodes[0] : null;
+        if (prompt != null)
+        {
+            prompt.Text = points > 0
+                ? $"Choose a stat to increase by 1. Points remaining: {points}"
+                : "All stat points have been allocated.";
+        }
+
+        foreach (var (statName, abbreviation, label) in new[]
+        {
+            ("intelligence", "INT", "Intelligence"),
+            ("strength", "STR", "Strength"),
+            ("wisdom", "WIS", "Wisdom"),
+            ("dexterity", "DEX", "Dexterity"),
+            ("constitution", "CON", "Constitution")
+        })
+        {
+            var statLabels = overlay.FindChildren($"LevelUpStat_{statName}", "Label", true, false);
+            var statLabel = statLabels.Count > 0 ? (Label)statLabels[0] : null;
+            if (statLabel != null)
+            {
+                statLabel.Text = $"{label} ({abbreviation}): {GetInt(notice, statName, 0)}";
+            }
+
+            var buttons = overlay.FindChildren($"LevelUpStatButton_{statName}", "Button", true, false);
+            var button = buttons.Count > 0 ? (Button)buttons[0] : null;
+            if (button != null)
+            {
+                button.Disabled = points <= 0;
+            }
+        }
     }
 
     public void SetWorldHoverTooltip(

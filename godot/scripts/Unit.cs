@@ -65,6 +65,10 @@ public partial class Unit : Node2D
     public int Initiative { get; private set; } = 10;
     public int Level { get; private set; } = 1;
     public int Experience { get; private set; }
+    public int ActionPoints { get; private set; } = 1;
+    public int RemainingActionPoints { get; private set; } = 1;
+    public int UnallocatedStatPoints { get; private set; }
+    public bool HasUsedAbilityThisTurn => RemainingActionPoints <= 0;
     public int BaseUnarmedDamage { get; private set; } = 1;
     public int WeaponAttackDamageBonus { get; private set; }
     public int WeaponAttackRangeBonus { get; private set; }
@@ -102,7 +106,6 @@ public partial class Unit : Node2D
     public int ScaledMagicPointRegenPerTurn => Mathf.Max(0, MagicPointRegenPerTurn + _equipmentMagicPointRegenBonus + GetMagicPointRegenScalingBonus());
     public int MovementPerTurn => Mathf.Max(1, _baseMovementPerTurn + _equipmentMovementBonus);
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
-    public bool HasUsedAbilityThisTurn { get; private set; }
     public bool IsDefending { get; private set; }
     public bool IsDead { get; private set; }
     public bool IsActive { get; private set; }
@@ -203,6 +206,8 @@ public partial class Unit : Node2D
         Initiative = GetInt(config, "initiative", 10);
         Level = Mathf.Max(1, GetInt(config, "level", 1));
         Experience = Mathf.Max(0, GetInt(config, "experience", Team == "enemy" ? 10 : 0));
+        ActionPoints = Mathf.Max(0, GetInt(config, "action_points", 1));
+        UnallocatedStatPoints = Mathf.Max(0, GetInt(config, "unallocated_stat_points", 0));
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
         BaseUnarmedDamage = Mathf.Max(1, GetInt(config, "base_unarmed_damage", 1));
@@ -220,7 +225,7 @@ public partial class Unit : Node2D
     public void ResetTurnResources()
     {
         RemainingMovement = MovementPerTurn;
-        HasUsedAbilityThisTurn = false;
+        RemainingActionPoints = ActionPoints;
         IsDefending = false;
         MagicPoints = Mathf.Clamp(MagicPoints + ScaledMagicPointRegenPerTurn, 0, MaxMagicPoints);
 
@@ -261,7 +266,7 @@ public partial class Unit : Node2D
 
     public bool CanUseAbilityThisTurn()
     {
-        return !HasUsedAbilityThisTurn && !HasActionPreventingStatusEffect();
+        return RemainingActionPoints > 0 && !HasActionPreventingStatusEffect();
     }
 
     public bool TryGetActionPreventingStatusName(out string statusName) =>
@@ -712,6 +717,11 @@ public partial class Unit : Node2D
             Level += 1;
             levelsGained += 1;
             ApplyLevelUpGains();
+            if (Level == 4 || Level == 9)
+            {
+                ActionPoints += 1;
+                RemainingActionPoints += 1;
+            }
         }
 
         return levelsGained;
@@ -816,7 +826,7 @@ public partial class Unit : Node2D
 
     public void MarkAbilityUsed(string abilityId, int cooldownTurns = 0)
     {
-        HasUsedAbilityThisTurn = true;
+        RemainingActionPoints = Mathf.Max(0, RemainingActionPoints - 1);
         if (!string.IsNullOrEmpty(abilityId))
         {
             _abilityCooldownRemaining[abilityId] = Mathf.Max(0, cooldownTurns);
@@ -917,10 +927,18 @@ public partial class Unit : Node2D
             { "base_movement_per_turn", _baseMovementPerTurn },
             { "movement_per_turn", MovementPerTurn },
             { "remaining_movement", RemainingMovement },
+            { "action_points", ActionPoints },
+            { "remaining_action_points", RemainingActionPoints },
             { "has_used_ability_this_turn", HasUsedAbilityThisTurn },
             { "is_defending", IsDefending },
             { "level", Level },
             { "experience", Experience },
+            { "intelligence", Intelligence },
+            { "strength", Strength },
+            { "wisdom", Wisdom },
+            { "dexterity", Dexterity },
+            { "constitution", Constitution },
+            { "unallocated_stat_points", UnallocatedStatPoints },
             { "cooldowns", cooldowns },
             { "status_effects", statusEffects },
         };
@@ -942,13 +960,24 @@ public partial class Unit : Node2D
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
+        ActionPoints = Mathf.Max(0, GetInt(snapshot, "action_points", ActionPoints));
+        UnallocatedStatPoints = Mathf.Max(0, GetInt(snapshot, "unallocated_stat_points", UnallocatedStatPoints));
+        Intelligence = GetInt(snapshot, "intelligence", Intelligence);
+        Strength = GetInt(snapshot, "strength", Strength);
+        Wisdom = GetInt(snapshot, "wisdom", Wisdom);
+        Dexterity = GetInt(snapshot, "dexterity", Dexterity);
+        Constitution = GetInt(snapshot, "constitution", Constitution);
         _baseMovementPerTurn = Mathf.Max(1, GetInt(
             snapshot,
             "base_movement_per_turn",
             GetInt(snapshot, "movement_per_turn", _baseMovementPerTurn)));
         var savedMovementPerTurn = Mathf.Max(1, GetInt(snapshot, "movement_per_turn", MovementPerTurn));
         RemainingMovement = Mathf.Clamp(GetInt(snapshot, "remaining_movement", RemainingMovement), 0, savedMovementPerTurn);
-        HasUsedAbilityThisTurn = GetBool(snapshot, "has_used_ability_this_turn", HasUsedAbilityThisTurn);
+        var legacyHasUsedAbility = GetBool(snapshot, "has_used_ability_this_turn", HasUsedAbilityThisTurn);
+        RemainingActionPoints = Mathf.Clamp(
+            GetInt(snapshot, "remaining_action_points", legacyHasUsedAbility ? 0 : ActionPoints),
+            0,
+            ActionPoints);
         IsDefending = GetBool(snapshot, "is_defending", IsDefending);
         GridPos = GetVector2I(snapshot, "grid_pos", GridPos);
         FootprintSize = Mathf.Clamp(GetInt(snapshot, "footprint_size", FootprintSize), 1, 4);
@@ -1577,11 +1606,49 @@ public partial class Unit : Node2D
         var hitPointGain = 2 + Mathf.Max(0, ConstitutionModifier);
         var magicPointGain = 1 + Mathf.Max(0, IntelligenceModifier);
 
+        UnallocatedStatPoints += 1;
         MaxHitPoints += hitPointGain;
         HitPoints = Mathf.Min(MaxHitPoints, HitPoints + hitPointGain);
         _baseMaxMagicPoints += magicPointGain;
         MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + magicPointGain);
         MagicPointRegenPerTurn += 1;
+    }
+
+    public bool TryAllocateStatPoint(string statName)
+    {
+        if (UnallocatedStatPoints <= 0)
+        {
+            return false;
+        }
+
+        switch (statName?.Trim().ToLowerInvariant())
+        {
+            case "intelligence":
+            case "int":
+                Intelligence += 1;
+                break;
+            case "strength":
+            case "str":
+                Strength += 1;
+                break;
+            case "wisdom":
+            case "wis":
+                Wisdom += 1;
+                break;
+            case "dexterity":
+            case "dex":
+                Dexterity += 1;
+                break;
+            case "constitution":
+            case "con":
+                Constitution += 1;
+                break;
+            default:
+                return false;
+        }
+
+        UnallocatedStatPoints -= 1;
+        return true;
     }
 
     private bool HasMovementPreventingStatusEffect()

@@ -128,6 +128,7 @@ texture_region_size = Vector2i(64, 64)
 4:4/0 = 0
 4:4/0/custom_data_0 = "enemy_spawn"
 4:4/0/custom_data_7 = "giant-rat"
+4:4/0/custom_data_29 = 1000
 5:4/0 = 0
 5:4/0/custom_data_0 = "enemy_spawn"
 5:4/0/custom_data_7 = "spectre"
