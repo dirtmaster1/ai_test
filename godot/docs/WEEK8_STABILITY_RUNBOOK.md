@@ -73,10 +73,11 @@ godot --headless --path . --script res://tests/utility_abilities_test.gd
 
 For level-up layout only, run
 `godot --headless --path . --script res://tests/action_feedback_test.gd -- --level-up-only`.
-This waits for container layout to settle, checks that the panel ends at the last
-stat row and bottom Close button with only their required padding, then allocates
-three points in one open dialog. The panel uses a `CenterContainer` to track
-content size; do not freeze a wrapped label's pre-layout minimum into panel offsets.
+This waits for container layout to settle, checks the centered dialog's narrative,
+separate static bonus lines, section headings, portrait badge bounds, and stat
+controls, then allocates three points in one open dialog. The panel uses a
+`CenterContainer` to track content size; do not freeze a wrapped label's
+pre-layout minimum into panel offsets.
 Set `LEVEL_UP_SCREENSHOT` to a PNG output path and omit `--headless` to capture it.
 On Windows, use Godot's `_console.exe` runner and wait for the explicit `PASS` and
 exit code; starting the GUI executable alone does not verify test completion.

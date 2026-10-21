@@ -75,6 +75,7 @@ public partial class HudController : Control
     private const float SidebarRightInset = 24.0f;
     private const int ItemIconCellSize = 32;
     private const string ItemIconAtlasPath = "res://assets/ui/icon_misc_1.png";
+    private static readonly Color PartyDetailTextColor = new(0.76f, 0.73f, 0.66f);
 
     private static Texture2D _itemIconAtlas;
     private static readonly System.Collections.Generic.Dictionary<string, Vector2I> ItemIconCellsById = new(StringComparer.OrdinalIgnoreCase)
@@ -2441,17 +2442,31 @@ public partial class HudController : Control
         {
             var levelUpButton = new Button
             {
-                Text = "+",
+                Name = "LevelUpBadge",
                 TooltipText = $"View {unit.UnitName}'s level-up gains",
-                CustomMinimumSize = new Vector2(24.0f, 24.0f),
-                Position = new Vector2(28.0f, -4.0f),
+                CustomMinimumSize = new Vector2(18.0f, 18.0f),
+                Size = new Vector2(18.0f, 18.0f),
+                Position = new Vector2(30.0f, 30.0f),
                 FocusMode = FocusModeEnum.None,
                 MouseDefaultCursorShape = CursorShape.PointingHand,
                 MouseFilter = MouseFilterEnum.Stop
             };
-            TacticalTheme.ApplyButton(levelUpButton, fontSize: 16);
-            levelUpButton.AddThemeColorOverride("font_color", TacticalTheme.BrassBright);
-            levelUpButton.AddThemeColorOverride("font_hover_color", Colors.White);
+            TacticalTheme.ApplyButton(levelUpButton, fontSize: 13);
+            levelUpButton.AddThemeStyleboxOverride("normal", CreateLevelUpBadgeStyle(TacticalTheme.Iron, TacticalTheme.Brass));
+            levelUpButton.AddThemeStyleboxOverride("hover", CreateLevelUpBadgeStyle(TacticalTheme.IronRaised, TacticalTheme.BrassBright));
+            levelUpButton.AddThemeStyleboxOverride("pressed", CreateLevelUpBadgeStyle(TacticalTheme.IronInset, TacticalTheme.Brass));
+            levelUpButton.AddThemeStyleboxOverride("focus", CreateLevelUpBadgeStyle(TacticalTheme.IronRaised, TacticalTheme.BrassBright));
+            var glyph = new Label
+            {
+                Name = "LevelUpBadgeGlyph",
+                Text = "+",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(glyph, TacticalTheme.BrassBright, 13);
+            levelUpButton.AddChild(glyph);
+            glyph.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
             levelUpButton.Pressed += () => EmitSignal(SignalName.LevelUpRequested, unit.UnitId);
             portraitContainer.AddChild(levelUpButton);
         }
@@ -2488,7 +2503,7 @@ public partial class HudController : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
 
-        label.AddThemeColorOverride("font_color", new Color(0.76f, 0.73f, 0.66f));
+        label.AddThemeColorOverride("font_color", PartyDetailTextColor);
         label.AddThemeFontSizeOverride("font_size", 10);
         return label;
     }
@@ -2504,7 +2519,7 @@ public partial class HudController : Control
             CustomMinimumSize = new Vector2(62.0f, 0.0f),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        valueLabel.AddThemeColorOverride("font_color", new Color(0.76f, 0.73f, 0.66f));
+        valueLabel.AddThemeColorOverride("font_color", PartyDetailTextColor);
         valueLabel.AddThemeFontSizeOverride("font_size", 10);
         row.AddChild(valueLabel);
 
@@ -2542,6 +2557,27 @@ public partial class HudController : Control
             ContentMarginTop = 6.0f,
             ContentMarginRight = 7.0f,
             ContentMarginBottom = 6.0f
+        };
+    }
+
+    private static StyleBoxFlat CreateLevelUpBadgeStyle(Color background, Color border)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = background,
+            BorderColor = border,
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 9,
+            CornerRadiusTopRight = 9,
+            CornerRadiusBottomRight = 9,
+            CornerRadiusBottomLeft = 9,
+            ContentMarginLeft = 0,
+            ContentMarginTop = 0,
+            ContentMarginRight = 0,
+            ContentMarginBottom = 0
         };
     }
 
@@ -3744,38 +3780,79 @@ public partial class HudController : Control
         overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
         var panel = new PanelContainer { Name = "PanelContainer" };
+        panel.CustomMinimumSize = new Vector2(400.0f, 0.0f);
         panel.AddThemeStyleboxOverride("panel", TacticalTheme.CreatePanel(false, 10));
         overlay.AddChild(panel);
 
         var content = new VBoxContainer { Name = "VBoxContainer" };
-        content.AddThemeConstantOverride("separation", 4);
+        content.AddThemeConstantOverride("separation", 8);
 
         var titleRow = new HBoxContainer { Name = "LevelUpHeader" };
         titleRow.AddThemeConstantOverride("separation", 8);
         var title = new Label
         {
             Name = "LevelUpCharacterTitle",
-            Text = $"{unitName} - Level {level}",
+            Text = unitName,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        TacticalTheme.ApplyHeaderLabel(title, TacticalTheme.Parchment, 16);
+        TacticalTheme.ApplyHeaderLabel(title, TacticalTheme.Parchment, 26);
         titleRow.AddChild(title);
 
         content.AddChild(titleRow);
 
-        var details = new Label
+        var advancement = new Label
         {
-            Text =
-                $"LEVEL {GetInt(notice, "previous_level", level - 1)} > {level}  |  " +
-                $"HP +{GetInt(notice, "max_hp_gain", 0)}  MP +{GetInt(notice, "max_mp_gain", 0)}  " +
-                $"Regen +{GetInt(notice, "mp_regen_gain", 0)}  AP +{GetInt(notice, "action_point_gain", 0)}",
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Name = "LevelUpAdvancementText",
+            Text = $"Thou hast advanced from level {GetInt(notice, "previous_level", level - 1)} to {level}!",
+            HorizontalAlignment = HorizontalAlignment.Left,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        content.AddChild(details);
+        TacticalTheme.ApplyLabel(advancement, TacticalTheme.Parchment, 16);
+        content.AddChild(advancement);
+
+        var bonuses = new VBoxContainer { Name = "LevelUpBonuses" };
+        bonuses.AddThemeConstantOverride("separation", 2);
+        var bonusesTitle = new Label
+        {
+            Name = "LevelUpBonusesTitle",
+            Text = "Bonuses Granted:",
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        TacticalTheme.ApplyHeaderLabel(bonusesTitle, TacticalTheme.BrassBright, 18);
+        bonuses.AddChild(bonusesTitle);
+        foreach (var (name, text) in new[]
+        {
+            ("HP", $"HP: +{GetInt(notice, "max_hp_gain", 0)}"),
+            ("MP", $"MP: +{GetInt(notice, "max_mp_gain", 0)}"),
+            ("AP", $"AP: +{GetInt(notice, "action_point_gain", 0)}"),
+            ("Regen", $"Regen: +{GetInt(notice, "mp_regen_gain", 0)}")
+        })
+        {
+            var bonus = new Label
+            {
+                Name = $"LevelUpBonus_{name}",
+                Text = text,
+                MouseFilter = MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(bonus, TacticalTheme.Parchment, 15);
+            bonuses.AddChild(bonus);
+        }
+        content.AddChild(bonuses);
+        content.AddChild(new HSeparator { Name = "LevelUpSectionSeparator" });
+
+        var statSection = new VBoxContainer { Name = "LevelUpStatSection" };
+        statSection.AddThemeConstantOverride("separation", 4);
+        var statSectionTitle = new Label
+        {
+            Name = "LevelUpStatSectionTitle",
+            Text = "Increase Your Attributes",
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        TacticalTheme.ApplyHeaderLabel(statSectionTitle, TacticalTheme.BrassBright, 20);
+        statSection.AddChild(statSectionTitle);
 
         var remainingPoints = Mathf.Max(0, GetInt(notice, "unallocated_stat_points", 0));
         var allocationPrompt = new Label
@@ -3784,10 +3861,10 @@ public partial class HudController : Control
             Text = remainingPoints > 0
                 ? $"Choose one stat to increase by 1. Points remaining: {remainingPoints}"
                 : "All stat points have been allocated.",
-            HorizontalAlignment = HorizontalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        content.AddChild(allocationPrompt);
+        TacticalTheme.ApplyLabel(allocationPrompt, TacticalTheme.ParchmentMuted, 14);
+        statSection.AddChild(allocationPrompt);
 
         if (remainingPoints > 0)
         {
@@ -3795,13 +3872,13 @@ public partial class HudController : Control
             statRows.AddThemeConstantOverride("separation", 2);
             var statOptions = new[]
             {
-                ("intelligence", "INT", "Intelligence"),
-                ("strength", "STR", "Strength"),
-                ("wisdom", "WIS", "Wisdom"),
-                ("dexterity", "DEX", "Dexterity"),
-                ("constitution", "CON", "Constitution")
+                ("intelligence", "Intelligence"),
+                ("strength", "Strength"),
+                ("wisdom", "Wisdom"),
+                ("dexterity", "Dexterity"),
+                ("constitution", "Constitution")
             };
-            foreach (var (statName, abbreviation, label) in statOptions)
+            foreach (var (statName, label) in statOptions)
             {
                 var currentValue = GetInt(notice, statName, 0);
                 var statRow = new HBoxContainer { Name = $"LevelUpStatRow_{statName}" };
@@ -3809,11 +3886,12 @@ public partial class HudController : Control
                 var statLabel = new Label
                 {
                     Name = $"LevelUpStat_{statName}",
-                    Text = $"{label} ({abbreviation}): {currentValue}",
+                    Text = $"{label}: {currentValue}",
                     SizeFlagsHorizontal = SizeFlags.ExpandFill,
                     VerticalAlignment = VerticalAlignment.Center,
                     MouseFilter = MouseFilterEnum.Ignore
                 };
+                statLabel.AddThemeColorOverride("font_color", PartyDetailTextColor);
                 var increaseButton = new Button
                 {
                     Name = $"LevelUpStatButton_{statName}",
@@ -3832,8 +3910,9 @@ public partial class HudController : Control
                 statRow.AddChild(increaseButton);
                 statRows.AddChild(statRow);
             }
-            content.AddChild(statRows);
+            statSection.AddChild(statRows);
         }
+        content.AddChild(statSection);
 
         var closeButton = new Button
         {
@@ -3870,7 +3949,7 @@ public partial class HudController : Control
         var title = titleNodes.Count > 0 ? (Label)titleNodes[0] : null;
         if (title != null)
         {
-            title.Text = $"{GetString(notice, "unit_name", "Hero")} - Level {level}";
+            title.Text = GetString(notice, "unit_name", "Hero");
         }
 
         var points = Mathf.Max(0, GetInt(notice, "unallocated_stat_points", 0));
@@ -3883,20 +3962,20 @@ public partial class HudController : Control
                 : "All stat points have been allocated.";
         }
 
-        foreach (var (statName, abbreviation, label) in new[]
+        foreach (var (statName, label) in new[]
         {
-            ("intelligence", "INT", "Intelligence"),
-            ("strength", "STR", "Strength"),
-            ("wisdom", "WIS", "Wisdom"),
-            ("dexterity", "DEX", "Dexterity"),
-            ("constitution", "CON", "Constitution")
+            ("intelligence", "Intelligence"),
+            ("strength", "Strength"),
+            ("wisdom", "Wisdom"),
+            ("dexterity", "Dexterity"),
+            ("constitution", "Constitution")
         })
         {
             var statLabels = overlay.FindChildren($"LevelUpStat_{statName}", "Label", true, false);
             var statLabel = statLabels.Count > 0 ? (Label)statLabels[0] : null;
             if (statLabel != null)
             {
-                statLabel.Text = $"{label} ({abbreviation}): {GetInt(notice, statName, 0)}";
+                statLabel.Text = $"{label}: {GetInt(notice, statName, 0)}";
             }
 
             var buttons = overlay.FindChildren($"LevelUpStatButton_{statName}", "Button", true, false);

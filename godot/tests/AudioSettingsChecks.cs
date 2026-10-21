@@ -49,9 +49,9 @@ public partial class AudioSettingsChecks : Node
         }
 
         eventBus.EmitSignal(EventBus.SignalName.CombatEnded);
-        if (musicPlayer.Stream != explorationMusic || !musicPlayer.Playing)
+        if (musicPlayer.Stream != combatMusic || !musicPlayer.Playing)
         {
-            failures.Add("Combat end must restore the exploration soundtrack.");
+            failures.Add("Combat end must begin fading the combat soundtrack before switching to exploration music.");
         }
 
         var originalVolume = audioManager.BackgroundMusicVolume;

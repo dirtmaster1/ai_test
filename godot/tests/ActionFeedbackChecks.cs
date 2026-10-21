@@ -2,6 +2,7 @@ using Godot;
 using Godot.Collections;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 
 public partial class ActionFeedbackChecks : BattleController
@@ -34,6 +35,22 @@ public partial class ActionFeedbackChecks : BattleController
     {
         SetupFixture();
         CheckEquipmentStatBonuses();
+        Cleanup();
+        return _failures;
+    }
+
+    public Array<string> RunKeyboardRepeatChecks()
+    {
+        SetupFixture();
+        CheckExplorationKeyEchoQueued();
+        Cleanup();
+        return _failures;
+    }
+
+    public Array<string> RunDefendIndicatorChecks()
+    {
+        SetupFixture();
+        CheckCombatEndClearsCombatStatuses();
         Cleanup();
         return _failures;
     }
@@ -84,15 +101,24 @@ public partial class ActionFeedbackChecks : BattleController
         _ally.ApplyStatusEffect("combat-debuff", "Poisoned", false, 3, scope: "combat_only", damagePerTurn: 1);
         _actor.ApplyStatusEffect("persistent-buff", "Blessed", true, 3, scope: "persistent");
         _enemy.ApplyStatusEffect("enemy-combat-buff", "Protected", true, 3, scope: "combat_only");
+        _actor.MarkDefending();
+        _ally.MarkDefending();
 
         Call("EnterExplorationMode", "Encounter cleared.");
 
         Check(!_actor.HasStatusEffect("combat-buff") && !_ally.HasStatusEffect("combat-debuff"),
             "Ending combat must clear combat-only buffs and debuffs from party members.");
+        Check(!_actor.IsDefending && !_ally.IsDefending,
+            "Ending combat must clear the Defend ring from every player unit.");
         Check(_actor.HasStatusEffect("persistent-buff"),
             "Ending combat must not clear persistent party status effects.");
         Check(_enemy.HasStatusEffect("enemy-combat-buff"),
             "Ending combat cleanup must not clear enemy status effects.");
+
+        _actor.MarkDefending();
+        _actor.ResetTurnResources();
+        Check(!_actor.IsDefending,
+            "The Defend ring must disappear when the effect wears off at the unit's next turn.");
     }
 
     private void CheckPoisonStrikeIcon()
@@ -657,8 +683,45 @@ public partial class ActionFeedbackChecks : BattleController
         Check(panels.Count == 1, "The level-up overlay must contain exactly one panel.");
         var panel = (PanelContainer)panels[0];
         var title = panel.GetNodeOrNull<Label>("VBoxContainer/LevelUpHeader/LevelUpCharacterTitle");
-        Check(title != null && title.Text == $"{_actor.UnitName} - Level {_actor.Level}",
-            "The character name and level must appear at the top inside the dialog border.");
+        Check(title != null && title.Text == _actor.UnitName,
+            "Only the character name must appear in the dialog header.");
+        var advancement = (Label)panel.FindChildren("LevelUpAdvancementText", "Label", true, false)[0];
+        Check(advancement.Text.StartsWith("Thou hast advanced from level ", StringComparison.Ordinal)
+            && advancement.Text.EndsWith($" to {_actor.Level}!", StringComparison.Ordinal)
+            && advancement.HorizontalAlignment == HorizontalAlignment.Left,
+            "The level transition must end with emphasis and align to the left.");
+        var bonusesTitle = (Label)panel.FindChildren("LevelUpBonusesTitle", "Label", true, false)[0];
+        var statSectionTitle = (Label)panel.FindChildren("LevelUpStatSectionTitle", "Label", true, false)[0];
+        Check(bonusesTitle.Text == "Bonuses Granted:"
+            && statSectionTitle.Text == "Increase Your Attributes"
+            && title.GetThemeFontSize("font_size") > statSectionTitle.GetThemeFontSize("font_size")
+            && statSectionTitle.GetThemeFontSize("font_size") > bonusesTitle.GetThemeFontSize("font_size"),
+            "The character name must be the largest text, followed by distinct bonus and stat section headings.");
+        foreach (var bonus in new[] { ("HP", "HP: +"), ("MP", "MP: +"), ("AP", "AP: +"), ("Regen", "Regen: +") })
+        {
+            var bonusLabels = panel.FindChildren($"LevelUpBonus_{bonus.Item1}", "Label", true, false);
+            Check(bonusLabels.Count == 1 && ((Label)bonusLabels[0]).Text.StartsWith(bonus.Item2, StringComparison.Ordinal),
+                $"The {bonus.Item1} level-up bonus must have its own line.");
+        }
+
+        var partyList = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
+        var partyCard = partyList.GetChildren().OfType<PartyCard>().FirstOrDefault(card => card.UnitId == _actor.UnitId);
+        var badges = partyCard?.FindChildren("LevelUpBadge", "Button", true, false);
+        Check(badges != null && badges.Count == 1,
+            "A pending level-up must show its badge on the party portrait.");
+        if (badges != null && badges.Count == 1)
+        {
+            var badge = (Button)badges[0];
+            var portraitBounds = badge.GetParent<Control>().GetGlobalRect();
+            var badgeBounds = badge.GetGlobalRect();
+            var badgeStyle = badge.GetThemeStylebox("normal") as StyleBoxFlat;
+            Check(portraitBounds.HasPoint(badgeBounds.Position)
+                && portraitBounds.HasPoint(badgeBounds.End - Vector2.One)
+                && badge.Size.X <= 20.0f && badge.Size.Y <= 20.0f
+                && badgeStyle != null && badgeStyle.CornerRadiusTopLeft >= 8
+                && badge.GetNodeOrNull<Label>("LevelUpBadgeGlyph")?.Text == "+",
+                "The compact, rounded level-up badge must stay entirely within the portrait.");
+        }
         var labels = panel.FindChildren("*", "Label", true, false);
         Control lastRow = null;
         var rowCount = 0;
@@ -666,9 +729,13 @@ public partial class ActionFeedbackChecks : BattleController
         foreach (var child in labels)
         {
             var label = (Label)child;
-            if (!label.Text.Contains("): "))
+            if (!label.Name.ToString().StartsWith("LevelUpStat_", StringComparison.Ordinal))
                 continue;
             rowCount++;
+            Check(label.Text.Contains(": ", StringComparison.Ordinal)
+                && !label.Text.Contains("(", StringComparison.Ordinal)
+                && label.GetThemeColor("font_color") == new Color(0.76f, 0.73f, 0.66f),
+                "Stat labels must omit redundant abbreviations and match the party HP/MP text color.");
             var row = (HBoxContainer)label.GetParent();
             var button = row.GetChild<Button>(1);
             Check(button.Text == "+" && button.GetThemeStylebox("normal") is StyleBoxFlat style
@@ -707,9 +774,9 @@ public partial class ActionFeedbackChecks : BattleController
         foreach (var child in overlay.FindChildren("*", "Label", true, false))
         {
             var label = (Label)child;
-            if (!label.Text.StartsWith("Strength (STR):", StringComparison.Ordinal))
+            if (!label.Text.StartsWith("Strength:", StringComparison.Ordinal))
                 continue;
-            Check(label.Text == $"Strength (STR): {strength}", "Reopened level-up must show the updated stat value.");
+            Check(label.Text == $"Strength: {strength}", "Reopened level-up must show the updated stat value.");
             label.GetParent().GetChild<Button>(1).EmitSignal(Button.SignalName.Pressed);
             break;
         }
@@ -719,7 +786,7 @@ public partial class ActionFeedbackChecks : BattleController
             "Choosing a stat must keep the level-up dialog open.");
         var updatedLabel = (Label)overlay.FindChildren("LevelUpStat_strength", "Label", true, false)[0];
         var prompt = (Label)overlay.FindChildren("LevelUpAllocationPrompt", "Label", true, false)[0];
-        Check(updatedLabel.Text == $"Strength (STR): {strength + 1}"
+        Check(updatedLabel.Text == $"Strength: {strength + 1}"
             && (remainingPoints > 1
                 ? prompt.Text.Contains($"Points remaining: {remainingPoints - 1}")
                 : prompt.Text == "All stat points have been allocated."),
@@ -854,6 +921,25 @@ public partial class ActionFeedbackChecks : BattleController
         Reset(exploration: true);
         Field<HashSet<Vector2I>>("_wallCellSet").Add(new Vector2I(2, 1));
         ExpectFailure(() => _Input(new InputEventKey { Pressed = true, Keycode = Key.W }), "Path blocked.");
+        CheckExplorationKeyEchoQueued();
+    }
+
+    private void CheckExplorationKeyEchoQueued()
+    {
+        Reset();
+        Set("_isExplorationAutoMoving", true);
+        _Input(new InputEventKey { Keycode = Key.D, Pressed = true, Echo = true });
+        Check(!Field<bool>("_hasPendingExplorationManualMove"),
+            "Key repeat events must not move the party during combat.");
+
+        Reset(exploration: true);
+        Set("_isExplorationAutoMoving", true);
+        _Input(new InputEventKey { Keycode = Key.D, Pressed = true, Echo = true });
+        Check(Field<bool>("_hasPendingExplorationManualMove")
+            && Field<Vector2I>("_pendingExplorationManualDelta") == new Vector2I(1, 0),
+            "Holding a movement key must queue repeated exploration steps.");
+        Set("_isExplorationAutoMoving", false);
+        Set("_hasPendingExplorationManualMove", false);
     }
 
     private void CheckInteractions()

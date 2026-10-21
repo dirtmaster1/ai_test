@@ -3714,6 +3714,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
+            unit.ClearDefending();
             var removedCount = unit.ClearStatusEffectsByScope("combat_only");
             if (removedCount > 0)
             {

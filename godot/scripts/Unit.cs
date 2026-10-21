@@ -226,7 +226,7 @@ public partial class Unit : Node2D
     {
         RemainingMovement = MovementPerTurn;
         RemainingActionPoints = ActionPoints;
-        IsDefending = false;
+        ClearDefending();
         MagicPoints = Mathf.Clamp(MagicPoints + ScaledMagicPointRegenPerTurn, 0, MaxMagicPoints);
 
         var keys = new Array<string>();
@@ -851,6 +851,17 @@ public partial class Unit : Node2D
     public void MarkDefending()
     {
         IsDefending = true;
+        RefreshVisualState();
+    }
+
+    public void ClearDefending()
+    {
+        if (!IsDefending)
+        {
+            return;
+        }
+
+        IsDefending = false;
         RefreshVisualState();
     }
 

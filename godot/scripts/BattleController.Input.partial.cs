@@ -38,7 +38,13 @@ public partial class BattleController
             return;
         }
 
-        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
+        if (@event is not InputEventKey keyEvent || !keyEvent.Pressed)
+        {
+            return;
+        }
+
+        if (keyEvent.Echo
+            && (_flowState != BattleFlowState.Exploration || KeyToDelta(keyEvent.Keycode) == Vector2I.Zero))
         {
             return;
         }

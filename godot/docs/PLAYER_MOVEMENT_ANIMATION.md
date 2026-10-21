@@ -19,5 +19,6 @@ limbs more natural joint movement without changing the runtime animation support
 
 `Unit` plays the matching cycle while a player moves and restores the original
 static atlas pose when movement ends. This is wired into player combat steps,
-charge movement, and exploration party steps. Enemy units retain their existing
-movement visuals.
+charge movement, and exploration party steps. Exploration movement-key repeats
+use the same animated step duration as mouse click-to-move. Enemy units retain
+their existing movement visuals.

@@ -19,10 +19,6 @@ config/version="0.1.0"
 run/main_scene="res://scenes/StartScreen.tscn"
 config/features=PackedStringArray("4.7", "C#")
 
-[gui]
-
-theme/custom="res://ui/MedievalTheme.tres"
-
 [autoload]
 
 EventBus="*res://autoload/EventBus.cs"
@@ -39,3 +35,7 @@ window/stretch/aspect="expand"
 [dotnet]
 
 project/assembly_name="DarkDungeonTactics"
+
+[gui]
+
+theme/custom="res://ui/MedievalTheme.tres"

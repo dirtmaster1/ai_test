@@ -20,6 +20,26 @@ func run_test() -> void:
             print("PASS: compact level-up layout, aligned stat controls, and multiple allocations in one open dialog")
         quit(0 if level_up_failures.is_empty() else 1)
         return
+    if OS.get_cmdline_user_args().has("--keyboard-repeat-only"):
+        var movement_failures = checks.call("RunKeyboardRepeatChecks")
+        for failure in movement_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if movement_failures.is_empty():
+            print("PASS: exploration movement-key repeats queue steps while combat input remains unchanged")
+        quit(0 if movement_failures.is_empty() else 1)
+        return
+    if OS.get_cmdline_user_args().has("--defend-indicator-only"):
+        var defend_failures = checks.call("RunDefendIndicatorChecks")
+        for failure in defend_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if defend_failures.is_empty():
+            print("PASS: Defend indicators clear at combat end and on the unit's next turn")
+        quit(0 if defend_failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--equipment-only"):
         var equipment_failures = checks.call("RunEquipmentBonusChecks")
         for failure in equipment_failures:

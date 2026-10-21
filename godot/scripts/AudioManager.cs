@@ -8,11 +8,15 @@ public partial class AudioManager : Node
     private const string MusicBusName = "BackgroundMusic";
     private const float SilentVolumeDb = -80.0f;
     private const float MusicMakeupGainDb = 4.0f;
+    private const float CombatToExplorationFadeOutSeconds = 1.25f;
+    private const float CombatToExplorationFadeInSeconds = 1.75f;
 
     private AudioStreamPlayer _musicPlayer;
     private AudioStreamWav _explorationMusic;
     private AudioStreamWav _combatMusic;
+    private Tween _musicTransitionTween;
     private float _backgroundMusicVolume = 1.0f;
+    private float _musicFade = 1.0f;
 
     public float BackgroundMusicVolume => _backgroundMusicVolume;
 
@@ -63,12 +67,37 @@ public partial class AudioManager : Node
 
     private void SwitchToCombatMusic()
     {
+        _musicTransitionTween?.Kill();
+        _musicTransitionTween = null;
+        SetMusicFade(1.0f);
         SwitchMusic(_combatMusic);
     }
 
     private void SwitchToExplorationMusic()
     {
-        SwitchMusic(_explorationMusic);
+        if (_musicPlayer == null || _explorationMusic == null || _musicPlayer.Stream == _explorationMusic)
+        {
+            return;
+        }
+
+        _musicTransitionTween?.Kill();
+        _musicTransitionTween = CreateTween();
+        _musicTransitionTween.SetTrans(Tween.TransitionType.Sine);
+        _musicTransitionTween.SetEase(Tween.EaseType.InOut);
+        _musicTransitionTween.TweenMethod(
+            Callable.From<float>(SetMusicFade),
+            _musicFade,
+            0.0f,
+            CombatToExplorationFadeOutSeconds
+        );
+        _musicTransitionTween.TweenCallback(Callable.From(() => SwitchMusic(_explorationMusic)));
+        _musicTransitionTween.TweenMethod(
+            Callable.From<float>(SetMusicFade),
+            0.0f,
+            1.0f,
+            CombatToExplorationFadeInSeconds
+        );
+        _musicTransitionTween.Finished += () => _musicTransitionTween = null;
     }
 
     private void SwitchMusic(AudioStreamWav music)
@@ -160,9 +189,16 @@ public partial class AudioManager : Node
             return;
         }
 
-        _musicPlayer.VolumeDb = _backgroundMusicVolume <= 0.0f
+        var effectiveVolume = _backgroundMusicVolume * _musicFade;
+        _musicPlayer.VolumeDb = effectiveVolume <= 0.0f
             ? SilentVolumeDb
-            : Mathf.LinearToDb(_backgroundMusicVolume) + MusicMakeupGainDb;
+            : Mathf.Max(SilentVolumeDb, Mathf.LinearToDb(effectiveVolume) + MusicMakeupGainDb);
         _musicPlayer.StreamPaused = _backgroundMusicVolume <= 0.0f;
+    }
+
+    private void SetMusicFade(float fade)
+    {
+        _musicFade = Mathf.Clamp(fade, 0.0f, 1.0f);
+        ApplyBackgroundMusicVolume();
     }
 }
