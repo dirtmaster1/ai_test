@@ -418,6 +418,9 @@ public partial class ActionFeedbackChecks : BattleController
         var partyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
         StyleBoxFlat actorCardStyle = null;
         StyleBoxFlat allyCardStyle = null;
+        var partyPortraitTextCount = 0;
+        var partyPortraitTextSizesMatch = true;
+        var partyPortraitCardHeightFits = true;
         foreach (var child in partyCards.GetChildren())
         {
             if (child is not PartyCard card)
@@ -429,6 +432,23 @@ public partial class ActionFeedbackChecks : BattleController
             if (card.UnitId == _actor.UnitId)
             {
                 actorCardStyle = cardStyle;
+                partyPortraitCardHeightFits &= card.CustomMinimumSize.Y >= 84.0f;
+                foreach (var labelNode in card.FindChildren("*", "Label", true, false))
+                {
+                    var label = (Label)labelNode;
+                    if (label.Text == _actor.UnitName)
+                    {
+                        partyPortraitTextCount++;
+                        partyPortraitTextSizesMatch &= label.GetThemeFontSize("font_size") == 14;
+                    }
+                    else if (label.Text.StartsWith("HP ", StringComparison.Ordinal)
+                        || label.Text.StartsWith("MP ", StringComparison.Ordinal)
+                        || label.Text.StartsWith("AC ", StringComparison.Ordinal))
+                    {
+                        partyPortraitTextCount++;
+                        partyPortraitTextSizesMatch &= label.GetThemeFontSize("font_size") == 11;
+                    }
+                }
             }
             else if (card.UnitId == _ally.UnitId)
             {
@@ -441,6 +461,8 @@ public partial class ActionFeedbackChecks : BattleController
             && actorCardStyle.BgColor.G > allyCardStyle.BgColor.G
             && actorCardStyle.BgColor.B > allyCardStyle.BgColor.B,
             "Selected party member card must have a slightly lighter background");
+        Check(partyPortraitTextCount >= 4 && partyPortraitTextSizesMatch && partyPortraitCardHeightFits,
+            "Party portrait cards must fit 14px names and 11px HP, MP, and AC details.");
 
         var combatLogMinimizeButton = _testHud.GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogMinimizeButton");
         combatLogMinimizeButton.EmitSignal(Button.SignalName.Pressed);

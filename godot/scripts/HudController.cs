@@ -2397,7 +2397,7 @@ public partial class HudController : Control
         {
             UnitId = unit.UnitId,
             ReorderEnabled = reorderEnabled && !unit.IsDead,
-            CustomMinimumSize = new Vector2(0.0f, 72.0f),
+            CustomMinimumSize = new Vector2(0.0f, 84.0f),
             FocusMode = FocusModeEnum.All,
             MouseDefaultCursorShape = CursorShape.PointingHand,
             TooltipText = reorderEnabled
@@ -2486,7 +2486,7 @@ public partial class HudController : Control
         };
         name.AddThemeFontOverride("font", TacticalTheme.HeaderFont);
         name.AddThemeColorOverride("font_color", unit.IsDead ? new Color(0.55f, 0.55f, 0.55f) : new Color(0.9f, 0.82f, 0.64f));
-        name.AddThemeFontSizeOverride("font_size", 13);
+        name.AddThemeFontSizeOverride("font_size", 14);
         details.AddChild(name);
 
         details.AddChild(CreatePartyResourceRow("HP", unit.HitPoints, unit.MaxHitPoints, new Color(0.7f, 0.13f, 0.13f)));
@@ -2504,7 +2504,7 @@ public partial class HudController : Control
         };
 
         label.AddThemeColorOverride("font_color", PartyDetailTextColor);
-        label.AddThemeFontSizeOverride("font_size", 10);
+        label.AddThemeFontSizeOverride("font_size", 11);
         return label;
     }
 
@@ -2520,7 +2520,7 @@ public partial class HudController : Control
             MouseFilter = MouseFilterEnum.Ignore
         };
         valueLabel.AddThemeColorOverride("font_color", PartyDetailTextColor);
-        valueLabel.AddThemeFontSizeOverride("font_size", 10);
+        valueLabel.AddThemeFontSizeOverride("font_size", 11);
         row.AddChild(valueLabel);
 
         var bar = new ProgressBar
