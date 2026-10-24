@@ -21,6 +21,12 @@ public partial class BattleController
             return $"{actor.UnitName} has not learned {profile.ActionName}.";
         }
 
+        if (IsHealingSpellAction(profile.ActionType) && !CanUnitCastHealingSpell(actor, profile.ActionId))
+        {
+            var allowedClasses = TryGetStringArray(_gameData?.GetSpell(profile.ActionId) ?? new Godot.Collections.Dictionary(), "allowed_classes");
+            return $"{actor.UnitName} must be a {string.Join(" or ", allowedClasses)} to cast {profile.ActionName}.";
+        }
+
         if (actor.TryGetActionPreventingStatusName(out var status))
         {
             return $"{actor.UnitName} cannot act while {status.ToLowerInvariant()}.";

@@ -603,6 +603,38 @@ public partial class Unit : Node2D
         return removed;
     }
 
+    public int ClearNegativeStatusEffects()
+    {
+        var keys = new Array<string>();
+        foreach (var pair in _statusEffects)
+        {
+            if (!pair.Value.IsBuff)
+            {
+                keys.Add(pair.Key);
+            }
+        }
+
+        foreach (var key in keys)
+        {
+            _statusEffects.Remove(key);
+        }
+
+        return keys.Count;
+    }
+
+    public bool HasNegativeStatusEffects()
+    {
+        foreach (var effect in _statusEffects.Values)
+        {
+            if (!effect.IsBuff)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public Array<Dictionary> ProcessStartOfTurnStatusEffects()
     {
         var events = new Array<Dictionary>();
@@ -1268,6 +1300,34 @@ public partial class Unit : Node2D
         HitPoints = MaxHitPoints;
         MagicPoints = MaxMagicPoints;
         QueueRedraw();
+    }
+
+    public bool Resurrect()
+    {
+        if (!IsDead)
+        {
+            return false;
+        }
+
+        IsDead = false;
+        HitPoints = MaxHitPoints;
+        RefreshVisualState();
+        QueueRedraw();
+        return true;
+    }
+
+    public int RemoveCurrentLevelExperiencePercent(int percent)
+    {
+        var safePercent = Mathf.Clamp(percent, 0, 100);
+        if (safePercent == 0 || Experience <= 0)
+        {
+            return 0;
+        }
+
+        var experiencePenalty = Mathf.CeilToInt(ExperienceToNextLevel * (safePercent / 100.0f));
+        var removedExperience = Mathf.Min(Experience, experiencePenalty);
+        Experience -= removedExperience;
+        return removedExperience;
     }
 
     private void RefreshVisualState()

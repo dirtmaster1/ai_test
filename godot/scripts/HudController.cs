@@ -113,7 +113,10 @@ public partial class HudController : Control
         ["magic-missile"] = new(2, 4),
         ["sleep"] = new(3, 4),
         ["protection"] = new(4, 4),
-        ["fireball"] = new(5, 4)
+        ["fireball"] = new(5, 4),
+        ["remove-malady"] = new(4, 8),
+        ["resurrect"] = new(5, 8),
+        ["blessing"] = new(6, 8)
     };
     private static readonly System.Collections.Generic.Dictionary<string, Texture2D> ItemIconsById = new(StringComparer.OrdinalIgnoreCase);
 
@@ -2824,7 +2827,7 @@ public partial class HudController : Control
         }
     }
 
-    public void OpenVendorPanel(string vendorName)
+    public void OpenVendorPanel(string vendorName, bool healingServicesOnly = false)
     {
         if (_vendorHeader != null)
         {
@@ -2835,6 +2838,13 @@ public partial class HudController : Control
         {
             _vendorStoreTabs.Visible = true;
             _vendorStoreTabs.CurrentTab = 0;
+            _vendorStoreTabs.SetTabTitle(0, healingServicesOnly ? "Healing Services" : "Buy");
+            _vendorStoreTabs.GetChild<Control>(1).Visible = !healingServicesOnly;
+        }
+
+        if (_vendorBuyButton != null)
+        {
+            _vendorBuyButton.Text = healingServicesOnly ? "Select Service" : "Buy";
         }
 
         if (_vendorMessageLabel != null)
@@ -2917,16 +2927,21 @@ public partial class HudController : Control
 
             var quantity = GetInt(item, "quantity", 1);
             var price = GetInt(item, "price", 0);
-            var label = $"{Mathf.Max(1, quantity)} x {BuildItemSummary(item)} - {Mathf.Max(0, price)} gp";
+            var isHealingService = GetBool(item, "is_healing_service", false);
+            var label = isHealingService
+                ? $"{BuildItemSummary(item)} - {Mathf.Max(0, price)} gp"
+                : $"{Mathf.Max(1, quantity)} x {BuildItemSummary(item)} - {Mathf.Max(0, price)} gp";
             var icon = GetItemIcon(item);
             var visibleLabel = icon == null
                 ? label
-                : $"{Mathf.Max(1, quantity)} x {GetString(item, "name", itemId)} - {Mathf.Max(0, price)} gp";
+                : isHealingService
+                    ? $"{GetString(item, "name", itemId)} - {Mathf.Max(0, price)} gp"
+                    : $"{Mathf.Max(1, quantity)} x {GetString(item, "name", itemId)} - {Mathf.Max(0, price)} gp";
             entriesById[itemId] = item;
             list.AddItem(visibleLabel, icon);
             var itemIndex = list.ItemCount - 1;
             list.SetItemMetadata(itemIndex, itemId);
-            list.SetItemTooltip(itemIndex, "");
+            list.SetItemTooltip(itemIndex, GetString(item, "description", ""));
         }
 
         if (list.ItemCount > 0)

@@ -92,6 +92,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private BattleFlowState _flowState = BattleFlowState.Exploration;
     private bool _awaitingPlayerAttackDirection;
+    private bool _awaitingHealerServiceTarget;
+    private string _selectedHealerServiceId = "";
+    private Vector2I _healerServiceSourceCell = new(-1, -1);
     private Unit _explorerUnit;
     private Unit _fogVisibilityActor;
     private Vector2I _fogVisibilityAnchorCell = new(-1, -1);
@@ -100,7 +103,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private string _activeEncounterId = "";
     private string _currentMapId = "forest-town";
     private string _selectedCharacterUnitId = "";
-    private int _partyGold = 25;
+    private int _partyGold = 500;
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
     private readonly Array<Vector2I> _movementPreviewPath = new();
     private bool _hasMovementHoverCell;
@@ -345,6 +348,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         UpdateFocusedUnitCellHighlight();
         DrawMovementPreviewOverlay(canvas);
         DrawAttackPreviewOverlay(canvas);
+        DrawHealerServicePreviewOverlay(canvas);
     }
 
     public void DrawWorldForegroundOverlays(CanvasItem canvas)
@@ -561,6 +565,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _awaitingPlayerAttackDirection = true;
         ClearMovementPreviewPath();
         SyncHudFromGameState();
+        if (IsHealingSpellAction(actionProfile.ActionType))
+        {
+            _hud?.SetHelpText(BuildHealingSpellTargetHelp(actionProfile));
+        }
         QueueRedraw();
     }
 
@@ -611,6 +619,43 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (!IsUsableUnit(unit) || unit.Team != "player")
         {
             return;
+        }
+
+        if (_awaitingHealerServiceTarget
+            && string.Equals(_selectedHealerServiceId, "resurrect", System.StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedCharacterUnitId = unit.UnitId;
+            TryCastHealerServiceOnPartyMember(unit);
+            if (_awaitingHealerServiceTarget)
+            {
+                SyncHudFromGameState();
+            }
+            return;
+        }
+
+        if (_flowState == BattleFlowState.Combat && _awaitingPlayerAttackDirection)
+        {
+            var active = GetActivePlayerUnit();
+            if (active != null)
+            {
+                var actionProfile = ResolveActionProfile(active, GetSelectedAbilityId(active));
+                if (IsHealingSpellAction(actionProfile.ActionType))
+                {
+                    _selectedCharacterUnitId = unit.UnitId;
+                    if (TryCastCombatHealingSpell(active, unit, actionProfile))
+                    {
+                        CancelAttackMode(false);
+                        ApplyActionResult(ResolveSuccessfulAction(actionProfile.ActionType));
+                        BeginPostPlayerActionMouseMoveLock();
+                    }
+                    else
+                    {
+                        SyncHudFromGameState();
+                    }
+
+                    return;
+                }
+            }
         }
 
         _selectedCharacterUnitId = unit.UnitId;
@@ -728,15 +773,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (_playerUnits.Count <= 1)
-        {
-            RejectPlayerAction("At least one member must remain in the party.");
-            return;
-        }
-
         var unit = FindUnitById(partyUnitId);
         if (!IsUsableUnit(unit) || unit.Team != "player")
         {
+            return;
+        }
+
+        if (unit.IsDead)
+        {
+            RejectPlayerAction("Fallen party members must be resurrected before they can be moved to reserves.");
+            return;
+        }
+
+        if (!HasLivingPartyMember(unit))
+        {
+            RejectPlayerAction("At least one living member must remain in the party.");
             return;
         }
 
@@ -943,6 +994,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (string.IsNullOrEmpty(spellId) || _gameData.GetSpell(spellId).Count == 0)
         {
             RejectPlayerAction($"{itemName} does not contain a valid spell.");
+            return;
+        }
+
+        var spellData = _gameData.GetSpell(spellId);
+        if (!CanUnitCastHealingSpell(target, spellId))
+        {
+            var spellAllowedClasses = TryGetStringArray(spellData, "allowed_classes");
+            RejectPlayerAction($"{target.UnitName} cannot learn {GetActionDisplayName(spellId)} - requires {string.Join(", ", spellAllowedClasses)}.");
             return;
         }
 
@@ -1210,6 +1269,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (IsHealingSpellAction(actionProfile.ActionType))
+        {
+            var target = GetPartyUnitAtCell(targetCell);
+            if (!TryCastCombatHealingSpell(active, target, actionProfile))
+            {
+                return;
+            }
+
+            CancelAttackMode(false);
+            var result = ResolveSuccessfulAction(actionProfile.ActionType);
+            ApplyActionResult(result);
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
         if (!ValidatePlayerTarget(active, actionProfile, targetCell))
         {
             return;
@@ -1351,6 +1425,295 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         finally
         {
             _isPlayerMovementAnimating = false;
+        }
+    }
+
+    private static bool IsHealingSpellAction(string actionType)
+    {
+        return actionType is "remove_malady" or "resurrect" or "blessing";
+    }
+
+    private bool CanUnitCastHealingSpell(Unit unit, string spellId)
+    {
+        var spell = _gameData?.GetSpell(spellId) ?? new Dictionary();
+        var allowedClasses = TryGetStringArray(spell, "allowed_classes");
+        if (allowedClasses.Count == 0)
+        {
+            return true;
+        }
+
+        if (unit == null)
+        {
+            return false;
+        }
+
+        foreach (var allowedClass in allowedClasses)
+        {
+            if (string.Equals(allowedClass, unit.ClassId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string BuildHealingSpellTargetHelp(ActionProfile actionProfile)
+    {
+        if (actionProfile.ActionType == "resurrect")
+        {
+            return $"{actionProfile.ActionName}: choose a fallen ally from the party list. No range limit. Press Esc to cancel.";
+        }
+
+        return $"{actionProfile.ActionName}: choose a living ally within {actionProfile.Range} tiles. Press Esc to cancel.";
+    }
+
+    private bool TryCastCombatHealingSpell(Unit caster, Unit target, ActionProfile actionProfile)
+    {
+        if (_flowState != BattleFlowState.Combat || !IsUsableUnit(caster) || caster.IsDead)
+        {
+            return false;
+        }
+
+        if (!CanUseActionProfileNow(caster, actionProfile))
+        {
+            if (caster.Team == "player")
+            {
+                RejectPlayerAction(GetActionFailureReason(caster, actionProfile));
+            }
+            return false;
+        }
+
+        if (!CanCastHealingSpellOnTarget(caster, target, actionProfile, out var failureText))
+        {
+            if (caster.Team == "player")
+            {
+                RejectPlayerAction(failureText);
+            }
+            return false;
+        }
+
+        var spell = _gameData?.GetSpell(actionProfile.ActionId) ?? new Dictionary();
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            if (caster.Team == "player")
+            {
+                RejectPlayerAction($"Not enough MP to cast {actionProfile.ActionName}.");
+            }
+            return false;
+        }
+
+        if (!TryApplyHealingSpellEffect(target, spell, out var resultText, out failureText))
+        {
+            GD.PushError($"Healing spell '{actionProfile.ActionId}' failed after target validation: {failureText}");
+            return false;
+        }
+
+        if (actionProfile.IgnoresActionCost)
+        {
+            caster.MarkAbilityCooldownOnly(actionProfile.ActionId, actionProfile.CooldownTurns);
+        }
+        else
+        {
+            caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        }
+
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
+        var mpText = actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : "";
+        _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}. {resultText}{mpText}");
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool CanCastHealingSpellOnTarget(Unit caster, Unit target, ActionProfile actionProfile, out string failureText)
+    {
+        failureText = "";
+        if (!IsUsableUnit(caster) || caster.IsDead || !IsUsableUnit(target))
+        {
+            failureText = "Choose a valid ally as the spell target.";
+            return false;
+        }
+
+        if (!CanUnitCastHealingSpell(caster, actionProfile.ActionId))
+        {
+            var allowedClasses = TryGetStringArray(_gameData?.GetSpell(actionProfile.ActionId) ?? new Dictionary(), "allowed_classes");
+            failureText = $"{caster.UnitName} must be a {string.Join(" or ", allowedClasses)} to cast {actionProfile.ActionName}.";
+            return false;
+        }
+
+        var spell = _gameData?.GetSpell(actionProfile.ActionId) ?? new Dictionary();
+        if (spell.Count == 0)
+        {
+            GD.PushError($"Healing spell '{actionProfile.ActionId}' is missing from game data.");
+            failureText = "That healing spell is unavailable.";
+            return false;
+        }
+
+        if (target.Team != caster.Team)
+        {
+            failureText = "Healing spells can only target allies.";
+            return false;
+        }
+
+        if (target.Team == "player" && !_playerUnits.Contains(target))
+        {
+            failureText = "That character is not in the active party.";
+            return false;
+        }
+
+        if (target.Team == "enemy" && !_activeCombatEnemyUnitIds.Contains(target.UnitId))
+        {
+            failureText = "That enemy is no longer part of this encounter.";
+            return false;
+        }
+
+        if (!CanApplyHealingSpellEffect(target, spell, out failureText))
+        {
+            return false;
+        }
+
+        var range = GetInt(spell, "range", actionProfile.Range);
+        if (range >= 0
+            && (!Unit.IsWithinRange(caster.GridPos, target.GridPos, range)
+                || !HasClearUnitLineOfSight(caster, target)))
+        {
+            failureText = $"Choose an ally within {range} tiles and clear line of sight.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool CanApplyHealingSpellEffect(Unit target, Dictionary spell, out string failureText)
+    {
+        failureText = "";
+        if (!IsUsableUnit(target))
+        {
+            failureText = "Choose a valid party member as the healing target.";
+            return false;
+        }
+
+        var spellType = GetString(spell, "type", "");
+        switch (spellType)
+        {
+            case "remove_malady":
+                if (target.IsDead)
+                {
+                    failureText = "Remove Malady can only be used on a living ally.";
+                    return false;
+                }
+                if (!target.HasNegativeStatusEffects())
+                {
+                    failureText = $"{target.UnitName} has no malady to remove.";
+                    return false;
+                }
+                return true;
+            case "resurrect":
+                if (!target.IsDead)
+                {
+                    failureText = $"{target.UnitName} is not fallen and does not need resurrection.";
+                    return false;
+                }
+                if (target.Team == "player" && !_playerUnits.Contains(target) && _playerUnits.Count >= MaxPartyMembers)
+                {
+                    failureText = "Your active party is full. Move a member to reserves before resurrecting this ally.";
+                    return false;
+                }
+                return true;
+            case "blessing":
+                if (target.IsDead)
+                {
+                    failureText = "Blessing can only be centered on a living ally.";
+                    return false;
+                }
+                return true;
+            default:
+                GD.PushError($"Unsupported healing spell type '{spellType}'.");
+                failureText = "That healing spell is unavailable.";
+                return false;
+        }
+    }
+
+    private bool TryApplyHealingSpellEffect(Unit target, Dictionary spell, out string resultText, out string failureText)
+    {
+        resultText = "";
+        if (!CanApplyHealingSpellEffect(target, spell, out failureText))
+        {
+            return false;
+        }
+
+        var spellType = GetString(spell, "type", "");
+        switch (spellType)
+        {
+            case "remove_malady":
+                var removedEffects = target.ClearNegativeStatusEffects();
+                _combatEffectsDirector?.PlayCleansing(target);
+                resultText = $"{target.UnitName} was cleansed of {removedEffects} negative effect(s).";
+                return true;
+            case "resurrect":
+                if (!target.Resurrect())
+                {
+                    failureText = $"{target.UnitName} is no longer fallen.";
+                    return false;
+                }
+
+                var lostExperience = target.RemoveCurrentLevelExperiencePercent(
+                    Mathf.Max(0, GetInt(spell, "experience_loss_percent", 0)));
+                if (target.Team == "player")
+                {
+                    if (!_playerUnits.Contains(target))
+                    {
+                        _playerUnits.Add(target);
+                    }
+                    if (!IsUsableUnit(_explorerUnit) || _explorerUnit.IsDead)
+                    {
+                        _explorerUnit = target;
+                    }
+                }
+                else if (target.Team == "enemy" && !_enemyUnits.Contains(target))
+                {
+                    _enemyUnits.Add(target);
+                }
+
+                _combatEffectsDirector?.PlayResurrection(target);
+                resultText = $"{target.UnitName} returned at full health. {lostExperience} XP was lost.";
+                return true;
+            case "blessing":
+                var areaRadius = Mathf.Max(0, GetInt(spell, "area_radius", 0));
+                var durationTurns = Mathf.Max(1, GetInt(spell, "duration_turns", 1));
+                var armorClassBonus = Mathf.Max(0, GetInt(spell, "armor_class_bonus", 0));
+                var statusId = GetString(spell, "id", "blessing");
+                const string statusName = "Blessed";
+                var blessedNames = new List<string>();
+
+                foreach (var unit in _allUnits)
+                {
+                    if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != target.Team
+                        || !Unit.IsWithinRange(target.GridPos, unit.GridPos, areaRadius))
+                    {
+                        continue;
+                    }
+
+                    unit.ApplyStatusEffect(
+                        statusId,
+                        statusName,
+                        true,
+                        durationTurns,
+                        stackingMode: "refresh",
+                        maxStacks: 1,
+                        scope: "combat_only",
+                        armorClassBonus: armorClassBonus);
+                    _combatEffectsDirector?.PlayStatus(unit, new Color("f5d477"), "BLESSED");
+                    blessedNames.Add(unit.UnitName);
+                }
+
+                _combatEffectsDirector?.PlayBlessing(target.Position, areaRadius * CellSize);
+                resultText = $"{string.Join(", ", blessedNames)} gained {statusName.ToLowerInvariant()} protection for {durationTurns} turns.";
+                return true;
+            default:
+                failureText = $"Unsupported healing spell type '{spellType}'.";
+                return false;
         }
     }
 
@@ -1974,7 +2337,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _equippedItemsByUnitId.Clear();
             _partyInventoryItemIds.Clear();
             _reservePartyRoster.Clear();
-            _partyGold = 25;
+            _partyGold = 500;
             _vendorGoldById.Clear();
             _vendorInventoryItemIdsById.Clear();
             EnsureDefaultVendorState();
@@ -2149,7 +2512,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             _triggeredEventIds.Add(eventId);
-            _persistence?.PersistSaveGame(false);
+            _persistence.PersistSaveGame(false);
         }
 
         private bool ExecuteMapEvent(Dictionary trigger)
@@ -2399,9 +2762,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var actionProfile = ResolveActionProfile(actor, choice.AbilityId);
         SetSelectedAbilityId(actor, choice.AbilityId);
-        var actionSuccess = actionProfile.ActionType == "heal"
-            ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost)
-            : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost);
+        var actionSuccess = IsHealingSpellAction(actionProfile.ActionType)
+            ? TryCastCombatHealingSpell(actor, choice.Target, actionProfile)
+            : actionProfile.ActionType == "heal"
+                ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost)
+                : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost);
 
         if (!actionSuccess)
         {
@@ -2439,6 +2804,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool CanAiActionTarget(Unit actor, Unit target, AiDirector.ActionOption option)
     {
+        if (IsHealingSpellAction(option.ActionType))
+        {
+            return CanCastHealingSpellOnTarget(actor, target, ResolveActionProfile(actor, option.AbilityId), out _);
+        }
+
         if (option.ActionType == "heal")
         {
             return IsValidAllyTarget(actor, target)
@@ -2936,7 +3306,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void CleanupDefeatedUnits()
     {
         RecordDefeatedEnemiesForCurrentMap();
-        RemoveDeadFromTeam(_playerUnits);
         RemoveDeadFromTeam(_enemyUnits);
     }
 
@@ -2966,7 +3335,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool CheckCombatResolved()
     {
-        if (_playerUnits.Count == 0)
+        if (!HasLivingPartyMember())
         {
             ResetPlayerAbilityCooldowns();
             _hud?.ShowCombatBanner("COMBAT ENDED - DEFEAT", new Color(0.9f, 0.28f, 0.25f, 1.0f));
@@ -3004,6 +3373,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             EnterExplorationMode("Encounter cleared. Exploration resumed.");
             _persistence.PersistSaveGame(false);
             return true;
+        }
+
+        return false;
+    }
+
+    private bool HasLivingPartyMember(Unit excludedUnit = null)
+    {
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && !unit.IsDead && unit != excludedUnit)
+            {
+                return true;
+            }
         }
 
         return false;
@@ -3391,7 +3773,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             range = 1;
         }
 
-        range = actionType is "defend" or "protection" ? 0 : Mathf.Max(1, range);
+        range = actionType is "defend" or "protection"
+            ? 0
+            : actionType == "resurrect" && range < 0
+                ? range
+                : Mathf.Max(1, range);
         damage = Mathf.Max(0, damage);
         var healAmount = Mathf.Max(0, GetInt(actionData, "heal_amount", 0));
         var cooldownTurns = Mathf.Max(0, GetInt(actionData, "cooldown", 0));
@@ -3433,6 +3819,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool CanUseActionProfileNow(Unit actor, ActionProfile actionProfile)
     {
         if (!IsUsableUnit(actor) || actor.IsDead)
+        {
+            return false;
+        }
+
+        if (IsHealingSpellAction(actionProfile.ActionType) && !CanUnitCastHealingSpell(actor, actionProfile.ActionId))
         {
             return false;
         }
@@ -3809,7 +4200,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var profile = ResolveActionProfile(unit, abilityId);
+            var actionData = GetActionData(abilityId, out _);
             var actionName = string.IsNullOrEmpty(profile.ActionName) ? GetActionDisplayName(abilityId) : profile.ActionName;
+            var rangeLabel = profile.Range < 0 ? "Unlimited" : profile.Range.ToString();
+            var description = GetString(actionData, "description", "");
+            var descriptionLabel = string.IsNullOrWhiteSpace(description) ? "" : $"Description: {description}\n";
             var cooldownRemaining = unit.GetAbilityCooldownRemaining(abilityId);
             var valueText = profile.ActionType == "disarm_trap"
                 ? "Effect: permanently disarm an adjacent trap"
@@ -3823,8 +4218,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                         ? $"Effect: sleep ({profile.AreaRadius}-cell radius)"
                         : profile.ActionType == "protection"
                             ? $"Effect: +armor class aura ({profile.AreaRadius}-cell radius)"
-                            : profile.ActionType == "area_attack"
-                                ? $"Damage: {profile.Damage} to all units ({profile.AreaRadius}-cell radius)"
+                                : profile.ActionType == "remove_malady"
+                                    ? "Effect: remove all negative status effects from an ally"
+                                    : profile.ActionType == "resurrect"
+                                        ? $"Effect: revive a fallen ally; lose {GetInt(actionData, "experience_loss_percent", 0)}% current-level XP"
+                                        : profile.ActionType == "blessing"
+                                            ? $"Effect: +{GetInt(actionData, "armor_class_bonus", 0)} armor class to allies within {profile.AreaRadius} tiles"
+                                : profile.ActionType == "area_attack"
+                                    ? $"Damage: {profile.Damage} to all units ({profile.AreaRadius}-cell radius)"
                             : profile.ActionType == "charge"
                                 ? "Effect: charge attack (free action)"
                                 : profile.ActionType == "pin"
@@ -3855,7 +4256,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 { "id", abilityId },
                 { "label", actionName },
-                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {profile.Range}\nArea Radius: {profile.AreaRadius}\n{valueText}\n{mpCostLabel}\n{cooldownLabel}\n{actionCostLabel}\n{requirementLabel}\n{stateLabel}" },
+                { "detail", $"{actionName}\nType: {profile.ActionType}\nRange: {rangeLabel}\nArea Radius: {profile.AreaRadius}\n{valueText}\n{descriptionLabel}{mpCostLabel}\n{cooldownLabel}\n{actionCostLabel}\n{requirementLabel}\n{stateLabel}" },
                 { "cooldown_remaining", cooldownRemaining },
                 { "is_enabled", isEnabled ? 1 : 0 },
                 { "is_selected", abilityId == selectedId ? 1 : 0 }
@@ -4113,16 +4514,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-                var target = actionProfile.ActionType == "heal"
-                    ? GetLivingAllyAtCell(active.Team, cell)
-                    : GetLivingEnemyAtCell(active.Team, cell);
+                var target = IsHealingSpellAction(actionProfile.ActionType)
+                    ? GetPartyUnitAtCell(cell)
+                    : actionProfile.ActionType == "heal"
+                        ? GetLivingAllyAtCell(active.Team, cell)
+                        : GetLivingEnemyAtCell(active.Team, cell);
                 var valid = IsUtilityAction(actionProfile.ActionType)
                     ? TryGetUtilityTarget(active, actionProfile, cell, out _)
                     : actionProfile.ActionType == "area_attack"
                     ? HasClearLineOfSight(active.GridPos, cell)
-                    : target != null && (actionProfile.ActionType == "heal"
-                        ? active.CanHealTarget(target, actionProfile.Range, _allUnits) && HasClearUnitLineOfSight(active, target)
-                        : active.CanUseActionAtRange(target, actionProfile.Range, _allUnits));
+                    : target != null && (IsHealingSpellAction(actionProfile.ActionType)
+                        ? CanCastHealingSpellOnTarget(active, target, actionProfile, out _)
+                        : actionProfile.ActionType == "heal"
+                            ? active.CanHealTarget(target, actionProfile.Range, _allUnits) && HasClearUnitLineOfSight(active, target)
+                            : active.CanUseActionAtRange(target, actionProfile.Range, _allUnits));
 
                 var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
                 var edge = valid ? new Color(0.3f, 1.0f, 0.45f, 0.9f) : new Color(1.0f, 0.4f, 0.4f, 0.5f);
@@ -4131,12 +4536,75 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
+        if (IsHealingSpellAction(actionProfile.ActionType))
+        {
+            var hoveredCell = WorldToCell(ToLocal(GetGlobalMousePosition()));
+            var hoveredTarget = GetPartyUnitAtCell(hoveredCell);
+            if (actionProfile.ActionType == "blessing"
+                && hoveredTarget != null
+                && CanCastHealingSpellOnTarget(active, hoveredTarget, actionProfile, out _))
+            {
+                DrawAreaPreviewOverlay(canvas, hoveredCell, actionProfile.AreaRadius);
+            }
+            return;
+        }
+
         if (!TryGetAreaPreviewCenterCell(active, actionProfile, out var areaCenter))
         {
             return;
         }
 
         DrawAreaPreviewOverlay(canvas, areaCenter, actionProfile.AreaRadius);
+    }
+
+    private void DrawHealerServicePreviewOverlay(CanvasItem canvas)
+    {
+        if (!_awaitingHealerServiceTarget)
+        {
+            return;
+        }
+
+        var service = _gameData?.GetHealingService(_selectedHealerServiceId) ?? new Dictionary();
+        var serviceRange = GetInt(service, "range", 5);
+        if (serviceRange < 0)
+        {
+            return;
+        }
+
+        var sourceRect = new Rect2(
+            new Vector2(_healerServiceSourceCell.X * CellSize, _healerServiceSourceCell.Y * CellSize),
+            new Vector2(CellSize, CellSize));
+        canvas.DrawRect(sourceRect, new Color(0.9f, 0.82f, 0.3f, 0.2f), true);
+        canvas.DrawRect(sourceRect, new Color(1.0f, 0.9f, 0.35f, 0.95f), false, 3.0f);
+
+        for (var dx = -serviceRange; dx <= serviceRange; dx++)
+        {
+            for (var dy = -serviceRange; dy <= serviceRange; dy++)
+            {
+                var cell = _healerServiceSourceCell + new Vector2I(dx, dy);
+                if (!IsInBounds(cell) || !Unit.IsWithinRange(_healerServiceSourceCell, cell, serviceRange))
+                {
+                    continue;
+                }
+
+                var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
+                var hasPartyUnit = GetPartyUnitAtCell(cell) != null;
+                canvas.DrawRect(cellRect, new Color(0.2f, 0.85f, 0.5f, hasPartyUnit ? 0.2f : 0.05f), true);
+                canvas.DrawRect(cellRect, new Color(0.3f, 0.95f, 0.6f, hasPartyUnit ? 0.9f : 0.25f), false, 1.5f);
+            }
+        }
+
+        var areaRadius = GetInt(service, "area_radius", 0);
+        if (areaRadius > 0)
+        {
+            var hoveredCell = WorldToCell(ToLocal(GetGlobalMousePosition()));
+            if (IsInBounds(hoveredCell)
+                && Unit.IsWithinRange(_healerServiceSourceCell, hoveredCell, serviceRange)
+                && GetPartyUnitAtCell(hoveredCell) is { IsDead: false })
+            {
+                DrawAreaPreviewOverlay(canvas, hoveredCell, areaRadius);
+            }
+        }
     }
 
     private bool TryGetAreaPreviewCenterCell(Unit active, ActionProfile actionProfile, out Vector2I centerCell)
@@ -4844,16 +5312,177 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _activeVendorId = vendorId;
         EnsureDefaultVendorState();
         _hud?.SetLootPanelVisible(false);
-        _hud?.OpenVendorPanel(GetVendorDisplayName(vendorId));
+        var healingServicesOnly = string.Equals(vendorId, "eldius", System.StringComparison.OrdinalIgnoreCase);
+        _hud?.OpenVendorPanel(healingServicesOnly ? "Eldius the Healer" : GetVendorDisplayName(vendorId), healingServicesOnly);
         RefreshVendorHud(vendorId, "");
     }
 
     private void OnHudVendorBuyRequested(string itemId)
     {
+        if (string.Equals(_activeVendorId, "eldius", System.StringComparison.OrdinalIgnoreCase))
+        {
+            BeginHealerServiceTargeting(itemId);
+            return;
+        }
+
         var message = TryBuyVendorItem(_activeVendorId, itemId);
         RefreshVendorHud(_activeVendorId, message);
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
+    }
+
+    private void BeginHealerServiceTargeting(string serviceId)
+    {
+        if (_flowState != BattleFlowState.Exploration)
+        {
+            RejectPlayerAction("Healing services are only available during exploration.");
+            return;
+        }
+
+        var service = _gameData?.GetHealingService(serviceId) ?? new Dictionary();
+        if (service.Count == 0)
+        {
+            RejectPlayerAction("That healing service is unavailable.");
+            return;
+        }
+
+        var price = GetInt(service, "price", 0);
+        if (price < 0)
+        {
+            GD.PushError($"Healing service '{serviceId}' has an invalid price.");
+            RejectPlayerAction("That healing service is unavailable.");
+            return;
+        }
+
+        if (_partyGold < price)
+        {
+            RejectPlayerAction($"Not enough gold - requires {price} gp, have {_partyGold}.");
+            return;
+        }
+
+        if (!TryGetNpcPropById("eldius", out var healerProp))
+        {
+            RejectPlayerAction("Eldius is not available on this map.");
+            return;
+        }
+
+        _selectedHealerServiceId = serviceId;
+        _healerServiceSourceCell = GetVector2I(healerProp, "grid_pos", new Vector2I(-1, -1));
+        _awaitingHealerServiceTarget = true;
+        _hud?.SetVendorPanelVisible(false);
+        var serviceRange = GetInt(service, "range", 5);
+        var targetPrompt = serviceRange < 0
+            ? "Choose a fallen party member from the party list. Resurrection has no range limit."
+            : $"Choose a party member within {serviceRange} tiles of Eldius.";
+        _hud?.SetHelpText($"{targetPrompt} Press Esc or right-click to cancel.");
+        _hud?.AddCombatLogEntry($"Select a target for {GetString(service, "name", serviceId)} ({price} gp).");
+        QueueRedraw();
+    }
+
+    private void HandleHealerServiceTargetInput(InputEventMouseButton mouseEvent)
+    {
+        if (!mouseEvent.Pressed)
+        {
+            return;
+        }
+
+        if (mouseEvent.ButtonIndex == MouseButton.Right)
+        {
+            CancelHealerServiceTargeting();
+            return;
+        }
+
+        if (mouseEvent.ButtonIndex != MouseButton.Left)
+        {
+            return;
+        }
+
+        TryCastHealerServiceAtCell(WorldToCell(ToLocal(mouseEvent.GlobalPosition)));
+    }
+
+    private void TryCastHealerServiceAtCell(Vector2I targetCell)
+    {
+        TryCastHealerServiceOnTarget(GetPartyUnitAtCell(targetCell), targetCell);
+    }
+
+    private void TryCastHealerServiceOnPartyMember(Unit target)
+    {
+        if (!IsUsableUnit(target) || target.Team != "player" || !_playerUnits.Contains(target))
+        {
+            RejectPlayerAction("Choose a party member as the healing target.");
+            return;
+        }
+
+        TryCastHealerServiceOnTarget(target, target.GridPos);
+    }
+
+    private void TryCastHealerServiceOnTarget(Unit target, Vector2I targetCell)
+    {
+        var service = _gameData?.GetHealingService(_selectedHealerServiceId) ?? new Dictionary();
+        if (service.Count == 0)
+        {
+            RejectPlayerAction("That healing service is unavailable.");
+            CancelHealerServiceTargeting();
+            return;
+        }
+
+        var price = GetInt(service, "price", 0);
+        if (_partyGold < price)
+        {
+            RejectPlayerAction($"Not enough gold - requires {price} gp, have {_partyGold}.");
+            CancelHealerServiceTargeting();
+            return;
+        }
+
+        if (target == null)
+        {
+            RejectPlayerAction("Choose a party member as the healing target.");
+            return;
+        }
+
+        var serviceRange = GetInt(service, "range", 5);
+        if (serviceRange >= 0 && !Unit.IsWithinRange(_healerServiceSourceCell, targetCell, serviceRange))
+        {
+            RejectPlayerAction($"That target is beyond Eldius's {serviceRange}-tile service range.");
+            return;
+        }
+
+        if (!TryApplyHealingSpellEffect(target, service, out var resultText, out var failureText))
+        {
+            RejectPlayerAction(failureText);
+            return;
+        }
+
+        _partyGold -= price;
+        _hud?.AddCombatLogEntry($"Eldius: {resultText} Cost: {price} gp.");
+        _awaitingHealerServiceTarget = false;
+        _selectedHealerServiceId = "";
+        _healerServiceSourceCell = new Vector2I(-1, -1);
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+        QueueRedraw();
+    }
+
+    private Unit GetPartyUnitAtCell(Vector2I cell)
+    {
+        foreach (var unit in _allUnits)
+        {
+            if (IsUsableUnit(unit) && unit.Team == "player" && unit.OccupiesCell(cell))
+            {
+                return unit;
+            }
+        }
+
+        return null;
+    }
+
+    private void CancelHealerServiceTargeting()
+    {
+        _awaitingHealerServiceTarget = false;
+        _selectedHealerServiceId = "";
+        _healerServiceSourceCell = new Vector2I(-1, -1);
+        SetStatusHelp();
+        QueueRedraw();
     }
 
     private void OnHudVendorSellRequested(string itemId)
@@ -4912,7 +5541,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void RefreshVendorHud(string vendorId, string message)
     {
         _hud?.SetVendorItems(BuildVendorBuyItemsForHud(vendorId), BuildVendorSellItemsForHud(vendorId));
-        _hud?.SetVendorStatus($"Party: {_partyGold} gp | {GetVendorDisplayName(vendorId)}: {GetVendorGold(vendorId)} gp");
+        var status = string.Equals(vendorId, "eldius", System.StringComparison.OrdinalIgnoreCase)
+            ? $"Party: {_partyGold} gp | Services are unlimited"
+            : $"Party: {_partyGold} gp | {GetVendorDisplayName(vendorId)}: {GetVendorGold(vendorId)} gp";
+        _hud?.SetVendorStatus(status);
         if (!string.IsNullOrEmpty(message))
         {
             _hud?.SetVendorTransactionMessage(message);
@@ -4922,6 +5554,32 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Array<Dictionary> BuildVendorBuyItemsForHud(string vendorId)
     {
         var result = new Array<Dictionary>();
+        if (string.Equals(vendorId, "eldius", System.StringComparison.OrdinalIgnoreCase))
+        {
+            if (_gameData?.HealingServices == null)
+            {
+                return result;
+            }
+
+            foreach (var key in _gameData.HealingServices.Keys)
+            {
+                var serviceId = ((Variant)key).AsString();
+                var service = CopyDictionary(_gameData.GetHealingService(serviceId));
+                if (service.Count == 0)
+                {
+                    continue;
+                }
+
+                service["icon_id"] = GetString(service, "icon_id", serviceId);
+                service["quantity"] = 1;
+                service["price"] = GetInt(service, "price", 0);
+                service["is_healing_service"] = true;
+                result.Add(service);
+            }
+
+            return result;
+        }
+
         var counts = CountItems(GetVendorInventory(vendorId));
         foreach (var entry in counts)
         {
@@ -4942,6 +5600,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Array<Dictionary> BuildVendorSellItemsForHud(string vendorId)
     {
         var result = new Array<Dictionary>();
+        if (string.Equals(vendorId, "eldius", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return result;
+        }
+
         var sellable = new List<string>();
         foreach (var item in BuildInventoryItemsForHud())
         {
@@ -5339,6 +6002,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
+            if (action == "open_healing_services")
+            {
+                OpenVendor("eldius");
+                return;
+            }
+
             if (action == "recruit")
             {
                 BeginNpcRecruitInteraction(explorer, npcId);
@@ -5380,6 +6049,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 { "label", "Open Store" },
                 { "action", "open_vendor" },
                 { "vendor_id", MapLoader.GetVendorIdForNpc(npcProp) }
+            });
+        }
+
+        if (npcRole == "healer")
+        {
+            choices.Add(new Dictionary
+            {
+                { "label", "Healing Services" },
+                { "action", "open_healing_services" }
             });
         }
     }
@@ -5523,7 +6201,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 for (var i = 0; i < _playerUnits.Count; i++)
                 {
-                    if (_playerUnits[i]?.UnitId == preferredReplaceUnitId)
+                    if (_playerUnits[i] != null
+                        && !_playerUnits[i].IsDead
+                        && _playerUnits[i].UnitId == preferredReplaceUnitId)
                     {
                         replacementIndex = i;
                         break;
@@ -6087,6 +6767,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             var unit = _playerUnits[i];
             if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            if (unit.IsDead)
             {
                 continue;
             }
@@ -7068,22 +7753,22 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void PositionPartyForMapTransition(Vector2I leadSpawnCell)
     {
-        var livingIndex = 0;
+        var partyIndex = 0;
         foreach (var player in _playerUnits)
         {
-            if (!IsUsableUnit(player) || player.IsDead)
+            if (!IsUsableUnit(player))
             {
                 continue;
             }
 
-            var nextCell = leadSpawnCell + GetPartyFormationOffset(livingIndex);
+            var nextCell = leadSpawnCell + GetPartyFormationOffset(partyIndex);
             if (!IsInBounds(nextCell) || IsBlockedCell(nextCell))
             {
                 nextCell = leadSpawnCell;
             }
 
             player.SetGridPos(nextCell);
-            livingIndex++;
+            partyIndex++;
         }
     }
 
@@ -7156,9 +7841,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private Array<Dictionary> BuildPartyRosterSnapshot()
     {
         var roster = new Array<Dictionary>();
-        foreach (var unit in _playerUnits)
+        foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit))
+            if (!IsUsableUnit(unit) || unit.Team != "player")
             {
                 continue;
             }

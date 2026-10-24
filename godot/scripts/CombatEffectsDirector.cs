@@ -56,6 +56,43 @@ public partial class CombatEffectsDirector : Node2D
         ShowFloatingText(target.Position, $"+{amount}", new Color("8ff0b2"));
     }
 
+    public void PlayCleansing(Unit target)
+    {
+        if (!IsUsable(target))
+        {
+            return;
+        }
+
+        var color = new Color("74e6b2");
+        PlayRing(target.Position, color, 34.0f, 0.36f);
+        PlayRing(target.Position, new Color("c7ffe3"), 54.0f, 0.56f);
+        PlayImpact(target.Position, color, 0.72f);
+        target.FlashFocusHighlight(color, 0.56f);
+        ShowFloatingText(target.Position, "CLEANSED", new Color("a5ffd0"));
+    }
+
+    public void PlayResurrection(Unit target)
+    {
+        if (!IsUsable(target))
+        {
+            return;
+        }
+
+        var color = new Color("ffd36b");
+        PlayRing(target.Position, color, 40.0f, 0.42f);
+        PlayRing(target.Position, new Color("fff0b0"), 78.0f, 0.72f);
+        PlayImpact(target.Position, new Color("fff0b0"), 1.12f);
+        target.FlashFocusHighlight(new Color("ffe79a"), 0.78f);
+        ShowFloatingText(target.Position, "REVIVED", new Color("fff0b0"));
+    }
+
+    public void PlayBlessing(Vector2 center, float radius)
+    {
+        var color = new Color("f5d477");
+        PlayArea(center, radius, color, "BLESSING");
+        PlayRing(center, new Color("b5edff"), Mathf.Max(28.0f, radius * 0.72f), 0.76f);
+    }
+
     public void PlayDamageResult(Unit target, int damage, Color color)
     {
         if (!IsUsable(target))

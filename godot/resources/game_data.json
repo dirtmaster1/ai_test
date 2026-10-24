@@ -148,6 +148,46 @@
 	  "damage": 10,
 	  "mp_cost": 10,
 	  "cooldown": 0
+	},
+	"remove-malady": {
+	  "id": "remove-malady",
+	  "name": "Remove Malady",
+	  "type": "remove_malady",
+	  "target_type": "single",
+	  "allowed_classes": ["cleric", "healer"],
+	  "range": 5,
+	  "mp_cost": 3,
+	  "cooldown": 0,
+	  "icon_id": "remove-malady",
+	  "description": "Removes every negative status effect from one ally within 5 tiles."
+	},
+	"resurrect": {
+	  "id": "resurrect",
+	  "name": "Resurrect",
+	  "type": "resurrect",
+	  "target_type": "single",
+	  "allowed_classes": ["cleric", "healer"],
+	  "range": -1,
+	  "mp_cost": 8,
+	  "cooldown": 3,
+	  "experience_loss_percent": 5,
+	  "icon_id": "resurrect",
+	  "description": "Revives one fallen ally to full health at any distance, at a cost of 5% of the current level's XP."
+	},
+	"blessing": {
+	  "id": "blessing",
+	  "name": "Blessing",
+	  "type": "blessing",
+	  "target_type": "area",
+	  "allowed_classes": ["cleric", "healer"],
+	  "range": 5,
+	  "area_radius": 4,
+	  "duration_turns": 4,
+	  "armor_class_bonus": 3,
+	  "mp_cost": 5,
+	  "cooldown": 0,
+	  "icon_id": "blessing",
+	  "description": "Grants a powerful protective blessing to allies within 4 tiles of the chosen ally; cast range 5 tiles."
 	}
   },
   "items": {
@@ -416,6 +456,59 @@
 		  ]
 		}
 	  ]
+	},
+	"eldius": {
+	  "id": "eldius",
+	  "title": "Eldius the Healer",
+	  "pages": [
+		{
+		  "text": "Ah, adventurers! You bring steel, spells, and the unmistakable look of people who have not slept indoors lately. The necromancer is stirring the dead to the north, goblins gnaw at the southern roads, and bandits are charging frightened folk for the privilege of being robbed. Forest Town is having a dreadful week.",
+		  "choices": [
+			{
+			  "label": "Tell us about the danger to the north.",
+			  "next_page": 1
+			},
+			{
+			  "label": "What should we expect to the south?",
+			  "next_page": 2
+			},
+			{
+			  "label": "Could you tend to our wounds?",
+			  "action": "open_healing_services"
+			},
+			{
+			  "label": "Farewell",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "The necromancer has made the graveyard his workshop. Do not mistake a quiet northern road for a safe one; the dead have stopped respecting property lines. Bring everyone back breathing, if you can. I charge considerably less for the living.",
+		  "choices": [
+			{
+			  "label": "Back",
+			  "next_page": 0
+			},
+			{
+			  "label": "We will be careful.",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "Goblins favor numbers, and bandits favor people who are already afraid. Clear the southern forest in small, sensible steps, keep your party together, and do not pay a toll to anyone whose toll booth is a crossbow.",
+		  "choices": [
+			{
+			  "label": "Back",
+			  "next_page": 0
+			},
+			{
+			  "label": "We will keep our wits about us.",
+			  "end": true
+			}
+		  ]
+		}
+	  ]
 	}
   },
   "vendors": {
@@ -446,6 +539,20 @@
 		"healing-potion",
 		"magic-potion"
 	  ]
+	}
+  },
+  "healing_services": {
+	"remove-malady": {
+	  "spell_id": "remove-malady",
+	  "price": 50
+	},
+	"resurrect": {
+	  "spell_id": "resurrect",
+	  "price": 150
+	},
+	"blessing": {
+	  "spell_id": "blessing",
+	  "price": 75
 	}
   },
   "characters": {

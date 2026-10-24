@@ -11,6 +11,7 @@ public partial class GameData : Node
     public Dictionary Items { get; private set; } = new();
     public Dictionary Dialogues { get; private set; } = new();
     public Dictionary Vendors { get; private set; } = new();
+    public Dictionary HealingServices { get; private set; } = new();
     public Dictionary Characters { get; private set; } = new();
 
     public override void _Ready()
@@ -26,6 +27,7 @@ public partial class GameData : Node
         Items = TryGetDictionary(RawData, "items");
         Dialogues = TryGetDictionary(RawData, "dialogues");
         Vendors = TryGetDictionary(RawData, "vendors");
+        HealingServices = TryGetDictionary(RawData, "healing_services");
         Characters = TryGetDictionary(RawData, "characters");
     }
 
@@ -85,6 +87,42 @@ public partial class GameData : Node
     public Dictionary GetVendorProfile(string id)
     {
         return TryGetDictionary(Vendors, id);
+    }
+
+    public Dictionary GetHealingService(string id)
+    {
+        var service = TryGetDictionary(HealingServices, id);
+        if (service.Count == 0)
+        {
+            return new Dictionary();
+        }
+
+        if (!service.ContainsKey("spell_id") || !service.ContainsKey("price"))
+        {
+            GD.PushError($"Healing service '{id}' must define a spell_id and price.");
+            return new Dictionary();
+        }
+
+        var spellIdValue = (Variant)service["spell_id"];
+        if (spellIdValue.VariantType != Variant.Type.String || string.IsNullOrWhiteSpace(spellIdValue.AsString()))
+        {
+            GD.PushError($"Healing service '{id}' has an invalid spell_id.");
+            return new Dictionary();
+        }
+
+        var spellId = spellIdValue.AsString();
+        var spell = GetSpell(spellId);
+        if (spell.Count == 0)
+        {
+            GD.PushError($"Healing service '{id}' references missing spell '{spellId}'.");
+            return new Dictionary();
+        }
+
+        var resolved = CopyDictionary(spell);
+        resolved["service_id"] = id;
+        resolved["spell_id"] = spellId;
+        resolved["price"] = service["price"];
+        return resolved;
     }
 
     public int GetVendorStartingGold(string id, int fallback = 100)

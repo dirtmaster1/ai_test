@@ -61,6 +61,16 @@ func run_test() -> void:
             print("PASS: compact action dock, movement counter, shared icon atlas, and action-bar icons")
         quit(0 if icon_failures.is_empty() else 1)
         return
+    if OS.get_cmdline_user_args().has("--healer-services-only"):
+        var healer_failures = checks.call("RunHealerServiceChecks")
+        for failure in healer_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if healer_failures.is_empty():
+            print("PASS: Eldius's dialogue, service menu, targeting, spell effects, costs, and icons")
+        quit(0 if healer_failures.is_empty() else 1)
+        return
     checks.call("Run")
     await check_level_up(checks, false)
     checks.call("StartQueueChecks")

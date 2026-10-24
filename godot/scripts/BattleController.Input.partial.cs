@@ -76,6 +76,16 @@ public partial class BattleController
             return;
         }
 
+        if (_awaitingHealerServiceTarget)
+        {
+            if (keyEvent.Keycode == Key.Escape)
+            {
+                CancelHealerServiceTargeting();
+            }
+
+            return;
+        }
+
         if (_flowState == BattleFlowState.Exploration)
         {
             if (_awaitingPlayerAttackDirection)
@@ -233,6 +243,12 @@ public partial class BattleController
         if (ShouldIgnoreWorldMouseInput())
         {
             ClearMovementPreviewPath();
+            return;
+        }
+
+        if (_awaitingHealerServiceTarget)
+        {
+            HandleHealerServiceTargetInput(mouseEvent);
             return;
         }
 
