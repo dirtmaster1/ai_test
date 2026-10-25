@@ -8,11 +8,16 @@ public partial class BattleController
             return;
         }
 
-        _hud.SetHelpText(_hud.BuildHelpText(_flowState.ToString()));
+        _hud.SetHelpText(BuildCurrentTargetingHelpText());
 
         var active = _turnManager?.GetActiveUnit();
         _hud.SetTurnOrder(BuildTurnOrderForHud(), active);
-        _hud.SetPartyList(_playerUnits, _selectedCharacterUnitId, _flowState == BattleFlowState.Exploration, BuildPendingLevelUpUnitIds());
+        _hud.SetPartyList(
+            _playerUnits,
+            _selectedCharacterUnitId,
+            _flowState == BattleFlowState.Exploration,
+            BuildPendingLevelUpUnitIds(),
+            BuildPartyTargetableUnitIds());
 
         if (GetSelectedCharacterUnit() == null)
         {
@@ -83,6 +88,72 @@ public partial class BattleController
             _hud.SetLootPanelVisible(false);
             _hud.SetReservePanelVisible(false);
         }
+    }
+
+    private string BuildCurrentTargetingHelpText()
+    {
+        if (_awaitingHealerServiceTarget)
+        {
+            var service = _gameData?.GetHealingService(_selectedHealerServiceId) ?? new Godot.Collections.Dictionary();
+            if (GetString(service, "type", "") == "resurrect")
+            {
+                return "Resurrection: select a highlighted fallen party portrait to revive them. No range limit. Press Esc or right-click to cancel.";
+            }
+
+            var serviceRange = GetInt(service, "range", 5);
+            return serviceRange < 0
+                ? "Choose a fallen party member from the party list. Press Esc or right-click to cancel."
+                : $"Choose a party member within {serviceRange} tiles of Eldius. Press Esc or right-click to cancel.";
+        }
+
+        if (_flowState == BattleFlowState.Combat && _awaitingPlayerAttackDirection)
+        {
+            var activePlayer = GetActivePlayerUnit();
+            if (activePlayer != null)
+            {
+                var profile = ResolveActionProfile(activePlayer, GetSelectedAbilityId(activePlayer));
+                if (IsHealingSpellAction(profile.ActionType))
+                {
+                    return BuildHealingSpellTargetHelp(profile);
+                }
+            }
+        }
+
+        return _hud.BuildHelpText(_flowState.ToString());
+    }
+
+    private Godot.Collections.Array<string> BuildPartyTargetableUnitIds()
+    {
+        var actionType = "";
+        if (_awaitingHealerServiceTarget)
+        {
+            var service = _gameData?.GetHealingService(_selectedHealerServiceId) ?? new Godot.Collections.Dictionary();
+            actionType = GetString(service, "type", "");
+        }
+        else if (_flowState == BattleFlowState.Combat && _awaitingPlayerAttackDirection)
+        {
+            var activePlayer = GetActivePlayerUnit();
+            if (activePlayer != null)
+            {
+                actionType = ResolveActionProfile(activePlayer, GetSelectedAbilityId(activePlayer)).ActionType;
+            }
+        }
+
+        var targetableUnitIds = new Godot.Collections.Array<string>();
+        if (actionType != "resurrect")
+        {
+            return targetableUnitIds;
+        }
+
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit) && unit.IsDead)
+            {
+                targetableUnitIds.Add(unit.UnitId);
+            }
+        }
+
+        return targetableUnitIds;
     }
 
     private Godot.Collections.Array<string> BuildPendingLevelUpUnitIds()

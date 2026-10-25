@@ -1111,19 +1111,27 @@ public partial class ActionFeedbackChecks : BattleController
         var dialogue = Field<GameData>("_gameData").GetDialogue("eldius");
         var pages = (Array<Dictionary>)dialogue["pages"];
         var openingChoices = (Array<Dictionary>)pages[0]["choices"];
+        var displayedChoices = (Array<Dictionary>)Call("BuildNpcDialogueChoices", healerProp, openingChoices, true);
+        var openingChoiceLabels = displayedChoices.Select(choice => choice["label"].AsString()).ToArray();
         Check(pages.Count == 3
             && pages[0]["text"].AsString().Contains("bandits")
             && pages[0]["text"].AsString().Contains("necromancer")
             && pages[0]["text"].AsString().Contains("goblins"),
             "Eldius must offer Forest Town dialogue about the necromancer, goblins, and bandits.");
-        Check(openingChoices.Any(choice => choice.ContainsKey("action")
-                && choice["action"].AsString() == "open_healing_services"),
-            "Eldius's opening dialogue must offer Healing Services.");
+        Check(openingChoiceLabels.SequenceEqual(new[]
+                {
+                    "Tell us about the danger to the north.",
+                    "What should we expect to the south?",
+                    "Healing Services",
+                    "Farewell"
+                })
+            && displayedChoices[2]["action"].AsString() == "open_healing_services",
+            "Eldius's opening dialogue must offer Healing Services third, immediately before Farewell.");
 
         var gameData = Field<GameData>("_gameData");
         var resurrectServiceReference = (Dictionary)gameData.HealingServices["resurrect"];
         var resurrectSpell = gameData.GetHealingService("resurrect");
-        var blessingSpell = gameData.GetHealingService("blessing");
+        var blessingScroll = gameData.GetItem("blessing-scroll");
         var clericAbilityIds = (Array<string>)gameData.GetCharacterTemplate("cleric")["ability_ids"];
         var wizardAbilityIds = (Array<string>)gameData.GetCharacterTemplate("wizard")["ability_ids"];
         var necromancerAbilityIds = (Array<string>)gameData.GetCharacterTemplate("necromancer")["ability_ids"];
@@ -1134,13 +1142,11 @@ public partial class ActionFeedbackChecks : BattleController
             && (int)resurrectSpell["mp_cost"] == 8
             && (int)resurrectSpell["experience_loss_percent"] == 5
             && (int)resurrectSpell["price"] == 150
-            && (int)blessingSpell["area_radius"] == 4
-            && (int)blessingSpell["duration_turns"] == 4
-            && !blessingSpell.ContainsKey("effect_id")
-            && !blessingSpell.ContainsKey("effect_name")
-            && !blessingSpell.ContainsKey("effect_kind")
-            && !blessingSpell.ContainsKey("effect_scope"),
-            "Healing services must reference spell definitions and derive spell properties from the spell catalog.");
+            && blessingScroll.Count > 0
+            && blessingScroll["type"].AsString() == "scroll"
+            && ((Dictionary)blessingScroll["use_effect"])["spell_id"].AsString() == "blessing"
+            && !gameData.HealingServices.ContainsKey("blessing"),
+            "Eldius must offer Blessing as a scroll instead of a healing service.");
         var healingSpellIds = new[] { "remove-malady", "resurrect", "blessing" };
         Check(healingSpellIds.All(spellId => !clericAbilityIds.Contains(spellId)
                 && !wizardAbilityIds.Contains(spellId)
@@ -1150,19 +1156,24 @@ public partial class ActionFeedbackChecks : BattleController
                 ((Array<string>)gameData.GetSpell(spellId)["allowed_classes"]).Contains("cleric")
                 && ((Array<string>)gameData.GetSpell(spellId)["allowed_classes"]).Contains("healer")),
             "Healing spell definitions must restrict casting to cleric and healer classes.");
+        Check(((Array<string>)blessingScroll["allowed_classes"]).SequenceEqual(new[] { "cleric", "healer" }),
+            "The Blessing scroll must only be learnable by clerics and healers.");
 
         var serviceItems = (Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius");
         Check(serviceItems.Count == 3
             && serviceItems.All(item => item.ContainsKey("price") && item.ContainsKey("icon_id"))
+            && serviceItems.Any(item => item["id"].AsString() == "blessing-scroll"
+                && (int)item["price"] == 100
+                && (int)item["quantity"] == 1)
             && (int)Field<GameData>("_gameData").GetHealingService("resurrect")["price"] == 150,
-            "Eldius's service menu must expose all three icon-backed, priced services without inventory stock.");
+            "Eldius's shop must expose two icon-backed healing services and one 100 gp Blessing scroll.");
         Call("OpenVendor", "eldius");
         var storeTabs = _testHud.GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
         Check(storeTabs.Visible
             && storeTabs.GetChild<Control>(1).Visible == false
-            && storeTabs.GetTabTitle(0) == "Healing Services"
-            && _testHud.GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyButton").Text == "Select Service",
-            "Eldius must reuse the vendor panel while showing only its Healing Services tab.");
+            && storeTabs.GetTabTitle(0) == "Healer Shop"
+            && _testHud.GetNode<Button>("VendorPanel/VendorVBox/StoreTabs/Buy/BuyButton").Text == "Buy / Select",
+            "Eldius must reuse the vendor panel for purchases and healing services.");
         _actor.ApplyStatusEffect("poison", "Poisoned", false, 3, damagePerTurn: 1);
         _actor.ApplyStatusEffect("protection", "Protected", true, 2, armorClassBonus: 2);
         Call("BeginHealerServiceTargeting", "remove-malady");
@@ -1193,6 +1204,15 @@ public partial class ActionFeedbackChecks : BattleController
             "Fallen party members must not disappear into reserves before they are resurrected.");
         _ally.SetGridPos(new Vector2I(0, 10));
         Call("BeginHealerServiceTargeting", "resurrect");
+        var resurrectionPartyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList")
+            .GetChildren().OfType<PartyCard>().ToArray();
+        var deadAllyCard = resurrectionPartyCards.Last(card => card.UnitId == _ally.UnitId);
+        var livingActorCard = resurrectionPartyCards.Last(card => card.UnitId == _actor.UnitId);
+        Check(deadAllyCard.TargetHighlighted
+            && !livingActorCard.TargetHighlighted
+            && _testHud.GetNode<Label>("CombatBanner/CombatBannerLabel").Text.Contains("Select a highlighted fallen party portrait")
+            && _testHud.GetNode<Label>("HelpPanel/HelpVBox/HelpBody").Text.Contains("No range limit"),
+            "Resurrection targeting must explain the party-list action in the standard banner and highlight fallen portraits.");
         var resurrectionSourceCell = Field<Vector2I>("_healerServiceSourceCell");
         Check(!Unit.IsWithinRange(resurrectionSourceCell, _ally.GridPos, 5),
             "The resurrection test target must be outside Eldius's normal service range.");
@@ -1204,24 +1224,35 @@ public partial class ActionFeedbackChecks : BattleController
             && effectsDirector.GetChildCount() > effectsBeforeResurrection
             && (int)Field<int>("_partyGold") == 800,
             "Selecting the fallen party portrait must resurrect at any distance, play its effect, and deduct XP and the service price.");
-        _ally.SetGridPos(new Vector2I(2, 4));
-        Call("BeginHealerServiceTargeting", "blessing");
-        var effectsBeforeBlessing = effectsDirector.GetChildCount();
-        Call("TryCastHealerServiceAtCell", _actor.GridPos);
-        Check(_actor.HasStatusEffect("blessing") && _ally.HasStatusEffect("blessing")
-            && effectsDirector.GetChildCount() > effectsBeforeBlessing
-            && (int)Field<int>("_partyGold") == 725,
-            "Blessing must affect party members in its four-tile area, play its effect, and charge its price.");
+        var resurrectedAllyCard = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList")
+            .GetChildren().OfType<PartyCard>().Last(card => card.UnitId == _ally.UnitId);
+        Check(!resurrectedAllyCard.TargetHighlighted,
+            "Resurrection target highlighting must clear after a party member is selected.");
 
-        Call("BeginHealerServiceTargeting", "blessing");
-        Call("TryCastHealerServiceAtCell", _actor.GridPos);
-        Check((int)Field<int>("_partyGold") == 650
+        Check((int)Field<int>("_partyGold") == 800
             && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 3,
-            "Healing services must remain available for unlimited repeat use.");
-        Call("BeginHealerServiceTargeting", "blessing");
+            "Both remaining healing services and the Blessing scroll must remain listed after service use.");
+        Call("OnHudVendorBuyRequested", "blessing-scroll");
+        var partyInventory = (List<string>)PrivateField("_partyInventoryItemIds").GetValue(this);
+        Check((int)Field<int>("_partyGold") == 700
+            && partyInventory.Contains("blessing-scroll")
+            && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 2,
+            "The Blessing scroll must be purchasable for 100 gp and leave Eldius's finite stock.");
+        ExpectFailure(() => Call("OnHudUseItemRequested", "blessing-scroll"),
+            "caster cannot use Blessing Scroll - requires cleric, healer.");
+        var clericConfig = Config("caster", "player", _actor.GridPos);
+        clericConfig["class_id"] = "cleric";
+        clericConfig["ability_ids"] = new Array<string> { "melee" };
+        _actor.Setup(clericConfig);
+        Call("OnHudUseItemRequested", "blessing-scroll");
+        Check(_actor.HasAbility("blessing")
+            && !partyInventory.Contains("blessing-scroll"),
+            "A cleric must learn Blessing from the purchased scroll and consume it.");
+
+        Call("BeginHealerServiceTargeting", "remove-malady");
         Set("_healerServiceSourceCell", new Vector2I(10, 2));
         Call("TryCastHealerServiceAtCell", _actor.GridPos);
-        Check(Field<bool>("_awaitingHealerServiceTarget") && (int)Field<int>("_partyGold") == 650,
+        Check(Field<bool>("_awaitingHealerServiceTarget") && (int)Field<int>("_partyGold") == 700,
             "An out-of-range service target must not consume gold or end targeting.");
         Call("CancelHealerServiceTargeting");
     }
@@ -1276,6 +1307,11 @@ public partial class ActionFeedbackChecks : BattleController
         Call("OnHudAbilityPressed", "resurrect");
         Check(Field<bool>("_awaitingPlayerAttackDirection"),
             "Selecting a learned Resurrection spell must enter target mode.");
+        var deadAllyCard = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList")
+            .GetChildren().OfType<PartyCard>().Last(card => card.UnitId == _ally.UnitId);
+        Check(deadAllyCard.TargetHighlighted
+            && _testHud.GetNode<Label>("CombatBanner/CombatBannerLabel").Text.Contains("Select a highlighted fallen party portrait"),
+            "Combat Resurrection must show the same target guidance and highlight fallen party portraits.");
         Call("OnHudPartyUnitSelected", _ally.UnitId);
         Check(!_ally.IsDead
             && _ally.HitPoints == _ally.MaxHitPoints

@@ -568,6 +568,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (IsHealingSpellAction(actionProfile.ActionType))
         {
             _hud?.SetHelpText(BuildHealingSpellTargetHelp(actionProfile));
+            if (actionProfile.ActionType == "resurrect")
+            {
+                _hud?.ShowCombatBanner("RESURRECTION: Select a highlighted fallen party portrait.", TacticalTheme.BrassBright);
+            }
         }
         QueueRedraw();
     }
@@ -5321,8 +5325,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         if (string.Equals(_activeVendorId, "eldius", System.StringComparison.OrdinalIgnoreCase))
         {
-            BeginHealerServiceTargeting(itemId);
-            return;
+            if (_gameData != null && _gameData.GetHealingService(itemId).Count > 0)
+            {
+                BeginHealerServiceTargeting(itemId);
+                return;
+            }
         }
 
         var message = TryBuyVendorItem(_activeVendorId, itemId);
@@ -5370,11 +5377,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _healerServiceSourceCell = GetVector2I(healerProp, "grid_pos", new Vector2I(-1, -1));
         _awaitingHealerServiceTarget = true;
         _hud?.SetVendorPanelVisible(false);
-        var serviceRange = GetInt(service, "range", 5);
-        var targetPrompt = serviceRange < 0
-            ? "Choose a fallen party member from the party list. Resurrection has no range limit."
-            : $"Choose a party member within {serviceRange} tiles of Eldius.";
-        _hud?.SetHelpText($"{targetPrompt} Press Esc or right-click to cancel.");
+        SyncHudFromGameState();
+        if (GetString(service, "type", "") == "resurrect")
+        {
+            _hud?.ShowCombatBanner("RESURRECTION: Select a highlighted fallen party portrait.", TacticalTheme.BrassBright);
+        }
         _hud?.AddCombatLogEntry($"Select a target for {GetString(service, "name", serviceId)} ({price} gp).");
         QueueRedraw();
     }
@@ -5481,7 +5488,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _awaitingHealerServiceTarget = false;
         _selectedHealerServiceId = "";
         _healerServiceSourceCell = new Vector2I(-1, -1);
-        SetStatusHelp();
+        SyncHudFromGameState();
         QueueRedraw();
     }
 
@@ -5542,7 +5549,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         _hud?.SetVendorItems(BuildVendorBuyItemsForHud(vendorId), BuildVendorSellItemsForHud(vendorId));
         var status = string.Equals(vendorId, "eldius", System.StringComparison.OrdinalIgnoreCase)
-            ? $"Party: {_partyGold} gp | Services are unlimited"
+            ? $"Party: {_partyGold} gp | Healing services and scrolls available"
             : $"Party: {_partyGold} gp | {GetVendorDisplayName(vendorId)}: {GetVendorGold(vendorId)} gp";
         _hud?.SetVendorStatus(status);
         if (!string.IsNullOrEmpty(message))
@@ -5556,7 +5563,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var result = new Array<Dictionary>();
         if (string.Equals(vendorId, "eldius", System.StringComparison.OrdinalIgnoreCase))
         {
-            if (_gameData?.HealingServices == null)
+            if (_gameData?.HealingServices == null || _gameData.Items == null)
             {
                 return result;
             }
@@ -5575,6 +5582,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 service["price"] = GetInt(service, "price", 0);
                 service["is_healing_service"] = true;
                 result.Add(service);
+            }
+
+            foreach (var entry in CountItems(GetVendorInventory(vendorId)))
+            {
+                var itemData = CopyDictionary(_gameData.GetItem(entry.Key));
+                if (itemData.Count == 0)
+                {
+                    continue;
+                }
+
+                itemData["quantity"] = entry.Value;
+                itemData["price"] = GetItemBuyPrice(vendorId, entry.Key);
+                result.Add(itemData);
             }
 
             return result;
@@ -5785,6 +5805,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         return itemId switch
         {
+            "blessing-scroll" => 100,
             "cloth-robe" => 5,
             "small-shield" => 10,
             "iron-helmet" => 10,
@@ -5966,16 +5987,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var page = pages[pageIndex];
             var pageText = GetString(page, "text", fallbackLine);
             var pageChoices = TryGetDictionaryArray(page, "choices");
-            var choices = new Array<Dictionary>();
-            if (pageIndex == 0)
-            {
-                AddNpcDialogueActionChoices(npcProp, choices);
-            }
-
-            foreach (var choice in pageChoices)
-            {
-                choices.Add(CopyDictionary(choice));
-            }
+            var choices = BuildNpcDialogueChoices(npcProp, pageChoices, pageIndex == 0);
 
             if (choices.Count == 0)
             {
@@ -6029,7 +6041,39 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private static void AddNpcDialogueActionChoices(Dictionary npcProp, Array<Dictionary> choices)
+    private Array<Dictionary> BuildNpcDialogueChoices(
+        Dictionary npcProp,
+        Array<Dictionary> pageChoices,
+        bool includeNpcActions)
+    {
+        var choices = new Array<Dictionary>();
+        if (includeNpcActions)
+        {
+            var hasConfiguredHealingServices = false;
+            foreach (var choice in pageChoices)
+            {
+                if (GetString(choice, "action", "") == "open_healing_services")
+                {
+                    hasConfiguredHealingServices = true;
+                    break;
+                }
+            }
+
+            AddNpcDialogueActionChoices(npcProp, choices, !hasConfiguredHealingServices);
+        }
+
+        foreach (var choice in pageChoices)
+        {
+            choices.Add(CopyDictionary(choice));
+        }
+
+        return choices;
+    }
+
+    private static void AddNpcDialogueActionChoices(
+        Dictionary npcProp,
+        Array<Dictionary> choices,
+        bool includeHealingServicesChoice)
     {
         var npcRole = GetString(npcProp, "npc_role", "vendor").ToLowerInvariant();
         var recruitTemplateId = GetString(npcProp, "recruit_template_id", "");
@@ -6052,7 +6096,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             });
         }
 
-        if (npcRole == "healer")
+        if (npcRole == "healer" && includeHealingServicesChoice)
         {
             choices.Add(new Dictionary
             {

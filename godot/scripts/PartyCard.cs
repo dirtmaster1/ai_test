@@ -10,6 +10,7 @@ public partial class PartyCard : Button
 
     public string UnitId { get; set; } = "";
     public bool ReorderEnabled { get; set; }
+    public bool TargetHighlighted { get; set; }
 
     public override void _Pressed()
     {

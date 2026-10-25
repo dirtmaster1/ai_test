@@ -2330,7 +2330,12 @@ public partial class HudController : Control
         }
     }
 
-    public void SetPartyList(Array<Unit> party, string selectedUnitId, bool reorderEnabled, Array<string> pendingLevelUpUnitIds)
+    public void SetPartyList(
+        Array<Unit> party,
+        string selectedUnitId,
+        bool reorderEnabled,
+        Array<string> pendingLevelUpUnitIds,
+        Array<string> targetableUnitIds = null)
     {
         if (_partyList == null)
         {
@@ -2343,6 +2348,13 @@ public partial class HudController : Control
             foreach (var unitId in pendingLevelUpUnitIds)
             {
                 signatureBuilder.Append("|level-up:").Append(unitId);
+            }
+        }
+        if (targetableUnitIds != null)
+        {
+            foreach (var unitId in targetableUnitIds)
+            {
+                signatureBuilder.Append("|target:").Append(unitId);
             }
         }
         if (party != null)
@@ -2383,31 +2395,49 @@ public partial class HudController : Control
             if (unit != null)
             {
                 var hasPendingLevelUp = pendingLevelUpUnitIds?.Contains(unit.UnitId) ?? false;
-                _partyList.AddChild(CreatePartyCard(unit, unit.UnitId == selectedUnitId, reorderEnabled, hasPendingLevelUp));
+                var targetHighlighted = targetableUnitIds?.Contains(unit.UnitId) ?? false;
+                _partyList.AddChild(CreatePartyCard(
+                    unit,
+                    unit.UnitId == selectedUnitId,
+                    reorderEnabled,
+                    hasPendingLevelUp,
+                    targetHighlighted));
             }
         }
     }
 
-    private PartyCard CreatePartyCard(Unit unit, bool selected, bool reorderEnabled, bool hasPendingLevelUp)
+    private PartyCard CreatePartyCard(
+        Unit unit,
+        bool selected,
+        bool reorderEnabled,
+        bool hasPendingLevelUp,
+        bool targetHighlighted)
     {
-        var accent = unit.IsDead
+        var accent = targetHighlighted
+            ? new Color(1.0f, 0.76f, 0.22f, 1.0f)
+            : unit.IsDead
             ? new Color(0.35f, 0.35f, 0.35f, 1.0f)
             : new Color(0.72f, 0.58f, 0.3f, 1.0f);
-        var cardBackground = selected
+        var cardBackground = targetHighlighted
+            ? new Color(0.13f, 0.1f, 0.035f, 0.99f)
+            : selected
             ? new Color(0.1f, 0.105f, 0.11f, 0.98f)
             : new Color(0.055f, 0.06f, 0.065f, 0.97f);
         var card = new PartyCard
         {
             UnitId = unit.UnitId,
             ReorderEnabled = reorderEnabled && !unit.IsDead,
+            TargetHighlighted = targetHighlighted,
             CustomMinimumSize = new Vector2(0.0f, 84.0f),
             FocusMode = FocusModeEnum.All,
             MouseDefaultCursorShape = CursorShape.PointingHand,
-            TooltipText = reorderEnabled
+            TooltipText = targetHighlighted
+                ? $"Select {unit.UnitName} to resurrect"
+                : reorderEnabled
                 ? $"Open {unit.UnitName}\nDrag to change marching order"
                 : $"Open {unit.UnitName}"
         };
-        card.AddThemeStyleboxOverride("normal", CreatePartyCardStyle(cardBackground, accent, selected ? 2 : 1));
+        card.AddThemeStyleboxOverride("normal", CreatePartyCardStyle(cardBackground, accent, targetHighlighted ? 3 : selected ? 2 : 1));
         card.AddThemeStyleboxOverride("hover", CreatePartyCardStyle(new Color(0.09f, 0.095f, 0.1f, 1.0f), new Color(0.88f, 0.73f, 0.4f, 1.0f), 2));
         card.AddThemeStyleboxOverride("pressed", CreatePartyCardStyle(new Color(0.035f, 0.04f, 0.045f, 1.0f), accent, 2));
         card.AddThemeStyleboxOverride("focus", CreatePartyCardStyle(new Color(0.075f, 0.08f, 0.085f, 1.0f), new Color(0.95f, 0.82f, 0.5f, 1.0f), 2));
@@ -2436,7 +2466,11 @@ public partial class HudController : Control
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = MouseFilterEnum.Ignore,
-            Modulate = unit.IsDead ? new Color(0.5f, 0.5f, 0.5f, 0.65f) : Colors.White
+            Modulate = targetHighlighted
+                ? new Color(1.0f, 0.82f, 0.38f, 1.0f)
+                : unit.IsDead
+                    ? new Color(0.5f, 0.5f, 0.5f, 0.65f)
+                    : Colors.White
         };
         portraitContainer.AddChild(portrait);
         portrait.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -2838,13 +2872,13 @@ public partial class HudController : Control
         {
             _vendorStoreTabs.Visible = true;
             _vendorStoreTabs.CurrentTab = 0;
-            _vendorStoreTabs.SetTabTitle(0, healingServicesOnly ? "Healing Services" : "Buy");
+            _vendorStoreTabs.SetTabTitle(0, healingServicesOnly ? "Healer Shop" : "Buy");
             _vendorStoreTabs.GetChild<Control>(1).Visible = !healingServicesOnly;
         }
 
         if (_vendorBuyButton != null)
         {
-            _vendorBuyButton.Text = healingServicesOnly ? "Select Service" : "Buy";
+            _vendorBuyButton.Text = healingServicesOnly ? "Buy / Select" : "Buy";
         }
 
         if (_vendorMessageLabel != null)

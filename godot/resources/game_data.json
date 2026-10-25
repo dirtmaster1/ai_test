@@ -341,6 +341,23 @@
 	  },
 	  "consumed_on_use": true
 	},
+	"blessing-scroll": {
+	  "id": "blessing-scroll",
+	  "name": "Blessing Scroll",
+	  "type": "scroll",
+	  "slot": "none",
+	  "description": "Teaches the Blessing spell. The scroll is consumed when learned.",
+	  "icon_id": "blessing",
+	  "allowed_classes": [
+		"cleric",
+		"healer"
+	  ],
+	  "use_effect": {
+		"type": "learn_spell",
+		"spell_id": "blessing"
+	  },
+	  "consumed_on_use": true
+	},
 	"healing-potion": {
 	  "id": "healing-potion",
 	  "name": "Healing Potion",
@@ -473,7 +490,7 @@
 			  "next_page": 2
 			},
 			{
-			  "label": "Could you tend to our wounds?",
+			  "label": "Healing Services",
 			  "action": "open_healing_services"
 			},
 			{
@@ -539,6 +556,16 @@
 		"healing-potion",
 		"magic-potion"
 	  ]
+	},
+	"eldius": {
+	  "id": "eldius",
+	  "display_name": "Eldius the Healer",
+	  "starting_gold": 100,
+	  "buy_price_multiplier": 1.0,
+	  "sell_price_multiplier": 0.9,
+	  "starting_inventory_item_ids": [
+		"blessing-scroll"
+	  ]
 	}
   },
   "healing_services": {
@@ -549,10 +576,6 @@
 	"resurrect": {
 	  "spell_id": "resurrect",
 	  "price": 150
-	},
-	"blessing": {
-	  "spell_id": "blessing",
-	  "price": 75
 	}
   },
   "characters": {
