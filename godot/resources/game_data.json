@@ -53,6 +53,42 @@
 	  "ignores_action_cost": true,
 	  "requires_ranged_weapon": true
 	},
+	"rain-of-arrows": {
+	  "id": "rain-of-arrows",
+	  "name": "Rain of Arrows",
+	  "type": "rain_of_arrows",
+	  "range": 0,
+	  "area_radius": 2,
+	  "cooldown": 3,
+	  "allowed_classes": ["ranger"],
+	  "requires_ranged_weapon": true,
+	  "description": "Attack all units within 2 tiles of a target cell using your equipped ranged weapon.",
+	  "targeting_prompt": "Select a visible cell within your ranged weapon's range; all units within 2 tiles will be hit."
+	},
+	"shadow-strike": {
+	  "id": "shadow-strike",
+	  "name": "Shadow Strike",
+	  "type": "shadow_strike",
+	  "range": 5,
+	  "damage_multiplier": 4,
+	  "allowed_classes": ["thief"],
+	  "description": "Teleport within 5 tiles, then strike an adjacent enemy for 4x weapon damage.",
+	  "targeting_steps": [
+		"Choose an unoccupied reachable tile within 5 tiles.",
+		"Select an adjacent enemy to attack for 4x weapon damage."
+	  ]
+	},
+	"taunt": {
+	  "id": "taunt",
+	  "name": "Taunt",
+	  "type": "taunt",
+	  "range": 0,
+	  "area_radius": 2,
+	  "cooldown": 2,
+	  "duration_turns": 1,
+	  "allowed_classes": ["warrior"],
+	  "description": "Force nearby enemies to attack you on their next turn."
+	},
 	"poison-strike": {
 	  "id": "poison-strike",
 	  "name": "Poison Strike",
@@ -104,9 +140,46 @@
 	  "name": "Greater Heal",
 	  "type": "heal",
 	  "range": 3,
-	  "heal_amount": 8,
+	  "heal_amount": 10,
 	  "mp_cost": 4,
-	  "cooldown": 2
+	  "cooldown": 2,
+	  "allowed_classes": ["cleric", "healer"]
+	},
+	"web": {
+	  "id": "web",
+	  "name": "Web",
+	  "type": "web",
+	  "range": 5,
+	  "area_radius": 1,
+	  "duration_turns": 2,
+	  "mp_cost": 6,
+	  "cooldown": 0,
+	  "allowed_classes": ["wizard"],
+	  "description": "Root all units in a 3x3 area for 2 turns.",
+	  "targeting_prompt": "Select a visible cell within 5 tiles; all units in its 3x3 area will be rooted for 2 turns."
+	},
+	"lightning-bolt": {
+	  "id": "lightning-bolt",
+	  "name": "Lightning Bolt",
+	  "type": "lightning_bolt",
+	  "range": 5,
+	  "min_damage": 8,
+	  "max_damage": 16,
+	  "mp_cost": 8,
+	  "cooldown": 0,
+	  "allowed_classes": ["wizard"],
+	  "description": "Strike every unit in a straight line up to 5 tiles away.",
+	  "targeting_prompt": "Select a visible cell directly up, down, left, right, or diagonally; all units up to 5 tiles along that line will be struck."
+	},
+	"identify": {
+	  "id": "identify",
+	  "name": "Identify",
+	  "type": "identify",
+	  "range": 0,
+	  "mp_cost": 3,
+	  "cooldown": 0,
+	  "description": "Identify one unknown item in the party inventory.",
+	  "targeting_prompt": "Select an unidentified item in the party inventory."
 	},
 	"magic-missile": {
 	  "id": "magic-missile",
@@ -172,7 +245,8 @@
 	  "cooldown": 3,
 	  "experience_loss_percent": 5,
 	  "icon_id": "resurrect",
-	  "description": "Revives one fallen ally to full health at any distance, at a cost of 5% of the current level's XP."
+	  "description": "Revives one fallen ally to full health at any distance, at a cost of 5% of the current level's XP.",
+	  "targeting_prompt": "Select a highlighted fallen party member from the party list."
 	},
 	"blessing": {
 	  "id": "blessing",
@@ -597,6 +671,9 @@
 		  "melee",
 		  "magic-missile",
 		  "sleep",
+		  "web",
+		  "lightning-bolt",
+		  "identify",
 		  "defend"
 		],
 		"initiative": 10,
@@ -623,6 +700,7 @@
 		"ability_ids": [
 		  "melee",
 		  "charge",
+		  "taunt",
 		  "defend"
 		],
 		"initiative": 11,
@@ -648,6 +726,8 @@
 		"primary_ability_id": "lesser-heal",
 		"ability_ids": [ 
 		  "lesser-heal",
+		  "greater-heal",
+		  "identify",
 		  "protection",
 		  "melee",
 		  "defend"
@@ -677,6 +757,7 @@
 		"primary_ability_id": "ranged",
 		"ability_ids": [
 		  "ranged",
+		  "rain-of-arrows",
 		  "pin",
 		  "melee",
 		  "defend"
@@ -703,6 +784,7 @@
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee",
+		  "shadow-strike",
 		  "poison-strike",
 		  "disarm-trap",
 		  "pick-lock",

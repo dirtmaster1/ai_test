@@ -18,6 +18,9 @@ public partial class BattleController
         ClearCombatOnlyStatusEffectsForParty();
         _flowState = BattleFlowState.Exploration;
         _awaitingPlayerAttackDirection = false;
+        _awaitingShadowStrikeAttack = false;
+        _awaitingItemIdentifyTarget = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         PruneInvalidUnitReferences();
         _explorerUnit = GetExplorerUnit();
@@ -113,6 +116,9 @@ public partial class BattleController
         _activeEncounterId = triggeringEnemy.EncounterId;
         _flowState = BattleFlowState.Combat;
         _awaitingPlayerAttackDirection = false;
+        _awaitingShadowStrikeAttack = false;
+        _awaitingItemIdentifyTarget = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
         EnlistNearbyCombatEnemies();
         _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
 

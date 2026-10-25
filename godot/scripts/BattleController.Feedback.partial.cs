@@ -21,10 +21,12 @@ public partial class BattleController
             return $"{actor.UnitName} has not learned {profile.ActionName}.";
         }
 
-        if (IsHealingSpellAction(profile.ActionType) && !CanUnitCastHealingSpell(actor, profile.ActionId))
+        var actionData = GetActionData(profile.ActionId, out _);
+        var allowedClasses = TryGetStringArray(actionData, "allowed_classes");
+        if (allowedClasses.Count > 0 && !IsUnitInAllowedClasses(actor, allowedClasses))
         {
-            var allowedClasses = TryGetStringArray(_gameData?.GetSpell(profile.ActionId) ?? new Godot.Collections.Dictionary(), "allowed_classes");
-            return $"{actor.UnitName} must be a {string.Join(" or ", allowedClasses)} to cast {profile.ActionName}.";
+            var verb = profile.IsMagical ? "cast" : "use";
+            return $"{actor.UnitName} must be a {string.Join(" or ", allowedClasses)} to {verb} {profile.ActionName}.";
         }
 
         if (actor.TryGetActionPreventingStatusName(out var status))
@@ -78,7 +80,7 @@ public partial class BattleController
         }
 
         var target = GetLivingUnitAtCell(cell);
-        var areaAction = profile.ActionType is "sleep" or "area_attack";
+        var areaAction = profile.ActionType is "sleep" or "area_attack" or "web" or "lightning_bolt" or "rain_of_arrows";
         var distance = target != null && !areaAction && !IsUtilityAction(profile.ActionType)
             ? actor.DistanceToUnitAt(actor.GridPos, target)
             : Unit.RangeDistance(actor.GridPos, cell);
@@ -95,6 +97,11 @@ public partial class BattleController
         if (profile.ActionType != "charge" && !clearSight)
         {
             return RejectPlayerAction("No line of sight.");
+        }
+
+        if (profile.ActionType == "lightning_bolt" && !IsEightDirectionLine(actor.GridPos, cell))
+        {
+            return RejectPlayerAction("Choose a cell directly up, down, left, right, or diagonally from the caster.");
         }
 
         if (!IsFogCellCurrentlyVisible(cell))

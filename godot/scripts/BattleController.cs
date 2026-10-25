@@ -63,6 +63,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> _equippedItemsByUnitId = new();
     private readonly List<string> _partyInventoryItemIds = new();
+    private readonly HashSet<string> _identifiedItemIds = new(System.StringComparer.Ordinal);
+    private bool _awaitingShadowStrikeAttack;
+    private bool _awaitingItemIdentifyTarget;
+    private Vector2I _shadowStrikeDestination = new(-1, -1);
     private readonly Array<Dictionary> _reservePartyRoster = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _vendorGoldById = new();
     private readonly System.Collections.Generic.Dictionary<string, List<string>> _vendorInventoryItemIdsById = new();
@@ -86,6 +90,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly System.Collections.Generic.Dictionary<string, Array<Dictionary>> _eventSpawnedUnitConfigsByMap = new(System.StringComparer.OrdinalIgnoreCase);
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _pendingLevelUpNoticesByUnitId = new();
     private readonly RandomNumberGenerator _lootRng = new();
+    private readonly RandomNumberGenerator _combatRng = new();
 
     private int _gridWidth = DefaultGridWidth;
     private int _gridHeight = DefaultGridHeight;
@@ -224,6 +229,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
         _persistence = new GamePersistence(this, SaveFilePath);
         _lootRng.Randomize();
+        _combatRng.Randomize();
 
         _turnManager.TurnChanged += OnTurnChanged;
         if (_hud != null)
@@ -235,6 +241,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.EquipItemToSlotRequested += OnHudEquipItemToSlotRequested;
             _hud.MoveEquippedItemToSlotRequested += OnHudMoveEquippedItemToSlotRequested;
             _hud.UseItemRequested += OnHudUseItemRequested;
+            _hud.InventoryItemSelected += OnHudInventoryItemSelected;
             _hud.UnequipItemRequested += OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested += OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested += OnHudLootConfirmRequested;
@@ -279,6 +286,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.EquipItemToSlotRequested -= OnHudEquipItemToSlotRequested;
             _hud.MoveEquippedItemToSlotRequested -= OnHudMoveEquippedItemToSlotRequested;
             _hud.UseItemRequested -= OnHudUseItemRequested;
+            _hud.InventoryItemSelected -= OnHudInventoryItemSelected;
             _hud.UnequipItemRequested -= OnHudUnequipItemRequested;
             _hud.InventoryCycleRequested -= OnHudInventoryCycleRequested;
             _hud.LootConfirmRequested -= OnHudLootConfirmRequested;
@@ -372,6 +380,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         // Always reset to movement-ready input when turn ownership changes.
         _mouseMoveInputLockedUntilMs = 0;
         _awaitingPlayerAttackDirection = false;
+        _awaitingShadowStrikeAttack = false;
+        _awaitingItemIdentifyTarget = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         QueueRedraw();
 
@@ -471,6 +482,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (_awaitingPlayerAttackDirection)
+        {
+            CancelAttackMode(false);
+        }
+
         if (_flowState == BattleFlowState.Exploration)
         {
             var explorerActor = GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
@@ -496,6 +512,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             SetSelectedAbilityId(explorerActor, abilityId);
+            if (explorationProfile.ActionType == "identify")
+            {
+                BeginIdentifyTargeting();
+                return;
+            }
+
             _awaitingPlayerAttackDirection = true;
             ClearMovementPreviewPath();
             SetStatusHelp();
@@ -562,16 +584,49 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (actionProfile.ActionType == "identify")
+        {
+            BeginIdentifyTargeting();
+            return;
+        }
+
+        if (actionProfile.ActionType == "taunt")
+        {
+            if (TryUseTaunt(active, actionProfile))
+            {
+                ApplyActionResult(ResolveSuccessfulAction("attack"));
+                _awaitingPlayerAttackDirection = false;
+                QueueRedraw();
+            }
+            return;
+        }
+
         _awaitingPlayerAttackDirection = true;
+        _awaitingShadowStrikeAttack = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         SyncHudFromGameState();
-        if (IsHealingSpellAction(actionProfile.ActionType))
+        if (actionProfile.ActionType == "shadow_strike")
         {
-            _hud?.SetHelpText(BuildHealingSpellTargetHelp(actionProfile));
+            ShowActionTargetingPrompt(actionProfile, 1);
+        }
+        else if (IsHealingSpellAction(actionProfile.ActionType))
+        {
+            if (!ShowActionTargetingPrompt(actionProfile, 1))
+            {
+                _hud?.SetHelpText(BuildHealingSpellTargetHelp(actionProfile));
+            }
             if (actionProfile.ActionType == "resurrect")
             {
-                _hud?.ShowCombatBanner("RESURRECTION: Select a highlighted fallen party portrait.", TacticalTheme.BrassBright);
+                if (string.IsNullOrEmpty(BuildActionTargetingHelpText(actionProfile, 1)))
+                {
+                    _hud?.ShowCombatBanner("RESURRECTION: Select a highlighted fallen party portrait.", TacticalTheme.BrassBright);
+                }
             }
+        }
+        else if (actionProfile.ActionType is "web" or "lightning_bolt" or "rain_of_arrows")
+        {
+            ShowActionTargetingPrompt(actionProfile, 1);
         }
         QueueRedraw();
     }
@@ -592,6 +647,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (TryRequestEndTurn(activePlayer, manualInput: true))
         {
             _awaitingPlayerAttackDirection = false;
+            _awaitingShadowStrikeAttack = false;
+            _awaitingItemIdentifyTarget = false;
+            _shadowStrikeDestination = new Vector2I(-1, -1);
             ClearMovementPreviewPath();
             QueueRedraw();
         }
@@ -845,6 +903,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (!IsItemIdentified(itemId, itemData))
+        {
+            RejectPlayerAction("Identify this item before equipping it.");
+            return;
+        }
+
         if (IsConsumableItem(itemData))
         {
             if (!HasUnequippedSharedItem(itemId))
@@ -891,6 +955,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (itemData.Count == 0 || !HasUnequippedSharedItem(itemId))
         {
             RejectPlayerAction("That item is no longer available.");
+            return;
+        }
+
+        if (!IsItemIdentified(itemId, itemData))
+        {
+            RejectPlayerAction("Identify this item before equipping it.");
             return;
         }
 
@@ -959,6 +1029,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (itemData.Count == 0 || !_partyInventoryItemIds.Contains(itemId))
         {
             RejectPlayerAction("That item is no longer available.");
+            return;
+        }
+
+        if (!IsItemIdentified(itemId, itemData))
+        {
+            RejectPlayerAction("Identify this item before using it.");
             return;
         }
 
@@ -1068,6 +1144,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (itemData.Count == 0 || !IsConsumableItem(itemData))
         {
             RejectPlayerAction("That item cannot be used as a consumable.");
+            return;
+        }
+
+        if (!IsItemIdentified(itemId, itemData))
+        {
+            RejectPlayerAction("Identify this item before using it.");
             return;
         }
 
@@ -1186,6 +1268,116 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         SyncHudFromGameState();
     }
 
+    private void BeginIdentifyTargeting()
+    {
+        _awaitingItemIdentifyTarget = true;
+        _awaitingShadowStrikeAttack = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
+        _awaitingPlayerAttackDirection = true;
+        _hud?.SetInventoryVisible(true);
+        var actor = _flowState == BattleFlowState.Combat
+            ? GetActivePlayerUnit()
+            : GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+        if (IsUsableUnit(actor))
+        {
+            var profile = ResolveActionProfile(actor, GetSelectedAbilityId(actor));
+            if (!ShowActionTargetingPrompt(profile, 1))
+            {
+                _hud?.SetHelpText("Identify: select an unidentified item in the party inventory. Press Esc to cancel.");
+                _hud?.ShowCombatBanner("IDENTIFY: Select an unidentified item from the inventory.", TacticalTheme.BrassBright);
+            }
+        }
+        QueueRedraw();
+    }
+
+    private void OnHudInventoryItemSelected(string itemId)
+    {
+        if (!_awaitingItemIdentifyTarget)
+        {
+            return;
+        }
+
+        var actor = _flowState == BattleFlowState.Combat
+            ? GetActivePlayerUnit()
+            : _flowState == BattleFlowState.Exploration
+                ? GetSelectedCharacterPartyUnit() ?? GetExplorerUnit()
+                : null;
+        if (!IsUsableUnit(actor) || actor.IsDead || actor.Team != "player")
+        {
+            RejectPlayerAction("No eligible party member can cast Identify.");
+            return;
+        }
+
+        var profile = ResolveActionProfile(actor, GetSelectedAbilityId(actor));
+        if (!ValidatePlayerAction(actor, profile))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(itemId)
+            || !_partyInventoryItemIds.Contains(itemId)
+            || _gameData == null)
+        {
+            RejectPlayerAction("Select an item in the party inventory.");
+            return;
+        }
+
+        var itemData = _gameData.GetItem(itemId);
+        if (itemData.Count == 0
+            || (!GetBool(itemData, "requires_identification", false)
+                && GetBool(itemData, "identified", true)))
+        {
+            RejectPlayerAction("That item does not need to be identified.");
+            return;
+        }
+
+        if (IsItemIdentified(itemId, itemData))
+        {
+            RejectPlayerAction("That item has already been identified.");
+            return;
+        }
+
+        if (!actor.TrySpendMagicPoints(profile.MagicPointCost))
+        {
+            RejectPlayerAction($"Not enough MP to cast {profile.ActionName}.");
+            return;
+        }
+
+        _identifiedItemIds.Add(itemId);
+        foreach (var unit in _allUnits)
+        {
+            if (IsUsableUnit(unit)
+                && _equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot)
+                && equippedBySlot.ContainsValue(itemId))
+            {
+                ApplyEquippedItemBonuses(unit);
+            }
+        }
+
+        if (_flowState == BattleFlowState.Combat)
+        {
+            actor.MarkAbilityUsed(profile.ActionId, profile.CooldownTurns);
+        }
+        else
+        {
+            actor.MarkAbilityCooldownOnly(profile.ActionId, profile.CooldownTurns);
+        }
+
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, profile.ActionId, itemId);
+        _hud?.AddCombatLogEntry($"{actor.UnitName} identifies {GetString(itemData, "name", "an unidentified item")}.");
+        CancelAttackMode(false);
+        SyncHudFromGameState();
+        if (_flowState == BattleFlowState.Combat)
+        {
+            ApplyActionResult(ResolveSuccessfulAction(profile.ActionType));
+        }
+        else
+        {
+            SetStatusHelp();
+        }
+        _persistence.PersistSaveGame(false);
+    }
+
     private void OnHudLootConfirmRequested(string interactionId)
     {
         if (_flowState != BattleFlowState.Exploration)
@@ -1259,6 +1451,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (actionProfile.ActionType == "identify")
+        {
+            RejectPlayerAction("Select an unidentified item from the party inventory.");
+            return;
+        }
+
         if (actionProfile.ActionType == "protection")
         {
             if (!TryUseProtectionAura(active, actionProfile))
@@ -1288,6 +1486,24 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (actionProfile.ActionType == "shadow_strike")
+        {
+            if (!TryUseShadowStrikeAtCell(active, targetCell, actionProfile))
+            {
+                return;
+            }
+
+            if (_awaitingShadowStrikeAttack)
+            {
+                return;
+            }
+
+            CancelAttackMode(false);
+            ApplyActionResult(ResolveSuccessfulAction("attack"));
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
         if (!ValidatePlayerTarget(active, actionProfile, targetCell))
         {
             return;
@@ -1312,6 +1528,42 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             if (!TryCastAreaAttackAtCell(active, targetCell, actionProfile))
             {
+                return;
+            }
+
+            if (actionProfile.ActionType == "web")
+            {
+                if (!TryCastWebAtCell(active, targetCell, actionProfile))
+                {
+                    return;
+                }
+
+                ApplyActionResult(ResolveSuccessfulAction("attack"));
+                BeginPostPlayerActionMouseMoveLock();
+                return;
+            }
+
+            if (actionProfile.ActionType == "lightning_bolt")
+            {
+                if (!TryCastLightningBoltAtCell(active, targetCell, actionProfile))
+                {
+                    return;
+                }
+
+                ApplyActionResult(ResolveSuccessfulAction("attack"));
+                BeginPostPlayerActionMouseMoveLock();
+                return;
+            }
+
+            if (actionProfile.ActionType == "rain_of_arrows")
+            {
+                if (!TryUseRainOfArrowsAtCell(active, targetCell, actionProfile))
+                {
+                    return;
+                }
+
+                ApplyActionResult(ResolveSuccessfulAction("attack"));
+                BeginPostPlayerActionMouseMoveLock();
                 return;
             }
 
@@ -1937,6 +2189,279 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
+    private bool TryCastWebAtCell(Unit caster, Vector2I centerCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var radius = Mathf.Max(0, GetInt(actionData, "area_radius", actionProfile.AreaRadius));
+        var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 2));
+        var rootedUnits = new List<string>();
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead
+                || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius))
+            {
+                continue;
+            }
+
+            unit.ApplyStatusEffect(
+                "webbed",
+                "Rooted",
+                false,
+                durationTurns + 1,
+                stackingMode: "refresh",
+                maxStacks: 1,
+                scope: "combat_only",
+                preventMovement: true);
+            _combatEffectsDirector?.PlayStatus(unit, new Color("72c7ff"), "ROOTED");
+            rootedUnits.Add(unit.UnitName);
+        }
+
+        caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("7fd6ff"), "WEB");
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, centerCell.ToString());
+        var affectedText = rootedUnits.Count == 0
+            ? "No units were caught in the web."
+            : $"{string.Join(", ", rootedUnits)} rooted for {durationTurns} turns.";
+        _hud?.AddCombatLogEntry(
+            $"{caster.UnitName} casts {actionProfile.ActionName}. {affectedText}" +
+            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryCastLightningBoltAtCell(Unit caster, Vector2I targetCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat
+            || !IsEightDirectionLine(caster.GridPos, targetCell))
+        {
+            return false;
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var minDamage = Mathf.Max(0, GetInt(actionData, "min_damage", actionProfile.Damage));
+        var maxDamage = Mathf.Max(minDamage, GetInt(actionData, "max_damage", minDamage));
+        var direction = new Vector2I(
+            (targetCell.X - caster.GridPos.X).CompareTo(0),
+            (targetCell.Y - caster.GridPos.Y).CompareTo(0));
+        var affected = new HashSet<string>(System.StringComparer.Ordinal);
+        var results = new List<string>();
+
+        for (var distance = 1; distance <= actionProfile.Range; distance++)
+        {
+            var cell = caster.GridPos + direction * distance;
+            if (!IsInBounds(cell) || IsBlockedCell(cell) || !HasClearLineOfSight(caster.GridPos, cell))
+            {
+                break;
+            }
+
+            foreach (var unit in _allUnits)
+            {
+                if (!IsUsableUnit(unit) || unit.IsDead || !unit.OccupiesCell(cell)
+                    || !affected.Add(unit.UnitId))
+                {
+                    continue;
+                }
+
+                var rolledDamage = _combatRng.RandiRange(minDamage, maxDamage);
+                var dealt = unit.ApplyDamage(rolledDamage);
+                _combatEffectsDirector?.PlayDamageResult(unit, dealt, new Color("9deaff"));
+                if (dealt > 0 && !unit.IsDead)
+                {
+                    unit.ClearWakeOnDamageStatusEffects();
+                }
+
+                results.Add($"{unit.UnitName} takes {dealt}{(unit.IsDead ? " and is defeated" : "")}");
+            }
+        }
+
+        caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("9deaff"), "LIGHTNING");
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, targetCell.ToString());
+        var affectedText = results.Count == 0
+            ? "No units were struck."
+            : string.Join("; ", results) + ".";
+        _hud?.AddCombatLogEntry(
+            $"{caster.UnitName} casts {actionProfile.ActionName} in a line up to {actionProfile.Range} tiles, dealing {minDamage}-{maxDamage} lightning damage per unit. " +
+            affectedText +
+            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryUseRainOfArrowsAtCell(Unit archer, Vector2I centerCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(archer) || archer.IsDead || _flowState != BattleFlowState.Combat
+            || !IsInBounds(centerCell)
+            || !Unit.IsWithinRange(archer.GridPos, centerCell, actionProfile.Range)
+            || !HasClearLineOfSight(archer.GridPos, centerCell)
+            || !CanUseRangedWeaponAbility(archer))
+        {
+            return false;
+        }
+
+        var radius = Mathf.Max(0, actionProfile.AreaRadius);
+        var affected = new List<string>();
+        var weaponDamage = Mathf.Max(0, archer.AttackDamage);
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead
+                || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius))
+            {
+                continue;
+            }
+
+            var damage = Mathf.Max(0, weaponDamage - unit.ArmorClass);
+            var dealt = unit.ApplyDamage(damage);
+            _combatEffectsDirector?.PlayDamageResult(unit, dealt, new Color("ffb65c"));
+            if (dealt > 0 && !unit.IsDead)
+            {
+                unit.ClearWakeOnDamageStatusEffects();
+            }
+            affected.Add($"{unit.UnitName} takes {dealt}{(unit.IsDead ? " and is defeated" : "")}");
+        }
+
+        archer.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("ffb65c"), "RAIN OF ARROWS");
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, archer, actionProfile.ActionId, centerCell.ToString());
+        _hud?.AddCombatLogEntry(
+            $"{archer.UnitName} uses {actionProfile.ActionName}, attacking all units within {radius} tiles for up to {weaponDamage} weapon damage. " +
+            (affected.Count == 0 ? "No units were hit." : string.Join("; ", affected) + "."));
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryUseTaunt(Unit warrior, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(warrior) || warrior.IsDead || _flowState != BattleFlowState.Combat
+            || !CanCastAction(warrior, actionProfile)
+            || !warrior.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return false;
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var radius = Mathf.Max(0, GetInt(actionData, "area_radius", actionProfile.AreaRadius));
+        var durationTurns = Mathf.Max(1, GetInt(actionData, "duration_turns", 1));
+        var affected = new List<string>();
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.Team == warrior.Team
+                || warrior.DistanceToUnitAt(warrior.GridPos, unit) > radius)
+            {
+                continue;
+            }
+
+            unit.ApplyStatusEffect(
+                "taunted",
+                "Taunted",
+                false,
+                durationTurns + 1,
+                stackingMode: "refresh",
+                maxStacks: 1,
+                scope: "combat_only");
+            unit.SetTauntTarget(warrior.UnitId);
+            _combatEffectsDirector?.PlayStatus(unit, new Color("f4a46b"), "TAUNTED");
+            affected.Add(unit.UnitName);
+        }
+
+        warrior.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(warrior.Position, radius * CellSize, new Color("f4a46b"), "TAUNT");
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, warrior, actionProfile.ActionId, warrior.UnitId);
+        _hud?.AddCombatLogEntry(
+            $"{warrior.UnitName} uses {actionProfile.ActionName}. " +
+            (affected.Count == 0
+                ? "No enemies are in range."
+                : $"{string.Join(", ", affected)} must attack {warrior.UnitName} on their next turn.") +
+            (actionProfile.CooldownTurns > 0 ? $" Cooldown: {actionProfile.CooldownTurns} turns." : ""));
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool TryUseShadowStrikeAtCell(Unit thief, Vector2I targetCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(thief) || thief.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        if (!_awaitingShadowStrikeAttack)
+        {
+            if (!IsInBounds(targetCell)
+                || !IsFogCellCurrentlyVisible(targetCell)
+                || !Unit.IsWithinRange(thief.GridPos, targetCell, actionProfile.Range)
+                || !CanUnitStandAt(thief, targetCell))
+            {
+                return RejectPlayerAction("Choose an unoccupied reachable tile within 5 tiles.");
+            }
+
+            if (!TryMoveUnit(thief, targetCell))
+            {
+                return RejectPlayerAction("That destination cannot be reached.");
+            }
+
+            _shadowStrikeDestination = targetCell;
+            _awaitingShadowStrikeAttack = true;
+            ShowActionTargetingPrompt(actionProfile, 2);
+            QueueRedraw();
+            return true;
+        }
+
+        if (thief.GridPos != _shadowStrikeDestination)
+        {
+            _awaitingShadowStrikeAttack = false;
+            return RejectPlayerAction("Shadow Strike was interrupted. Select the ability again.");
+        }
+
+        var target = GetLivingEnemyAtCell(thief.Team, targetCell);
+        if (!IsUsableUnit(target) || target.IsDead
+            || !thief.CanAttackTarget(target, 1, _allUnits)
+            || !HasClearUnitLineOfSight(thief, target))
+        {
+            return RejectPlayerAction("Select an adjacent enemy with a clear line of sight.");
+        }
+
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var damageMultiplier = Mathf.Max(1, GetInt(actionData, "damage_multiplier", 4));
+        var damage = Mathf.Max(1, thief.AttackDamage) * damageMultiplier;
+        if (!TryAttackTarget(
+            thief,
+            target,
+            damage,
+            1,
+            actionProfile.ActionId,
+            actionProfile.ActionName,
+            actionProfile.CooldownTurns,
+            actionProfile.MagicPointCost,
+            actionProfile.IsMagical))
+        {
+            return RejectPlayerAction("Shadow Strike could not be completed.");
+        }
+
+        _awaitingShadowStrikeAttack = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
+        return true;
+    }
+
     private async Task<bool> TryUseChargeAsync(Unit attacker, Vector2I targetCell, ActionProfile actionProfile)
     {
         if (!IsUsableUnit(attacker) || attacker.IsDead || _flowState != BattleFlowState.Combat)
@@ -2139,9 +2664,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     Mathf.Max(_walkableCells.Count, _gridWidth * _gridHeight));
                 if (!_aiDirector.TryChooseStepTowardActionRange(
                     enemyUnit,
-                    _playerUnits,
+                    BuildAiTargetCandidates(enemyUnit),
                     BuildAiActionOptions(enemyUnit),
-                    target => IsValidAttackTarget(enemyUnit, target),
+                    target => CanAiMoveTowardTarget(enemyUnit, target),
                     cell => CanUnitStandAt(enemyUnit, cell),
                     HasClearLineOfSight,
                     findPathFromCurrentCell,
@@ -2770,7 +3295,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ? TryCastCombatHealingSpell(actor, choice.Target, actionProfile)
             : actionProfile.ActionType == "heal"
                 ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost)
-                : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost);
+                : actionProfile.ActionType == "web"
+                    ? TryCastWebAtCell(actor, choice.Target.GridPos, actionProfile)
+                    : actionProfile.ActionType == "lightning_bolt"
+                        ? TryCastLightningBoltAtCell(actor, choice.Target.GridPos, actionProfile)
+                        : actionProfile.ActionType == "rain_of_arrows"
+                            ? TryUseRainOfArrowsAtCell(actor, choice.Target.GridPos, actionProfile)
+                            : actionProfile.ActionType == "taunt"
+                                ? TryUseTaunt(actor, actionProfile)
+                                : actionProfile.ActionType == "shadow_strike"
+                                    ? TryUseAiShadowStrike(actor, choice.Target, actionProfile)
+                                    : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost);
 
         if (!actionSuccess)
         {
@@ -2808,6 +3343,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool CanAiActionTarget(Unit actor, Unit target, AiDirector.ActionOption option)
     {
+        if (option.ActionType == "taunt")
+        {
+            return target == actor;
+        }
+
+        if (actor.HasStatusEffect("taunted")
+            && !string.Equals(target.UnitId, actor.TauntTargetUnitId, System.StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         if (IsHealingSpellAction(option.ActionType))
         {
             return CanCastHealingSpellOnTarget(actor, target, ResolveActionProfile(actor, option.AbilityId), out _);
@@ -2820,9 +3366,123 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 && HasClearUnitLineOfSight(actor, target);
         }
 
+        if (option.ActionType == "shadow_strike")
+        {
+            return CanAiShadowStrikeTarget(actor, target, option.Range);
+        }
+
+        if (option.ActionType is "web" or "lightning_bolt" or "rain_of_arrows")
+        {
+            return IsValidAttackTarget(actor, target)
+                && actor.CanAttackTarget(target, option.Range, _allUnits)
+                && HasClearUnitLineOfSight(actor, target)
+                && (option.ActionType != "lightning_bolt" || IsEightDirectionLine(actor.GridPos, target.GridPos));
+        }
+
         return IsValidAttackTarget(actor, target)
             && actor.CanAttackTarget(target, option.Range, _allUnits)
             && HasClearUnitLineOfSight(actor, target);
+    }
+
+    private Array<Unit> BuildAiTargetCandidates(Unit actor)
+    {
+        if (!IsUsableUnit(actor) || !actor.HasStatusEffect("taunted"))
+        {
+            return _playerUnits;
+        }
+
+        var targets = new Array<Unit>();
+        var target = FindUnitById(actor.TauntTargetUnitId);
+        if (IsUsableUnit(target) && !target.IsDead && target.Team != actor.Team)
+        {
+            targets.Add(target);
+        }
+
+        return targets;
+    }
+
+    private bool CanAiMoveTowardTarget(Unit actor, Unit target)
+    {
+        if (!IsValidAttackTarget(actor, target))
+        {
+            return false;
+        }
+
+        return !actor.HasStatusEffect("taunted")
+            || string.Equals(target.UnitId, actor.TauntTargetUnitId, System.StringComparison.Ordinal);
+    }
+
+    private bool CanAiShadowStrikeTarget(Unit actor, Unit target, int range)
+    {
+        if (!IsValidAttackTarget(actor, target))
+        {
+            return false;
+        }
+
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            for (var dy = -1; dy <= 1; dy++)
+            {
+                var destination = target.GridPos + new Vector2I(dx, dy);
+                if (Unit.RangeDistance(actor.GridPos, destination) <= range
+                    && CanUnitStandAt(actor, destination)
+                    && actor.DistanceToUnitAt(destination, target) <= 1
+                    && HasClearLineOfSight(destination, target.GetClosestCell(destination)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryUseAiShadowStrike(Unit actor, Unit target, ActionProfile actionProfile)
+    {
+        if (!CanAiShadowStrikeTarget(actor, target, actionProfile.Range))
+        {
+            return false;
+        }
+
+        var foundDestination = false;
+        var destination = actor.GridPos;
+        var bestDistance = int.MaxValue;
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            for (var dy = -1; dy <= 1; dy++)
+            {
+                var candidate = target.GridPos + new Vector2I(dx, dy);
+                var distance = Unit.RangeDistance(actor.GridPos, candidate);
+                if (distance > actionProfile.Range || distance >= bestDistance
+                    || !CanUnitStandAt(actor, candidate)
+                    || actor.DistanceToUnitAt(candidate, target) > 1
+                    || !HasClearLineOfSight(candidate, target.GetClosestCell(candidate)))
+                {
+                    continue;
+                }
+
+                destination = candidate;
+                bestDistance = distance;
+                foundDestination = true;
+            }
+        }
+
+        if (!foundDestination || !TryMoveUnit(actor, destination))
+        {
+            return false;
+        }
+
+        var multiplier = Mathf.Max(1, GetInt(GetActionData(actionProfile.ActionId, out _), "damage_multiplier", 4));
+        return TryAttackTarget(
+            actor,
+            target,
+            Mathf.Max(1, actor.AttackDamage) * multiplier,
+            1,
+            actionProfile.ActionId,
+            actionProfile.ActionName,
+            actionProfile.CooldownTurns,
+            actionProfile.MagicPointCost,
+            actionProfile.IsMagical);
     }
 
     private CombatActionResult ResolveSuccessfulAction(string actionType)
@@ -3764,7 +4424,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var requiresRangedWeapon = GetBool(actionData, "requires_ranged_weapon", false);
 
         // Physical attacks commonly use 0 in data as a placeholder for "use unit stats".
-        var shouldUseActorCombatStats = (actionType == "attack" || actionType == "pin" || actionType == "poison_strike") && !isMagical;
+        var shouldUseActorCombatStats = (actionType is "attack" or "pin" or "poison_strike" or "rain_of_arrows") && !isMagical;
         var range = shouldUseActorCombatStats && configuredRange <= 0
             ? actor.AttackRange
             : configuredRange;
@@ -3777,7 +4437,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             range = 1;
         }
 
-        range = actionType is "defend" or "protection"
+        range = actionType is "defend" or "protection" or "taunt" or "identify"
             ? 0
             : actionType == "resurrect" && range < 0
                 ? range
@@ -3827,7 +4487,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (IsHealingSpellAction(actionProfile.ActionType) && !CanUnitCastHealingSpell(actor, actionProfile.ActionId))
+        var allowedClasses = TryGetStringArray(GetActionData(actionProfile.ActionId, out _), "allowed_classes");
+        if (allowedClasses.Count > 0 && !IsUnitInAllowedClasses(actor, allowedClasses))
         {
             return false;
         }
@@ -4236,7 +4897,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                                     ? "Effect: pin target for 1 turn"
                                     : profile.ActionType == "poison_strike"
                                         ? "Effect: weapon damage + poison for 2 turns"
-                                    : $"Damage: {profile.Damage}";
+                                                        : profile.ActionType == "web"
+                                                            ? $"Effect: root all units in a {profile.AreaRadius * 2 + 1}x{profile.AreaRadius * 2 + 1} area for 2 turns"
+                                                            : profile.ActionType == "lightning_bolt"
+                                                                ? $"Damage: {GetInt(actionData, "min_damage", 0)}-{GetInt(actionData, "max_damage", 0)} lightning damage per unit in line"
+                                                                : profile.ActionType == "rain_of_arrows"
+                                                                    ? $"Effect: ranged weapon damage to all units in a {profile.AreaRadius}-tile radius"
+                                                                    : profile.ActionType == "shadow_strike"
+                                                                        ? "Effect: teleport within 5 tiles and attack an adjacent enemy for 4x weapon damage"
+                                                                        : profile.ActionType == "taunt"
+                                                                            ? "Effect: force enemies within 2 tiles to attack you next turn"
+                                                                            : profile.ActionType == "identify"
+                                                                                ? "Effect: reveal one unidentified inventory item"
+                                                    : $"Damage: {profile.Damage}";
             var mpCostLabel = profile.MagicPointCost <= 0
                 ? "MP Cost: none"
                 : $"MP Cost: {profile.MagicPointCost}";
@@ -4393,6 +5066,66 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return actionData;
     }
 
+    private string BuildActionTargetingHelpText(ActionProfile actionProfile, int step)
+    {
+        var actionData = GetActionData(actionProfile.ActionId, out _);
+        var steps = TryGetStringArray(actionData, "targeting_steps");
+        string prompt;
+        if (steps.Count > 0)
+        {
+            var promptIndex = Mathf.Clamp(step - 1, 0, steps.Count - 1);
+            prompt = steps[promptIndex];
+        }
+        else
+        {
+            prompt = GetString(actionData, "targeting_prompt", "");
+        }
+
+        return string.IsNullOrWhiteSpace(prompt)
+            ? ""
+            : $"{actionProfile.ActionName}: {prompt} Press Esc to cancel.";
+    }
+
+    private bool ShowActionTargetingPrompt(ActionProfile actionProfile, int step)
+    {
+        var helpText = BuildActionTargetingHelpText(actionProfile, step);
+        if (string.IsNullOrEmpty(helpText))
+        {
+            return false;
+        }
+
+        _hud?.SetHelpText(helpText);
+        _hud?.ShowCombatBanner(helpText.Replace(" Press Esc to cancel.", "").ToUpperInvariant(), TacticalTheme.BrassBright);
+        return true;
+    }
+
+    private static bool IsUnitInAllowedClasses(Unit unit, Array<string> allowedClasses)
+    {
+        if (unit == null || allowedClasses == null)
+        {
+            return false;
+        }
+
+        foreach (var allowedClass in allowedClasses)
+        {
+            if (string.Equals(allowedClass, unit.ClassId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsEightDirectionLine(Vector2I from, Vector2I to)
+    {
+        var dx = Mathf.Abs(to.X - from.X);
+        var dy = Mathf.Abs(to.Y - from.Y);
+        return dx > 0 || dy > 0
+            ? dx == 0 || dy == 0 || dx == dy
+            : false;
+    }
+
     private static bool IsUndead(Unit unit)
     {
         if (!IsUsableUnit(unit))
@@ -4462,6 +5195,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private void CancelAttackMode(bool restoreHelpText = true)
     {
         _awaitingPlayerAttackDirection = false;
+        _awaitingShadowStrikeAttack = false;
+        _awaitingItemIdentifyTarget = false;
+        _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         QueueRedraw();
         if (restoreHelpText)
@@ -4493,12 +5229,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (actionProfile.ActionType == "identify")
+        {
+            return;
+        }
+
         var center = CellCenter(active.GridPos);
         canvas.DrawArc(center, 28.0f, 0.0f, Mathf.Tau, 40, new Color(1.0f, 0.85f, 0.35f, 0.95f), 3.0f);
 
-        for (var dx = -actionProfile.Range; dx <= actionProfile.Range; dx++)
+        var previewRange = actionProfile.ActionType == "shadow_strike" && _awaitingShadowStrikeAttack
+            ? 1
+            : actionProfile.Range;
+        for (var dx = -previewRange; dx <= previewRange; dx++)
         {
-            for (var dy = -actionProfile.Range; dy <= actionProfile.Range; dy++)
+            for (var dy = -previewRange; dy <= previewRange; dy++)
             {
                 if (dx == 0 && dy == 0)
                 {
@@ -4506,7 +5250,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 var cell = active.GridPos + new Vector2I(dx, dy);
-                if (!IsInBounds(cell) || !Unit.IsWithinRange(active.GridPos, cell, actionProfile.Range))
+                if (!IsInBounds(cell) || !Unit.IsWithinRange(active.GridPos, cell, previewRange))
                 {
                     continue;
                 }
@@ -4523,11 +5267,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     : actionProfile.ActionType == "heal"
                         ? GetLivingAllyAtCell(active.Team, cell)
                         : GetLivingEnemyAtCell(active.Team, cell);
-                var valid = IsUtilityAction(actionProfile.ActionType)
-                    ? TryGetUtilityTarget(active, actionProfile, cell, out _)
-                    : actionProfile.ActionType == "area_attack"
-                    ? HasClearLineOfSight(active.GridPos, cell)
-                    : target != null && (IsHealingSpellAction(actionProfile.ActionType)
+                var areaAction = actionProfile.ActionType is "sleep" or "area_attack" or "web" or "lightning_bolt" or "rain_of_arrows";
+                var valid = actionProfile.ActionType == "shadow_strike"
+                    ? _awaitingShadowStrikeAttack
+                        ? target != null
+                            && active.CanAttackTarget(target, 1, _allUnits)
+                            && HasClearUnitLineOfSight(active, target)
+                        : Unit.IsWithinRange(active.GridPos, cell, actionProfile.Range)
+                            && IsFogCellCurrentlyVisible(cell)
+                            && CanUnitStandAt(active, cell)
+                    : IsUtilityAction(actionProfile.ActionType)
+                        ? TryGetUtilityTarget(active, actionProfile, cell, out _)
+                        : areaAction
+                            ? HasClearLineOfSight(active.GridPos, cell)
+                                && (actionProfile.ActionType != "lightning_bolt" || IsEightDirectionLine(active.GridPos, cell))
+                            : target != null && (IsHealingSpellAction(actionProfile.ActionType)
                         ? CanCastHealingSpellOnTarget(active, target, actionProfile, out _)
                         : actionProfile.ActionType == "heal"
                             ? active.CanHealTarget(target, actionProfile.Range, _allUnits) && HasClearUnitLineOfSight(active, target)
@@ -4549,6 +5303,32 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 && CanCastHealingSpellOnTarget(active, hoveredTarget, actionProfile, out _))
             {
                 DrawAreaPreviewOverlay(canvas, hoveredCell, actionProfile.AreaRadius);
+            }
+            return;
+        }
+
+        if (actionProfile.ActionType == "lightning_bolt")
+        {
+            var hoveredCell = WorldToCell(ToLocal(GetGlobalMousePosition()));
+            if (IsInBounds(hoveredCell)
+                && IsEightDirectionLine(active.GridPos, hoveredCell)
+                && Unit.IsWithinRange(active.GridPos, hoveredCell, actionProfile.Range))
+            {
+                var direction = new Vector2I(
+                    (hoveredCell.X - active.GridPos.X).CompareTo(0),
+                    (hoveredCell.Y - active.GridPos.Y).CompareTo(0));
+                for (var distance = 1; distance <= actionProfile.Range; distance++)
+                {
+                    var lineCell = active.GridPos + direction * distance;
+                    if (!IsInBounds(lineCell) || IsBlockedCell(lineCell) || !HasClearLineOfSight(active.GridPos, lineCell))
+                    {
+                        break;
+                    }
+
+                    var lineRect = new Rect2(new Vector2(lineCell.X * CellSize, lineCell.Y * CellSize), new Vector2(CellSize, CellSize));
+                    canvas.DrawRect(lineRect, new Color("72dfff", 0.18f), true);
+                    canvas.DrawRect(lineRect, new Color("a2efff", 0.9f), false, 2.0f);
+                }
             }
             return;
         }
@@ -4615,7 +5395,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         centerCell = new Vector2I(-1, -1);
 
-        if (actionProfile.Range <= 0 || actionProfile.AreaRadius <= 0)
+        if (actionProfile.Range <= 0 || actionProfile.AreaRadius <= 0
+            || actionProfile.ActionType is not ("sleep" or "area_attack" or "web" or "rain_of_arrows" or "blessing"))
         {
             return false;
         }
@@ -7134,8 +7915,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             if (equippedUsage.TryGetValue(itemId, out var equippedCount) && equippedCount > 0)
             {
-                equippedUsage[itemId] = equippedCount - 1;
-                continue;
+                var equippedData = _gameData.GetItem(itemId);
+                if (IsItemIdentified(itemId, equippedData))
+                {
+                    equippedUsage[itemId] = equippedCount - 1;
+                    continue;
+                }
             }
 
             var itemData = _gameData.GetItem(itemId);
@@ -7144,10 +7929,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            items.Add(itemData);
+            var hudItem = CopyDictionary(itemData);
+            var isIdentified = IsItemIdentified(itemId, itemData);
+            hudItem["is_identified"] = isIdentified;
+            if (!isIdentified)
+            {
+                hudItem["name"] = GetString(itemData, "unidentified_name", "Unidentified item");
+                hudItem["description"] = GetString(itemData, "unidentified_description", "Cast Identify to reveal this item's properties.");
+                hudItem["type"] = "unknown";
+            }
+
+            items.Add(hudItem);
         }
 
         return items;
+    }
+
+    private bool IsItemIdentified(string itemId, Dictionary itemData)
+    {
+        var requiresIdentification = GetBool(itemData, "requires_identification", false)
+            || !GetBool(itemData, "identified", true);
+        return !requiresIdentification || !string.IsNullOrEmpty(itemId) && _identifiedItemIds.Contains(itemId);
     }
 
     private Array<Dictionary> BuildActivePartyReserveEntriesForHud()
@@ -7405,6 +8207,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             var itemData = _gameData.GetItem(entry.Value);
             if (itemData.Count == 0)
+            {
+                continue;
+            }
+
+            if (!IsItemIdentified(entry.Value, itemData))
             {
                 continue;
             }
@@ -9146,6 +9953,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, string> IGamePersistenceHost.SelectedAbilityIdByUnitId => _selectedAbilityIdByUnitId;
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> IGamePersistenceHost.EquippedItemsByUnitId => _equippedItemsByUnitId;
     List<string> IGamePersistenceHost.PartyInventoryItemIds => _partyInventoryItemIds;
+    HashSet<string> IGamePersistenceHost.IdentifiedItemIds => _identifiedItemIds;
     System.Collections.Generic.Dictionary<string, int> IGamePersistenceHost.VendorGoldById => _vendorGoldById;
     System.Collections.Generic.Dictionary<string, List<string>> IGamePersistenceHost.VendorInventoryItemIdsById => _vendorInventoryItemIdsById;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.ClearedEncounterIdsByMap => _clearedEncounterIdsByMap;

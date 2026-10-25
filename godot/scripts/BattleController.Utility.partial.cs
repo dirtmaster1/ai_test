@@ -9,7 +9,8 @@ public partial class BattleController
 
     private static bool IsUtilityAction(string actionType) => actionType is "disarm_trap" or "pick_lock";
 
-    private static bool IsExplorationAction(string actionType) => actionType == "heal" || IsUtilityAction(actionType);
+    private static bool IsExplorationAction(string actionType) =>
+        actionType is "heal" or "identify" || IsUtilityAction(actionType);
 
     private void EnsureClassUtilityAbilities(Unit unit)
     {

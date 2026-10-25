@@ -83,6 +83,12 @@ public partial class ActionFeedbackChecks : BattleController
         CheckConsumables();
         CheckHealerServices();
         CheckAllowedActions();
+        CheckNewHealerSpell();
+        CheckAreaSpellEffects();
+        CheckRainOfArrows();
+        CheckShadowStrike();
+        CheckTauntTargeting();
+        CheckIdentifyInventoryFlow();
         CheckCombatEndClearsCombatStatuses();
         CheckCombatTargetClickReleaseDoesNotMoveInExploration();
         return _failures;
@@ -173,6 +179,13 @@ public partial class ActionFeedbackChecks : BattleController
             ["disarm-trap"] = new(3, 8),
             ["small-shield"] = new(0, 2),
             ["poison-strike"] = new(4, 6),
+            ["greater-heal"] = new(1, 4),
+            ["web"] = new(6, 4),
+            ["lightning-bolt"] = new(0, 5),
+            ["identify"] = new(1, 5),
+            ["rain-of-arrows"] = new(2, 6),
+            ["shadow-strike"] = new(3, 6),
+            ["taunt"] = new(6, 6),
             ["remove-malady"] = new(4, 8),
             ["resurrect"] = new(5, 8),
             ["blessing"] = new(6, 8)
@@ -583,6 +596,10 @@ public partial class ActionFeedbackChecks : BattleController
         _door["locked"] = true;
         _door["is_open"] = false;
         Set("_awaitingPlayerAttackDirection", false);
+        Set("_awaitingShadowStrikeAttack", false);
+        Set("_awaitingItemIdentifyTarget", false);
+        Set("_shadowStrikeDestination", new Vector2I(-1, -1));
+        Field<HashSet<string>>("_identifiedItemIds").Clear();
         Set("_mouseMoveInputLockedUntilMs", 0UL);
         RefreshFog();
         Call("SetSelectedAbilityId", _actor, "magic-missile");
@@ -1498,6 +1515,227 @@ public partial class ActionFeedbackChecks : BattleController
         Set("_awaitingPlayerAttackDirection", true);
         Call("HandlePlayerAttackDirectionInput", new InputEventKey { Pressed = true, Keycode = Key.Escape });
         Check(_banner.Text == "", "Canceling targeting must not show a failure");
+    }
+
+    private void CheckNewHealerSpell()
+    {
+        Reset();
+        var spells = GetNode<GameData>("/root/GameData");
+        var greaterHeal = spells.GetSpell("greater-heal");
+        Check(ReadInt(greaterHeal, "heal_amount", 0) == 10 && ReadInt(greaterHeal, "cooldown", 0) == 2,
+            "Greater Heal must restore 10 HP and have a 2-turn cooldown");
+        _actor.AbilityIds.Add("greater-heal");
+        Check(((Variant)Call("GetActionFailureReason", _actor, Call("ResolveActionProfile", _actor, "greater-heal"))).AsString()
+            .Contains("must be a cleric or healer"),
+            "Greater Heal must be rejected for a wizard by its class restriction");
+
+        ConfigureActor("cleric", "greater-heal", "melee");
+        Call("SetSelectedAbilityId", _actor, "greater-heal");
+        Check(string.IsNullOrEmpty(((Variant)Call("GetActionFailureReason", _actor, Call("ResolveActionProfile", _actor, "greater-heal"))).AsString()),
+            "Greater Heal must be available to clerics");
+        _ally.ApplyDamage(20);
+        var previousHealth = _ally.HitPoints;
+        Check((bool)Call("TryHealTarget", _actor, _ally, 10, 3, "greater-heal", "Greater Heal", 2, 4, true),
+            "A cleric must be able to cast Greater Heal");
+        Check(_ally.HitPoints == previousHealth + 10 && _actor.MagicPoints == 26,
+            "Greater Heal must restore 10 HP and spend 4 MP");
+    }
+
+    private void CheckAreaSpellEffects()
+    {
+        Reset();
+        _actor.AbilityIds.Add("web");
+        _enemy.SetGridPos(new Vector2I(4, 3));
+        var webProfile = Call("ResolveActionProfile", _actor, "web");
+        Check((bool)Call("TryCastWebAtCell", _actor, new Vector2I(3, 3), webProfile),
+            "Web must resolve on an area target cell");
+        Check(_actor.HasStatusEffect("webbed") && _ally.HasStatusEffect("webbed") && _enemy.HasStatusEffect("webbed"),
+            "Web must root every unit in its 3x3 area, including allies");
+        Check(_actor.MagicPoints == 24 && _actor.HasUsedAbilityThisTurn,
+            "Web must spend 6 MP and one action point");
+        _enemy.ProcessStartOfTurnStatusEffects();
+        Check(_enemy.HasStatusEffect("webbed"),
+            "A two-turn Web root must remain active through both affected turns");
+
+        Reset();
+        _actor.AbilityIds.Add("lightning-bolt");
+        _ally.SetGridPos(new Vector2I(4, 2));
+        var actorHealth = _actor.HitPoints;
+        var allyHealth = _ally.HitPoints;
+        var enemyHealth = _enemy.HitPoints;
+        var lightningProfile = Call("ResolveActionProfile", _actor, "lightning-bolt");
+        Check((bool)Call("TryCastLightningBoltAtCell", _actor, _enemy.GridPos, lightningProfile),
+            "Lightning Bolt must resolve along an eight-direction line");
+        Check(enemyHealth - _enemy.HitPoints is >= 8 and <= 16
+            && allyHealth - _ally.HitPoints is >= 8 and <= 16
+            && _actor.HitPoints == actorHealth,
+            "Lightning Bolt must roll 8-16 damage independently for each unit in its line, excluding the caster");
+        Check(_actor.MagicPoints == 22 && _actor.HasUsedAbilityThisTurn,
+            "Lightning Bolt must spend 8 MP and one action point");
+        Check(!(bool)Call("IsEightDirectionLine", _actor.GridPos, new Vector2I(4, 3)),
+            "Lightning Bolt must reject non-cardinal, non-diagonal target directions");
+    }
+
+    private void CheckRainOfArrows()
+    {
+        Reset();
+        ConfigureActor("ranger", "rain-of-arrows", "melee");
+        var equipment = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["main-hand"] = "short-bow"
+        };
+        Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId")[_actor.UnitId] = equipment;
+        Call("ApplyEquippedItemBonuses", _actor);
+        _ally.SetGridPos(new Vector2I(6, 3));
+        var enemyHealth = _enemy.HitPoints;
+        var allyHealth = _ally.HitPoints;
+        var profile = Call("ResolveActionProfile", _actor, "rain-of-arrows");
+        Check((bool)Call("TryUseRainOfArrowsAtCell", _actor, _enemy.GridPos, profile),
+            "Rain of Arrows must resolve when a ranged weapon is equipped");
+        Check(_enemy.HitPoints < enemyHealth && _ally.HitPoints < allyHealth,
+            "Rain of Arrows must damage all units, including allies, within its 2-tile radius");
+        Check(_actor.GetAbilityCooldownRemaining("rain-of-arrows") == 3 && _actor.HasUsedAbilityThisTurn,
+            "Rain of Arrows must use one action point and start a 3-turn cooldown");
+    }
+
+    private void CheckShadowStrike()
+    {
+        Reset();
+        ConfigureActor("thief", "shadow-strike", "melee");
+        var destination = new Vector2I(4, 3);
+        var enemyHealth = _enemy.HitPoints;
+        var profile = Call("ResolveActionProfile", _actor, "shadow-strike");
+        var firstPrompt = ((Variant)Call("BuildActionTargetingHelpText", profile, 1)).AsString();
+        var secondPrompt = ((Variant)Call("BuildActionTargetingHelpText", profile, 2)).AsString();
+        Check(firstPrompt.Contains("unoccupied reachable tile")
+            && secondPrompt.Contains("adjacent enemy"),
+            "Shadow Strike must present distinct data-driven instructions for both targeting steps");
+        Set("_awaitingPlayerAttackDirection", true);
+        Check((bool)Call("TryUseShadowStrikeAtCell", _actor, destination, profile)
+            && Field<bool>("_awaitingShadowStrikeAttack")
+            && _actor.GridPos == destination,
+            "Shadow Strike must first teleport to the selected reachable tile");
+        Check((bool)Call("TryUseShadowStrikeAtCell", _actor, _enemy.GridPos, profile),
+            "Shadow Strike must then accept an adjacent enemy target");
+        Check(enemyHealth - _enemy.HitPoints == _actor.AttackDamage * 4,
+            "Shadow Strike must deal 4x weapon damage after teleporting");
+        Check(_actor.HasUsedAbilityThisTurn && !Field<bool>("_awaitingShadowStrikeAttack"),
+            "Completing Shadow Strike must spend the action and leave targeting mode");
+    }
+
+    private void CheckTauntTargeting()
+    {
+        Reset();
+        ConfigureActor("warrior", "taunt", "melee");
+        _enemy.SetGridPos(new Vector2I(4, 2));
+        var profile = Call("ResolveActionProfile", _actor, "taunt");
+        Check((bool)Call("TryUseTaunt", _actor, profile),
+            "Taunt must resolve as an immediate area action");
+        Check(_enemy.HasStatusEffect("taunted") && _enemy.TauntTargetUnitId == _actor.UnitId,
+            "Taunt must mark nearby enemies with the warrior as their forced target");
+        var option = new AiDirector.ActionOption("magic-missile", "attack", 5, true, false);
+        Check((bool)Call("CanAiActionTarget", _enemy, _actor, option)
+            && !(bool)Call("CanAiActionTarget", _enemy, _ally, option),
+            "A taunted enemy may target the warrior but must reject every other party member");
+        var targets = (Array<Unit>)Call("BuildAiTargetCandidates", _enemy);
+        Check(targets.Count == 1 && targets[0] == _actor,
+            "Taunted enemy pathfinding must only pursue the warrior");
+        _enemy.ProcessStartOfTurnStatusEffects();
+        Check(_enemy.HasStatusEffect("taunted"), "Taunt must still affect the enemy's next turn");
+        _enemy.ProcessStartOfTurnStatusEffects();
+        Check(!_enemy.HasStatusEffect("taunted") && string.IsNullOrEmpty(_enemy.TauntTargetUnitId),
+            "Taunt must expire after the enemy's next turn");
+    }
+
+    private void CheckIdentifyInventoryFlow()
+    {
+        Reset();
+        const string testItemId = "feedback-unidentified-test-item";
+        var gameData = GetNode<GameData>("/root/GameData");
+        Field<List<string>>("_partyInventoryItemIds").Clear();
+        Field<HashSet<string>>("_identifiedItemIds").Clear();
+        gameData.Items[testItemId] = new Dictionary
+        {
+            { "id", testItemId },
+            { "name", "Test Relic" },
+            { "type", "weapon" },
+            { "range", 3 },
+            { "requires_identification", true }
+        };
+        try
+        {
+            _actor.AbilityIds.Add("identify");
+            Field<List<string>>("_partyInventoryItemIds").Add(testItemId);
+            var inventory = (Array<Dictionary>)Call("BuildInventoryItemsForHud");
+            var unknown = inventory[inventory.Count - 1];
+            Check(!ReadBool(unknown, "is_identified", true)
+                && ReadString(unknown, "name", "") == "Unidentified item"
+                && ReadString(unknown, "type", "") == "unknown",
+                "Unidentified items must hide their properties in the inventory");
+            Call("OnHudEquipItemRequested", testItemId);
+            Check(!Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId")
+                .ContainsKey(_actor.UnitId),
+                "Unidentified items must not be usable by equipping them");
+
+            Call("OnHudAbilityPressed", "identify");
+            Check(Field<bool>("_awaitingItemIdentifyTarget") && Field<bool>("_awaitingPlayerAttackDirection"),
+                "Identify must enter inventory-item targeting mode");
+            Call("OnHudInventoryItemSelected", testItemId);
+            Check(Field<HashSet<string>>("_identifiedItemIds").Contains(testItemId)
+                && _actor.MagicPoints == 27
+                && _actor.HasUsedAbilityThisTurn,
+                "Identify must persist the item state and spend 3 MP and one combat action point");
+            var identifiedItem = ((Array<Dictionary>)Call("BuildInventoryItemsForHud"))[0];
+            Check(ReadBool(identifiedItem, "is_identified", false)
+                && ReadString(identifiedItem, "name", "") == "Test Relic"
+                && ReadString(identifiedItem, "type", "") == "weapon",
+                "An identified item must reveal its properties and become usable");
+            var buildSaveData = typeof(GamePersistence).GetMethod("BuildSaveData", BindingFlags.Instance | BindingFlags.NonPublic);
+            var saveData = (Dictionary)buildSaveData.Invoke(Field<GamePersistence>("_persistence"), null);
+            var savedItems = (Godot.Collections.Array)(Variant)saveData["identified_item_ids"];
+            Check(savedItems.Count == 1 && ((Variant)savedItems[0]).AsString() == testItemId,
+                "Identified item IDs must be included in save data");
+            Call("OnHudEquipItemRequested", testItemId);
+            var equipped = Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId");
+            Check(equipped.TryGetValue(_actor.UnitId, out var equippedSlots)
+                && equippedSlots.ContainsValue(testItemId),
+                "An identified weapon must be equipable");
+        }
+        finally
+        {
+            gameData.Items.Remove(testItemId);
+            Field<List<string>>("_partyInventoryItemIds").Remove(testItemId);
+            Field<HashSet<string>>("_identifiedItemIds").Clear();
+        }
+    }
+
+    private void ConfigureActor(string classId, params string[] abilityIds)
+    {
+        var config = Config("caster", "player", new Vector2I(2, 2));
+        config["class_id"] = classId;
+        var abilities = new Array<string>();
+        foreach (var abilityId in abilityIds)
+        {
+            abilities.Add(abilityId);
+        }
+        config["ability_ids"] = abilities;
+        _actor.Setup(config);
+        Call("SetSelectedAbilityId", _actor, abilityIds[0]);
+    }
+
+    private static int ReadInt(Dictionary data, string key, int fallback)
+    {
+        return data.ContainsKey(key) ? ((Variant)data[key]).AsInt32() : fallback;
+    }
+
+    private static bool ReadBool(Dictionary data, string key, bool fallback)
+    {
+        return data.ContainsKey(key) ? ((Variant)data[key]).AsBool() : fallback;
+    }
+
+    private static string ReadString(Dictionary data, string key, string fallback)
+    {
+        return data.ContainsKey(key) ? ((Variant)data[key]).AsString() : fallback;
     }
 
     public void StartQueueChecks()

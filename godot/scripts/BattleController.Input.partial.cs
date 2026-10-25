@@ -120,6 +120,9 @@ public partial class BattleController
             if (TryRequestEndTurn(activePlayer, manualInput: true))
             {
                 _awaitingPlayerAttackDirection = false;
+                _awaitingShadowStrikeAttack = false;
+                _awaitingItemIdentifyTarget = false;
+                _shadowStrikeDestination = new Vector2I(-1, -1);
                 ClearMovementPreviewPath();
                 QueueRedraw();
             }
@@ -168,8 +171,41 @@ public partial class BattleController
                 return;
             }
 
+            if (actionProfile.ActionType == "identify")
+            {
+                BeginIdentifyTargeting();
+                return;
+            }
+
+            if (actionProfile.ActionType == "taunt")
+            {
+                if (TryUseTaunt(active, actionProfile))
+                {
+                    ApplyActionResult(ResolveSuccessfulAction("attack"));
+                    CancelAttackMode(false);
+                }
+                return;
+            }
+
             _awaitingPlayerAttackDirection = true;
+            _awaitingShadowStrikeAttack = false;
+            _shadowStrikeDestination = new Vector2I(-1, -1);
             SetSelectedAbilityId(active, selectedAbilityId);
+            if (actionProfile.ActionType == "shadow_strike")
+            {
+                ShowActionTargetingPrompt(actionProfile, 1);
+            }
+            else if (IsHealingSpellAction(actionProfile.ActionType))
+            {
+                if (!ShowActionTargetingPrompt(actionProfile, 1))
+                {
+                    _hud?.SetHelpText(BuildHealingSpellTargetHelp(actionProfile));
+                }
+            }
+            else if (actionProfile.ActionType is "web" or "lightning_bolt" or "rain_of_arrows")
+            {
+                ShowActionTargetingPrompt(actionProfile, 1);
+            }
             QueueRedraw();
             return;
         }

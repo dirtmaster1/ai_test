@@ -34,6 +34,9 @@ public partial class HudController : Control
     public delegate void InventoryCycleRequestedEventHandler(int delta);
 
     [Signal]
+    public delegate void InventoryItemSelectedEventHandler(string itemId);
+
+    [Signal]
     public delegate void LootConfirmRequestedEventHandler(string interactionId);
 
     [Signal]
@@ -107,13 +110,20 @@ public partial class HudController : Control
         ["defend"] = new(6, 5),
         ["charge"] = new(0, 6),
         ["pin"] = new(1, 6),
+        ["rain-of-arrows"] = new(2, 6),
+        ["shadow-strike"] = new(3, 6),
+        ["taunt"] = new(6, 6),
         ["poison-strike"] = new(4, 6),
         ["poison"] = new(5, 6),
         ["lesser-heal"] = new(0, 4),
+        ["greater-heal"] = new(1, 4),
         ["magic-missile"] = new(2, 4),
         ["sleep"] = new(3, 4),
         ["protection"] = new(4, 4),
         ["fireball"] = new(5, 4),
+        ["web"] = new(6, 4),
+        ["lightning-bolt"] = new(0, 5),
+        ["identify"] = new(1, 5),
         ["remove-malady"] = new(4, 8),
         ["resurrect"] = new(5, 8),
         ["blessing"] = new(6, 8)
@@ -1005,6 +1015,7 @@ public partial class HudController : Control
         if (!string.IsNullOrEmpty(itemId) && _inventoryItemsById.TryGetValue(itemId, out var itemData))
         {
             UpdateInventoryPrimaryAction(itemData);
+            EmitSignal(SignalName.InventoryItemSelected, itemId);
         }
     }
 
@@ -3038,6 +3049,11 @@ public partial class HudController : Control
             return null;
         }
 
+        if (!GetBool(item, "is_identified", true))
+        {
+            return GetGameIcon("identify");
+        }
+
         var iconPath = GetString(item, "icon_path", "");
         return string.IsNullOrEmpty(iconPath)
             ? GetGameIcon(GetString(item, "id", ""))
@@ -3466,12 +3482,13 @@ public partial class HudController : Control
 
         var type = GetString(item, "type", "item");
         var isConsumable = IsConsumableItem(item);
+        var isIdentified = GetBool(item, "is_identified", true);
         var consumableSlotsFull = _inventoryEquippedEntriesBySlot.ContainsKey("consumable-1")
             && _inventoryEquippedEntriesBySlot.ContainsKey("consumable-2");
-        var canEquip = type is "weapon" or "armor" || isConsumable && !consumableSlotsFull;
-        var canUse = IsUsableInventoryItem(item);
+        var canEquip = isIdentified && (type is "weapon" or "armor" || isConsumable && !consumableSlotsFull);
+        var canUse = isIdentified && IsUsableInventoryItem(item);
         _equipButton.Disabled = !canEquip && !canUse;
-        _equipButton.Text = type switch
+        _equipButton.Text = !isIdentified ? "Unidentified" : type switch
         {
             "key" => "Passive",
             "scroll" => "Learn Spell",

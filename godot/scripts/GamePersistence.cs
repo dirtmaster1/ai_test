@@ -97,6 +97,12 @@ public sealed class GamePersistence
             partyInventory.Add(itemId);
         }
 
+        var identifiedItemIds = new Array<string>();
+        foreach (var itemId in _host.IdentifiedItemIds)
+        {
+            identifiedItemIds.Add(itemId);
+        }
+
         var vendorGoldById = new Dictionary();
         foreach (var entry in _host.VendorGoldById)
         {
@@ -136,6 +142,7 @@ public sealed class GamePersistence
             { "selected_ability_id_by_unit_id", selectedAbilities },
             { "party_gold", _host.PartyGold },
             { "party_inventory_item_ids", partyInventory },
+            { "identified_item_ids", identifiedItemIds },
             { "vendor_gold_by_id", vendorGoldById },
             { "vendor_inventory_item_ids_by_id", vendorInventoryById },
             { "equipped_items_by_unit_id", equippedByUnit },
@@ -161,6 +168,7 @@ public sealed class GamePersistence
         _host.SelectedAbilityIdByUnitId.Clear();
         _host.EquippedItemsByUnitId.Clear();
         _host.PartyInventoryItemIds.Clear();
+        _host.IdentifiedItemIds.Clear();
         _host.VendorGoldById.Clear();
         _host.VendorInventoryItemIdsById.Clear();
         _host.ClearedEncounterIdsByMap.Clear();
@@ -202,6 +210,10 @@ public sealed class GamePersistence
         // Restore runtime inventory/equipment collections from save.
         _host.PartyGold = GetInt(saveData, "party_gold", 25);
         RestorePartyInventory(GetStringArray(saveData, "party_inventory_item_ids"));
+        foreach (var itemId in GetStringArray(saveData, "identified_item_ids"))
+        {
+            _host.IdentifiedItemIds.Add(itemId);
+        }
         RestoreVendorGold(GetDictionary(saveData, "vendor_gold_by_id"));
         RestoreVendorInventory(GetDictionary(saveData, "vendor_inventory_item_ids_by_id"));
         RestoreEquippedItemsByUnit(GetDictionary(saveData, "equipped_items_by_unit_id"));

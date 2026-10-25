@@ -92,6 +92,24 @@ public partial class BattleController
 
     private string BuildCurrentTargetingHelpText()
     {
+        if (_awaitingItemIdentifyTarget)
+        {
+            var identifyingActor = _flowState == BattleFlowState.Combat
+                ? GetActivePlayerUnit()
+                : GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+            if (IsUsableUnit(identifyingActor))
+            {
+                var identifyProfile = ResolveActionProfile(identifyingActor, GetSelectedAbilityId(identifyingActor));
+                var identifyPrompt = BuildActionTargetingHelpText(identifyProfile, 1);
+                if (!string.IsNullOrEmpty(identifyPrompt))
+                {
+                    return identifyPrompt;
+                }
+            }
+
+            return "Identify: select an unidentified item in the party inventory. Press Esc to cancel.";
+        }
+
         if (_awaitingHealerServiceTarget)
         {
             var service = _gameData?.GetHealingService(_selectedHealerServiceId) ?? new Godot.Collections.Dictionary();
@@ -112,6 +130,58 @@ public partial class BattleController
             if (activePlayer != null)
             {
                 var profile = ResolveActionProfile(activePlayer, GetSelectedAbilityId(activePlayer));
+                if (profile.ActionType == "shadow_strike")
+                {
+                    var prompt = BuildActionTargetingHelpText(profile, _awaitingShadowStrikeAttack ? 2 : 1);
+                    if (!string.IsNullOrEmpty(prompt))
+                    {
+                        return prompt;
+                    }
+
+                    return _awaitingShadowStrikeAttack
+                        ? "Shadow Strike: select an adjacent enemy to attack. Press Esc to cancel."
+                        : "Shadow Strike: choose an unoccupied reachable tile within 5 tiles. Press Esc to cancel.";
+                }
+
+                if (profile.ActionType == "web")
+                {
+                    var prompt = BuildActionTargetingHelpText(profile, 1);
+                    if (!string.IsNullOrEmpty(prompt))
+                    {
+                        return prompt;
+                    }
+
+                    return $"Web: select a visible cell within {profile.Range} tiles. All units in the 3x3 area are rooted for 2 turns. Press Esc to cancel.";
+                }
+
+                if (profile.ActionType == "lightning_bolt")
+                {
+                    var prompt = BuildActionTargetingHelpText(profile, 1);
+                    if (!string.IsNullOrEmpty(prompt))
+                    {
+                        return prompt;
+                    }
+
+                    return $"Lightning Bolt: select a visible cell in a straight cardinal or diagonal line within {profile.Range} tiles. Press Esc to cancel.";
+                }
+
+                if (profile.ActionType == "rain_of_arrows")
+                {
+                    var prompt = BuildActionTargetingHelpText(profile, 1);
+                    if (!string.IsNullOrEmpty(prompt))
+                    {
+                        return prompt;
+                    }
+
+                    return $"Rain of Arrows: select a visible cell within your ranged weapon's {profile.Range}-tile range. All units within 2 tiles are hit. Press Esc to cancel.";
+                }
+
+                var targetingPrompt = BuildActionTargetingHelpText(profile, 1);
+                if (!string.IsNullOrEmpty(targetingPrompt))
+                {
+                    return targetingPrompt;
+                }
+
                 if (IsHealingSpellAction(profile.ActionType))
                 {
                     return BuildHealingSpellTargetHelp(profile);

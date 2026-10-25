@@ -39,6 +39,7 @@ public partial class Unit : Node2D
     private int _equipmentMagicPointRegenBonus;
     private int _baseMovementPerTurn = MaxMovementPerTurn;
     private int _equipmentMovementBonus;
+    private string _tauntTargetUnitId = "";
 
     public string UnitId { get; private set; } = "";
     public string UnitName { get; private set; } = "";
@@ -108,6 +109,7 @@ public partial class Unit : Node2D
     public int RemainingMovement { get; private set; } = MaxMovementPerTurn;
     public bool IsDefending { get; private set; }
     public bool IsDead { get; private set; }
+    public string TauntTargetUnitId => _tauntTargetUnitId;
     public bool IsActive { get; private set; }
     private Sprite2D _sprite;
     private bool _isSelectionHighlighted;
@@ -187,6 +189,7 @@ public partial class Unit : Node2D
             }
         }
         EncounterId = GetString(config, "encounter_id", "");
+        _tauntTargetUnitId = "";
         AggroRange = Mathf.Max(0, GetInt(config, "aggro_range", 4));
         MaxHitPoints = GetInt(config, "max_hit_points", 10);
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
@@ -600,6 +603,11 @@ public partial class Unit : Node2D
             removed += 1;
         }
 
+        if (!HasStatusEffect("taunted"))
+        {
+            _tauntTargetUnitId = "";
+        }
+
         return removed;
     }
 
@@ -617,6 +625,11 @@ public partial class Unit : Node2D
         foreach (var key in keys)
         {
             _statusEffects.Remove(key);
+        }
+
+        if (!HasStatusEffect("taunted"))
+        {
+            _tauntTargetUnitId = "";
         }
 
         return keys.Count;
@@ -695,6 +708,11 @@ public partial class Unit : Node2D
             {
                 _statusEffects[key] = effect;
             }
+        }
+
+        if (!HasStatusEffect("taunted"))
+        {
+            _tauntTargetUnitId = "";
         }
 
         return events;
@@ -826,7 +844,17 @@ public partial class Unit : Node2D
             }
         }
 
+        if (trimmed == "taunted" && removed > 0)
+        {
+            _tauntTargetUnitId = "";
+        }
+
         return removed;
+    }
+
+    public void SetTauntTarget(string targetUnitId)
+    {
+        _tauntTargetUnitId = targetUnitId ?? "";
     }
 
     public Array<string> ClearWakeOnDamageStatusEffects()
@@ -967,6 +995,7 @@ public partial class Unit : Node2D
             { "max_magic_points", _baseMaxMagicPoints },
             { "magic_point_regen_per_turn", MagicPointRegenPerTurn },
             { "is_dead", IsDead },
+            { "taunt_target_unit_id", _tauntTargetUnitId },
             { "base_movement_per_turn", _baseMovementPerTurn },
             { "movement_per_turn", MovementPerTurn },
             { "remaining_movement", RemainingMovement },
@@ -1045,6 +1074,7 @@ public partial class Unit : Node2D
         }
 
         _statusEffects.Clear();
+        _tauntTargetUnitId = GetString(snapshot, "taunt_target_unit_id", "");
         var statusEffects = TryGetDictionaryArray(snapshot, "status_effects");
         foreach (var entry in statusEffects)
         {
@@ -1079,6 +1109,11 @@ public partial class Unit : Node2D
                 StackingMode = NormalizeStackingMode(GetString(entry, "stacking_mode", "refresh")),
                 Scope = GetString(entry, "scope", "persistent"),
             };
+        }
+
+        if (!HasStatusEffect("taunted"))
+        {
+            _tauntTargetUnitId = "";
         }
 
         IsDead = GetBool(snapshot, "is_dead", HitPoints <= 0) || HitPoints <= 0;
