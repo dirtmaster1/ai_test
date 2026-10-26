@@ -135,16 +135,25 @@ public partial class HudController : Control
     private Button _helpButton;
     private Button _settingsButton;
     private Button _soundFxButton;
+    private Button _gameOptionsButton;
     private Button _closeSettingsButton;
     private PanelContainer _settingsPanel;
     private Label _settingsHeader;
     private PanelContainer _soundFxPanel;
+    private PanelContainer _gameOptionsPanel;
     private Label _soundFxHeader;
+    private Label _gameOptionsHeader;
+    private CheckButton _healthBarsToggle;
+    private Label _combatMessageDurationLabel;
+    private Label _combatMessageDurationValue;
+    private HSlider _combatMessageDurationSlider;
     private Label _backgroundVolumeLabel;
     private Label _backgroundVolumeValue;
     private HSlider _backgroundVolumeSlider;
     private Button _soundFxBackButton;
+    private Button _gameOptionsBackButton;
     private AudioManager _audioManager;
+    private GameOptionsManager _gameOptionsManager;
     private Button _saveButton;
     private Button _loadButton;
     private PanelContainer _helpPanel;
@@ -285,18 +294,30 @@ public partial class HudController : Control
         _helpButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/HelpButton");
         _settingsButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton");
         _soundFxButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
+        _gameOptionsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/GameOptionsButton");
         _closeSettingsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/CloseSettingsButton");
         _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
         _settingsHeader = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsHeader");
         _soundFxPanel = GetNode<PanelContainer>("SoundFxPanel");
+        _gameOptionsPanel = GetNode<PanelContainer>("GameOptionsPanel");
         _soundFxHeader = GetNode<Label>("SoundFxPanel/SoundFxVBox/SoundFxHeader");
+        _gameOptionsHeader = GetNode<Label>("GameOptionsPanel/GameOptionsVBox/GameOptionsHeader");
+        _combatMessageDurationLabel = GetNode<Label>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow/CombatMessageDurationLabel");
         _backgroundVolumeLabel = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeLabel");
         _backgroundVolumeValue = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeValue");
         _backgroundVolumeSlider = GetNode<HSlider>("SoundFxPanel/SoundFxVBox/BackgroundVolumeSlider");
         _soundFxBackButton = GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton");
         _audioManager = GetNode<AudioManager>("/root/AudioManager");
+        _healthBarsToggle = GetNode<CheckButton>("GameOptionsPanel/GameOptionsVBox/HealthBarsToggle");
+        _combatMessageDurationValue = GetNode<Label>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow/CombatMessageDurationValue");
+        _combatMessageDurationSlider = GetNode<HSlider>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationSlider");
+        _gameOptionsBackButton = GetNode<Button>("GameOptionsPanel/GameOptionsVBox/GameOptionsBackButton");
+        _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
         _backgroundVolumeSlider.Value = _audioManager.BackgroundMusicVolume * 100.0f;
         UpdateBackgroundVolumeLabel(_backgroundVolumeSlider.Value);
+        _healthBarsToggle.ButtonPressed = _gameOptionsManager.HealthBarsEnabled;
+        _combatMessageDurationSlider.Value = _gameOptionsManager.CombatMessageDurationMultiplier;
+        UpdateCombatMessageDurationLabel(_combatMessageDurationSlider.Value);
         _saveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton");
         _loadButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/LoadButton");
         _helpPanel = GetNode<PanelContainer>("HelpPanel");
@@ -407,9 +428,13 @@ public partial class HudController : Control
         _settingsButton.Pressed += OnSettingsButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
         _soundFxButton.Pressed += OnSoundFxButtonPressed;
+        _gameOptionsButton.Pressed += OnGameOptionsButtonPressed;
         _closeSettingsButton.Pressed += OnCloseSettingsButtonPressed;
         _soundFxBackButton.Pressed += OnSoundFxBackButtonPressed;
+        _gameOptionsBackButton.Pressed += OnGameOptionsBackButtonPressed;
         _backgroundVolumeSlider.ValueChanged += OnBackgroundVolumeChanged;
+        _healthBarsToggle.Toggled += OnHealthBarsToggled;
+        _combatMessageDurationSlider.ValueChanged += OnCombatMessageDurationChanged;
         _saveButton.Pressed += OnSaveButtonPressed;
         _loadButton.Pressed += OnLoadButtonPressed;
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
@@ -542,6 +567,11 @@ public partial class HudController : Control
             _soundFxButton.Pressed -= OnSoundFxButtonPressed;
         }
 
+        if (_gameOptionsButton != null)
+        {
+            _gameOptionsButton.Pressed -= OnGameOptionsButtonPressed;
+        }
+
         if (_closeSettingsButton != null)
         {
             _closeSettingsButton.Pressed -= OnCloseSettingsButtonPressed;
@@ -552,9 +582,24 @@ public partial class HudController : Control
             _soundFxBackButton.Pressed -= OnSoundFxBackButtonPressed;
         }
 
+        if (_gameOptionsBackButton != null)
+        {
+            _gameOptionsBackButton.Pressed -= OnGameOptionsBackButtonPressed;
+        }
+
         if (_backgroundVolumeSlider != null)
         {
             _backgroundVolumeSlider.ValueChanged -= OnBackgroundVolumeChanged;
+        }
+
+        if (_healthBarsToggle != null)
+        {
+            _healthBarsToggle.Toggled -= OnHealthBarsToggled;
+        }
+
+        if (_combatMessageDurationSlider != null)
+        {
+            _combatMessageDurationSlider.ValueChanged -= OnCombatMessageDurationChanged;
         }
 
         if (_saveButton != null)
@@ -857,6 +902,13 @@ public partial class HudController : Control
         _soundFxPanel.MoveToFront();
     }
 
+    private void OnGameOptionsButtonPressed()
+    {
+        _settingsPanel.Visible = false;
+        _gameOptionsPanel.Visible = true;
+        _gameOptionsPanel.MoveToFront();
+    }
+
     private void OnCloseSettingsButtonPressed()
     {
         _settingsPanel.Visible = false;
@@ -869,15 +921,39 @@ public partial class HudController : Control
         _settingsPanel.MoveToFront();
     }
 
+    private void OnGameOptionsBackButtonPressed()
+    {
+        _gameOptionsPanel.Visible = false;
+        _settingsPanel.Visible = true;
+        _settingsPanel.MoveToFront();
+    }
+
     private void OnBackgroundVolumeChanged(double value)
     {
         UpdateBackgroundVolumeLabel(value);
         _audioManager.SetBackgroundMusicVolume(Mathf.Clamp((float)value / 100.0f, 0.0f, 1.0f));
     }
 
+    private void OnHealthBarsToggled(bool enabled)
+    {
+        _gameOptionsManager.SetHealthBarsEnabled(enabled);
+    }
+
+    private void OnCombatMessageDurationChanged(double value)
+    {
+        var multiplier = Mathf.RoundToInt((float)value);
+        UpdateCombatMessageDurationLabel(multiplier);
+        _gameOptionsManager.SetCombatMessageDurationMultiplier(multiplier);
+    }
+
     private void UpdateBackgroundVolumeLabel(double value)
     {
         _backgroundVolumeValue.Text = $"{Mathf.RoundToInt((float)value)}%";
+    }
+
+    private void UpdateCombatMessageDurationLabel(double value)
+    {
+        _combatMessageDurationValue.Text = $"{Mathf.RoundToInt((float)value)}x";
     }
 
     private void OnSaveButtonPressed()
@@ -1707,6 +1783,7 @@ public partial class HudController : Control
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_settingsPanel, panelStyle);
         StylePanel(_soundFxPanel, panelStyle);
+        StylePanel(_gameOptionsPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
         StylePanel(_vendorPanel, panelStyle);
         StylePanel(_reservePanel, panelStyle);
@@ -1716,6 +1793,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_helpHeader, headerColor);
         StyleHeaderLabel(_settingsHeader, headerColor);
         StyleHeaderLabel(_soundFxHeader, headerColor);
+        StyleHeaderLabel(_gameOptionsHeader, headerColor);
         StyleHeaderLabel(_partyHeader, headerColor);
         StyleHeaderLabel(_combatLogHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
@@ -1735,6 +1813,8 @@ public partial class HudController : Control
         StyleBodyLabel(_movementCounterLabel, bodyColor, 14);
         TacticalTheme.ApplyLabel(_actionDragHandle, headerColor, 22);
         StyleBodyLabel(_helpBody, bodyColor, 14);
+        StyleBodyLabel(_combatMessageDurationLabel, bodyColor, 14);
+        StyleBodyLabel(_combatMessageDurationValue, headerColor, 14);
         StyleBodyLabel(_backgroundVolumeLabel, bodyColor, 14);
         StyleBodyLabel(_backgroundVolumeValue, headerColor, 14);
         TacticalTheme.ApplyHeaderLabel(_inventoryUnitLabel, TacticalTheme.BrassBright, 20);
@@ -1754,8 +1834,11 @@ public partial class HudController : Control
         StyleButton(_helpButton, false);
         StyleButton(_settingsButton, false);
         StyleButton(_soundFxButton, false);
+        StyleButton(_gameOptionsButton, false);
+        StyleButton(_healthBarsToggle, false);
         StyleButton(_closeSettingsButton, false);
         StyleButton(_soundFxBackButton, false);
+        StyleButton(_gameOptionsBackButton, false);
         StyleButton(_saveButton, false);
         StyleButton(_loadButton, false);
         StyleButton(_reserveButton, false);
@@ -3798,7 +3881,7 @@ public partial class HudController : Control
         _combatBannerTween.SetEase(Tween.EaseType.Out);
         _combatBannerTween.TweenProperty(_combatBannerPanel, "modulate:a", 1.0f, 0.16f);
         _combatBannerTween.Parallel().TweenProperty(_combatBannerPanel, "scale", Vector2.One, 0.16f);
-        _combatBannerTween.TweenInterval(isFailure ? 2.0f : 0.9f);
+        _combatBannerTween.TweenInterval(_gameOptionsManager.ScaleCombatDuration(isFailure ? 2.0f : 0.9f));
         _combatBannerTween.SetEase(Tween.EaseType.In);
         _combatBannerTween.TweenProperty(_combatBannerPanel, "modulate:a", 0.0f, 0.32f);
         _combatBannerTween.Parallel().TweenProperty(_combatBannerPanel, "scale", new Vector2(1.03f, 1.03f), 0.32f);

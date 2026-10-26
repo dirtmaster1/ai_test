@@ -386,6 +386,29 @@ public partial class ActionFeedbackChecks : BattleController
         Check(!settingsPanel.Visible && _testHud.GetNode<PanelContainer>("SoundFxPanel").Visible,
             "Sound FX must open its submenu from Settings");
         _testHud.GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton").EmitSignal(Button.SignalName.Pressed);
+        var gameOptionsButton = _testHud.GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/GameOptionsButton");
+        gameOptionsButton.EmitSignal(Button.SignalName.Pressed);
+        var gameOptionsPanel = _testHud.GetNode<PanelContainer>("GameOptionsPanel");
+        var healthBarsToggle = _testHud.GetNode<CheckButton>("GameOptionsPanel/GameOptionsVBox/HealthBarsToggle");
+        var durationSlider = _testHud.GetNode<HSlider>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationSlider");
+        var durationValue = _testHud.GetNode<Label>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow/CombatMessageDurationValue");
+        var gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
+        var originalHealthBarsEnabled = gameOptionsManager.HealthBarsEnabled;
+        var originalDurationMultiplier = gameOptionsManager.CombatMessageDurationMultiplier;
+        Check(!settingsPanel.Visible && gameOptionsPanel.Visible
+            && healthBarsToggle.ButtonPressed == originalHealthBarsEnabled
+            && durationSlider.Value == originalDurationMultiplier,
+            "Game Options must open with the persisted values for both options");
+        healthBarsToggle.EmitSignal(BaseButton.SignalName.Toggled, !originalHealthBarsEnabled);
+        durationSlider.Value = 5.0;
+        Check(gameOptionsManager.HealthBarsEnabled != originalHealthBarsEnabled
+            && gameOptionsManager.CombatMessageDurationMultiplier == 5
+            && durationValue.Text == "5x",
+            "Game Options controls must update health bar visibility and the 5x message duration");
+        gameOptionsManager.SetHealthBarsEnabled(originalHealthBarsEnabled);
+        durationSlider.Value = originalDurationMultiplier;
+        _testHud.GetNode<Button>("GameOptionsPanel/GameOptionsVBox/GameOptionsBackButton")
+            .EmitSignal(Button.SignalName.Pressed);
         helpButton.EmitSignal(Button.SignalName.Pressed);
         Check(!settingsPanel.Visible && _testHud.GetNode<PanelContainer>("HelpPanel").Visible,
             "Help must open from Settings instead of the utility controls");
@@ -1563,13 +1586,12 @@ public partial class ActionFeedbackChecks : BattleController
         var actorHealth = _actor.HitPoints;
         var allyHealth = _ally.HitPoints;
         var enemyHealth = _enemy.HitPoints;
-        var lightningProfile = Call("ResolveActionProfile", _actor, "lightning-bolt");
-        Check((bool)Call("TryCastLightningBoltAtCell", _actor, _enemy.GridPos, lightningProfile),
-            "Lightning Bolt must resolve along an eight-direction line");
+        Call("SetSelectedAbilityId", _actor, "lightning-bolt");
+        Call("TryResolvePlayerActionAtCell", _actor, _enemy.GridPos);
         Check(enemyHealth - _enemy.HitPoints is >= 8 and <= 16
             && allyHealth - _ally.HitPoints is >= 8 and <= 16
             && _actor.HitPoints == actorHealth,
-            "Lightning Bolt must roll 8-16 damage independently for each unit in its line, excluding the caster");
+            "Player-targeted Lightning Bolt must roll 8-16 damage independently for every unit in its line, excluding the caster");
         Check(_actor.MagicPoints == 22 && _actor.HasUsedAbilityThisTurn,
             "Lightning Bolt must spend 8 MP and one action point");
         Check(!(bool)Call("IsEightDirectionLine", _actor.GridPos, new Vector2I(4, 3)),
@@ -1589,13 +1611,11 @@ public partial class ActionFeedbackChecks : BattleController
         _ally.SetGridPos(new Vector2I(6, 3));
         var enemyHealth = _enemy.HitPoints;
         var allyHealth = _ally.HitPoints;
-        var profile = Call("ResolveActionProfile", _actor, "rain-of-arrows");
-        Check((bool)Call("TryUseRainOfArrowsAtCell", _actor, _enemy.GridPos, profile),
-            "Rain of Arrows must resolve when a ranged weapon is equipped");
+        Call("TryResolvePlayerActionAtCell", _actor, _enemy.GridPos);
+        Check(_actor.GetAbilityCooldownRemaining("rain-of-arrows") == 3 && _actor.HasUsedAbilityThisTurn,
+            "Rain of Arrows must resolve through player targeting");
         Check(_enemy.HitPoints < enemyHealth && _ally.HitPoints < allyHealth,
             "Rain of Arrows must damage all units, including allies, within its 2-tile radius");
-        Check(_actor.GetAbilityCooldownRemaining("rain-of-arrows") == 3 && _actor.HasUsedAbilityThisTurn,
-            "Rain of Arrows must use one action point and start a 3-turn cooldown");
     }
 
     private void CheckShadowStrike()

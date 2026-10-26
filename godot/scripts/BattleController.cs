@@ -1524,13 +1524,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (actionProfile.ActionType == "area_attack")
+        if (actionProfile.ActionType is "area_attack" or "web" or "lightning_bolt" or "rain_of_arrows")
         {
-            if (!TryCastAreaAttackAtCell(active, targetCell, actionProfile))
-            {
-                return;
-            }
-
             if (actionProfile.ActionType == "web")
             {
                 if (!TryCastWebAtCell(active, targetCell, actionProfile))
@@ -1564,6 +1559,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 ApplyActionResult(ResolveSuccessfulAction("attack"));
                 BeginPostPlayerActionMouseMoveLock();
+                return;
+            }
+
+            if (actionProfile.ActionType == "area_attack"
+                && !TryCastAreaAttackAtCell(active, targetCell, actionProfile))
+            {
                 return;
             }
 

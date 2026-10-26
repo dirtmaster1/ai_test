@@ -3,11 +3,13 @@ using Godot;
 public partial class CombatEffectsDirector : Node2D
 {
     private const float PopupRise = 34.0f;
+    private GameOptionsManager _gameOptionsManager;
 
     public override void _Ready()
     {
         ZIndex = 100;
         ZAsRelative = false;
+        _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
     }
 
     public void PlayAttack(Unit attacker, Unit target, string actionId, bool isMagical, int damage)
@@ -151,7 +153,7 @@ public partial class CombatEffectsDirector : Node2D
         visual.QueueRedraw();
 
         var distance = from.DistanceTo(to);
-        var duration = Mathf.Clamp(distance / 720.0f, 0.16f, 0.46f);
+        var duration = ScaleDuration(Mathf.Clamp(distance / 720.0f, 0.16f, 0.46f));
         var tween = CreateTween();
         tween.SetTrans(Tween.TransitionType.Quad);
         tween.SetEase(Tween.EaseType.In);
@@ -206,8 +208,9 @@ public partial class CombatEffectsDirector : Node2D
         var tween = CreateTween();
         tween.SetTrans(Tween.TransitionType.Quad);
         tween.SetEase(Tween.EaseType.Out);
-        tween.TweenProperty(label, "position:y", label.Position.Y - PopupRise, 0.62f);
-        tween.Parallel().TweenProperty(label, "modulate:a", 0.0f, 0.62f).SetDelay(0.22f);
+        var duration = ScaleDuration(0.62f);
+        tween.TweenProperty(label, "position:y", label.Position.Y - PopupRise, duration);
+        tween.Parallel().TweenProperty(label, "modulate:a", 0.0f, duration).SetDelay(ScaleDuration(0.22f));
         tween.TweenCallback(Callable.From(label.QueueFree));
     }
 
@@ -226,12 +229,18 @@ public partial class CombatEffectsDirector : Node2D
 
     private void AnimateAndFree(CombatEffectVisual visual, float duration, float endScale)
     {
+        duration = ScaleDuration(duration);
         var tween = CreateTween();
         tween.SetTrans(Tween.TransitionType.Quad);
         tween.SetEase(Tween.EaseType.Out);
         tween.TweenMethod(Callable.From<float>(value => visual.Progress = value), 0.0f, 1.0f, duration);
         tween.Parallel().TweenProperty(visual, "scale", visual.Scale * endScale, duration);
         tween.TweenCallback(Callable.From(visual.QueueFree));
+    }
+
+    private float ScaleDuration(float duration)
+    {
+        return _gameOptionsManager.ScaleCombatDuration(duration);
     }
 
     private static bool IsUsable(Unit unit)

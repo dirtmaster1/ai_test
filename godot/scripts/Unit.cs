@@ -118,6 +118,7 @@ public partial class Unit : Node2D
     private Texture2D _customSpriteTexture;
     private string _spriteTexturePath = "";
     private bool _isWalking;
+    private GameOptionsManager _gameOptionsManager;
     private float _walkAnimationElapsed;
     private int _walkAnimationFrame = -1;
     private int _walkAnimationDirection;
@@ -143,8 +144,18 @@ public partial class Unit : Node2D
             AddChild(_sprite);
         }
 
+        _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
+        _gameOptionsManager.HealthBarsEnabledChanged += OnHealthBarsEnabledChanged;
         _unitAtlas = GD.Load<Texture2D>(UnitAtlasPath);
         ConfigureSpriteRegion();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_gameOptionsManager != null)
+        {
+            _gameOptionsManager.HealthBarsEnabledChanged -= OnHealthBarsEnabledChanged;
+        }
     }
 
     public override void _Process(double delta)
@@ -1277,6 +1288,7 @@ public partial class Unit : Node2D
             return;
         }
 
+        durationSeconds = _gameOptionsManager.ScaleCombatDuration(durationSeconds);
         await ToSignal(tree.CreateTimer(Mathf.Max(0.05f, durationSeconds)), SceneTreeTimer.SignalName.Timeout);
         if (!GodotObject.IsInstanceValid(this) || version != _focusHighlightVersion)
         {
@@ -1423,6 +1435,31 @@ public partial class Unit : Node2D
         {
             DrawArc(Vector2.Zero, 24.0f, 0.0f, Mathf.Tau, 36, new Color(0.45f, 0.85f, 1.0f, 0.9f), 2.0f);
         }
+
+        if (_gameOptionsManager?.HealthBarsEnabled == true)
+        {
+            DrawHealthBar();
+        }
+    }
+
+    private void DrawHealthBar()
+    {
+        var barSize = new Vector2(48.0f * FootprintSize, 6.0f);
+        var barPosition = new Vector2(-barSize.X * 0.5f, -(CellSize * FootprintSize * 0.5f) - 11.0f);
+        var background = new Rect2(barPosition, barSize);
+        var healthRatio = Mathf.Clamp((float)HitPoints / MaxHitPoints, 0.0f, 1.0f);
+
+        DrawRect(background, new Color("301d20"), true);
+        if (healthRatio > 0.0f)
+        {
+            DrawRect(new Rect2(barPosition, new Vector2(barSize.X * healthRatio, barSize.Y)), new Color("df3636"), true);
+        }
+        DrawRect(background, new Color("100e10"), false, 1.5f);
+    }
+
+    private void OnHealthBarsEnabledChanged(bool enabled)
+    {
+        QueueRedraw();
     }
 
     private void ConfigureSpriteRegion()

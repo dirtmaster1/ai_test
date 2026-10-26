@@ -98,10 +98,68 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Sound FX"
 
+[node name="GameOptionsButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Game Options"
+
 [node name="CloseSettingsButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"
+
+[node name="GameOptionsPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -160.0
+offset_right = 260.0
+offset_bottom = 160.0
+
+[node name="GameOptionsVBox" type="VBoxContainer" parent="GameOptionsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="GameOptionsHeader" type="Label" parent="GameOptionsPanel/GameOptionsVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Game Options"
+
+[node name="HealthBarsToggle" type="CheckButton" parent="GameOptionsPanel/GameOptionsVBox"]
+layout_mode = 2
+text = "Show health bars above units"
+
+[node name="CombatMessageDurationRow" type="HBoxContainer" parent="GameOptionsPanel/GameOptionsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CombatMessageDurationLabel" type="Label" parent="GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Combat Message Display Time"
+
+[node name="CombatMessageDurationValue" type="Label" parent="GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow"]
+layout_mode = 2
+text = "1x"
+horizontal_alignment = 2
+
+[node name="CombatMessageDurationSlider" type="HSlider" parent="GameOptionsPanel/GameOptionsVBox"]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+step = 1.0
+value = 1.0
+tick_count = 5
+ticks_on_borders = true
+focus_mode = 2
+
+[node name="GameOptionsBackButton" type="Button" parent="GameOptionsPanel/GameOptionsVBox"]
+layout_mode = 2
+text = "Back"
 
 [node name="SoundFxPanel" type="PanelContainer" parent="."]
 visible = false
