@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "retro-diffusion": {
+      "url": "https://mcp.retrodiffusion.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RETRO_DIFFUSION_API_KEY}"
+      }
+    }
+  }
+}

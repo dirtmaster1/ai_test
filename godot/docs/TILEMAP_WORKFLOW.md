@@ -25,6 +25,18 @@ Recommended folder layout:
 
 Each `TokenMapDef` can configure its own terrain atlas and atlas cells with `Terrain = new MapTerrainDef { ... }`. If omitted, the map uses the dungeon terrain defaults.
 
+## Forest Town Church Tiles
+
+The church tiles use previously empty cells in `terrain_grass_water_64.png` and source `6` of `forest_terrain_64_tileset.tres`:
+
+- Marble wall variations: `(4,0)` and `(5,0)`, both `wall`
+- Stained-glass windows: `(4,1)` and `(5,1)`, both `see_through`
+- Inlaid marble floor variations: `(4,2)` and `(5,2)`, both `floor`
+- Closed entryway halves: `(4,3)` and `(5,3)`, both `door`
+- Open entryway halves: `(1,6)` and `(2,6)`, both `floor`
+
+The closed door tiles point to their matching open halves using `open_door_atlas`. Eldius's marker is at `(2,-10)` in the `Main.tscn` Forest Town override. His church occupies base-layer cells `(-1,-11)` through `(6,-5)`: stained-glass windows at `(2,-11)` and `(3,-11)`, marble floor across `(0,-10)` through `(5,-6)`, and the double-door entrance at `(2,-5)` and `(3,-5)`.
+
 ## Base Layer Tile Custom Data
 
 On tiles in each `*-base` layer, set custom data keys in the TileSet.
