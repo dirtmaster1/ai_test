@@ -45,7 +45,10 @@ public partial class BattleController
             ? activePlayer != null
             : explorationOnly && actionBarAbilities.Count > 0;
         _hud.SetActionButtonsEnabled(abilityPanelEnabled, _flowState == BattleFlowState.Combat);
-        _hud.SetAbilityButtons(actionBarAbilities, abilityPanelEnabled);
+        _hud.SetAbilityButtons(
+            actionBarAbilities,
+            abilityPanelEnabled,
+            actionBarUnit == null ? null : GetQuickAbilityIdsForUnit(actionBarUnit, actionBarAbilities));
         var canUseConsumables = actionBarUnit != null
             && !actionBarUnit.IsDead
             && actionBarUnit.Team == "player"

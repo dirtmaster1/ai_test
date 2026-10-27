@@ -10,6 +10,9 @@ public partial class HudController : Control
     public delegate void AbilityPressedEventHandler(string abilityId);
 
     [Signal]
+    public delegate void QuickAbilitySlotDropRequestedEventHandler(int slotIndex, string abilityId);
+
+    [Signal]
     public delegate void EndTurnPressedEventHandler();
 
     [Signal]
@@ -161,6 +164,10 @@ public partial class HudController : Control
     private Label _helpBody;
     private Button _closeHelpButton;
     private PanelContainer _actionPanel;
+    private PanelContainer _abilityTrayPanel;
+    private Label _abilityTrayHeader;
+    private Button _closeAbilityTrayButton;
+    private GridContainer _abilityTrayGrid;
     private PanelContainer _partyPanel;
     private Label _partyHeader;
     private VBoxContainer _partyList;
@@ -178,11 +185,12 @@ public partial class HudController : Control
     private bool _combatLogMinimized;
     private Label _movementCounterLabel;
     private Label _actionDragHandle;
-    private Button _abilityButton1;
-    private Button _abilityButton2;
-    private Button _abilityButton3;
-    private Button _abilityButton4;
-    private Button _abilityButton5;
+    private Button _moreAbilitiesButton;
+    private AbilityBarButton _abilityButton1;
+    private AbilityBarButton _abilityButton2;
+    private AbilityBarButton _abilityButton3;
+    private AbilityBarButton _abilityButton4;
+    private AbilityBarButton _abilityButton5;
     private Button _consumableButton1;
     private Button _consumableButton2;
     private Button _endTurnButton;
@@ -325,6 +333,10 @@ public partial class HudController : Control
         _helpBody = GetNode<Label>("HelpPanel/HelpVBox/HelpBody");
         _closeHelpButton = GetNode<Button>("HelpPanel/HelpVBox/HelpButtons/CloseHelpButton");
         _actionPanel = GetNode<PanelContainer>("ActionPanel");
+        _abilityTrayPanel = GetNode<PanelContainer>("AbilityTrayPanel");
+        _abilityTrayHeader = GetNode<Label>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayHeaderRow/AbilityTrayHeader");
+        _closeAbilityTrayButton = GetNode<Button>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayHeaderRow/CloseAbilityTrayButton");
+        _abilityTrayGrid = GetNode<GridContainer>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayScroll/AbilityTrayGrid");
         _partyPanel = GetNode<PanelContainer>("PartyPanel");
         _partyHeader = GetNode<Label>("PartyPanel/PartyVBox/PartyHeader");
         _partyList = GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
@@ -335,11 +347,12 @@ public partial class HudController : Control
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
         _movementCounterLabel = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
         _actionDragHandle = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/ActionDragHandle");
-        _abilityButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
-        _abilityButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton2");
-        _abilityButton3 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton3");
-        _abilityButton4 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton4");
-        _abilityButton5 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton5");
+        _moreAbilitiesButton = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/MoreAbilitiesButton");
+        _abilityButton1 = GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
+        _abilityButton2 = GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton2");
+        _abilityButton3 = GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton3");
+        _abilityButton4 = GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton4");
+        _abilityButton5 = GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton5");
         _consumableButton1 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton1");
         _consumableButton2 = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/ConsumableButton2");
         _endTurnButton = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/EndTurnButton");
@@ -420,6 +433,13 @@ public partial class HudController : Control
         _abilityButton3.Pressed += OnAbilityButton3Pressed;
         _abilityButton4.Pressed += OnAbilityButton4Pressed;
         _abilityButton5.Pressed += OnAbilityButton5Pressed;
+        _abilityButton1.AbilityDropped += OnQuickAbilitySlotDropped;
+        _abilityButton2.AbilityDropped += OnQuickAbilitySlotDropped;
+        _abilityButton3.AbilityDropped += OnQuickAbilitySlotDropped;
+        _abilityButton4.AbilityDropped += OnQuickAbilitySlotDropped;
+        _abilityButton5.AbilityDropped += OnQuickAbilitySlotDropped;
+        _moreAbilitiesButton.Pressed += OnMoreAbilitiesButtonPressed;
+        _closeAbilityTrayButton.Pressed += OnCloseAbilityTrayButtonPressed;
         _consumableButton1.Pressed += OnConsumableButton1Pressed;
         _consumableButton2.Pressed += OnConsumableButton2Pressed;
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
@@ -520,6 +540,37 @@ public partial class HudController : Control
         if (_abilityButton5 != null)
         {
             _abilityButton5.Pressed -= OnAbilityButton5Pressed;
+            _abilityButton5.AbilityDropped -= OnQuickAbilitySlotDropped;
+        }
+
+        if (_abilityButton1 != null)
+        {
+            _abilityButton1.AbilityDropped -= OnQuickAbilitySlotDropped;
+        }
+
+        if (_abilityButton2 != null)
+        {
+            _abilityButton2.AbilityDropped -= OnQuickAbilitySlotDropped;
+        }
+
+        if (_abilityButton3 != null)
+        {
+            _abilityButton3.AbilityDropped -= OnQuickAbilitySlotDropped;
+        }
+
+        if (_abilityButton4 != null)
+        {
+            _abilityButton4.AbilityDropped -= OnQuickAbilitySlotDropped;
+        }
+
+        if (_moreAbilitiesButton != null)
+        {
+            _moreAbilitiesButton.Pressed -= OnMoreAbilitiesButtonPressed;
+        }
+
+        if (_closeAbilityTrayButton != null)
+        {
+            _closeAbilityTrayButton.Pressed -= OnCloseAbilityTrayButtonPressed;
         }
 
         if (_consumableButton1 != null)
@@ -830,6 +881,21 @@ public partial class HudController : Control
         EmitAbilityPressed(_abilityButton5);
     }
 
+    private void OnMoreAbilitiesButtonPressed()
+    {
+        _abilityTrayPanel.Visible = !_abilityTrayPanel.Visible;
+    }
+
+    private void OnCloseAbilityTrayButtonPressed()
+    {
+        _abilityTrayPanel.Visible = false;
+    }
+
+    private void OnQuickAbilitySlotDropped(int slotIndex, string abilityId)
+    {
+        EmitSignal(SignalName.QuickAbilitySlotDropRequested, slotIndex, abilityId);
+    }
+
     private void OnConsumableButton1Pressed()
     {
         EmitConsumablePressed(_consumableButton1);
@@ -862,6 +928,13 @@ public partial class HudController : Control
             return;
         }
 
+        _abilityTrayPanel.Visible = false;
+        EmitSignal(SignalName.AbilityPressed, abilityId);
+    }
+
+    private void OnAbilityTrayButtonPressed(string abilityId)
+    {
+        _abilityTrayPanel.Visible = false;
         EmitSignal(SignalName.AbilityPressed, abilityId);
     }
 
@@ -1524,6 +1597,7 @@ public partial class HudController : Control
         var dockWidth = Mathf.Min(actionWidth, Mathf.Max(1.0f, size.X - Margin * 2.0f));
         var actionPosition = new Vector2((size.X - dockWidth) * 0.5f, size.Y - actionHeight - 32.0f);
         ApplyPanelRect(_actionPanel, new Rect2(actionPosition, new Vector2(dockWidth, actionHeight)), size);
+        PositionAbilityTray();
         ApplyPanelRect(_helpPanel, new Rect2(new Vector2(sidebarLeft, detailsTop), new Vector2(sidebarRight - sidebarLeft, helpHeight)), size);
         var combatLogWidth = _combatLogMinimized
             ? 220.0f
@@ -1654,6 +1728,10 @@ public partial class HudController : Control
 
         panel.GlobalPosition = target;
         UpdatePanelOffsetFromCurrent(panel);
+        if (panel == _actionPanel)
+        {
+            PositionAbilityTray();
+        }
     }
 
     private void UpdatePanelResize(Vector2 mouseGlobal)
@@ -1780,6 +1858,7 @@ public partial class HudController : Control
         StylePanel(_partyPanel, transparentUtilityStyle);
         StylePanel(_combatLogPanel, transparentUtilityStyle);
         StylePanel(_inventoryPanel, panelStyle);
+        StylePanel(_abilityTrayPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_settingsPanel, panelStyle);
         StylePanel(_soundFxPanel, panelStyle);
@@ -1795,6 +1874,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_soundFxHeader, headerColor);
         StyleHeaderLabel(_gameOptionsHeader, headerColor);
         StyleHeaderLabel(_partyHeader, headerColor);
+        StyleHeaderLabel(_abilityTrayHeader, headerColor);
         StyleHeaderLabel(_combatLogHeader, headerColor);
         StyleHeaderLabel(_lootHeader, headerColor);
         StyleHeaderLabel(_vendorHeader, headerColor);
@@ -1848,9 +1928,14 @@ public partial class HudController : Control
         StyleButton(_abilityButton3, false);
         StyleButton(_abilityButton4, false);
         StyleButton(_abilityButton5, false);
+        StyleButton(_moreAbilitiesButton, false);
+        StyleButton(_closeAbilityTrayButton, false);
         StyleButton(_consumableButton1, false);
         StyleButton(_consumableButton2, false);
         StyleButton(_endTurnButton, true);
+        _moreAbilitiesButton.AddThemeColorOverride("font_color", new Color(0.32f, 0.82f, 0.43f));
+        _moreAbilitiesButton.AddThemeColorOverride("font_hover_color", new Color(0.48f, 0.96f, 0.57f));
+        _moreAbilitiesButton.AddThemeColorOverride("font_pressed_color", new Color(0.24f, 0.7f, 0.35f));
         StyleButton(_closeHelpButton, false);
         StyleButton(_inventoryPrevUnitButton, false);
         StyleButton(_inventoryNextUnitButton, false);
@@ -2171,11 +2256,27 @@ public partial class HudController : Control
         }
     }
 
-    public void SetAbilityButtons(Array<Dictionary> abilities, bool canUseAnyAbility)
+    public void SetAbilityButtons(
+        Array<Dictionary> abilities,
+        bool canUseAnyAbility,
+        IReadOnlyList<string> quickSlotAbilityIds = null)
     {
         _abilityIdsByButton.Clear();
 
-        var buttons = new Button[] { _abilityButton1, _abilityButton2, _abilityButton3, _abilityButton4, _abilityButton5 };
+        var buttons = new AbilityBarButton[] { _abilityButton1, _abilityButton2, _abilityButton3, _abilityButton4, _abilityButton5 };
+        var abilitiesById = new System.Collections.Generic.Dictionary<string, Dictionary>();
+        if (abilities != null)
+        {
+            foreach (var ability in abilities)
+            {
+                var id = GetString(ability, "id", "");
+                if (!string.IsNullOrEmpty(id))
+                {
+                    abilitiesById[id] = ability;
+                }
+            }
+        }
+
         for (var i = 0; i < buttons.Length; i++)
         {
             var button = buttons[i];
@@ -2184,24 +2285,31 @@ public partial class HudController : Control
                 continue;
             }
 
-            if (abilities == null || i >= abilities.Count)
+            var abilityId = quickSlotAbilityIds == null
+                ? abilities != null && i < abilities.Count ? GetString(abilities[i], "id", "") : ""
+                : i < quickSlotAbilityIds.Count ? quickSlotAbilityIds[i] : "";
+            if (string.IsNullOrEmpty(abilityId) || !abilitiesById.TryGetValue(abilityId, out var entry))
             {
                 button.Visible = false;
                 button.Disabled = true;
                 button.Text = "";
                 button.Icon = null;
                 button.TooltipText = "";
+                button.AbilityId = "";
+                button.QuickSlotIndex = i;
+                button.CanDragAbility = false;
                 continue;
             }
 
-            var entry = abilities[i];
-            var abilityId = GetString(entry, "id", "");
             var label = GetString(entry, "label", abilityId);
             var cooldownRemaining = GetInt(entry, "cooldown_remaining", 0);
             var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
             var isSelected = GetInt(entry, "is_selected", 0) == 1;
 
             button.Visible = true;
+            button.AbilityId = abilityId;
+            button.QuickSlotIndex = i;
+            button.CanDragAbility = false;
             button.Icon = GetGameIcon(abilityId);
             button.Text = button.Icon == null ? label : "";
             button.IconAlignment = HorizontalAlignment.Center;
@@ -2213,6 +2321,91 @@ public partial class HudController : Control
             button.Disabled = !canUseAnyAbility;
             _abilityIdsByButton[button] = abilityId;
         }
+
+        var hasOverflowAbilities = abilities != null && abilities.Count > buttons.Length;
+        _moreAbilitiesButton.Visible = hasOverflowAbilities;
+        _moreAbilitiesButton.Disabled = !canUseAnyAbility;
+        if (!hasOverflowAbilities)
+        {
+            _abilityTrayPanel.Visible = false;
+        }
+
+        RebuildAbilityTray(abilities, canUseAnyAbility);
+    }
+
+    private void RebuildAbilityTray(Array<Dictionary> abilities, bool canUseAnyAbility)
+    {
+        foreach (var child in _abilityTrayGrid.GetChildren())
+        {
+            _abilityTrayGrid.RemoveChild(child);
+            child.QueueFree();
+        }
+
+        if (abilities == null)
+        {
+            return;
+        }
+
+        foreach (var entry in abilities)
+        {
+            var abilityId = GetString(entry, "id", "");
+            if (string.IsNullOrEmpty(abilityId))
+            {
+                continue;
+            }
+
+            var label = GetString(entry, "label", abilityId);
+            var cooldownRemaining = GetInt(entry, "cooldown_remaining", 0);
+            var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
+            var isSelected = GetInt(entry, "is_selected", 0) == 1;
+            var button = new AbilityBarButton
+            {
+                CustomMinimumSize = new Vector2(184, 48),
+                AbilityId = abilityId,
+                CanDragAbility = true,
+                Icon = GetGameIcon(abilityId),
+                Text = label,
+                ExpandIcon = true,
+                IconAlignment = HorizontalAlignment.Left,
+                TooltipText = $"{GetString(entry, "detail", label)}\nDrag onto a quick slot to assign it.",
+                Disabled = !canUseAnyAbility,
+                FocusMode = FocusModeEnum.None,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
+            var isAvailable = isEnabled && cooldownRemaining <= 0;
+            button.SelfModulate = !isAvailable
+                ? new Color(0.5f, 0.5f, 0.5f)
+                : isSelected ? TacticalTheme.BrassBright : Colors.White;
+            button.Pressed += () => OnAbilityTrayButtonPressed(abilityId);
+            StyleButton(button, false);
+            _abilityTrayGrid.AddChild(button);
+        }
+    }
+
+    private void PositionAbilityTray()
+    {
+        if (_abilityTrayPanel == null || _actionPanel == null)
+        {
+            return;
+        }
+
+        var viewport = GetViewport();
+        if (viewport == null)
+        {
+            return;
+        }
+
+        var size = viewport.GetVisibleRect().Size;
+        const float margin = 12.0f;
+        const float gap = 10.0f;
+        var trayWidth = Mathf.Min(620.0f, Mathf.Max(1.0f, size.X - margin * 2.0f));
+        var trayHeight = Mathf.Min(340.0f, Mathf.Max(1.0f, _actionPanel.Position.Y - margin - gap));
+        var position = new Vector2(
+            _actionPanel.Position.X + (_actionPanel.Size.X - trayWidth) * 0.5f,
+            _actionPanel.Position.Y - trayHeight - gap);
+        position.X = Mathf.Clamp(position.X, 0.0f, Mathf.Max(0.0f, size.X - trayWidth));
+        position.Y = Mathf.Clamp(position.Y, 0.0f, Mathf.Max(0.0f, size.Y - trayHeight));
+        SetRect(_abilityTrayPanel, position.X, position.Y, position.X + trayWidth, position.Y + trayHeight);
     }
 
     public void SetMovementCounter(Unit active)

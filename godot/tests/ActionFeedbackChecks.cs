@@ -28,6 +28,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckExtendedIconAtlas();
         CheckConsumableActionBarIcons();
         CheckCompactActionBar();
+        CheckAbilityTray();
         return _failures;
     }
 
@@ -73,6 +74,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckExtendedIconAtlas();
         CheckConsumableActionBarIcons();
         CheckCompactActionBar();
+        CheckAbilityTray();
         CheckResources();
         CheckEquipmentStatBonuses();
         CheckActionPointsAndLevelUp();
@@ -303,6 +305,81 @@ public partial class ActionFeedbackChecks : BattleController
             "Every unit must have exactly two default consumable slots");
     }
 
+    private void CheckAbilityTray()
+    {
+        var abilities = (Array<Dictionary>)Call("BuildAbilityEntriesForHud", _actor, false);
+        _testHud.SetAbilityButtons(abilities, true);
+        var moreButton = _testHud.GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/MoreAbilitiesButton");
+        var tray = _testHud.GetNode<PanelContainer>("AbilityTrayPanel");
+        var grid = _testHud.GetNode<GridContainer>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayScroll/AbilityTrayGrid");
+        var plusColor = moreButton.GetThemeColor("font_color");
+        Check(moreButton.Visible && moreButton.Text == "+" && plusColor.G > plusColor.R,
+            "The compact overflow button must display a green plus when more than five abilities are available");
+
+        moreButton.EmitSignal(Button.SignalName.Pressed);
+        Check(tray.Visible && grid.GetChildCount() == abilities.Count,
+            "Opening the ability tray must show every available ability, including those beyond the five quick slots");
+
+        var draggedAbilityId = abilities[6]["id"].AsString();
+        var trayAbility = grid.GetChild<AbilityBarButton>(6);
+        var quickSlot = _testHud.GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
+        var dragData = Variant.From($"ability-tray:{draggedAbilityId}");
+        var droppedSlotIndex = -1;
+        var droppedAbilityId = "";
+        _testHud.QuickAbilitySlotDropRequested += (slotIndex, abilityId) =>
+        {
+            droppedSlotIndex = slotIndex;
+            droppedAbilityId = abilityId;
+        };
+        Check(trayAbility.CanDragAbility && quickSlot._CanDropData(Vector2.Zero, dragData),
+            "Abilities in the tray must be draggable onto quick slots");
+        quickSlot._DropData(Vector2.Zero, dragData);
+        var quickAbilityIds = Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>>("_quickAbilityIdsByUnitId");
+        Check(droppedSlotIndex == 0 && droppedAbilityId == draggedAbilityId
+            && quickAbilityIds[_actor.UnitId][0] == draggedAbilityId,
+            "Dropping an ability onto a quick slot must report the target slot and ability ID");
+
+        var existingQuickAbilityId = quickAbilityIds[_actor.UnitId][4];
+        var swapPayload = Variant.From($"ability-tray:{existingQuickAbilityId}");
+        _testHud.GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton2")
+            ._DropData(Vector2.Zero, swapPayload);
+        Check(quickAbilityIds[_actor.UnitId][1] == existingQuickAbilityId
+            && quickAbilityIds[_actor.UnitId][4] == "lesser-heal",
+            "Dragging an ability already in a quick slot must swap it with the destination slot");
+
+        var buildSaveData = typeof(GamePersistence).GetMethod("BuildSaveData", BindingFlags.NonPublic | BindingFlags.Instance);
+        var saveData = (Dictionary)buildSaveData.Invoke(Field<GamePersistence>("_persistence"), null);
+        var savedQuickAbilityMap = (Dictionary)((Variant)saveData["quick_ability_ids_by_unit_id"]);
+        var savedQuickAbilityIds = (Godot.Collections.Array)((Variant)savedQuickAbilityMap[_actor.UnitId]);
+        Check(((Variant)savedQuickAbilityIds[0]).AsString() == draggedAbilityId,
+            "Customized quick slots must be included in save data");
+
+        var emittedAbilityId = "";
+        _testHud.AbilityPressed += abilityId => emittedAbilityId = abilityId;
+        grid.GetChild<AbilityBarButton>(6).EmitSignal(Button.SignalName.Pressed);
+        Check(emittedAbilityId == draggedAbilityId && !tray.Visible,
+            "Choosing an ability from the tray must emit its action and close the tray");
+
+        var fiveAbilities = new Array<Dictionary>();
+        for (var index = 0; index < 5; index++)
+        {
+            fiveAbilities.Add(abilities[index]);
+        }
+
+        _testHud.SetAbilityButtons(fiveAbilities, true);
+        Check(!moreButton.Visible && !tray.Visible,
+            "The overflow button and tray must stay hidden when all abilities fit in the five quick slots");
+
+        var defaultQuickAbilityIds = new System.Collections.Generic.List<string>();
+        for (var index = 0; index < 5; index++)
+        {
+            defaultQuickAbilityIds.Add(abilities[index]["id"].AsString());
+        }
+
+        quickAbilityIds[_actor.UnitId] = defaultQuickAbilityIds;
+        Call("SyncHudFromGameState");
+    }
+
     private void CheckCompactActionBar()
     {
         var movementCounter = _testHud.GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
@@ -325,8 +402,8 @@ public partial class ActionFeedbackChecks : BattleController
             && _testHud.GetNodeOrNull<Label>("ActionPanel/ActionVBox/ActiveUnitLabel") == null
             && _testHud.GetNodeOrNull<Label>("ActionPanel/ActionVBox/ConsumablesHeader") == null,
             "Action bar must not show redundant headers or party stats");
-        Check(_testHud.GetNode<HBoxContainer>("ActionPanel/ActionVBox/ActionRow/ActionButtons").GetChildCount() == 8,
-            "Abilities, consumables, and End Turn must share one compact row");
+        Check(_testHud.GetNode<HBoxContainer>("ActionPanel/ActionVBox/ActionRow/ActionButtons").GetChildCount() == 9,
+            "Quick abilities, overflow access, consumables, and End Turn must share one compact row");
         Check(_testHud.GetNode<PanelContainer>("ActionPanel").Size.Y <= 90.0f,
             "Action bar height must be reduced");
         Check(movementCounter.MouseDefaultCursorShape == Control.CursorShape.Move,
@@ -356,6 +433,7 @@ public partial class ActionFeedbackChecks : BattleController
             Check(utilityButtons.GetChild(buttonIndex).Name == expectedUtilityButtons[buttonIndex],
                 "Utility controls must be ordered Party, Reserves, Save, Load, Settings");
         }
+
         var widestUtilityButtonWidth = Mathf.Max(
             Mathf.Max(
                 _testHud.GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton").GetCombinedMinimumSize().X,
@@ -566,6 +644,7 @@ public partial class ActionFeedbackChecks : BattleController
         Set("_hud", _testHud);
         Set("_persistence", new GamePersistence(this, "user://action-feedback-consumable-test.json"));
         _testHud.AbilityPressed += id => Call("OnHudAbilityPressed", id);
+        _testHud.QuickAbilitySlotDropRequested += (slotIndex, abilityId) => Call("OnHudQuickAbilitySlotDropRequested", slotIndex, abilityId);
         _testHud.ConsumablePressed += slotKey => Call("OnHudConsumablePressed", slotKey);
         _testHud.EquipItemRequested += itemId => Call("OnHudEquipItemRequested", itemId);
         _testHud.UnequipItemRequested += slotKey => Call("OnHudUnequipItemRequested", slotKey);
@@ -615,6 +694,7 @@ public partial class ActionFeedbackChecks : BattleController
         Field<HashSet<string>>("_openedPropIds").Clear();
         Field<HashSet<string>>("_openedDoorIds").Clear();
         Field<System.Collections.Generic.Dictionary<string, HashSet<string>>>("_unlockedDoorIdsByMap").Clear();
+        Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>>("_quickAbilityIdsByUnitId").Clear();
         Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId").Clear();
         _door["locked"] = true;
         _door["is_open"] = false;

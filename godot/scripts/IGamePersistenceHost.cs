@@ -10,6 +10,7 @@ public interface IGamePersistenceHost
     int PartyGold { get; set; }
 
     System.Collections.Generic.Dictionary<string, string> SelectedAbilityIdByUnitId { get; }
+    System.Collections.Generic.Dictionary<string, List<string>> QuickAbilityIdsByUnitId { get; }
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> EquippedItemsByUnitId { get; }
     List<string> PartyInventoryItemIds { get; }
     HashSet<string> IdentifiedItemIds { get; }

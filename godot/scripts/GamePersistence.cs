@@ -79,6 +79,18 @@ public sealed class GamePersistence
             selectedAbilities[entry.Key] = entry.Value;
         }
 
+        var quickAbilityIds = new Dictionary();
+        foreach (var entry in _host.QuickAbilityIdsByUnitId)
+        {
+            var ids = new Array<string>();
+            foreach (var abilityId in entry.Value)
+            {
+                ids.Add(abilityId);
+            }
+
+            quickAbilityIds[entry.Key] = ids;
+        }
+
         var equippedByUnit = new Dictionary();
         foreach (var unitEntry in _host.EquippedItemsByUnitId)
         {
@@ -140,6 +152,7 @@ public sealed class GamePersistence
             { "explorer_unit_id", _host.GetExplorerUnitId() },
             { "selected_character_unit_id", _host.SelectedCharacterUnitId },
             { "selected_ability_id_by_unit_id", selectedAbilities },
+            { "quick_ability_ids_by_unit_id", quickAbilityIds },
             { "party_gold", _host.PartyGold },
             { "party_inventory_item_ids", partyInventory },
             { "identified_item_ids", identifiedItemIds },
@@ -166,6 +179,7 @@ public sealed class GamePersistence
     private void ApplySaveData(Dictionary saveData)
     {
         _host.SelectedAbilityIdByUnitId.Clear();
+        _host.QuickAbilityIdsByUnitId.Clear();
         _host.EquippedItemsByUnitId.Clear();
         _host.PartyInventoryItemIds.Clear();
         _host.IdentifiedItemIds.Clear();
@@ -187,6 +201,7 @@ public sealed class GamePersistence
         _host.SelectedCharacterUnitId = GetString(saveData, "selected_character_unit_id", "");
 
         RestoreSelectedAbilityMap(GetDictionary(saveData, "selected_ability_id_by_unit_id"));
+        RestoreQuickAbilityIdsByUnit(GetDictionary(saveData, "quick_ability_ids_by_unit_id"));
         RestoreSetMapSnapshot(GetDictionary(saveData, "cleared_encounter_ids_by_map"), _host.ClearedEncounterIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_door_ids_by_map"), _host.OpenedDoorIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "unlocked_door_ids_by_map"), _host.UnlockedDoorIdsByMap);
@@ -292,6 +307,38 @@ public sealed class GamePersistence
             }
 
             _host.SelectedAbilityIdByUnitId[unitId] = ((Variant)snapshot[key]).AsString();
+        }
+    }
+
+    private void RestoreQuickAbilityIdsByUnit(Dictionary snapshot)
+    {
+        foreach (var key in snapshot.Keys)
+        {
+            var unitId = ((Variant)key).AsString();
+            if (string.IsNullOrEmpty(unitId))
+            {
+                continue;
+            }
+
+            var value = (Variant)snapshot[key];
+            if (value.VariantType != Variant.Type.Array)
+            {
+                continue;
+            }
+
+            var abilityIds = new List<string>();
+            foreach (var entry in (Array)value)
+            {
+                var abilityId = ((Variant)entry).AsString();
+                if (!string.IsNullOrEmpty(abilityId)
+                    && !abilityIds.Contains(abilityId)
+                    && abilityIds.Count < 5)
+                {
+                    abilityIds.Add(abilityId);
+                }
+            }
+
+            _host.QuickAbilityIdsByUnitId[unitId] = abilityIds;
         }
     }
 

@@ -110,6 +110,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private string _selectedCharacterUnitId = "";
     private int _partyGold = 500;
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
+    private readonly System.Collections.Generic.Dictionary<string, List<string>> _quickAbilityIdsByUnitId = new();
     private readonly Array<Vector2I> _movementPreviewPath = new();
     private bool _hasMovementHoverCell;
     private Vector2I _movementHoverCell = new(-1, -1);
@@ -235,6 +236,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_hud != null)
         {
             _hud.AbilityPressed += OnHudAbilityPressed;
+            _hud.QuickAbilitySlotDropRequested += OnHudQuickAbilitySlotDropRequested;
             _hud.ConsumablePressed += OnHudConsumablePressed;
             _hud.EndTurnPressed += OnHudEndTurnPressed;
             _hud.EquipItemRequested += OnHudEquipItemRequested;
@@ -280,6 +282,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_hud != null)
         {
             _hud.AbilityPressed -= OnHudAbilityPressed;
+            _hud.QuickAbilitySlotDropRequested -= OnHudQuickAbilitySlotDropRequested;
             _hud.ConsumablePressed -= OnHudConsumablePressed;
             _hud.EndTurnPressed -= OnHudEndTurnPressed;
             _hud.EquipItemRequested -= OnHudEquipItemRequested;
@@ -473,6 +476,41 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         TryRequestEndTurn(skippedUnit, manualInput: false);
+    }
+
+    private void OnHudQuickAbilitySlotDropRequested(int slotIndex, string abilityId)
+    {
+        var actor = _flowState switch
+        {
+            BattleFlowState.Exploration => GetSelectedCharacterPartyUnit() ?? GetExplorerUnit(),
+            BattleFlowState.Combat => GetActivePlayerUnit(),
+            _ => null
+        };
+        if (slotIndex < 0
+            || slotIndex >= 5
+            || !IsUsableUnit(actor)
+            || actor.IsDead
+            || actor.Team != "player"
+            || string.IsNullOrEmpty(abilityId)
+            || !actor.HasAbility(abilityId)
+            || IsPassiveAbilityId(abilityId))
+        {
+            GD.PushWarning("Ignoring invalid ability quick-slot assignment.");
+            return;
+        }
+
+        var abilities = BuildAbilityEntriesForHud(actor, _flowState == BattleFlowState.Exploration);
+        var quickSlotAbilityIds = GetQuickAbilityIdsForUnit(actor, abilities);
+        var previousSlotIndex = quickSlotAbilityIds.IndexOf(abilityId);
+        var replacedAbilityId = quickSlotAbilityIds[slotIndex];
+        quickSlotAbilityIds[slotIndex] = abilityId;
+        if (previousSlotIndex >= 0 && previousSlotIndex != slotIndex)
+        {
+            quickSlotAbilityIds[previousSlotIndex] = replacedAbilityId;
+        }
+
+        _quickAbilityIdsByUnitId[actor.UnitId] = quickSlotAbilityIds;
+        SyncHudFromGameState();
     }
 
     private void OnHudAbilityPressed(string abilityId)
@@ -4847,6 +4885,62 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return false;
+    }
+
+    private List<string> GetQuickAbilityIdsForUnit(Unit unit, Array<Dictionary> abilities)
+    {
+        var quickAbilityIds = new List<string>(5);
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId))
+        {
+            return quickAbilityIds;
+        }
+
+        var availableIds = new HashSet<string>();
+        var orderedAvailableIds = new List<string>();
+        if (abilities != null)
+        {
+            foreach (var ability in abilities)
+            {
+                var abilityId = GetString(ability, "id", "");
+                if (!string.IsNullOrEmpty(abilityId) && availableIds.Add(abilityId))
+                {
+                    orderedAvailableIds.Add(abilityId);
+                }
+            }
+        }
+
+        _quickAbilityIdsByUnitId.TryGetValue(unit.UnitId, out var savedAbilityIds);
+        var usedIds = new HashSet<string>();
+        for (var index = 0; index < 5; index++)
+        {
+            var abilityId = savedAbilityIds != null && index < savedAbilityIds.Count
+                ? savedAbilityIds[index]
+                : "";
+            quickAbilityIds.Add(!string.IsNullOrEmpty(abilityId)
+                && availableIds.Contains(abilityId)
+                && usedIds.Add(abilityId)
+                    ? abilityId
+                    : "");
+        }
+
+        foreach (var abilityId in orderedAvailableIds)
+        {
+            if (!usedIds.Add(abilityId))
+            {
+                continue;
+            }
+
+            var emptySlot = quickAbilityIds.IndexOf("");
+            if (emptySlot < 0)
+            {
+                break;
+            }
+
+            quickAbilityIds[emptySlot] = abilityId;
+        }
+
+        _quickAbilityIdsByUnitId[unit.UnitId] = quickAbilityIds;
+        return quickAbilityIds;
     }
 
     private Array<Dictionary> BuildAbilityEntriesForHud(Unit unit, bool explorationOnly = false)
@@ -9952,6 +10046,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     }
 
     System.Collections.Generic.Dictionary<string, string> IGamePersistenceHost.SelectedAbilityIdByUnitId => _selectedAbilityIdByUnitId;
+    System.Collections.Generic.Dictionary<string, List<string>> IGamePersistenceHost.QuickAbilityIdsByUnitId => _quickAbilityIdsByUnitId;
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> IGamePersistenceHost.EquippedItemsByUnitId => _equippedItemsByUnitId;
     List<string> IGamePersistenceHost.PartyInventoryItemIds => _partyInventoryItemIds;
     HashSet<string> IGamePersistenceHost.IdentifiedItemIds => _identifiedItemIds;

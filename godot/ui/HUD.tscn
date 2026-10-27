@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/HudController.cs" id="1_ynpr3"]
 [ext_resource type="Script" path="res://scripts/SharedPartyInventoryList.cs" id="2_8d4ql"]
 [ext_resource type="Script" path="res://scripts/EquipmentSlotButton.cs" id="3_svlc2"]
+[ext_resource type="Script" path="res://scripts/AbilityBarButton.cs" id="4_ability"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -297,42 +298,54 @@ tooltip_text = "Drag to reposition the action bar"
 
 [node name="ActionButtons" type="HBoxContainer" parent="ActionPanel/ActionVBox/ActionRow"]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 4
 
 [node name="AbilityButton1" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
-custom_minimum_size = Vector2(56, 48)
+custom_minimum_size = Vector2(48, 48)
 layout_mode = 2
+script = ExtResource("4_ability")
 expand_icon = true
 icon_max_width = 32
 text = "Ability 1"
 
 [node name="AbilityButton2" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
-custom_minimum_size = Vector2(56, 48)
+custom_minimum_size = Vector2(48, 48)
 layout_mode = 2
+script = ExtResource("4_ability")
 expand_icon = true
 icon_max_width = 32
 text = "Ability 2"
 
 [node name="AbilityButton3" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
-custom_minimum_size = Vector2(56, 48)
+custom_minimum_size = Vector2(48, 48)
 layout_mode = 2
+script = ExtResource("4_ability")
 expand_icon = true
 icon_max_width = 32
 text = "Ability 3"
 
 [node name="AbilityButton4" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
-custom_minimum_size = Vector2(56, 48)
+custom_minimum_size = Vector2(48, 48)
 layout_mode = 2
+script = ExtResource("4_ability")
 expand_icon = true
 icon_max_width = 32
 text = "Ability 4"
 
 [node name="AbilityButton5" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
-custom_minimum_size = Vector2(56, 48)
+custom_minimum_size = Vector2(48, 48)
 layout_mode = 2
+script = ExtResource("4_ability")
 expand_icon = true
 icon_max_width = 32
 text = "Ability 5"
+
+[node name="MoreAbilitiesButton" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
+custom_minimum_size = Vector2(40, 48)
+layout_mode = 2
+text = "+"
+tooltip_text = "Show additional abilities"
+visible = false
 
 [node name="ConsumableButton1" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
 custom_minimum_size = Vector2(56, 48)
@@ -352,6 +365,48 @@ text = "2"
 custom_minimum_size = Vector2(88, 48)
 layout_mode = 2
 text = "End Turn"
+
+[node name="AbilityTrayPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -310.0
+offset_top = -460.0
+offset_right = 310.0
+offset_bottom = -120.0
+
+[node name="AbilityTrayVBox" type="VBoxContainer" parent="AbilityTrayPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AbilityTrayHeaderRow" type="HBoxContainer" parent="AbilityTrayPanel/AbilityTrayVBox"]
+layout_mode = 2
+
+[node name="AbilityTrayHeader" type="Label" parent="AbilityTrayPanel/AbilityTrayVBox/AbilityTrayHeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Abilities & Spells"
+
+[node name="CloseAbilityTrayButton" type="Button" parent="AbilityTrayPanel/AbilityTrayVBox/AbilityTrayHeaderRow"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+text = "x"
+tooltip_text = "Close abilities"
+
+[node name="AbilityTrayScroll" type="ScrollContainer" parent="AbilityTrayPanel/AbilityTrayVBox"]
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="AbilityTrayGrid" type="GridContainer" parent="AbilityTrayPanel/AbilityTrayVBox/AbilityTrayScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 3
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
 
 [node name="TurnOrderDisplay" type="MarginContainer" parent="."]
 visible = false
