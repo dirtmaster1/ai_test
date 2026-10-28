@@ -164,9 +164,11 @@ public partial class HudController : Control
     private Label _helpBody;
     private Button _closeHelpButton;
     private PanelContainer _actionPanel;
+    private PanelContainer _movementCounterPanel;
     private PanelContainer _abilityTrayPanel;
     private Label _abilityTrayHeader;
     private Button _closeAbilityTrayButton;
+    private ScrollContainer _abilityTrayScroll;
     private GridContainer _abilityTrayGrid;
     private PanelContainer _partyPanel;
     private Label _partyHeader;
@@ -183,7 +185,8 @@ public partial class HudController : Control
     private Button _combatLogMinimizeButton;
     private Vector2 _combatLogExpandedSize;
     private bool _combatLogMinimized;
-    private Label _movementCounterLabel;
+    private HBoxContainer _movementCounterMoveDiscs;
+    private HBoxContainer _movementCounterActionPointDiscs;
     private Label _actionDragHandle;
     private Button _moreAbilitiesButton;
     private AbilityBarButton _abilityButton1;
@@ -333,9 +336,11 @@ public partial class HudController : Control
         _helpBody = GetNode<Label>("HelpPanel/HelpVBox/HelpBody");
         _closeHelpButton = GetNode<Button>("HelpPanel/HelpVBox/HelpButtons/CloseHelpButton");
         _actionPanel = GetNode<PanelContainer>("ActionPanel");
+        _movementCounterPanel = GetNode<PanelContainer>("ActionPanel/ActionVBox/ActionRow/MovementCounterPanel");
         _abilityTrayPanel = GetNode<PanelContainer>("AbilityTrayPanel");
         _abilityTrayHeader = GetNode<Label>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayHeaderRow/AbilityTrayHeader");
         _closeAbilityTrayButton = GetNode<Button>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayHeaderRow/CloseAbilityTrayButton");
+        _abilityTrayScroll = GetNode<ScrollContainer>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayScroll");
         _abilityTrayGrid = GetNode<GridContainer>("AbilityTrayPanel/AbilityTrayVBox/AbilityTrayScroll/AbilityTrayGrid");
         _partyPanel = GetNode<PanelContainer>("PartyPanel");
         _partyHeader = GetNode<Label>("PartyPanel/PartyVBox/PartyHeader");
@@ -345,7 +350,8 @@ public partial class HudController : Control
         _combatBannerPanel = GetNode<PanelContainer>("CombatBanner");
         _combatBannerLabel = GetNode<Label>("CombatBanner/CombatBannerLabel");
         _combatLogPanel = GetNode<PanelContainer>("CombatLogPanel");
-        _movementCounterLabel = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
+        _movementCounterMoveDiscs = GetNode<HBoxContainer>("ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/MoveCounterRow/MoveCounterDiscs");
+        _movementCounterActionPointDiscs = GetNode<HBoxContainer>("ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/ActionPointCounterRow/ActionPointCounterDiscs");
         _actionDragHandle = GetNode<Label>("ActionPanel/ActionVBox/ActionRow/ActionDragHandle");
         _moreAbilitiesButton = GetNode<Button>("ActionPanel/ActionVBox/ActionRow/ActionButtons/MoreAbilitiesButton");
         _abilityButton1 = GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
@@ -495,7 +501,7 @@ public partial class HudController : Control
 
         RegisterDraggable(_utilityHeader, _utilityPanel);
         RegisterDraggable(_helpHeader, _helpPanel);
-        RegisterDraggable(_movementCounterLabel, _actionPanel);
+        RegisterDraggable(_movementCounterPanel, _actionPanel);
         RegisterDraggable(_actionDragHandle, _actionPanel);
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryUnitLabel, _inventoryPanel);
@@ -884,6 +890,7 @@ public partial class HudController : Control
     private void OnMoreAbilitiesButtonPressed()
     {
         _abilityTrayPanel.Visible = !_abilityTrayPanel.Visible;
+        PositionAbilityTray();
     }
 
     private void OnCloseAbilityTrayButtonPressed()
@@ -1855,6 +1862,7 @@ public partial class HudController : Control
         };
         StylePanel(_utilityPanel, transparentUtilityStyle);
         StylePanel(_actionPanel, transparentUtilityStyle);
+        StylePanel(_movementCounterPanel, TacticalTheme.CreatePanel(false, 3));
         StylePanel(_partyPanel, transparentUtilityStyle);
         StylePanel(_combatLogPanel, transparentUtilityStyle);
         StylePanel(_inventoryPanel, panelStyle);
@@ -1890,7 +1898,8 @@ public partial class HudController : Control
             _combatBannerLabel.AddThemeFontSizeOverride("font_size", 28);
         }
 
-        StyleBodyLabel(_movementCounterLabel, bodyColor, 14);
+        StyleBodyLabel(GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/MoveCounterRow/MoveCounterLabel"), bodyColor, 14);
+        StyleBodyLabel(GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/ActionPointCounterRow/ActionPointCounterLabel"), bodyColor, 14);
         TacticalTheme.ApplyLabel(_actionDragHandle, headerColor, 22);
         StyleBodyLabel(_helpBody, bodyColor, 14);
         StyleBodyLabel(_combatMessageDurationLabel, bodyColor, 14);
@@ -1936,6 +1945,7 @@ public partial class HudController : Control
         _moreAbilitiesButton.AddThemeColorOverride("font_color", new Color(0.32f, 0.82f, 0.43f));
         _moreAbilitiesButton.AddThemeColorOverride("font_hover_color", new Color(0.48f, 0.96f, 0.57f));
         _moreAbilitiesButton.AddThemeColorOverride("font_pressed_color", new Color(0.24f, 0.7f, 0.35f));
+        _moreAbilitiesButton.AddThemeFontSizeOverride("font_size", 32);
         StyleButton(_closeHelpButton, false);
         StyleButton(_inventoryPrevUnitButton, false);
         StyleButton(_inventoryNextUnitButton, false);
@@ -2380,6 +2390,8 @@ public partial class HudController : Control
             StyleButton(button, false);
             _abilityTrayGrid.AddChild(button);
         }
+
+        PositionAbilityTray();
     }
 
     private void PositionAbilityTray()
@@ -2399,7 +2411,14 @@ public partial class HudController : Control
         const float margin = 12.0f;
         const float gap = 10.0f;
         var trayWidth = Mathf.Min(620.0f, Mathf.Max(1.0f, size.X - margin * 2.0f));
-        var trayHeight = Mathf.Min(340.0f, Mathf.Max(1.0f, _actionPanel.Position.Y - margin - gap));
+        var maxTrayHeight = Mathf.Min(340.0f, Mathf.Max(1.0f, _actionPanel.Position.Y - margin - gap));
+        var rowCount = Mathf.CeilToInt(_abilityTrayGrid.GetChildCount() / (float)Mathf.Max(1, _abilityTrayGrid.Columns));
+        var gridHeight = rowCount * 48.0f + Mathf.Max(0, rowCount - 1) * 6.0f;
+        var panelPadding = _abilityTrayPanel.GetThemeStylebox("panel").GetMinimumSize().Y;
+        var trayChromeHeight = _closeAbilityTrayButton.CustomMinimumSize.Y + 8.0f + panelPadding;
+        var scrollHeight = Mathf.Min(gridHeight, Mathf.Max(0.0f, maxTrayHeight - trayChromeHeight));
+        _abilityTrayScroll.CustomMinimumSize = new Vector2(0.0f, scrollHeight);
+        var trayHeight = Mathf.Min(maxTrayHeight, trayChromeHeight + gridHeight);
         var position = new Vector2(
             _actionPanel.Position.X + (_actionPanel.Size.X - trayWidth) * 0.5f,
             _actionPanel.Position.Y - trayHeight - gap);
@@ -2410,19 +2429,41 @@ public partial class HudController : Control
 
     public void SetMovementCounter(Unit active)
     {
-        if (_movementCounterLabel == null)
+        if (_movementCounterMoveDiscs == null || _movementCounterActionPointDiscs == null)
         {
             return;
         }
 
-        if (active == null)
+        SetMovementCounterDiscs(_movementCounterMoveDiscs, active?.RemainingMovement ?? 0);
+        SetMovementCounterDiscs(_movementCounterActionPointDiscs, active?.RemainingActionPoints ?? 0);
+    }
+
+    private static void SetMovementCounterDiscs(HBoxContainer container, int count)
+    {
+        foreach (var child in container.GetChildren())
         {
-            _movementCounterLabel.Text = "Move -";
-            return;
+            container.RemoveChild(child);
+            child.QueueFree();
         }
 
-        _movementCounterLabel.Text =
-            $"Move {active.RemainingMovement}/{active.MovementPerTurn}   AP {active.RemainingActionPoints}/{active.ActionPoints}";
+        for (var i = 0; i < count; i++)
+        {
+            var disc = new Panel
+            {
+                CustomMinimumSize = new Vector2(10, 10),
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            var style = new StyleBoxFlat
+            {
+                BgColor = new Color(0.25f, 0.82f, 0.35f),
+                CornerRadiusTopLeft = 5,
+                CornerRadiusTopRight = 5,
+                CornerRadiusBottomLeft = 5,
+                CornerRadiusBottomRight = 5
+            };
+            disc.AddThemeStyleboxOverride("panel", style);
+            container.AddChild(disc);
+        }
     }
 
     public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)

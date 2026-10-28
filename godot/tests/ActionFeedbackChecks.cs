@@ -315,10 +315,14 @@ public partial class ActionFeedbackChecks : BattleController
         var plusColor = moreButton.GetThemeColor("font_color");
         Check(moreButton.Visible && moreButton.Text == "+" && plusColor.G > plusColor.R,
             "The compact overflow button must display a green plus when more than five abilities are available");
+        Check(moreButton.GetThemeFontSize("font_size") >= 32,
+            "The compact overflow button must display a prominent plus");
 
         moreButton.EmitSignal(Button.SignalName.Pressed);
         Check(tray.Visible && grid.GetChildCount() == abilities.Count,
             "Opening the ability tray must show every available ability, including those beyond the five quick slots");
+        Check(tray.Size.Y < 250.0f,
+            "The ability tray must size to its rows instead of retaining a large empty scroll area");
 
         var draggedAbilityId = abilities[6]["id"].AsString();
         var trayAbility = grid.GetChild<AbilityBarButton>(6);
@@ -382,19 +386,30 @@ public partial class ActionFeedbackChecks : BattleController
 
     private void CheckCompactActionBar()
     {
-        var movementCounter = _testHud.GetNode<Label>("ActionPanel/ActionVBox/ActionRow/MovementCounterLabel");
+        const string counterPath = "ActionPanel/ActionVBox/ActionRow/MovementCounterPanel";
+        const string counterContentPath = counterPath + "/MovementCounter";
+        var movementCounter = _testHud.GetNode<PanelContainer>(counterPath);
+        var movementLabel = _testHud.GetNode<Label>(counterContentPath + "/MoveCounterRow/MoveCounterLabel");
+        var actionPointLabel = _testHud.GetNode<Label>(counterContentPath + "/ActionPointCounterRow/ActionPointCounterLabel");
+        var movementDiscs = _testHud.GetNode<HBoxContainer>(counterContentPath + "/MoveCounterRow/MoveCounterDiscs");
+        var actionPointDiscs = _testHud.GetNode<HBoxContainer>(counterContentPath + "/ActionPointCounterRow/ActionPointCounterDiscs");
+        var counterStyle = (StyleBoxFlat)movementCounter.GetThemeStylebox("panel");
         Check(movementCounter.MouseFilter == Control.MouseFilterEnum.Stop
             && movementCounter.TooltipText.Contains("Drag"),
             "Movement counter must retain the action bar's drag affordance");
+        Check(counterStyle.BgColor == TacticalTheme.Iron && counterStyle.BorderColor == TacticalTheme.Brass,
+            "Movement counter must use the dark background and gold trim");
+        Check(movementLabel.Text == "Move:" && actionPointLabel.Text == "AP:",
+            "Movement and action points must have separate stacked labels");
         var flowField = PrivateField("_flowState");
         var previousFlow = flowField.GetValue(this);
         foreach (var flowName in new[] { "Exploration", "Combat" })
         {
             flowField.SetValue(this, Enum.Parse(flowField.FieldType, flowName));
             Call("SyncHudFromGameState");
-            Check(movementCounter.Text
-                == $"Move {_actor.RemainingMovement}/{_actor.MovementPerTurn}   AP {_actor.RemainingActionPoints}/{_actor.ActionPoints}",
-                $"{flowName} action bar must show the active unit's movement and action-point counters");
+            Check(movementDiscs.GetChildCount() == _actor.RemainingMovement
+                && actionPointDiscs.GetChildCount() == _actor.RemainingActionPoints,
+                $"{flowName} action bar must show remaining movement and action points as discs");
         }
         flowField.SetValue(this, previousFlow);
         Call("SyncHudFromGameState");

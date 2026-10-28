@@ -278,15 +278,44 @@ theme_override_constants/separation = 0
 layout_mode = 2
 size_flags_horizontal = 3
 alignment = 1
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
-[node name="MovementCounterLabel" type="Label" parent="ActionPanel/ActionVBox/ActionRow"]
-custom_minimum_size = Vector2(168, 48)
+[node name="MovementCounterPanel" type="PanelContainer" parent="ActionPanel/ActionVBox/ActionRow"]
 layout_mode = 2
-horizontal_alignment = 1
-vertical_alignment = 1
-text = "Move -"
 tooltip_text = "Drag to reposition the action bar"
+
+[node name="MovementCounter" type="VBoxContainer" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel"]
+custom_minimum_size = Vector2(96, 44)
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 2
+
+[node name="MoveCounterRow" type="HBoxContainer" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="MoveCounterLabel" type="Label" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/MoveCounterRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "Move:"
+
+[node name="MoveCounterDiscs" type="HBoxContainer" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/MoveCounterRow"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="ActionPointCounterRow" type="HBoxContainer" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ActionPointCounterLabel" type="Label" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/ActionPointCounterRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "AP:"
+
+[node name="ActionPointCounterDiscs" type="HBoxContainer" parent="ActionPanel/ActionVBox/ActionRow/MovementCounterPanel/MovementCounter/ActionPointCounterRow"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
 
 [node name="ActionDragHandle" type="Label" parent="ActionPanel/ActionVBox/ActionRow"]
 custom_minimum_size = Vector2(18, 48)
@@ -341,7 +370,7 @@ icon_max_width = 32
 text = "Ability 5"
 
 [node name="MoreAbilitiesButton" type="Button" parent="ActionPanel/ActionVBox/ActionRow/ActionButtons"]
-custom_minimum_size = Vector2(40, 48)
+custom_minimum_size = Vector2(44, 48)
 layout_mode = 2
 text = "+"
 tooltip_text = "Show additional abilities"
@@ -397,7 +426,6 @@ text = "x"
 tooltip_text = "Close abilities"
 
 [node name="AbilityTrayScroll" type="ScrollContainer" parent="AbilityTrayPanel/AbilityTrayVBox"]
-custom_minimum_size = Vector2(0, 250)
 layout_mode = 2
 size_flags_vertical = 3
 
