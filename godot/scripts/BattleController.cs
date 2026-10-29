@@ -1020,8 +1020,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var target = GetInventoryTargetUnit();
         if (target == null
             || sourceSlotKey == targetSlotKey
-            || !EquipmentSlotRules.IsConsumableSlotKey(sourceSlotKey)
-            || !EquipmentSlotRules.IsConsumableSlotKey(targetSlotKey)
+            || !EquipmentSlotRules.CanMoveBetweenSlots(sourceSlotKey, targetSlotKey)
             || _gameData == null
             || !_equippedItemsByUnitId.TryGetValue(target.UnitId, out var equippedBySlot)
             || !equippedBySlot.TryGetValue(sourceSlotKey, out var sourceItemId))
@@ -8159,8 +8158,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var itemName = itemData.Count == 0 ? itemId : GetString(itemData, "name", itemId);
             var slotLabel = slot switch
             {
+                "head" => "Head",
+                "neck" => "Neck",
+                "body" => "Body",
+                "legs" => "Legs",
+                "back" => "Back",
+                "feet" => "Feet",
+                "1-handed-a" => "Main Hand",
+                "1-handed-b" => "Off Hand",
+                "2-handed" => "Two Hands",
                 "consumable-1" => "Consumable 1",
                 "consumable-2" => "Consumable 2",
+                "ring-1" => "Ring 1",
+                "ring-2" => "Ring 2",
                 _ => slot.Replace("-a", " A").Replace("-b", " B")
             };
             var entry = itemData.Duplicate();
@@ -8539,8 +8549,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         string targetSlotKey)
     {
         if (equippedBySlot == null
-            || !EquipmentSlotRules.IsConsumableSlotKey(sourceSlotKey)
-            || !EquipmentSlotRules.IsConsumableSlotKey(targetSlotKey)
+            || !EquipmentSlotRules.CanMoveBetweenSlots(sourceSlotKey, targetSlotKey)
             || sourceSlotKey == targetSlotKey
             || !equippedBySlot.TryGetValue(sourceSlotKey, out var sourceItemId))
         {
@@ -8621,6 +8630,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
+            return;
+        }
+
+        if (slot == "ring")
+        {
+            var targetRingSlot = !equippedBySlot.ContainsKey("ring-1")
+                ? "ring-1"
+                : !equippedBySlot.ContainsKey("ring-2") ? "ring-2" : "ring-1";
+            if (equippedBySlot.TryGetValue(targetRingSlot, out var replacedRing) && replacedRing != itemId)
+            {
+                EnsureSharedInventoryHasUnequippedCount(replacedRing, 1);
+            }
+
+            equippedBySlot[targetRingSlot] = itemId;
             return;
         }
 

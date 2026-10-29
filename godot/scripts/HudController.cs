@@ -101,6 +101,11 @@ public partial class HudController : Control
         ["boots-of-speed"] = new(6, 3),
         ["healers-circlet"] = new(0, 3),
         ["mages-amulet"] = new(1, 3),
+        ["silverleaf-pendant"] = new(4, 3),
+        ["trailblazer-leggings"] = new(6, 3),
+        ["ranger-cloak"] = new(6, 2),
+        ["copper-ring"] = new(1, 3),
+        ["silver-ring"] = new(4, 3),
         ["fireball-scroll"] = new(5, 3),
         ["gold"] = new(0, 8),
         ["healing-potion"] = new(0, 7),
@@ -217,10 +222,15 @@ public partial class HudController : Control
     private Button _unequipButton;
     private Button _closeInventoryButton;
     private EquipmentSlotButton _headSlotButton;
+    private EquipmentSlotButton _neckSlotButton;
     private EquipmentSlotButton _bodySlotButton;
+    private EquipmentSlotButton _legsSlotButton;
+    private EquipmentSlotButton _backSlotButton;
     private EquipmentSlotButton _feetSlotButton;
     private EquipmentSlotButton _mainHandSlotButton;
     private EquipmentSlotButton _offHandSlotButton;
+    private EquipmentSlotButton _ring1SlotButton;
+    private EquipmentSlotButton _ring2SlotButton;
     private EquipmentSlotButton _consumableSlot1Button;
     private EquipmentSlotButton _consumableSlot2Button;
     private PanelContainer _lootPanel;
@@ -393,10 +403,15 @@ public partial class HudController : Control
         _unequipButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/UnequipButton");
         _closeInventoryButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/CloseInventoryButton");
         _headSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
+        _neckSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/NeckSlot");
         _bodySlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BodySlot");
+        _legsSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/LegsSlot");
+        _backSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BackSlot");
         _feetSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/FeetSlot");
         _mainHandSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/MainHandSlot");
         _offHandSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/OffHandSlot");
+        _ring1SlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/Ring1Slot");
+        _ring2SlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/Ring2Slot");
         _consumableSlot1Button = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
         _consumableSlot2Button = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot2Button");
         _lootPanel = GetNode<PanelContainer>("LootPanel");
@@ -471,19 +486,30 @@ public partial class HudController : Control
         _closeInventoryButton.Pressed += OnCloseInventoryButtonPressed;
         _inventoryEquippedItemList.ItemSelected += OnInventoryEquippedItemSelected;
         _inventoryItemList.ItemSelected += OnInventoryItemSelected;
+        _inventoryItemList.ItemActivated += OnInventoryItemActivated;
         _inventoryItemList.EquippedItemDroppedIntoInventory += OnEquippedItemDroppedIntoInventory;
         ConfigureEquipmentSlotDragDrop(_headSlotButton, "head");
+        ConfigureEquipmentSlotDragDrop(_neckSlotButton, "neck");
         ConfigureEquipmentSlotDragDrop(_bodySlotButton, "body");
+        ConfigureEquipmentSlotDragDrop(_legsSlotButton, "legs");
+        ConfigureEquipmentSlotDragDrop(_backSlotButton, "back");
         ConfigureEquipmentSlotDragDrop(_feetSlotButton, "feet");
         ConfigureEquipmentSlotDragDrop(_mainHandSlotButton, "1-handed-a");
         ConfigureEquipmentSlotDragDrop(_offHandSlotButton, "1-handed-b");
+        ConfigureEquipmentSlotDragDrop(_ring1SlotButton, "ring-1");
+        ConfigureEquipmentSlotDragDrop(_ring2SlotButton, "ring-2");
         ConfigureEquipmentSlotDragDrop(_consumableSlot1Button, "consumable-1");
         ConfigureEquipmentSlotDragDrop(_consumableSlot2Button, "consumable-2");
         _headSlotButton.Pressed += OnHeadSlotPressed;
+        _neckSlotButton.Pressed += OnNeckSlotPressed;
         _bodySlotButton.Pressed += OnBodySlotPressed;
+        _legsSlotButton.Pressed += OnLegsSlotPressed;
+        _backSlotButton.Pressed += OnBackSlotPressed;
         _feetSlotButton.Pressed += OnFeetSlotPressed;
         _mainHandSlotButton.Pressed += OnMainHandSlotPressed;
         _offHandSlotButton.Pressed += OnOffHandSlotPressed;
+        _ring1SlotButton.Pressed += OnRing1SlotPressed;
+        _ring2SlotButton.Pressed += OnRing2SlotPressed;
         _consumableSlot1Button.Pressed += OnConsumableSlot1Pressed;
         _consumableSlot2Button.Pressed += OnConsumableSlot2Pressed;
         _lootItemList.ItemSelected += OnLootItemSelected;
@@ -702,6 +728,7 @@ public partial class HudController : Control
         if (_inventoryItemList != null)
         {
             _inventoryItemList.ItemSelected -= OnInventoryItemSelected;
+            _inventoryItemList.ItemActivated -= OnInventoryItemActivated;
             _inventoryItemList.EquippedItemDroppedIntoInventory -= OnEquippedItemDroppedIntoInventory;
         }
 
@@ -713,20 +740,47 @@ public partial class HudController : Control
         if (_headSlotButton != null)
         {
             _headSlotButton.Pressed -= OnHeadSlotPressed;
+            _headSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _headSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _headSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
+        }
+
+        if (_neckSlotButton != null)
+        {
+            _neckSlotButton.Pressed -= OnNeckSlotPressed;
+            _neckSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
+            _neckSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
+            _neckSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
 
         if (_bodySlotButton != null)
         {
             _bodySlotButton.Pressed -= OnBodySlotPressed;
+            _bodySlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _bodySlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _bodySlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
+        }
+
+        if (_legsSlotButton != null)
+        {
+            _legsSlotButton.Pressed -= OnLegsSlotPressed;
+            _legsSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
+            _legsSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
+            _legsSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
+        }
+
+        if (_backSlotButton != null)
+        {
+            _backSlotButton.Pressed -= OnBackSlotPressed;
+            _backSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
+            _backSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
+            _backSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
 
         if (_feetSlotButton != null)
         {
             _feetSlotButton.Pressed -= OnFeetSlotPressed;
+            _feetSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _feetSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _feetSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
@@ -734,6 +788,7 @@ public partial class HudController : Control
         if (_mainHandSlotButton != null)
         {
             _mainHandSlotButton.Pressed -= OnMainHandSlotPressed;
+            _mainHandSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _mainHandSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _mainHandSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
@@ -741,13 +796,31 @@ public partial class HudController : Control
         if (_offHandSlotButton != null)
         {
             _offHandSlotButton.Pressed -= OnOffHandSlotPressed;
+            _offHandSlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _offHandSlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _offHandSlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
+        }
+
+        if (_ring1SlotButton != null)
+        {
+            _ring1SlotButton.Pressed -= OnRing1SlotPressed;
+            _ring1SlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
+            _ring1SlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
+            _ring1SlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
+        }
+
+        if (_ring2SlotButton != null)
+        {
+            _ring2SlotButton.Pressed -= OnRing2SlotPressed;
+            _ring2SlotButton.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
+            _ring2SlotButton.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
+            _ring2SlotButton.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
 
         if (_consumableSlot1Button != null)
         {
             _consumableSlot1Button.Pressed -= OnConsumableSlot1Pressed;
+            _consumableSlot1Button.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _consumableSlot1Button.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _consumableSlot1Button.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
@@ -755,6 +828,7 @@ public partial class HudController : Control
         if (_consumableSlot2Button != null)
         {
             _consumableSlot2Button.Pressed -= OnConsumableSlot2Pressed;
+            _consumableSlot2Button.EquippedItemDoubleClicked -= OnEquippedItemDoubleClicked;
             _consumableSlot2Button.InventoryItemDropped -= OnInventoryItemDroppedOnEquipmentSlot;
             _consumableSlot2Button.EquippedItemDropped -= OnEquippedItemDroppedOnEquipmentSlot;
         }
@@ -1088,6 +1162,7 @@ public partial class HudController : Control
         button.CanAcceptEquippedItem = CanDropEquippedItemToSlot;
         button.InventoryItemDropped += OnInventoryItemDroppedOnEquipmentSlot;
         button.EquippedItemDropped += OnEquippedItemDroppedOnEquipmentSlot;
+        button.EquippedItemDoubleClicked += OnEquippedItemDoubleClicked;
     }
 
     private bool CanDropInventoryItemToSlot(string itemId, string targetSlotKey)
@@ -1103,8 +1178,7 @@ public partial class HudController : Control
 
     private bool CanDropEquippedItemToSlot(string sourceSlotKey, string targetSlotKey)
     {
-        return EquipmentSlotRules.IsConsumableSlotKey(sourceSlotKey)
-            && EquipmentSlotRules.IsConsumableSlotKey(targetSlotKey)
+        return EquipmentSlotRules.CanMoveBetweenSlots(sourceSlotKey, targetSlotKey)
             && sourceSlotKey != targetSlotKey
             && _inventoryEquippedEntriesBySlot.TryGetValue(sourceSlotKey, out var sourceEntry)
             && EquipmentSlotRules.CanEquipItemToSlot(sourceEntry, targetSlotKey);
@@ -1116,6 +1190,11 @@ public partial class HudController : Control
     }
 
     private void OnEquippedItemDroppedIntoInventory(string slotKey)
+    {
+        EmitSignal(SignalName.UnequipItemRequested, slotKey);
+    }
+
+    private void OnEquippedItemDoubleClicked(string slotKey)
     {
         EmitSignal(SignalName.UnequipItemRequested, slotKey);
     }
@@ -1175,14 +1254,78 @@ public partial class HudController : Control
         }
     }
 
+    private void OnInventoryItemActivated(long index)
+    {
+        if (_inventoryItemList == null || index < 0 || index >= _inventoryItemList.ItemCount)
+        {
+            return;
+        }
+
+        var metadata = _inventoryItemList.GetItemMetadata((int)index);
+        var itemId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (string.IsNullOrEmpty(itemId)
+            || _equippedItemIds.Contains(itemId)
+            || !_inventoryItemsById.TryGetValue(itemId, out var itemData)
+            || !CanAutoEquipInventoryItem(itemData))
+        {
+            return;
+        }
+
+        EmitSignal(SignalName.EquipItemRequested, itemId);
+    }
+
+    private bool CanAutoEquipInventoryItem(Dictionary itemData)
+    {
+        if (itemData == null || !GetBool(itemData, "is_identified", true))
+        {
+            return false;
+        }
+
+        var canEquip = EquipmentSlotRules.CanEquipItemToSlot(itemData, "head")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "neck")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "body")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "legs")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "back")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "feet")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "1-handed-a")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "1-handed-b")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "ring-1")
+            || EquipmentSlotRules.CanEquipItemToSlot(itemData, "ring-2");
+        if (canEquip)
+        {
+            return true;
+        }
+
+        var hasAvailableConsumableSlot = !_inventoryEquippedEntriesBySlot.ContainsKey("consumable-1")
+            || !_inventoryEquippedEntriesBySlot.ContainsKey("consumable-2");
+        return hasAvailableConsumableSlot
+            && (EquipmentSlotRules.CanEquipItemToSlot(itemData, "consumable-1")
+                || EquipmentSlotRules.CanEquipItemToSlot(itemData, "consumable-2"));
+    }
+
     private void OnHeadSlotPressed()
     {
         SelectEquipmentSlot("head");
     }
 
+    private void OnNeckSlotPressed()
+    {
+        SelectEquipmentSlot("neck");
+    }
+
     private void OnBodySlotPressed()
     {
         SelectEquipmentSlot("body");
+    }
+
+    private void OnLegsSlotPressed()
+    {
+        SelectEquipmentSlot("legs");
+    }
+
+    private void OnBackSlotPressed()
+    {
+        SelectEquipmentSlot("back");
     }
 
     private void OnFeetSlotPressed()
@@ -1198,6 +1341,16 @@ public partial class HudController : Control
     private void OnOffHandSlotPressed()
     {
         SelectEquipmentSlot(_inventoryEquippedEntriesBySlot.ContainsKey("2-handed") ? "2-handed" : "1-handed-b");
+    }
+
+    private void OnRing1SlotPressed()
+    {
+        SelectEquipmentSlot("ring-1");
+    }
+
+    private void OnRing2SlotPressed()
+    {
+        SelectEquipmentSlot("ring-2");
     }
 
     private void OnConsumableSlot1Pressed()
@@ -1952,13 +2105,18 @@ public partial class HudController : Control
         StyleButton(_equipButton, true);
         StyleButton(_unequipButton, false);
         StyleButton(_closeInventoryButton, false);
-        StyleButton(_headSlotButton, false);
-        StyleButton(_bodySlotButton, false);
-        StyleButton(_feetSlotButton, false);
-        StyleButton(_mainHandSlotButton, false);
-        StyleButton(_offHandSlotButton, false);
-        StyleButton(_consumableSlot1Button, false);
-        StyleButton(_consumableSlot2Button, false);
+        StyleButton(_headSlotButton, false, 12);
+        StyleButton(_neckSlotButton, false, 12);
+        StyleButton(_bodySlotButton, false, 12);
+        StyleButton(_legsSlotButton, false, 12);
+        StyleButton(_backSlotButton, false, 12);
+        StyleButton(_feetSlotButton, false, 12);
+        StyleButton(_mainHandSlotButton, false, 12);
+        StyleButton(_offHandSlotButton, false, 12);
+        StyleButton(_ring1SlotButton, false, 12);
+        StyleButton(_ring2SlotButton, false, 12);
+        StyleButton(_consumableSlot1Button, false, 12);
+        StyleButton(_consumableSlot2Button, false, 12);
         StyleButton(_confirmLootButton, true);
         StyleButton(_closeLootButton, false);
         StyleButton(_vendorBuyButton, true);
@@ -2099,14 +2257,14 @@ public partial class HudController : Control
         label.AddThemeFontSizeOverride("normal_font_size", fontSize);
     }
 
-    private static void StyleButton(Button button, bool emphasized)
+    private static void StyleButton(Button button, bool emphasized, int fontSize = 14)
     {
         if (button == null)
         {
             return;
         }
 
-        TacticalTheme.ApplyButton(button, emphasized);
+        TacticalTheme.ApplyButton(button, emphasized, fontSize);
     }
 
     private static StyleBoxFlat CreateButtonStyle(Color background, Color border)
@@ -2539,10 +2697,15 @@ public partial class HudController : Control
         ConfigureIconList(_inventoryEquippedItemList);
         _unequipButton.Disabled = true;
         ResetEquipmentSlot(_headSlotButton, "HEAD");
+        ResetEquipmentSlot(_neckSlotButton, "NECK");
         ResetEquipmentSlot(_bodySlotButton, "BODY");
+        ResetEquipmentSlot(_legsSlotButton, "LEGS");
+        ResetEquipmentSlot(_backSlotButton, "BACK");
         ResetEquipmentSlot(_feetSlotButton, "FEET");
         ResetEquipmentSlot(_mainHandSlotButton, "MAIN\nHAND");
         ResetEquipmentSlot(_offHandSlotButton, "OFF\nHAND");
+        ResetEquipmentSlot(_ring1SlotButton, "RING 1");
+        ResetEquipmentSlot(_ring2SlotButton, "RING 2");
         ResetEquipmentSlot(_consumableSlot1Button, "CONSUMABLE 1");
         ResetEquipmentSlot(_consumableSlot2Button, "CONSUMABLE 2");
 
@@ -3046,7 +3209,10 @@ public partial class HudController : Control
 
     public bool ShouldBlockWorldMouseInput()
     {
-        if (_isDraggingPanel || _isResizingPanel)
+        if (_isDraggingPanel
+            || _isResizingPanel
+            || DragPreview.IsDragging
+            || IsBlockingPanelVisible())
         {
             return true;
         }
@@ -3070,6 +3236,19 @@ public partial class HudController : Control
         }
 
         return hovered == this || IsAncestorOf(hovered);
+    }
+
+    private bool IsBlockingPanelVisible()
+    {
+        return _settingsPanel?.Visible == true
+            || _soundFxPanel?.Visible == true
+            || _gameOptionsPanel?.Visible == true
+            || _helpPanel?.Visible == true
+            || _abilityTrayPanel?.Visible == true
+            || _inventoryPanel?.Visible == true
+            || _lootPanel?.Visible == true
+            || _vendorPanel?.Visible == true
+            || _reservePanel?.Visible == true;
     }
 
     public void SetLootPanelVisible(bool visible)
@@ -3659,6 +3838,12 @@ public partial class HudController : Control
 
     private void UpdateItemHoverTooltip()
     {
+        if (GetViewport().GuiIsDragging())
+        {
+            _itemHoverTooltipPanel.Visible = false;
+            return;
+        }
+
         Dictionary item = null;
         var equipped = false;
         var foundItem = TryGetHoveredItem(_inventoryItemList, _inventoryItemsById, out item);
@@ -3737,10 +3922,15 @@ public partial class HudController : Control
     private bool TryGetHoveredEquipmentSlot(out Dictionary item)
     {
         return TryGetHoveredEquipmentSlot(_headSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_neckSlotButton, out item)
             || TryGetHoveredEquipmentSlot(_bodySlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_legsSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_backSlotButton, out item)
             || TryGetHoveredEquipmentSlot(_feetSlotButton, out item)
             || TryGetHoveredEquipmentSlot(_mainHandSlotButton, out item)
             || TryGetHoveredEquipmentSlot(_offHandSlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_ring1SlotButton, out item)
+            || TryGetHoveredEquipmentSlot(_ring2SlotButton, out item)
             || TryGetHoveredEquipmentSlot(_consumableSlot1Button, out item)
             || TryGetHoveredEquipmentSlot(_consumableSlot2Button, out item);
     }
@@ -3835,8 +4025,13 @@ public partial class HudController : Control
             .Replace("2-handed", "Two Hands")
             .Replace("consumable-1", "Consumable 1")
             .Replace("consumable-2", "Consumable 2")
+            .Replace("ring-1", "Ring 1")
+            .Replace("ring-2", "Ring 2")
             .Replace("head", "Head")
+            .Replace("neck", "Neck")
             .Replace("body", "Body")
+            .Replace("legs", "Legs")
+            .Replace("back", "Back")
             .Replace("feet", "Feet");
     }
 
@@ -3847,7 +4042,7 @@ public partial class HudController : Control
             return;
         }
 
-        button.Text = $"{label}\nEmpty";
+        button.Text = label;
         button.Icon = null;
         button.EquippedSlotKey = "";
         button.TooltipText = $"{label} equipment slot";
@@ -3858,11 +4053,16 @@ public partial class HudController : Control
         var button = slotKey switch
         {
             "head" => _headSlotButton,
+            "neck" => _neckSlotButton,
             "body" => _bodySlotButton,
+            "legs" => _legsSlotButton,
+            "back" => _backSlotButton,
             "feet" => _feetSlotButton,
             "1-handed-a" => _mainHandSlotButton,
             "1-handed-b" => _offHandSlotButton,
             "2-handed" => _mainHandSlotButton,
+            "ring-1" => _ring1SlotButton,
+            "ring-2" => _ring2SlotButton,
             "consumable-1" => _consumableSlot1Button,
             "consumable-2" => _consumableSlot2Button,
             _ => null

@@ -18,9 +18,14 @@ public static class EquipmentSlotRules
             return slot == "consumable" && (type is "potion" or "food" or "consumable");
         }
 
-        if (targetSlotKey is "head" or "body" or "feet")
+        if (targetSlotKey is "head" or "neck" or "body" or "legs" or "back" or "feet")
         {
             return type == "armor" && slot == targetSlotKey;
+        }
+
+        if (IsRingSlotKey(targetSlotKey))
+        {
+            return type == "armor" && slot == "ring";
         }
 
         if (targetSlotKey == "1-handed-a")
@@ -37,6 +42,17 @@ public static class EquipmentSlotRules
     public static bool IsConsumableSlotKey(string slotKey)
     {
         return slotKey is "consumable-1" or "consumable-2";
+    }
+
+    public static bool IsRingSlotKey(string slotKey)
+    {
+        return slotKey is "ring-1" or "ring-2";
+    }
+
+    public static bool CanMoveBetweenSlots(string sourceSlotKey, string targetSlotKey)
+    {
+        return IsConsumableSlotKey(sourceSlotKey) && IsConsumableSlotKey(targetSlotKey)
+            || IsRingSlotKey(sourceSlotKey) && IsRingSlotKey(targetSlotKey);
     }
 
     private static string GetString(Dictionary item, string key)

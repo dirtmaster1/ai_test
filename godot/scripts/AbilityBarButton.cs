@@ -18,16 +18,20 @@ public partial class AbilityBarButton : Button
             return default;
         }
 
-        var preview = new Button
-        {
-            Text = Text,
-            Icon = Icon,
-            CustomMinimumSize = new Vector2(184, 48),
-            MouseFilter = MouseFilterEnum.Ignore,
-            FocusMode = FocusModeEnum.None
-        };
-        SetDragPreview(preview);
+        SetDragPreview(DragPreview.Create(Icon));
         return $"{AbilityDragPrefix}{AbilityId}";
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationDragBegin)
+        {
+            DragPreview.BeginDrag();
+        }
+        else if (what == NotificationDragEnd)
+        {
+            DragPreview.EndDrag();
+        }
     }
 
     public override bool _CanDropData(Vector2 atPosition, Variant data)

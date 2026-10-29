@@ -608,7 +608,7 @@ layout_mode = 2
 text = "EQUIPMENT"
 
 [node name="DollStage" type="PanelContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
-custom_minimum_size = Vector2(280, 280)
+custom_minimum_size = Vector2(300, 320)
 layout_mode = 2
 size_flags_vertical = 3
 
@@ -617,63 +617,123 @@ layout_mode = 2
 
 [node name="HeadSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(92, 68)
+custom_minimum_size = Vector2(90, 42)
 layout_mode = 0
-offset_left = 104.0
-offset_top = 12.0
-offset_right = 196.0
-offset_bottom = 80.0
+offset_left = 105.0
+offset_top = 8.0
+offset_right = 195.0
+offset_bottom = 50.0
 expand_icon = true
 icon_max_width = 32
-text = "HEAD\nEmpty"
+text = "HEAD"
+
+[node name="BackSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
+custom_minimum_size = Vector2(90, 42)
+layout_mode = 0
+offset_left = 4.0
+offset_top = 56.0
+offset_right = 94.0
+offset_bottom = 98.0
+expand_icon = true
+icon_max_width = 32
+text = "BACK"
+
+[node name="NeckSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
+custom_minimum_size = Vector2(90, 42)
+layout_mode = 0
+offset_left = 105.0
+offset_top = 56.0
+offset_right = 195.0
+offset_bottom = 98.0
+expand_icon = true
+icon_max_width = 32
+text = "NECK"
+
+[node name="Ring1Slot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
+custom_minimum_size = Vector2(90, 42)
+layout_mode = 0
+offset_left = 4.0
+offset_top = 160.0
+offset_right = 94.0
+offset_bottom = 202.0
+expand_icon = true
+icon_max_width = 32
+text = "RING 1"
 
 [node name="MainHandSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(94, 78)
+custom_minimum_size = Vector2(90, 50)
 layout_mode = 0
-offset_left = -4.0
-offset_top = 112.0
-offset_right = 90.0
-offset_bottom = 190.0
+offset_left = 4.0
+offset_top = 104.0
+offset_right = 94.0
+offset_bottom = 154.0
 expand_icon = true
 icon_max_width = 32
-text = "MAIN\nHAND\nEmpty"
+text = "MAIN\nHAND"
+
+[node name="Ring2Slot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
+custom_minimum_size = Vector2(90, 42)
+layout_mode = 0
+offset_left = 206.0
+offset_top = 160.0
+offset_right = 296.0
+offset_bottom = 202.0
+expand_icon = true
+icon_max_width = 32
+text = "RING 2"
 
 [node name="OffHandSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(94, 78)
+custom_minimum_size = Vector2(90, 50)
 layout_mode = 0
-offset_left = 208.0
-offset_top = 112.0
-offset_right = 302.0
-offset_bottom = 190.0
+offset_left = 206.0
+offset_top = 104.0
+offset_right = 296.0
+offset_bottom = 154.0
 expand_icon = true
 icon_max_width = 32
-text = "OFF\nHAND\nEmpty"
+text = "OFF\nHAND"
 
 [node name="BodySlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(106, 68)
+custom_minimum_size = Vector2(90, 50)
 layout_mode = 0
-offset_left = 96.0
-offset_top = 112.0
-offset_right = 202.0
-offset_bottom = 180.0
+offset_left = 105.0
+offset_top = 104.0
+offset_right = 195.0
+offset_bottom = 154.0
 expand_icon = true
 icon_max_width = 32
-text = "BODY\nEmpty"
+text = "BODY"
+
+[node name="LegsSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
+script = ExtResource("3_svlc2")
+custom_minimum_size = Vector2(90, 42)
+layout_mode = 0
+offset_left = 105.0
+offset_top = 160.0
+offset_right = 195.0
+offset_bottom = 202.0
+expand_icon = true
+icon_max_width = 32
+text = "LEGS"
 
 [node name="FeetSlot" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(106, 60)
+custom_minimum_size = Vector2(90, 42)
 layout_mode = 0
-offset_left = 96.0
-offset_top = 200.0
-offset_right = 202.0
-offset_bottom = 260.0
+offset_left = 105.0
+offset_top = 208.0
+offset_right = 195.0
+offset_bottom = 250.0
 expand_icon = true
 icon_max_width = 32
-text = "FEET\nEmpty"
+text = "FEET"
 
 [node name="InventoryEquippedItemList" type="ItemList" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox"]
 visible = false
@@ -686,21 +746,21 @@ theme_override_constants/separation = 8
 
 [node name="ConsumableSlot1Button" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(132, 48)
+custom_minimum_size = Vector2(132, 42)
 layout_mode = 2
 size_flags_horizontal = 3
 expand_icon = true
 icon_max_width = 32
-text = "CONSUMABLE 1\nEmpty"
+text = "CONSUMABLE 1"
 
 [node name="ConsumableSlot2Button" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots"]
 script = ExtResource("3_svlc2")
-custom_minimum_size = Vector2(132, 48)
+custom_minimum_size = Vector2(132, 42)
 layout_mode = 2
 size_flags_horizontal = 3
 expand_icon = true
 icon_max_width = 32
-text = "CONSUMABLE 2\nEmpty"
+text = "CONSUMABLE 2"
 
 [node name="InventoryColumn" type="PanelContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns"]
 custom_minimum_size = Vector2(330, 0)

@@ -67,6 +67,11 @@ public partial class InventoryDragDropChecks : Node
             new() { { "id", "test-helmet" }, { "name", "Test Helmet" }, { "type", "armor" }, { "slot", "head" } },
             new() { { "id", "test-armor" }, { "name", "Test Armor" }, { "type", "armor" }, { "slot", "body" } },
             new() { { "id", "test-boots" }, { "name", "Test Boots" }, { "type", "armor" }, { "slot", "feet" } },
+            new() { { "id", "test-pendant" }, { "name", "Test Pendant" }, { "type", "armor" }, { "slot", "neck" } },
+            new() { { "id", "test-leggings" }, { "name", "Test Leggings" }, { "type", "armor" }, { "slot", "legs" } },
+            new() { { "id", "test-cloak" }, { "name", "Test Cloak" }, { "type", "armor" }, { "slot", "back" } },
+            new() { { "id", "test-copper-ring" }, { "name", "Test Copper Ring" }, { "type", "armor" }, { "slot", "ring" } },
+            new() { { "id", "test-silver-ring" }, { "name", "Test Silver Ring" }, { "type", "armor" }, { "slot", "ring" } },
             new() { { "id", "test-dagger" }, { "name", "Test Dagger" }, { "type", "weapon" }, { "slot", "1-handed" } },
             new() { { "id", "test-bow" }, { "name", "Test Bow" }, { "type", "weapon" }, { "slot", "2-handed" } },
             new() { { "id", "test-potion" }, { "name", "Test Potion" }, { "type", "potion" }, { "slot", "consumable" } },
@@ -76,13 +81,41 @@ public partial class InventoryDragDropChecks : Node
         hud.SetInventoryItems(items, new Array<string>());
 
         var head = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
+        var neck = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/NeckSlot");
         var body = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BodySlot");
+        var legs = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/LegsSlot");
+        var back = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BackSlot");
         var feet = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/FeetSlot");
         var mainHand = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/MainHandSlot");
         var offHand = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/OffHandSlot");
+        var ring1 = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/Ring1Slot");
+        var ring2 = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/Ring2Slot");
         var consumable = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
         var consumable2 = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot2Button");
         var inventory = hud.GetNode<SharedPartyInventoryList>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList");
+        var activatedInventoryItemId = "";
+        hud.EquipItemRequested += itemId => activatedInventoryItemId = itemId;
+        inventory.EmitSignal(ItemList.SignalName.ItemActivated, 0L);
+        Check(activatedInventoryItemId == "test-helmet",
+            "Activating an equippable inventory item must request equipping it into a compatible slot.");
+        var dragPreview = DragPreview.Create(GD.Load<Texture2D>("res://assets/ui/icon_misc_1.png"));
+        Check(dragPreview.GetChildCount() == 1
+            && dragPreview.GetChild(0) is TextureRect previewIcon
+            && previewIcon.Texture != null,
+            "Item drag previews must show only the item image without redundant text.");
+        dragPreview.Free();
+        foreach (var panelPath in new[]
+        {
+            "SettingsPanel", "SoundFxPanel", "GameOptionsPanel", "HelpPanel",
+            "AbilityTrayPanel", "InventoryPanel", "LootPanel", "VendorPanel", "ReservePanel"
+        })
+        {
+            var panel = hud.GetNode<Control>(panelPath);
+            panel.Visible = true;
+            Check(hud.ShouldBlockWorldMouseInput(), $"{panelPath} must block world mouse input even when the pointer is outside it.");
+            panel.Visible = false;
+        }
+
         var hoverDetailsBuilder = typeof(HudController).GetMethod("BuildItemHoverDetails", BindingFlags.Static | BindingFlags.NonPublic);
         var itemHoverDetails = (string)hoverDetailsBuilder.Invoke(null, new object[]
         {
@@ -140,7 +173,13 @@ public partial class InventoryDragDropChecks : Node
         Check(head._CanDropData(Vector2.Zero, helmet), "Head armor must be accepted by the head slot.");
         Check(!body._CanDropData(Vector2.Zero, helmet), "Head armor must be rejected by the body slot.");
         Check(body._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-armor"), "Body armor must be accepted by the body slot.");
+        Check(neck._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-pendant"), "Neck armor must be accepted by the neck slot.");
+        Check(legs._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-leggings"), "Leg armor must be accepted by the legs slot.");
+        Check(back._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-cloak"), "Back armor must be accepted by the back slot.");
         Check(feet._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-boots"), "Footwear armor must be accepted by the feet slot.");
+        Check(ring1._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-copper-ring")
+            && ring2._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-silver-ring"),
+            "Rings must be accepted by either ring slot.");
         Check(!feet._CanDropData(Vector2.Zero, (Variant)"inventory-item:test-armor"), "Body armor must be rejected by the feet slot.");
         Check(mainHand._CanDropData(Vector2.Zero, dagger) && offHand._CanDropData(Vector2.Zero, dagger), "One-handed weapons must be accepted by either hand.");
         Check(mainHand._CanDropData(Vector2.Zero, bow) && !offHand._CanDropData(Vector2.Zero, bow), "Two-handed weapons must only be accepted by the main-hand slot.");
@@ -162,6 +201,22 @@ public partial class InventoryDragDropChecks : Node
         feet._DropData(Vector2.Zero, (Variant)"inventory-item:test-boots");
         Check(footwearEquipRequested, "Dropping footwear into the feet slot must request equipping it.");
 
+        var neckEquipRequested = false;
+        hud.EquipItemToSlotRequested += (itemId, slotKey) =>
+        {
+            neckEquipRequested = itemId == "test-pendant" && slotKey == "neck";
+        };
+        neck._DropData(Vector2.Zero, (Variant)"inventory-item:test-pendant");
+        Check(neckEquipRequested, "Dropping a pendant into the neck slot must request equipping it.");
+
+        var ringEquipRequested = false;
+        hud.EquipItemToSlotRequested += (itemId, slotKey) =>
+        {
+            ringEquipRequested = itemId == "test-copper-ring" && slotKey == "ring-2";
+        };
+        ring2._DropData(Vector2.Zero, (Variant)"inventory-item:test-copper-ring");
+        Check(ringEquipRequested, "Dropping a ring into either ring slot must request equipping it to that slot.");
+
         var unequipRequested = false;
         hud.UnequipItemRequested += slotKey => unequipRequested = slotKey == "head";
         hud.SetInventoryEquippedItems(new Array<Dictionary>
@@ -173,6 +228,17 @@ public partial class InventoryDragDropChecks : Node
         Check(!inventory._CanDropData(Vector2.Zero, helmet), "Shared inventory must reject its own item payload.");
         inventory._DropData(Vector2.Zero, equippedHelmet);
         Check(unequipRequested, "Dropping an equipped item into shared inventory must request unequipping it.");
+        unequipRequested = false;
+        using (var doubleClick = new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Pressed = true,
+            DoubleClick = true
+        })
+        {
+            head._GuiInput(doubleClick);
+        }
+        Check(unequipRequested, "Double-clicking an equipped item must request unequipping it.");
 
         var movedFrom = "";
         var movedTo = "";
@@ -200,6 +266,21 @@ public partial class InventoryDragDropChecks : Node
         Check(consumable2._CanDropData(Vector2.Zero, equippedPotion), "An occupied consumable slot must accept a potion from the other consumable slot.");
         consumable2._DropData(Vector2.Zero, equippedPotion);
         Check(movedFrom == "consumable-1" && movedTo == "consumable-2", "Dropping onto an occupied consumable slot must request a swap.");
+
+        movedFrom = "";
+        movedTo = "";
+        hud.SetInventoryEquippedItems(new Array<Dictionary>
+        {
+            new() { { "id", "test-copper-ring" }, { "name", "Test Copper Ring" }, { "type", "armor" }, { "slot", "ring" }, { "slot_key", "ring-1" } },
+            new() { { "id", "test-silver-ring" }, { "name", "Test Silver Ring" }, { "type", "armor" }, { "slot", "ring" }, { "slot_key", "ring-2" } }
+        });
+        Check(ring1.Icon != null && ring2.Icon != null
+            && ring1.EquippedSlotKey == "ring-1" && ring2.EquippedSlotKey == "ring-2",
+            "The two ring slots must render their equipped item icons and retain distinct slot keys.");
+        Check(ring2._CanDropData(Vector2.Zero, (Variant)"equipped-slot:ring-1"),
+            "An equipped ring must be droppable onto the other ring slot.");
+        ring2._DropData(Vector2.Zero, (Variant)"equipped-slot:ring-1");
+        Check(movedFrom == "ring-1" && movedTo == "ring-2", "Dropping a ring onto the other ring slot must request a ring swap.");
 
         CheckBodyArmorRoundTrip();
         CheckPartyInventoryIgnoresEnemyEquipment();
@@ -280,6 +361,31 @@ public partial class InventoryDragDropChecks : Node
         var moveSlots = typeof(BattleController).GetMethod("MoveEquippedItemBetweenSlots", BindingFlags.Static | BindingFlags.NonPublic);
         Check((bool)moveSlots.Invoke(null, new object[] { slots, "consumable-1", "consumable-2" }), "Equipped potions must be movable between consumable slots.");
         Check(slots["consumable-1"] == "test-magic-potion" && slots["consumable-2"] == "test-potion", "Moving a potion onto an occupied consumable slot must swap their contents.");
+
+        var ringOne = new Dictionary
+        {
+            { "id", "test-ring-one" }, { "name", "Test Ring One" }, { "type", "armor" }, { "slot", "ring" }
+        };
+        var ringTwo = new Dictionary
+        {
+            { "id", "test-ring-two" }, { "name", "Test Ring Two" }, { "type", "armor" }, { "slot", "ring" }
+        };
+        var ringThree = new Dictionary
+        {
+            { "id", "test-ring-three" }, { "name", "Test Ring Three" }, { "type", "armor" }, { "slot", "ring" }
+        };
+        var equipGeneric = typeof(BattleController).GetMethod("EquipItemToUnit", BindingFlags.Instance | BindingFlags.NonPublic);
+        equipGeneric.Invoke(controller, new object[] { unit, ringOne, "test-ring-one" });
+        equipGeneric.Invoke(controller, new object[] { unit, ringTwo, "test-ring-two" });
+        Check(slots["ring-1"] == "test-ring-one" && slots["ring-2"] == "test-ring-two",
+            "Generic ring equipping must fill ring 1 and then ring 2.");
+        equipGeneric.Invoke(controller, new object[] { unit, ringThree, "test-ring-three" });
+        Check(slots["ring-1"] == "test-ring-three" && slots["ring-2"] == "test-ring-two"
+            && inventory.FindAll(itemId => itemId == "test-ring-one").Count == 1,
+            "Equipping a third ring must replace ring 1 and return the replaced ring to shared inventory.");
+        Check((bool)moveSlots.Invoke(null, new object[] { slots, "ring-1", "ring-2" })
+            && slots["ring-1"] == "test-ring-two" && slots["ring-2"] == "test-ring-three",
+            "Equipped rings must be movable and swappable between ring slots.");
 
         unit.Free();
         controller.Free();

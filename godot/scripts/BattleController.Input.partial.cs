@@ -443,7 +443,22 @@ public partial class BattleController
 
     private bool ShouldIgnoreWorldMouseInput()
     {
-        return _hud != null && _hud.ShouldBlockWorldMouseInput();
+        return DragPreview.IsDragging
+            || HasOpenModalWindow()
+            || (_hud != null && _hud.ShouldBlockWorldMouseInput());
+    }
+
+    private bool HasOpenModalWindow()
+    {
+        foreach (var node in GetTree().Root.FindChildren("*", "Window", true, false))
+        {
+            if (node is Window window && window.Visible)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async void HandleExplorationInput(InputEventKey keyEvent)

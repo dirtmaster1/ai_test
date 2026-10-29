@@ -369,6 +369,50 @@
 	  "bonus_movement": 2,
 	  "description": "Grants +2 movement per turn while equipped."
 	},
+	"silverleaf-pendant": {
+	  "id": "silverleaf-pendant",
+	  "name": "Silverleaf Pendant",
+	  "type": "armor",
+	  "slot": "neck",
+	  "base_armor_class": 0,
+	  "bonus_max_magic_points": 1,
+	  "description": "A delicate pendant that grants 1 maximum magic point."
+	},
+	"trailblazer-leggings": {
+	  "id": "trailblazer-leggings",
+	  "name": "Trailblazer Leggings",
+	  "type": "armor",
+	  "slot": "legs",
+	  "base_armor_class": 1,
+	  "description": "Sturdy leggings made for long journeys."
+	},
+	"ranger-cloak": {
+	  "id": "ranger-cloak",
+	  "name": "Ranger Cloak",
+	  "type": "armor",
+	  "slot": "back",
+	  "base_armor_class": 0,
+	  "bonus_movement": 1,
+	  "description": "A light cloak that grants 1 movement per turn."
+	},
+	"copper-ring": {
+	  "id": "copper-ring",
+	  "name": "Copper Ring",
+	  "type": "armor",
+	  "slot": "ring",
+	  "base_armor_class": 0,
+	  "bonus_armor_class": 1,
+	  "description": "A simple ring that grants 1 armor class."
+	},
+	"silver-ring": {
+	  "id": "silver-ring",
+	  "name": "Silver Ring",
+	  "type": "armor",
+	  "slot": "ring",
+	  "base_armor_class": 0,
+	  "bonus_max_magic_points": 1,
+	  "description": "A polished ring that grants 1 maximum magic point."
+	},
 	"healers-circlet": {
 	  "id": "healers-circlet",
 	  "name": "Healer's Circlet",

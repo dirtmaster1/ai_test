@@ -12,6 +12,19 @@ public partial class EquipmentSlotButton : Button
 
     public event Action<string, string> InventoryItemDropped;
     public event Action<string, string> EquippedItemDropped;
+    public event Action<string> EquippedItemDoubleClicked;
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (@event is InputEventMouseButton mouseButton
+            && mouseButton.ButtonIndex == MouseButton.Left
+            && mouseButton.Pressed
+            && mouseButton.DoubleClick
+            && !string.IsNullOrEmpty(EquippedSlotKey))
+        {
+            EquippedItemDoubleClicked?.Invoke(EquippedSlotKey);
+        }
+    }
 
     public override Variant _GetDragData(Vector2 atPosition)
     {
@@ -20,14 +33,20 @@ public partial class EquipmentSlotButton : Button
             return default;
         }
 
-        var previewText = TooltipText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var preview = new Label
-        {
-            Text = previewText.Length > 0 ? previewText[0] : EquippedSlotKey,
-            Modulate = new Color(0.94f, 0.9f, 0.78f, 0.9f)
-        };
-        SetDragPreview(preview);
+        SetDragPreview(DragPreview.Create(Icon));
         return $"{EquippedSlotDragPrefix}{EquippedSlotKey}";
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationDragBegin)
+        {
+            DragPreview.BeginDrag();
+        }
+        else if (what == NotificationDragEnd)
+        {
+            DragPreview.EndDrag();
+        }
     }
 
     public override bool _CanDropData(Vector2 atPosition, Variant data)

@@ -109,6 +109,16 @@ public partial class ViewZoomChecks : BattleController
             hud.Free();
         }
 
+        var dialogue = new ConfirmationDialog();
+        AddChild(dialogue);
+        dialogue.Visible = true;
+        var shouldIgnoreWorldMouseInput = typeof(BattleController)
+            .GetMethod("ShouldIgnoreWorldMouseInput", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check((bool)shouldIgnoreWorldMouseInput.Invoke(this, null),
+            "An open dialogue window must block map input even when the pointer is over the world.");
+        dialogue.Visible = false;
+        dialogue.QueueFree();
+
         Field("_isPanningView").SetValue(this, false);
         Field("_leftMouseClickCandidate").SetValue(this, false);
         using (var edgePress = new InputEventMouseButton

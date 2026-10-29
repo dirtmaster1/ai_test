@@ -23,13 +23,20 @@ public partial class SharedPartyInventoryList : ItemList
             return default;
         }
 
-        var preview = new Label
-        {
-            Text = GetItemText(itemIndex),
-            Modulate = new Color(0.94f, 0.9f, 0.78f, 0.9f)
-        };
-        SetDragPreview(preview);
+        SetDragPreview(DragPreview.Create(GetItemIcon(itemIndex)));
         return $"{ItemDragPrefix}{itemId}";
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationDragBegin)
+        {
+            DragPreview.BeginDrag();
+        }
+        else if (what == NotificationDragEnd)
+        {
+            DragPreview.EndDrag();
+        }
     }
 
     public override bool _CanDropData(Vector2 atPosition, Variant data)
