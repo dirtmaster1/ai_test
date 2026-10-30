@@ -95,6 +95,11 @@ public partial class BattleController
 
     private string BuildCurrentTargetingHelpText()
     {
+        if (_flowState == BattleFlowState.CombatIntro)
+        {
+            return "Finish or close the dialogue to begin combat.";
+        }
+
         if (_awaitingItemIdentifyTarget)
         {
             var identifyingActor = _flowState == BattleFlowState.Combat

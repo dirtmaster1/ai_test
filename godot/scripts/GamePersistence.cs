@@ -15,16 +15,34 @@ public sealed class GamePersistence
 
     public void PersistSaveGame(bool notifyStatus)
     {
+        TryPersistSaveGame();
+    }
+
+    public bool TryPersistSaveGame()
+    {
         var saveData = BuildSaveData();
         var encoded = EncodeDictionaryForSave(saveData);
 
         using var file = FileAccess.Open(_saveFilePath, FileAccess.ModeFlags.Write);
         if (file == null)
         {
-            return;
+            GD.PushError($"Could not open save file '{_saveFilePath}' for writing: {FileAccess.GetOpenError()}.");
+            return false;
         }
 
         file.StoreString(Json.Stringify(encoded));
+        if (file.GetError() != Error.Ok)
+        {
+            GD.PushError($"Could not write save file '{_saveFilePath}': {file.GetError()}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool HasSaveGame()
+    {
+        return FileAccess.FileExists(_saveFilePath);
     }
 
     public bool TryLoadSaveGame(bool notifyStatus)
@@ -168,6 +186,7 @@ public sealed class GamePersistence
             { "revealed_fog_cell_ids_by_map", BuildSetMapSnapshot(_host.RevealedFogCellIdsByMap) },
             { "loot_bags_by_map", BuildLootBagsByMapSnapshot(_host.LootBagsByMap) },
             { "triggered_event_ids", triggeredEventIds },
+            { "completed_combat_intro_encounter_ids_by_map", BuildSetMapSnapshot(_host.CompletedCombatIntroEncounterIdsByMap) },
             { "event_spawned_unit_configs_by_map", BuildEventSpawnedUnitConfigsSnapshot(_host.EventSpawnedUnitConfigsByMap) },
             { "party_roster", partyRoster },
             { "reserve_roster", reserveRoster },
@@ -194,15 +213,16 @@ public sealed class GamePersistence
         _host.RevealedFogCellIdsByMap.Clear();
         _host.LootBagsByMap.Clear();
         _host.TriggeredEventIds.Clear();
+        _host.CompletedCombatIntroEncounterIdsByMap.Clear();
         _host.EventSpawnedUnitConfigsByMap.Clear();
 
         _host.CurrentMapId = GetString(saveData, "current_map_id", "forest-town");
-        _host.ActiveEncounterId = GetString(saveData, "active_encounter_id", "");
         _host.SelectedCharacterUnitId = GetString(saveData, "selected_character_unit_id", "");
 
         RestoreSelectedAbilityMap(GetDictionary(saveData, "selected_ability_id_by_unit_id"));
         RestoreQuickAbilityIdsByUnit(GetDictionary(saveData, "quick_ability_ids_by_unit_id"));
         RestoreSetMapSnapshot(GetDictionary(saveData, "cleared_encounter_ids_by_map"), _host.ClearedEncounterIdsByMap);
+        RestoreSetMapSnapshot(GetDictionary(saveData, "completed_combat_intro_encounter_ids_by_map"), _host.CompletedCombatIntroEncounterIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_door_ids_by_map"), _host.OpenedDoorIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "unlocked_door_ids_by_map"), _host.UnlockedDoorIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "opened_prop_ids_by_map"), _host.OpenedPropIdsByMap);
@@ -239,6 +259,7 @@ public sealed class GamePersistence
         _host.SetExplorerUnitById(explorerId);
 
         var flowState = GetString(saveData, "flow_state", "exploration");
+        _host.ActiveEncounterId = GetString(saveData, "active_encounter_id", "");
         _host.RestoreFlowState(flowState);
 
         _host.SyncHudFromGameState();

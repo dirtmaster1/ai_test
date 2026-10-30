@@ -9,7 +9,7 @@ public partial class BattleController
     // Architecture: Input orchestration only (keyboard/mouse -> high-level intent).
     public override void _Input(InputEvent @event)
     {
-        if (_utilityConfirmationPending)
+        if (_utilityConfirmationPending || _flowState == BattleFlowState.CombatIntro)
         {
             return;
         }
@@ -444,6 +444,7 @@ public partial class BattleController
     private bool ShouldIgnoreWorldMouseInput()
     {
         return DragPreview.IsDragging
+            || _flowState == BattleFlowState.CombatIntro
             || HasOpenModalWindow()
             || (_hud != null && _hud.ShouldBlockWorldMouseInput());
     }

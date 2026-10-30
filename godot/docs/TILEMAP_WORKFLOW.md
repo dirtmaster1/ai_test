@@ -135,6 +135,46 @@ Enemies with the same `encounter_id` enter combat and persist as one encounter. 
 
 Enemy units inherit the marker's horizontal flip, vertical flip, and transpose (rotation), including transforms on tile alternatives. These affect the world sprite, follow the unit when it moves, and persist in saves. Turn-order portraits remain upright. `uses_tile_visual` is for static props and cosmetics; it is ignored on enemy and party spawn markers to avoid drawing a second, stationary copy. Test map edits in a new run, since saved encounters can restore previous unit state.
 
+### Combat intro dialogue
+
+Enemy markers can optionally set `combat_intro_dialogue_id` to a dialogue ID in
+`resources/game_data.json`. Give the group a distinct `encounter_id`, using tile
+alternatives so other instances of the enemy keep their existing behavior.
+One marker can supply the intro for the entire encounter; if multiple markers
+supply it, their dialogue IDs must agree.
+
+Combat intros use a `title` and a nonempty `pages` array of `{ "text": "..." }`
+entries. They use the existing dialogue window with Next, End, and Close.
+NPC choices and vendor/recruit actions are not supported in combat intros.
+Movement, combat actions, enemy AI, and start-of-turn effects wait until the
+dialogue finishes or is closed. Only the encounter that initiates combat supplies
+an intro, even when other groups join the fight.
+
+Completed or dismissed intros are saved once per map/encounter. Exiting during
+an unfinished intro reopens it from the first page when that save loads. Missing
+or invalid dialogue logs an error and displays an alert, then allows combat to
+proceed without marking the intro completed.
+
+Forest Town's two northeast bandits at `(69,-11)` and `(71,-11)` use encounter
+`forest-town-northeast-bandits` and dialogue `forest-town-bandit-intro`. Their
+marker alternatives preserve the previous stable enemy IDs for existing saves.
+
+### Party defeat recovery
+
+When every party member falls, the defeat dialog offers:
+
+- **Respawn in Forest Town**: fully restore the current party's HP/MP, remove
+  negative and combat-only status effects, and return the party to the town's
+  authored party spawn. Current campaign progress is retained.
+- **Load Recovery Save**: restore the separate recovery snapshot captured just
+  before the latest combat. The main save is not used as the recovery snapshot,
+  so the defeat autosave cannot overwrite this fallback.
+- **Main Menu**: leave the current run available to load or start over.
+
+The recovery snapshot is also established for a fresh game and after a respawn.
+Loading a save that already records defeat opens the recovery dialog rather
+than leaving the party stranded.
+
 ### Event trigger markers
 
 Event triggers are hidden authoring markers: they do not appear as map visuals or hoverable interactables. A trigger runs when any party member moves onto its cell.

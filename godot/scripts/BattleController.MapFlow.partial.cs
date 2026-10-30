@@ -90,9 +90,9 @@ public partial class BattleController
         }
     }
 
-    private void StartCombat(Unit triggeringEnemy)
+    private async void StartCombat(Unit triggeringEnemy)
     {
-        if (_flowState == BattleFlowState.Combat)
+        if (_flowState != BattleFlowState.Exploration)
         {
             return;
         }
@@ -102,6 +102,10 @@ public partial class BattleController
             return;
         }
 
+        if (!_isRestoringCombatSave)
+        {
+            SaveRecoveryCheckpoint();
+        }
         PruneInvalidUnitReferences();
 
         _activeCombatEnemyUnitIds.Clear();
@@ -114,7 +118,14 @@ public partial class BattleController
         }
 
         _activeEncounterId = triggeringEnemy.EncounterId;
-        _flowState = BattleFlowState.Combat;
+        _flowState = BattleFlowState.CombatIntro;
+        var requestId = ++_combatIntroRequestId;
+        var mapId = _currentMapId;
+        var encounterId = _activeEncounterId;
+        _explorationMoveRequestId++;
+        _hasPendingExplorationClickMove = false;
+        _hasPendingExplorationManualMove = false;
+        ClearMovementPreviewPath();
         _awaitingPlayerAttackDirection = false;
         _awaitingShadowStrikeAttack = false;
         _awaitingItemIdentifyTarget = false;
@@ -122,6 +133,42 @@ public partial class BattleController
         EnlistNearbyCombatEnemies();
         _eventBus?.EmitSignal(EventBus.SignalName.CombatStarted);
 
+        if (TryGetCombatIntroPages(encounterId, out var title, out var pages))
+        {
+            foreach (var unit in _allUnits)
+            {
+                if (IsUsableUnit(unit))
+                {
+                    unit.SetActive(false);
+                }
+            }
+            SyncHudFromGameState();
+            for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
+            {
+                var next = await ShowCombatIntroPageAsync(
+                    title, GetString(pages[pageIndex], "text", ""), pageIndex < pages.Count - 1);
+                if (!IsInsideTree() || requestId != _combatIntroRequestId
+                    || _flowState != BattleFlowState.CombatIntro || mapId != _currentMapId)
+                {
+                    return;
+                }
+                if (!next)
+                {
+                    break;
+                }
+            }
+
+            if (!_completedCombatIntroEncounterIdsByMap.TryGetValue(mapId, out var completed))
+            {
+                completed = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                _completedCombatIntroEncounterIdsByMap[mapId] = completed;
+            }
+            completed.Add(encounterId);
+            _persistence?.PersistSaveGame(false);
+            BeginPostPlayerActionMouseMoveLock();
+        }
+
+        _flowState = BattleFlowState.Combat;
         var combatUnits = new Array<Unit>();
         foreach (var player in _playerUnits)
         {
@@ -148,6 +195,188 @@ public partial class BattleController
         CenterViewOnCurrentFocus();
     }
 
+    private void CancelPendingCombatIntro()
+    {
+        _combatIntroRequestId++;
+        if (IsInstanceValid(_combatIntroDialog))
+        {
+            _combatIntroDialog.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+        }
+    }
+
+    private void SaveRecoveryCheckpoint()
+    {
+        if (_recoveryPersistence == null || !_recoveryPersistence.TryPersistSaveGame())
+        {
+            RejectPlayerAction("Could not save the recovery checkpoint. Your previous checkpoint is still available.");
+        }
+    }
+
+    private void ShowDefeatRecoveryDialog()
+    {
+        if (IsInstanceValid(_defeatRecoveryDialog) && _defeatRecoveryDialog.Visible)
+        {
+            return;
+        }
+
+        var dialog = new AcceptDialog
+        {
+            Title = "The Party Has Fallen",
+            DialogText = "Your party has been defeated. Choose how you would like to continue.",
+            Exclusive = true,
+            Unresizable = true
+        };
+        dialog.GetOkButton().Text = "Respawn in Forest Town";
+        var recoveryButton = dialog.AddButton("Load Recovery Save", true, "load_recovery");
+        recoveryButton.Disabled = _recoveryPersistence == null || !_recoveryPersistence.HasSaveGame();
+        recoveryButton.TooltipText = recoveryButton.Disabled
+            ? "No recovery save is available."
+            : "Return to the state saved before the last combat.";
+        dialog.AddButton("Main Menu", true, "main_menu");
+        AddChild(dialog);
+        TacticalTheme.ApplyDialog(dialog);
+        _defeatRecoveryDialog = dialog;
+        dialog.Confirmed += HandleDefeatRespawnRequested;
+        dialog.CustomAction += HandleDefeatRecoveryCustomAction;
+        dialog.CloseRequested += HandleDefeatDialogCloseRequested;
+        dialog.PopupCentered(new Vector2I(620, 280));
+    }
+
+    private void HandleDefeatRespawnRequested()
+    {
+        CloseDefeatRecoveryDialog();
+        RespawnPartyInForestTown();
+    }
+
+    private void HandleDefeatDialogCloseRequested()
+    {
+        HandleDefeatRespawnRequested();
+    }
+
+    private void HandleDefeatRecoveryCustomAction(StringName action)
+    {
+        if (action == "load_recovery")
+        {
+            if (_recoveryPersistence == null || !_recoveryPersistence.TryLoadSaveGame(false))
+            {
+                RejectPlayerAction("The recovery save could not be loaded.");
+                return;
+            }
+
+            CloseDefeatRecoveryDialog();
+            _persistence?.PersistSaveGame(false);
+            _hud?.ShowCombatBanner("RECOVERY LOADED", TacticalTheme.BrassBright);
+            return;
+        }
+
+        if (action == "main_menu")
+        {
+            var error = GetTree().ChangeSceneToFile(StartScreenPath);
+            if (error != Error.Ok)
+            {
+                GD.PushError($"Could not return to the main menu: {error}.");
+                RejectPlayerAction("Could not return to the main menu.");
+                if (IsInstanceValid(_defeatRecoveryDialog))
+                {
+                    _defeatRecoveryDialog.PopupCentered(new Vector2I(620, 280));
+                }
+                return;
+            }
+
+            CloseDefeatRecoveryDialog();
+        }
+    }
+
+    private void CloseDefeatRecoveryDialog()
+    {
+        if (!IsInstanceValid(_defeatRecoveryDialog))
+        {
+            return;
+        }
+
+        _defeatRecoveryDialog.Confirmed -= HandleDefeatRespawnRequested;
+        _defeatRecoveryDialog.CustomAction -= HandleDefeatRecoveryCustomAction;
+        _defeatRecoveryDialog.CloseRequested -= HandleDefeatDialogCloseRequested;
+        _defeatRecoveryDialog.Hide();
+        _defeatRecoveryDialog.QueueFree();
+        _defeatRecoveryDialog = null;
+    }
+
+    private void RespawnPartyInForestTown()
+    {
+        if (_playerUnits.Count == 0)
+        {
+            RejectPlayerAction("No party members are available to respawn.");
+            ShowDefeatRecoveryDialog();
+            return;
+        }
+
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit))
+            {
+                continue;
+            }
+
+            if (unit.IsDead)
+            {
+                unit.Resurrect();
+            }
+            unit.RestoreFromRest();
+            unit.ClearNegativeStatusEffects();
+            unit.ClearStatusEffectsByScope("combat_only");
+            unit.ClearAbilityCooldowns();
+            unit.ClearDefending();
+        }
+
+        var townData = _mapLoader?.LoadMapStub("forest-town") ?? new MapLoader().LoadMapStub("forest-town");
+        var spawnCell = new Vector2I(9, 9);
+        var playerSpawns = TryGetDictionaryArray(townData, "players");
+        if (playerSpawns.Count > 0)
+        {
+            spawnCell = GetVector2I(playerSpawns[0], "grid_pos", spawnCell);
+        }
+
+        _activeCombatEnemyUnitIds.Clear();
+        _activeCombatEncounterIds.Clear();
+        _isEndingTurn = false;
+        _isEnemyTurnProcessing = false;
+        SpawnMapEncounter("forest-town", preserveParty: true, leadSpawnCell: spawnCell);
+        EnterExplorationMode("Your party has been restored in Forest Town.");
+        _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
+        _persistence?.PersistSaveGame(false);
+        SaveRecoveryCheckpoint();
+        _hud?.ShowCombatBanner("PARTY RESTORED", new Color(0.42f, 0.88f, 0.56f, 1.0f));
+        QueueRedraw();
+    }
+
+    private bool TryGetCombatIntroPages(string encounterId, out string title, out Array<Dictionary> pages)
+    {
+        title = "";
+        pages = new Array<Dictionary>();
+        if (!_combatIntroDialogueIdsByEncounter.TryGetValue(encounterId, out var dialogueId)
+            || (_completedCombatIntroEncounterIdsByMap.TryGetValue(_currentMapId, out var completed)
+                && completed.Contains(encounterId)))
+        {
+            return false;
+        }
+
+        var dialogue = _gameData?.GetDialogue(dialogueId) ?? new Dictionary();
+        title = GetString(dialogue, "title", "Combat");
+        pages = TryGetDictionaryArray(dialogue, "pages");
+        var valid = pages.Count > 0;
+        foreach (var page in pages)
+        {
+            valid &= !string.IsNullOrWhiteSpace(GetString(page, "text", "")) && !page.ContainsKey("choices");
+        }
+        if (!valid)
+        {
+            GD.PushError($"Encounter '{_currentMapId}/{encounterId}' references invalid combat intro '{dialogueId}'. Supply nonempty text pages without NPC choices.");
+            RejectPlayerAction("Combat intro could not be loaded.");
+        }
+        return valid;
+    }
+
     private void StartCombat(string encounterId)
     {
         foreach (var enemy in _enemyUnits)
@@ -164,7 +393,10 @@ public partial class BattleController
     {
         var queue = new System.Collections.Generic.Queue<Unit>();
         _activeCombatEnemyUnitIds.Add(triggeringEnemy.UnitId);
-        _turnManager?.AddUnit(triggeringEnemy);
+        if (_flowState == BattleFlowState.Combat)
+        {
+            _turnManager?.AddUnit(triggeringEnemy);
+        }
         if (!string.IsNullOrEmpty(triggeringEnemy.EncounterId))
         {
             _activeCombatEncounterIds.Add(triggeringEnemy.EncounterId);
@@ -193,7 +425,10 @@ public partial class BattleController
                 }
 
                 _activeCombatEnemyUnitIds.Add(candidate.UnitId);
-                _turnManager?.AddUnit(candidate);
+                if (_flowState == BattleFlowState.Combat)
+                {
+                    _turnManager?.AddUnit(candidate);
+                }
                 if (!string.IsNullOrEmpty(candidate.EncounterId))
                 {
                     _activeCombatEncounterIds.Add(candidate.EncounterId);
@@ -205,7 +440,7 @@ public partial class BattleController
 
     private void EnlistNearbyCombatEnemies()
     {
-        if (_flowState != BattleFlowState.Combat)
+        if (_flowState is not (BattleFlowState.Combat or BattleFlowState.CombatIntro))
         {
             return;
         }

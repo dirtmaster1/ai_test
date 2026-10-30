@@ -510,6 +510,15 @@
 	}
   },
   "dialogues": {
+	"forest-town-bandit-intro": {
+	  "id": "forest-town-bandit-intro",
+	  "title": "Bandit",
+	  "pages": [
+		{
+		  "text": "None of the townsfolk are supposed to know we're here! We have to kill them all before word gets out, or the Bandit King will have our heads!"
+		}
+	  ]
+	},
 	"old-miner": {
 	  "id": "old-miner",
 	  "title": "Old Miner",

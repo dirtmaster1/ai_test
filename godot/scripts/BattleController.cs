@@ -20,12 +20,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const ulong PostPlayerActionMouseMoveLockMs = 300;
     private const float EnemyActionDelaySeconds = 0.24f;
     private const string SaveFilePath = "user://dark_dungeon_tactics_save.json";
+    private const string RecoverySaveFilePath = "user://dark_dungeon_tactics_recovery.json";
+    private const string StartScreenPath = "res://scenes/StartScreen.tscn";
 
     private enum BattleFlowState
     {
         Exploration,
         Combat,
-        Defeat
+        Defeat,
+        CombatIntro
     }
 
     private Node2D _unitsRoot;
@@ -37,6 +40,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private EventBus _eventBus;
     private GameData _gameData;
     private GamePersistence _persistence;
+    private GamePersistence _recoveryPersistence;
+    private AcceptDialog _defeatRecoveryDialog;
+    private bool _isRestoringCombatSave;
 
     private readonly PackedScene _unitScene = GD.Load<PackedScene>("res://scenes/Unit.tscn");
     private readonly Array<Unit> _allUnits = new();
@@ -61,6 +67,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly Array<Dictionary> _mapProps = new();
     private readonly Array<Dictionary> _lootBags = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _encounterAggroRanges = new();
+    private readonly System.Collections.Generic.Dictionary<string, string> _combatIntroDialogueIdsByEncounter = new();
+    private readonly System.Collections.Generic.Dictionary<string, HashSet<string>> _completedCombatIntroEncounterIdsByMap = new();
+    private int _combatIntroRequestId;
+    private ConfirmationDialog _combatIntroDialog;
     private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>> _equippedItemsByUnitId = new();
     private readonly List<string> _partyInventoryItemIds = new();
     private readonly HashSet<string> _identifiedItemIds = new(System.StringComparer.Ordinal);
@@ -229,6 +239,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
         _persistence = new GamePersistence(this, SaveFilePath);
+        _recoveryPersistence = new GamePersistence(this, RecoverySaveFilePath);
         _lootRng.Randomize();
         _combatRng.Randomize();
 
@@ -260,10 +271,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         EnsureDefaultVendorState();
 
+        if (GameLaunchOptions.Mode == GameLaunchMode.NewGame)
+        {
+            _recoveryPersistence.DeleteSaveGame(false);
+        }
+
         if (!_persistence.TryLoadSaveGame(false))
         {
             SpawnMapEncounter(_currentMapId);
             EnterExplorationMode();
+            SaveRecoveryCheckpoint();
+        }
+        else if (_flowState == BattleFlowState.Exploration && HasLivingPartyMember()
+            && !_recoveryPersistence.HasSaveGame())
+        {
+            SaveRecoveryCheckpoint();
         }
 
         SyncHudFromGameState();
@@ -274,6 +296,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     public override void _ExitTree()
     {
+        CancelPendingCombatIntro();
+        if (IsInstanceValid(_defeatRecoveryDialog))
+        {
+            _defeatRecoveryDialog.Confirmed -= HandleDefeatRespawnRequested;
+            _defeatRecoveryDialog.CustomAction -= HandleDefeatRecoveryCustomAction;
+            _defeatRecoveryDialog.CloseRequested -= HandleDefeatDialogCloseRequested;
+            _defeatRecoveryDialog.QueueFree();
+            _defeatRecoveryDialog = null;
+        }
         if (_turnManager != null)
         {
             _turnManager.TurnChanged -= OnTurnChanged;
@@ -2886,6 +2917,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     // Encounter setup
     private void SpawnMapEncounter(string mapId, bool preserveParty = false, Vector2I leadSpawnCell = default, bool preserveCurrentMapState = true)
     {
+        CancelPendingCombatIntro();
         if (preserveCurrentMapState)
         {
             SaveClearedEncounterStateForCurrentMap();
@@ -2930,6 +2962,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mapProps.Clear();
         _lootBags.Clear();
         _encounterAggroRanges.Clear();
+        _combatIntroDialogueIdsByEncounter.Clear();
         _activeEncounterId = "";
         _currentMapId = mapId;
 
@@ -3021,6 +3054,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var encounterId = GetString(encounter, "id", "encounter");
             var aggroRange = GetInt(encounter, "aggro_range", DefaultAggroTriggerRange);
             _encounterAggroRanges[encounterId] = aggroRange;
+            var introDialogueId = GetString(encounter, "combat_intro_dialogue_id", "");
+            if (!string.IsNullOrWhiteSpace(introDialogueId))
+            {
+                _combatIntroDialogueIdsByEncounter[encounterId] = introDialogueId;
+            }
 
             if (_clearedEncounterIds.Contains(encounterId))
             {
@@ -4047,6 +4085,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
             SyncHudFromGameState();
             _persistence.PersistSaveGame(false);
+            ShowDefeatRecoveryDialog();
             return true;
         }
 
@@ -7501,7 +7540,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         unit.QueueFree();
     }
 
-    private async Task<bool> ShowSimpleDialoguePageAsync(string title, string bodyText, bool hasNext)
+    private async Task<bool> ShowCombatIntroPageAsync(string title, string bodyText, bool hasNext)
     {
         var dialog = new ConfirmationDialog
         {
@@ -7509,14 +7548,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             DialogText = "",
             Exclusive = true
         };
+        _combatIntroDialog = dialog;
 
         dialog.AddChild(CreateScrollableDialogBody(bodyText, new Vector2(560.0f, 200.0f)));
 
         dialog.GetOkButton().Text = hasNext ? "Next" : "Close";
-        if (hasNext)
-        {
-            dialog.AddCancelButton("End");
-        }
+        dialog.GetCancelButton().Text = "End";
+        dialog.GetCancelButton().Visible = hasNext;
 
         AddChild(dialog);
         TacticalTheme.ApplyDialog(dialog);
@@ -7536,6 +7574,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         dialog.Confirmed += HandleConfirmed;
         dialog.Canceled += HandleCanceled;
         dialog.CloseRequested += HandleCanceled;
+        dialog.TreeExiting += HandleCanceled;
 
         try
         {
@@ -7548,7 +7587,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             dialog.Confirmed -= HandleConfirmed;
             dialog.Canceled -= HandleCanceled;
             dialog.CloseRequested -= HandleCanceled;
+            dialog.TreeExiting -= HandleCanceled;
             dialog.Exclusive = false;
+            if (_combatIntroDialog == dialog)
+            {
+                _combatIntroDialog = null;
+            }
             dialog.QueueFree();
         }
     }
@@ -9758,6 +9802,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _flowState = BattleFlowState.Defeat;
             ClearCombatOnlyStatusEffectsForParty();
             _eventBus?.EmitSignal(EventBus.SignalName.CombatEnded);
+            ShowDefeatRecoveryDialog();
         }
 
         SaveMapInteractionStateForCurrentMap();
@@ -10084,9 +10129,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.RevealedFogCellIdsByMap => _revealedFogCellIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;
     HashSet<string> IGamePersistenceHost.TriggeredEventIds => _triggeredEventIds;
+    System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.CompletedCombatIntroEncounterIdsByMap => _completedCombatIntroEncounterIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.EventSpawnedUnitConfigsByMap => _eventSpawnedUnitConfigsByMap;
 
-    string IGamePersistenceHost.GetFlowStateToken() => _flowState == BattleFlowState.Combat ? "combat" : (_flowState == BattleFlowState.Defeat ? "defeat" : "exploration");
+    string IGamePersistenceHost.GetFlowStateToken() => _flowState is BattleFlowState.Combat or BattleFlowState.CombatIntro ? "combat" : (_flowState == BattleFlowState.Defeat ? "defeat" : "exploration");
     string IGamePersistenceHost.GetExplorerUnitId() => _explorerUnit?.UnitId ?? "";
     void IGamePersistenceHost.SetExplorerUnitById(string unitId) => _explorerUnit = FindUnitById(unitId);
     void IGamePersistenceHost.SaveClearedEncounterStateForCurrentMap() => SaveClearedEncounterStateForCurrentMap();
@@ -10152,10 +10198,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _activeCombatEnemyUnitIds.Clear();
         _activeCombatEncounterIds.Clear();
 
+        if (flowStateToken == "defeat" || !HasLivingPartyMember())
+        {
+            _flowState = BattleFlowState.Defeat;
+            SyncHudFromGameState();
+            ShowDefeatRecoveryDialog();
+            return;
+        }
+
         if (flowStateToken == "combat" && !string.IsNullOrEmpty(_activeEncounterId) && HasLivingEnemiesInEncounter(_activeEncounterId))
         {
             _flowState = BattleFlowState.Exploration;
-            StartCombat(_activeEncounterId);
+            _isRestoringCombatSave = true;
+            try
+            {
+                StartCombat(_activeEncounterId);
+            }
+            finally
+            {
+                _isRestoringCombatSave = false;
+            }
             return;
         }
 

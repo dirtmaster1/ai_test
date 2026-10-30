@@ -575,6 +575,20 @@ public partial class MapLoader : Node
                             encountersById[encounterId] = encounter;
                         }
 
+                        var introDialogueId = GetTileString(markerLayer, tileData, "combat_intro_dialogue_id", "");
+                        if (!string.IsNullOrEmpty(introDialogueId))
+                        {
+                            var configuredIntro = GetString(encounter, "combat_intro_dialogue_id", "");
+                            if (!string.IsNullOrEmpty(configuredIntro) && configuredIntro != introDialogueId)
+                            {
+                                GD.PushError($"Encounter '{mapId}/{encounterId}' has conflicting combat_intro_dialogue_id values.");
+                            }
+                            else
+                            {
+                                encounter["combat_intro_dialogue_id"] = introDialogueId;
+                            }
+                        }
+
                         var templateId = tileData == null
                             ? ""
                             : GetTileString(markerLayer, tileData, "template_id", "").Trim();
