@@ -2,6 +2,7 @@ using Godot;
 using Godot.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CombatLogEntryType = HudController.CombatLogEntryType;
 
 public partial class BattleController : Node2D, IGamePersistenceHost
 {
@@ -464,7 +465,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        var wasDefending = activeUnit.IsDefending;
         activeUnit.ResetTurnResources();
+        if (wasDefending)
+        {
+            _hud?.AddCombatLogEntry($"{activeUnit.UnitName}'s defensive stance ends.", CombatLogEntryType.Buff);
+        }
+        _hud?.AddCombatLogEntry($"{activeUnit.UnitName}'s turn begins.");
         var shouldSkipTurn = activeUnit.TryGetTurnSkippingStatusName(out var skipStatusName);
         ApplyStartOfTurnStatusEffects(activeUnit);
         if (activeUnit.IsDead)
@@ -1315,7 +1322,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             ClearMovementPreviewPath();
         }
 
-        _hud?.AddCombatLogEntry($"{actor.UnitName} uses {itemName} and restores {restored} {resourceName}.");
+        var logType = effectType == "restore_hit_points"
+            ? CombatLogEntryType.Healing
+            : CombatLogEntryType.Normal;
+        _hud?.AddCombatLogEntry($"{actor.UnitName} uses {itemName} and restores {restored} {resourceName}.", logType);
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
     }
@@ -1874,7 +1884,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
         var mpText = actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : "";
-        _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}. {resultText}{mpText}");
+        var logType = GetString(spell, "type", "") == "blessing"
+            ? CombatLogEntryType.Buff
+            : CombatLogEntryType.Healing;
+        _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}. {resultText}{mpText}", logType);
         SyncHudFromGameState();
         QueueRedraw();
         return true;
@@ -2128,11 +2141,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (buffedUnits.Count > 0)
         {
-            _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", buffedUnits)} gain +{armorClassBonus} armor class for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}." + (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+            _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", buffedUnits)} gain +{armorClassBonus} armor class for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}." + (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""), CombatLogEntryType.Buff);
         }
         else
         {
-            _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}, but no allies are in range." + (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+            _hud?.AddCombatLogEntry($"{caster.UnitName} casts {actionProfile.ActionName}, but no allies are in range." + (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""), CombatLogEntryType.Buff);
         }
 
         SyncHudFromGameState();
@@ -2226,7 +2239,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             log += $" (MP -{actionProfile.MagicPointCost})";
         }
 
-        _hud?.AddCombatLogEntry(log);
+        _hud?.AddCombatLogEntry(log, CombatLogEntryType.MagicalAttack);
         SyncHudFromGameState();
         QueueRedraw();
         return true;
@@ -2265,12 +2278,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var damageDealt = unit.ApplyDamage(actionProfile.Damage);
             _combatEffectsDirector?.PlayDamageResult(unit, damageDealt, new Color("ff6847"));
             var outcome = unit.IsDead ? " and is defeated" : "";
-            affected.Add($"{unit.UnitName} takes {damageDealt}{outcome}");
-
             if (damageDealt > 0 && !unit.IsDead)
             {
-                unit.ClearWakeOnDamageStatusEffects();
+                if (unit.ClearWakeOnDamageStatusEffects().Count > 0)
+                {
+                    outcome += " and wakes up";
+                }
             }
+            affected.Add($"{unit.UnitName} takes {damageDealt}{outcome}");
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
@@ -2282,7 +2297,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _hud?.AddCombatLogEntry(
             $"{caster.UnitName} casts {actionProfile.ActionName}, dealing {actionProfile.Damage} {damageType} damage in a radius of {actionProfile.AreaRadius}. " +
             affectedText +
-            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : "")
+            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""),
+            CombatLogEntryType.MagicalAttack
         );
         return true;
     }
@@ -2333,7 +2349,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             : $"{string.Join(", ", rootedUnits)} rooted for {durationTurns} turns.";
         _hud?.AddCombatLogEntry(
             $"{caster.UnitName} casts {actionProfile.ActionName}. {affectedText}" +
-            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""),
+            CombatLogEntryType.MagicalAttack);
         SyncHudFromGameState();
         QueueRedraw();
         return true;
@@ -2380,12 +2397,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 var rolledDamage = _combatRng.RandiRange(minDamage, maxDamage);
                 var dealt = unit.ApplyDamage(rolledDamage);
                 _combatEffectsDirector?.PlayDamageResult(unit, dealt, new Color("9deaff"));
+                var outcome = unit.IsDead ? " and is defeated" : "";
                 if (dealt > 0 && !unit.IsDead)
                 {
-                    unit.ClearWakeOnDamageStatusEffects();
+                    if (unit.ClearWakeOnDamageStatusEffects().Count > 0)
+                    {
+                        outcome += " and wakes up";
+                    }
                 }
 
-                results.Add($"{unit.UnitName} takes {dealt}{(unit.IsDead ? " and is defeated" : "")}");
+                results.Add($"{unit.UnitName} takes {dealt}{outcome}");
             }
         }
 
@@ -2398,7 +2419,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _hud?.AddCombatLogEntry(
             $"{caster.UnitName} casts {actionProfile.ActionName} in a line up to {actionProfile.Range} tiles, dealing {minDamage}-{maxDamage} lightning damage per unit. " +
             affectedText +
-            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""));
+            (actionProfile.MagicPointCost > 0 ? $" (MP -{actionProfile.MagicPointCost})" : ""),
+            CombatLogEntryType.MagicalAttack);
         SyncHudFromGameState();
         QueueRedraw();
         return true;
@@ -2429,11 +2451,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var damage = Mathf.Max(0, weaponDamage - unit.ArmorClass);
             var dealt = unit.ApplyDamage(damage);
             _combatEffectsDirector?.PlayDamageResult(unit, dealt, new Color("ffb65c"));
+            var outcome = unit.IsDead ? " and is defeated" : "";
             if (dealt > 0 && !unit.IsDead)
             {
-                unit.ClearWakeOnDamageStatusEffects();
+                if (unit.ClearWakeOnDamageStatusEffects().Count > 0)
+                {
+                    outcome += " and wakes up";
+                }
             }
-            affected.Add($"{unit.UnitName} takes {dealt}{(unit.IsDead ? " and is defeated" : "")}");
+            affected.Add($"{unit.UnitName} takes {dealt}{outcome}");
         }
 
         archer.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
@@ -2441,7 +2467,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, archer, actionProfile.ActionId, centerCell.ToString());
         _hud?.AddCombatLogEntry(
             $"{archer.UnitName} uses {actionProfile.ActionName}, attacking all units within {radius} tiles for up to {weaponDamage} weapon damage. " +
-            (affected.Count == 0 ? "No units were hit." : string.Join("; ", affected) + "."));
+            (affected.Count == 0 ? "No units were hit." : string.Join("; ", affected) + "."),
+            CombatLogEntryType.PhysicalAttack);
         SyncHudFromGameState();
         QueueRedraw();
         return true;
@@ -2704,7 +2731,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             wakeOnDamage: false,
             armorClassBonus: 0
         );
-        _hud?.AddCombatLogEntry($"{target.UnitName} is pinned and cannot move for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}. ");
+        _hud?.AddCombatLogEntry($"{target.UnitName} is pinned and cannot move for {durationTurns} turn{(durationTurns == 1 ? "" : "s")}. ", CombatLogEntryType.PhysicalAttack);
         SyncHudFromGameState();
         QueueRedraw();
         return true;
@@ -2914,6 +2941,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _isEndingTurn = true;
         try
         {
+            _hud?.AddCombatLogEntry($"{expectedActiveUnit.UnitName} ends their turn.");
             return _turnManager.EndTurnIfActive(expectedActiveUnit);
         }
         finally
@@ -3370,6 +3398,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var fromCell = unit.GridPos;
         unit.SetGridPos(targetCell);
+        if (_flowState == BattleFlowState.Combat)
+        {
+            _hud?.AddCombatLogEntry($"{unit.UnitName} moves to {targetCell}.");
+        }
         UpdateFogOfWar();
         _eventBus?.EmitSignal(EventBus.SignalName.UnitMoved, unit, fromCell, targetCell);
         if (unit.Team == "player")
@@ -3811,7 +3843,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
-        _hud?.AddCombatLogEntry(resultText);
+        _hud?.AddCombatLogEntry(resultText, isMagical ? CombatLogEntryType.MagicalAttack : CombatLogEntryType.PhysicalAttack);
         return true;
     }
 
@@ -3836,7 +3868,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionProfile.ActionId, actor.UnitId);
         var resultText = $"{actor.UnitName} defends, reducing incoming damage by {Unit.DefendDamageReductionPercent}% until their next turn.";
-        _hud?.AddCombatLogEntry(resultText);
+        _hud?.AddCombatLogEntry(resultText, CombatLogEntryType.Buff);
         SyncHudFromGameState();
         QueueRedraw();
         return CombatActionResult.AttackResolved;
@@ -4074,7 +4106,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             resultText += $" (MP -{magicPointCost})";
         }
-        _hud?.AddCombatLogEntry(resultText);
+        _hud?.AddCombatLogEntry(resultText, CombatLogEntryType.Healing);
         return true;
     }
 
@@ -4763,6 +4795,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var damage = GetInt(entry, "damage", 0);
             var turnsLeft = GetInt(entry, "remaining_turns", 0);
             var stacks = Mathf.Max(1, GetInt(entry, "stacks", 1));
+            var expired = GetBool(entry, "expired", false);
 
             if (damage > 0)
             {
@@ -4787,6 +4820,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 _hud?.AddCombatLogEntry(message);
             }
+
+            if (expired)
+            {
+                var entryType = GetBool(entry, "is_buff", false)
+                    ? CombatLogEntryType.Buff
+                    : CombatLogEntryType.Normal;
+                _hud?.AddCombatLogEntry($"The {statusName.ToLowerInvariant()} effect on {activeUnit.UnitName} expires.", entryType);
+            }
+        }
+
+        if (activeUnit.IsDead)
+        {
+            _hud?.AddCombatLogEntry($"{activeUnit.UnitName} is defeated by ongoing status effects.");
         }
 
         SyncHudFromGameState();

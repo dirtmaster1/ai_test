@@ -169,7 +169,76 @@ public partial class ActionFeedbackChecks : BattleController
         CheckIdentifyInventoryFlow();
         CheckCombatEndClearsCombatStatuses();
         CheckCombatTargetClickReleaseDoesNotMoveInExploration();
+        CheckCombatLogCoverage();
         return _failures;
+    }
+
+    private void CheckCombatLogCoverage()
+    {
+        Reset();
+        _log.Clear();
+        var logTypes = new[]
+        {
+            HudController.CombatLogEntryType.Normal,
+            HudController.CombatLogEntryType.PhysicalAttack,
+            HudController.CombatLogEntryType.MagicalAttack,
+            HudController.CombatLogEntryType.Buff,
+            HudController.CombatLogEntryType.Healing
+        };
+        var expectedColors = new[]
+        {
+            new Color("e0d3b4"),
+            new Color("ff9b64"),
+            new Color("c7aeff"),
+            new Color("70d8d0"),
+            new Color("a6e38a")
+        };
+        for (var index = 0; index < logTypes.Length; index++)
+        {
+            _testHud.AddCombatLogEntry($"color test {index}", logTypes[index]);
+        }
+
+        var colorsMatch = _log.ItemCount == logTypes.Length;
+        for (var index = 0; colorsMatch && index < logTypes.Length; index++)
+        {
+            colorsMatch = _log.GetItemCustomFgColor(index) == expectedColors[index];
+        }
+        Check(colorsMatch, "Each combat-log category must use its designated text color.");
+
+        Reset();
+        _log.Clear();
+        const string repeatedEvent = "Enemy hits caster for 4.";
+        _testHud.AddCombatLogEntry(repeatedEvent);
+        _testHud.AddCombatLogEntry(repeatedEvent);
+        Check(_log.ItemCount == 2,
+            "The combat log must retain consecutive identical events.");
+
+        Reset();
+        _log.Clear();
+        _actor.MarkDefending();
+        Call("OnTurnChanged", _actor);
+        Check(_log.ItemCount == 2
+            && _log.GetItemText(0) == "caster's defensive stance ends."
+            && _log.GetItemText(1) == "caster's turn begins.",
+            "The combat log must record turn starts and expiring defensive stances.");
+        var moved = (bool)Call("TryMoveUnit", _actor, new Vector2I(3, 2));
+        Check(moved && _log.ItemCount == 3 && _log.GetItemText(2) == "caster moves to (3, 2).",
+            "Combat movement must be recorded.");
+        var turnEnded = (bool)Call("TryRequestEndTurn", _actor, false);
+        Check(turnEnded && _log.GetItemText(_log.ItemCount - 1) == "caster ends their turn.",
+            "The combat log must record when a unit ends its turn.");
+
+        Reset();
+        _log.Clear();
+        _actor.ApplyDamage(_actor.HitPoints - 1);
+        _actor.ApplyStatusEffect("log-test-poison", "Poisoned", false, 1, damagePerTurn: 2);
+        Call("ApplyStartOfTurnStatusEffects", _actor);
+        Check(_actor.IsDead
+            && _log.ItemCount == 3
+            && _log.GetItemText(1).Contains("effect on caster expires.")
+            && _log.GetItemText(2) == "caster is defeated by ongoing status effects.",
+            "Lethal status damage and effect expiration must both be recorded.");
+        Reset();
     }
 
     private void CheckCombatTargetClickReleaseDoesNotMoveInExploration()
@@ -1752,8 +1821,18 @@ public partial class ActionFeedbackChecks : BattleController
             "A two-turn Web root must remain active through both affected turns");
 
         Reset();
+        _enemy.ApplyStatusEffect("sleep", "Asleep", false, 2, wakeOnDamage: true);
+        var fireballProfile = Call("ResolveActionProfile", _actor, "fireball");
+        Check((bool)Call("TryCastAreaAttackAtCell", _actor, _enemy.GridPos, fireballProfile)
+            && _log.ItemCount > 0
+            && !_enemy.HasStatusEffect("sleep")
+            && _log.GetItemText(_log.ItemCount - 1).Contains("enemy wakes up"),
+            "Area attacks must log when they wake a sleeping unit.");
+
+        Reset();
         _actor.AbilityIds.Add("lightning-bolt");
         _ally.SetGridPos(new Vector2I(4, 2));
+        _ally.ApplyStatusEffect("sleep", "Asleep", false, 2, wakeOnDamage: true);
         var actorHealth = _actor.HitPoints;
         var allyHealth = _ally.HitPoints;
         var enemyHealth = _enemy.HitPoints;
@@ -1765,6 +1844,11 @@ public partial class ActionFeedbackChecks : BattleController
             "Player-targeted Lightning Bolt must roll 8-16 damage independently for every unit in its line, excluding the caster");
         Check(_actor.MagicPoints == 22 && _actor.HasUsedAbilityThisTurn,
             "Lightning Bolt must spend 8 MP and one action point");
+        Check(!_ally.HasStatusEffect("sleep")
+            && _log.ItemCount > 0
+            && _log.GetItemText(_log.ItemCount - 1).Contains("ally takes")
+            && _log.GetItemText(_log.ItemCount - 1).Contains("ally wakes up"),
+            "Lightning Bolt must log when it wakes a sleeping unit.");
         Check(!(bool)Call("IsEightDirectionLine", _actor.GridPos, new Vector2I(4, 3)),
             "Lightning Bolt must reject non-cardinal, non-diagonal target directions");
     }
@@ -1780,6 +1864,7 @@ public partial class ActionFeedbackChecks : BattleController
         Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId")[_actor.UnitId] = equipment;
         Call("ApplyEquippedItemBonuses", _actor);
         _ally.SetGridPos(new Vector2I(6, 3));
+        _ally.ApplyStatusEffect("sleep", "Asleep", false, 2, wakeOnDamage: true);
         var enemyHealth = _enemy.HitPoints;
         var allyHealth = _ally.HitPoints;
         Call("TryResolvePlayerActionAtCell", _actor, _enemy.GridPos);
@@ -1787,6 +1872,10 @@ public partial class ActionFeedbackChecks : BattleController
             "Rain of Arrows must resolve through player targeting");
         Check(_enemy.HitPoints < enemyHealth && _ally.HitPoints < allyHealth,
             "Rain of Arrows must damage all units, including allies, within its 2-tile radius");
+        Check(!_ally.HasStatusEffect("sleep")
+            && _log.ItemCount > 0
+            && _log.GetItemText(_log.ItemCount - 1).Contains("ally wakes up"),
+            "Rain of Arrows must log when it wakes a sleeping unit.");
     }
 
     private void CheckShadowStrike()

@@ -6,6 +6,15 @@ using System.Text;
 
 public partial class HudController : Control
 {
+    public enum CombatLogEntryType
+    {
+        Normal,
+        PhysicalAttack,
+        MagicalAttack,
+        Buff,
+        Healing
+    }
+
     [Signal]
     public delegate void AbilityPressedEventHandler(string abilityId);
 
@@ -85,6 +94,11 @@ public partial class HudController : Control
     private const int ItemIconCellSize = 32;
     private const string ItemIconAtlasPath = "res://assets/ui/icon_misc_1.png";
     private static readonly Color PartyDetailTextColor = new(0.76f, 0.73f, 0.66f);
+    private static readonly Color CombatLogNormalColor = new("e0d3b4");
+    private static readonly Color CombatLogPhysicalAttackColor = new("ff9b64");
+    private static readonly Color CombatLogMagicalAttackColor = new("c7aeff");
+    private static readonly Color CombatLogBuffColor = new("70d8d0");
+    private static readonly Color CombatLogHealingColor = new("a6e38a");
 
     private static Texture2D _itemIconAtlas;
     private static readonly System.Collections.Generic.Dictionary<string, Vector2I> ItemIconCellsById = new(StringComparer.OrdinalIgnoreCase)
@@ -273,7 +287,6 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveRosterEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _consumableSlotKeysByButton = new();
-    private string _lastLogLine = "";
     private string _turnOrderSignature = "";
     private string _partyListSignature = "";
     private const int MaxLogEntries = 250;
@@ -4226,22 +4239,18 @@ public partial class HudController : Control
         AcceptEvent();
     }
 
-    public void AddCombatLogEntry(string text)
+    public void AddCombatLogEntry(string text, CombatLogEntryType entryType = CombatLogEntryType.Normal)
     {
         if (_combatLog == null || string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
-        if (text == _lastLogLine)
-        {
-            return;
-        }
-
-        _lastLogLine = text;
+        var color = GetCombatLogEntryColor(entryType);
         foreach (var wrappedLine in WrapCombatLogText(text))
         {
             _combatLog.AddItem(wrappedLine);
+            _combatLog.SetItemCustomFgColor(_combatLog.ItemCount - 1, color);
         }
 
         while (_combatLog.ItemCount > MaxLogEntries)
@@ -4252,6 +4261,15 @@ public partial class HudController : Control
         _combatLog.Select(_combatLog.ItemCount - 1);
         _combatLog.EnsureCurrentIsVisible();
     }
+
+    private static Color GetCombatLogEntryColor(CombatLogEntryType entryType) => entryType switch
+    {
+        CombatLogEntryType.PhysicalAttack => CombatLogPhysicalAttackColor,
+        CombatLogEntryType.MagicalAttack => CombatLogMagicalAttackColor,
+        CombatLogEntryType.Buff => CombatLogBuffColor,
+        CombatLogEntryType.Healing => CombatLogHealingColor,
+        _ => CombatLogNormalColor
+    };
 
     public void ShowCombatBanner(string text, Color accentColor)
     {
