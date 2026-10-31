@@ -246,6 +246,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _turnManager.TurnChanged += OnTurnChanged;
         if (_hud != null)
         {
+            _hud.SaveRequested += OnHudSaveRequested;
+            _hud.LoadRequested += OnHudLoadRequested;
+            _hud.MainMenuRequested += OnHudMainMenuRequested;
             _hud.AbilityPressed += OnHudAbilityPressed;
             _hud.QuickAbilitySlotDropRequested += OnHudQuickAbilitySlotDropRequested;
             _hud.ConsumablePressed += OnHudConsumablePressed;
@@ -271,21 +274,43 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         EnsureDefaultVendorState();
 
-        if (GameLaunchOptions.Mode == GameLaunchMode.NewGame)
+        var launchMode = GameLaunchOptions.Mode;
+        var loadPersistence = launchMode == GameLaunchMode.LoadGame
+            ? new GamePersistence(this, GameLaunchOptions.SavePath)
+            : _persistence;
+        GameLaunchOptions.Mode = GameLaunchMode.Auto;
+        var loaded = launchMode != GameLaunchMode.NewGame && loadPersistence.TryLoadSaveGame(false);
+        if (launchMode == GameLaunchMode.LoadGame && !loaded)
         {
-            _recoveryPersistence.DeleteSaveGame(false);
+            _skipExitSave = true;
+            GameLaunchOptions.LoadError = loadPersistence.LastError;
+            Callable.From(() =>
+            {
+                var error = GetTree().ChangeSceneToFile(StartScreenPath);
+                if (error != Error.Ok)
+                    GD.PushError($"Could not return to the main menu after a failed load: {error}.");
+            }).CallDeferred();
+            return;
         }
-
-        if (!_persistence.TryLoadSaveGame(false))
+        if (!loaded)
         {
             SpawnMapEncounter(_currentMapId);
             EnterExplorationMode();
             SaveRecoveryCheckpoint();
         }
         else if (_flowState == BattleFlowState.Exploration && HasLivingPartyMember()
-            && !_recoveryPersistence.HasSaveGame())
+            && (launchMode == GameLaunchMode.LoadGame || !_recoveryPersistence.HasSaveGame()))
         {
             SaveRecoveryCheckpoint();
+        }
+        if (launchMode is GameLaunchMode.NewGame or GameLaunchMode.LoadGame)
+            _persistence.PersistSaveGame(false);
+        if (launchMode == GameLaunchMode.LoadGame && _flowState != BattleFlowState.Exploration)
+        {
+            if (HasLivingPartyMember())
+                SaveRecoveryCheckpoint();
+            else
+                _recoveryPersistence.DeleteSaveGame(false);
         }
 
         SyncHudFromGameState();
@@ -312,6 +337,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (_hud != null)
         {
+            _hud.SaveRequested -= OnHudSaveRequested;
+            _hud.LoadRequested -= OnHudLoadRequested;
+            _hud.MainMenuRequested -= OnHudMainMenuRequested;
             _hud.AbilityPressed -= OnHudAbilityPressed;
             _hud.QuickAbilitySlotDropRequested -= OnHudQuickAbilitySlotDropRequested;
             _hud.ConsumablePressed -= OnHudConsumablePressed;
@@ -336,7 +364,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         UpdateFogOfWar();
-        _persistence.PersistSaveGame(false);
+        if (!_skipExitSave)
+            _persistence?.PersistSaveGame(false);
     }
 
     public override void _Draw()

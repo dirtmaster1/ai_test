@@ -78,11 +78,14 @@ public partial class AudioSettingsChecks : Node
         {
             startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton"),
             startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/LoadGameButton"),
-            startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/DeleteSaveButton"),
             startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/SettingsButton"),
             startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/QuitButton"),
             startScreen.GetNode<Button>("CenterPanel/VBox/SavePathToggleButton")
         };
+        if (startScreen.GetNodeOrNull<Button>("CenterPanel/VBox/Buttons/DeleteSaveButton") != null)
+        {
+            failures.Add("The main menu must not offer an autosave deletion button.");
+        }
         var newGameButtonStyle = startScreen.GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton")
             .GetThemeStylebox("normal", "Button") as StyleBoxFlat;
         if (centerPanelStyle is not StyleBoxEmpty)

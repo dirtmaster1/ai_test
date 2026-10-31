@@ -1257,15 +1257,33 @@ public partial class Unit : Node2D
         }
 
         _unitAtlas ??= GD.Load<Texture2D>(UnitAtlasPath);
-        if (_unitAtlas == null)
+        return CreateTurnOrderAtlasIcon(_unitAtlas, UnitId, UnitName, Team);
+    }
+
+    public static Texture2D GetTurnOrderIcon(string unitId, string unitName, string spriteTexturePath)
+    {
+        var customSpriteTexture = string.IsNullOrEmpty(spriteTexturePath)
+            ? null
+            : GD.Load<Texture2D>(spriteTexturePath);
+        if (customSpriteTexture != null)
+        {
+            return customSpriteTexture;
+        }
+
+        return CreateTurnOrderAtlasIcon(GD.Load<Texture2D>(UnitAtlasPath), unitId, unitName, "player");
+    }
+
+    private static Texture2D CreateTurnOrderAtlasIcon(Texture2D atlas, string unitId, string unitName, string team)
+    {
+        if (atlas == null)
         {
             return null;
         }
 
-        var atlasCell = ResolveAtlasCell();
+        var atlasCell = ResolveAtlasCell(unitId, unitName, team);
         return new AtlasTexture
         {
-            Atlas = _unitAtlas,
+            Atlas = atlas,
             Region = new Rect2(
                 atlasCell.X * AtlasTileSize,
                 atlasCell.Y * AtlasTileSize,
@@ -1530,9 +1548,11 @@ public partial class Unit : Node2D
         }
     }
 
-    private Vector2I ResolveAtlasCell()
+    private Vector2I ResolveAtlasCell() => ResolveAtlasCell(UnitId, UnitName, Team);
+
+    private static Vector2I ResolveAtlasCell(string unitId, string unitName, string team)
     {
-        var key = NormalizeToken(UnitId + " " + UnitName);
+        var key = NormalizeToken(unitId + " " + unitName);
 
         if (ContainsAny(key, "skeletalarcher")) return new Vector2I(2, 3);
         if (ContainsAny(key, "skeletalknight")) return new Vector2I(3, 3);
@@ -1567,7 +1587,7 @@ public partial class Unit : Node2D
         if (ContainsAny(key, "warrior")) return new Vector2I(1, 0);
         if (ContainsAny(key, "cleric")) return new Vector2I(2, 0);
 
-        return Team == "enemy"
+        return team == "enemy"
             ? new Vector2I(3, 1)
             : new Vector2I(1, 0);
     }

@@ -99,6 +99,19 @@ public static class TacticalTheme
         var frame = CreateFramePanel();
         dialog.AddThemeStyleboxOverride("embedded_border", frame);
         dialog.AddThemeStyleboxOverride("embedded_unfocused_border", (StyleBox)frame.Duplicate());
+        var label = dialog.GetLabel();
+        if (label != null)
+        {
+            label.HorizontalAlignment = HorizontalAlignment.Center;
+            label.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        if (dialog.GetOkButton().GetParent() is BoxContainer buttonContainer)
+        {
+            buttonContainer.Alignment = BoxContainer.AlignmentMode.Center;
+            buttonContainer.AddThemeConstantOverride("separation", 10);
+        }
+
         ApplyDialogContent(dialog);
         ApplyButton(dialog.GetOkButton(), true, 15);
     }

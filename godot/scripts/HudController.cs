@@ -55,6 +55,9 @@ public partial class HudController : Control
     public delegate void LoadRequestedEventHandler();
 
     [Signal]
+    public delegate void MainMenuRequestedEventHandler();
+
+    [Signal]
     public delegate void TurnOrderUnitFocusedEventHandler(string unitId);
 
     [Signal]
@@ -144,6 +147,7 @@ public partial class HudController : Control
     private Button _settingsButton;
     private Button _soundFxButton;
     private Button _gameOptionsButton;
+    private Button _mainMenuButton;
     private Button _closeSettingsButton;
     private PanelContainer _settingsPanel;
     private Label _settingsHeader;
@@ -316,6 +320,7 @@ public partial class HudController : Control
         _settingsButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton");
         _soundFxButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
         _gameOptionsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/GameOptionsButton");
+        _mainMenuButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/MainMenuButton");
         _closeSettingsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/CloseSettingsButton");
         _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
         _settingsHeader = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsHeader");
@@ -470,6 +475,7 @@ public partial class HudController : Control
         _helpButton.Pressed += OnHelpButtonPressed;
         _soundFxButton.Pressed += OnSoundFxButtonPressed;
         _gameOptionsButton.Pressed += OnGameOptionsButtonPressed;
+        _mainMenuButton.Pressed += OnMainMenuButtonPressed;
         _closeSettingsButton.Pressed += OnCloseSettingsButtonPressed;
         _soundFxBackButton.Pressed += OnSoundFxBackButtonPressed;
         _gameOptionsBackButton.Pressed += OnGameOptionsBackButtonPressed;
@@ -658,6 +664,11 @@ public partial class HudController : Control
         if (_closeSettingsButton != null)
         {
             _closeSettingsButton.Pressed -= OnCloseSettingsButtonPressed;
+        }
+
+        if (_mainMenuButton != null)
+        {
+            _mainMenuButton.Pressed -= OnMainMenuButtonPressed;
         }
 
         if (_soundFxBackButton != null)
@@ -1066,6 +1077,11 @@ public partial class HudController : Control
     private void OnCloseSettingsButtonPressed()
     {
         _settingsPanel.Visible = false;
+    }
+
+    private void OnMainMenuButtonPressed()
+    {
+        EmitSignal(SignalName.MainMenuRequested);
     }
 
     private void OnSoundFxBackButtonPressed()
@@ -1773,7 +1789,7 @@ public partial class HudController : Control
         var inventorySize = new Vector2(Mathf.Min(1040.0f, size.X - Margin * 2.0f), Mathf.Min(620.0f, size.Y - Margin * 2.0f));
         var inventoryPosition = new Vector2((size.X - inventorySize.X) * 0.5f, (size.Y - inventorySize.Y) * 0.5f);
         ApplyPanelRect(_inventoryPanel, new Rect2(inventoryPosition, inventorySize), size);
-        var settingsSize = new Vector2(420.0f, 260.0f);
+        var settingsSize = new Vector2(420.0f, 304.0f);
         var settingsPosition = (size - settingsSize) * 0.5f;
         ApplyPanelRect(_settingsPanel, new Rect2(settingsPosition, settingsSize), size);
         var soundFxSize = new Vector2(520.0f, 260.0f);
@@ -2077,6 +2093,7 @@ public partial class HudController : Control
         StyleButton(_settingsButton, false);
         StyleButton(_soundFxButton, false);
         StyleButton(_gameOptionsButton, false);
+        StyleButton(_mainMenuButton, false);
         StyleButton(_healthBarsToggle, false);
         StyleButton(_closeSettingsButton, false);
         StyleButton(_soundFxBackButton, false);
@@ -2367,7 +2384,7 @@ public partial class HudController : Control
             "- Party: P\n" +
             "- Reserves: R\n" +
             "- Help: H\n" +
-            "- Save/Load: Utility panel buttons\n" +
+            "- Save/Load: Utility panel; 10 named saves plus separate automatic saves\n" +
             "- Inspect: hover units and interactables\n" +
             "- Select party member: click a party card\n" +
             "- Cycle target: Tab / Shift+Tab or Prev/Next Member\n";

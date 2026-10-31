@@ -7,8 +7,22 @@ public partial class DialogThemeChecks : Node
     {
         var failures = new Array<string>();
         var dialog = new ConfirmationDialog();
+        dialog.DialogText = "Permanently delete this save? This cannot be undone.";
         AddChild(dialog);
         TacticalTheme.ApplyDialog(dialog);
+
+        if (dialog.GetLabel().HorizontalAlignment != HorizontalAlignment.Center
+            || dialog.GetLabel().VerticalAlignment != VerticalAlignment.Center)
+        {
+            failures.Add("Confirmation dialog message must be centered");
+        }
+
+        if (dialog.GetOkButton().GetParent() is not BoxContainer buttonContainer
+            || buttonContainer.Alignment != BoxContainer.AlignmentMode.Center
+            || buttonContainer.GetThemeConstant("separation") != 10)
+        {
+            failures.Add("Confirmation dialog actions must be centered with compact spacing");
+        }
 
         Panel background = null;
         for (var i = 0; i < dialog.GetChildCount(true); i++)

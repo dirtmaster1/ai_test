@@ -239,7 +239,7 @@ public partial class BattleController
         dialog.Confirmed += HandleDefeatRespawnRequested;
         dialog.CustomAction += HandleDefeatRecoveryCustomAction;
         dialog.CloseRequested += HandleDefeatDialogCloseRequested;
-        dialog.PopupCentered(new Vector2I(620, 280));
+        dialog.PopupCentered();
     }
 
     private void HandleDefeatRespawnRequested()
@@ -278,7 +278,7 @@ public partial class BattleController
                 RejectPlayerAction("Could not return to the main menu.");
                 if (IsInstanceValid(_defeatRecoveryDialog))
                 {
-                    _defeatRecoveryDialog.PopupCentered(new Vector2I(620, 280));
+                    _defeatRecoveryDialog.PopupCentered();
                 }
                 return;
             }

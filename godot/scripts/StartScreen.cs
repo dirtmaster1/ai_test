@@ -1,5 +1,4 @@
 using Godot;
-using System.IO;
 
 public partial class StartScreen : Control
 {
@@ -15,7 +14,6 @@ public partial class StartScreen : Control
     private Button _savePathToggleButton;
     private Button _newGameButton;
     private Button _loadGameButton;
-    private Button _deleteSaveButton;
     private Button _settingsButton;
     private Button _quitButton;
     private PanelContainer _settingsPanel;
@@ -26,6 +24,7 @@ public partial class StartScreen : Control
     private HSlider _backgroundVolumeSlider;
     private Button _soundFxBackButton;
     private AudioManager _audioManager;
+    private SaveLoadMenu _saveLoadMenu;
 
     public override void _Ready()
     {
@@ -38,7 +37,6 @@ public partial class StartScreen : Control
         _savePathToggleButton = GetNode<Button>("CenterPanel/VBox/SavePathToggleButton");
         _newGameButton = GetNode<Button>("CenterPanel/VBox/Buttons/NewGameButton");
         _loadGameButton = GetNode<Button>("CenterPanel/VBox/Buttons/LoadGameButton");
-        _deleteSaveButton = GetNode<Button>("CenterPanel/VBox/Buttons/DeleteSaveButton");
         _settingsButton = GetNode<Button>("CenterPanel/VBox/Buttons/SettingsButton");
         _quitButton = GetNode<Button>("CenterPanel/VBox/Buttons/QuitButton");
         _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
@@ -56,7 +54,6 @@ public partial class StartScreen : Control
 
         _newGameButton.Pressed += OnNewGamePressed;
         _loadGameButton.Pressed += OnLoadGamePressed;
-        _deleteSaveButton.Pressed += OnDeleteSavePressed;
         _savePathToggleButton.Pressed += OnSavePathTogglePressed;
         _settingsButton.Pressed += OnSettingsPressed;
         _quitButton.Pressed += OnQuitPressed;
@@ -65,46 +62,53 @@ public partial class StartScreen : Control
         _soundFxBackButton.Pressed += OnSoundFxBackPressed;
         _backgroundVolumeSlider.ValueChanged += OnBackgroundVolumeChanged;
 
-        _savePathLabel.Text = $"Save path: {ProjectSettings.GlobalizePath(SaveFilePath)}";
+        _savePathLabel.Text = $"Named saves: {ProjectSettings.GlobalizePath(SaveGameSlots.DirectoryPath)}";
         _backgroundVolumeSlider.Value = _audioManager.BackgroundMusicVolume * 100.0f;
         UpdateBackgroundVolumeLabel(_backgroundVolumeSlider.Value);
         RefreshSaveState();
+        _statusLabel.Text = GameLaunchOptions.LoadError;
+        GameLaunchOptions.LoadError = "";
     }
 
     private void OnNewGamePressed()
     {
-        TryDeleteSaveSilently();
         GameLaunchOptions.Mode = GameLaunchMode.NewGame;
-        GetTree().ChangeSceneToFile(MainScenePath);
+        ChangeToGame();
     }
 
     private void OnLoadGamePressed()
     {
-        GameLaunchOptions.Mode = GameLaunchMode.LoadGame;
-        GetTree().ChangeSceneToFile(MainScenePath);
+        if (IsInstanceValid(_saveLoadMenu) && !_saveLoadMenu.IsQueuedForDeletion())
+            return;
+        _saveLoadMenu = new SaveLoadMenu();
+        _saveLoadMenu.Configure(false);
+        _saveLoadMenu.SavesChanged += RefreshSaveState;
+        _saveLoadMenu.LoadSelected += path =>
+        {
+            if (!SaveGameSlots.TryRead(path, out _, out var error))
+            {
+                _saveLoadMenu.ShowError(error);
+                return;
+            }
+            GameLaunchOptions.Mode = GameLaunchMode.LoadGame;
+            GameLaunchOptions.SavePath = path;
+            if (ChangeToGame())
+                _saveLoadMenu.Close();
+        };
+        AddChild(_saveLoadMenu);
     }
 
-    private void OnDeleteSavePressed()
+    private bool ChangeToGame()
     {
-        if (!Godot.FileAccess.FileExists(SaveFilePath))
-        {
-            _statusLabel.Text = "No save file found.";
-            RefreshSaveState();
-            return;
-        }
-
-        var absolutePath = ProjectSettings.GlobalizePath(SaveFilePath);
-        try
-        {
-            File.Delete(absolutePath);
-            _statusLabel.Text = "Save deleted.";
-        }
-        catch (IOException ex)
-        {
-            _statusLabel.Text = $"Failed to delete save: {ex.Message}";
-        }
-
-        RefreshSaveState();
+        var error = GetTree().ChangeSceneToFile(MainScenePath);
+        if (error == Error.Ok)
+            return true;
+        GameLaunchOptions.Mode = GameLaunchMode.Auto;
+        _statusLabel.Text = $"Could not open the game: {error}.";
+        if (IsInstanceValid(_saveLoadMenu))
+            _saveLoadMenu.ShowError(_statusLabel.Text);
+        GD.PushError(_statusLabel.Text);
+        return false;
     }
 
     private void OnQuitPressed()
@@ -154,30 +158,12 @@ public partial class StartScreen : Control
         _backgroundVolumeValue.Text = $"{Mathf.RoundToInt((float)value)}%";
     }
 
-    private void TryDeleteSaveSilently()
-    {
-        if (!Godot.FileAccess.FileExists(SaveFilePath))
-        {
-            return;
-        }
-
-        var absolutePath = ProjectSettings.GlobalizePath(SaveFilePath);
-        try
-        {
-            File.Delete(absolutePath);
-        }
-        catch
-        {
-            // Best effort; if delete fails, game still starts and can overwrite later.
-        }
-    }
-
     private void RefreshSaveState()
     {
         var hasSave = Godot.FileAccess.FileExists(SaveFilePath);
-        _saveExistsLabel.Text = hasSave ? "Save status: found" : "Save status: none";
-        _loadGameButton.Disabled = !hasSave;
-        _deleteSaveButton.Disabled = !hasSave;
+        var count = new SaveGameSlots().ListManualSaves().Count;
+        _saveExistsLabel.Text = $"Named saves: {count} / {SaveGameSlots.Limit}" + (hasSave ? "  |  Auto-Save available" : "");
+        _loadGameButton.Disabled = false;
     }
 
     private void ApplyFantasyMenuStyling()
@@ -190,7 +176,6 @@ public partial class StartScreen : Control
 
         TacticalTheme.ApplyButton(_newGameButton, true, 16);
         TacticalTheme.ApplyButton(_loadGameButton, true, 16);
-        TacticalTheme.ApplyButton(_deleteSaveButton, false, 16);
         TacticalTheme.ApplyButton(_savePathToggleButton, false, 16);
         TacticalTheme.ApplyButton(_settingsButton, false, 16);
         TacticalTheme.ApplyButton(_quitButton, false, 16);
@@ -234,7 +219,7 @@ public partial class StartScreen : Control
 
     private void SizeMainMenuButtons()
     {
-        var buttons = new[] { _newGameButton, _loadGameButton, _deleteSaveButton, _savePathToggleButton, _settingsButton, _quitButton };
+        var buttons = new[] { _newGameButton, _loadGameButton, _savePathToggleButton, _settingsButton, _quitButton };
         var widestButton = 0.0f;
         foreach (var button in buttons)
         {

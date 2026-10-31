@@ -11,7 +11,7 @@ Use this workflow to play Dark Dungeon Tactics through its running Godot game, r
 
 1. Use the Godot project at `godot/` in this workspace. Check whether its game window is already running before launching another instance.
 2. By default, start a **New Game**, not a saved game, unless the user explicitly asks to continue or load one.
-3. Before selecting New Game, check for the user save at `user://dark_dungeon_tactics_save.json`. The New Game handler deletes this file. Preserve an existing save with a separate backup before proceeding; do not discard or overwrite that backup.
+3. Before selecting New Game, check for the autosave at `user://dark_dungeon_tactics_save.json` and recovery checkpoint at `user://dark_dungeon_tactics_recovery.json`. Starting a new adventure replaces automatic progress. Preserve existing automatic saves with separate backups before proceeding; do not discard or overwrite those backups. Named saves in `user://saves/slot-01.json` through `slot-10.json` are not changed by New Game or autosaving.
 4. Capture the game screen after launch and confirm the current screen before sending input. Use Godot debug output to detect errors and verify scene changes.
 
 ## Observe and Control
@@ -33,5 +33,6 @@ Use this workflow to play Dark Dungeon Tactics through its running Godot game, r
 ## Persistence and Reporting
 
 - Do not press Save unless the user asks to save progress.
+- Utility Save opens the ten-slot card picker: select New Save and enter a name, or select an existing card to overwrite, then press Save. Overwriting requires confirmation. Both title-screen Load and Utility Load open the same load-only picker; select the requested card and press Load. Auto-Save is the only automatic card outside the ten named slots; the internal recovery checkpoint is available only through defeat recovery, not the Load picker. Cancel or Escape dismisses the picker without writing.
 - Report which game state was used (new or saved), what actions completed, and any blockers or errors. Distinguish visible observations from conclusions inferred from source code.
 - If an interaction is unavailable because the NPC is already recruited or absent, report that state and ask whether to continue elsewhere rather than treating a different character as the target.

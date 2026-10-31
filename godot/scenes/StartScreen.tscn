@@ -79,10 +79,6 @@ text = "New Game"
 layout_mode = 2
 text = "Load Game"
 
-[node name="DeleteSaveButton" type="Button" parent="CenterPanel/VBox/Buttons" unique_id=802654233]
-layout_mode = 2
-text = "Delete Save"
-
 [node name="SettingsButton" type="Button" parent="CenterPanel/VBox/Buttons"]
 layout_mode = 2
 text = "Settings"

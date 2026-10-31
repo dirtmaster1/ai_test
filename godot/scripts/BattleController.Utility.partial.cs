@@ -255,7 +255,7 @@ public partial class BattleController
         dialog.TreeExiting += HandleCanceled;
         try
         {
-            dialog.PopupCentered(new Vector2I(560, 220));
+            dialog.PopupCentered();
             return await completion.Task;
         }
         finally

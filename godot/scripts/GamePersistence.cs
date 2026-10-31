@@ -6,6 +6,7 @@ public sealed class GamePersistence
 {
     private readonly IGamePersistenceHost _host;
     private readonly string _saveFilePath;
+    public string LastError { get; private set; } = "";
 
     public GamePersistence(IGamePersistenceHost host, string saveFilePath)
     {
@@ -18,26 +19,44 @@ public sealed class GamePersistence
         TryPersistSaveGame();
     }
 
-    public bool TryPersistSaveGame()
+    public bool TryPersistSaveGame(string saveName = null)
     {
+        LastError = "";
         var saveData = BuildSaveData();
+        saveData["saved_at_utc"] = System.DateTimeOffset.UtcNow.ToString("O");
+        if (saveName != null)
+            saveData["save_name"] = saveName;
         var encoded = EncodeDictionaryForSave(saveData);
 
-        using var file = FileAccess.Open(_saveFilePath, FileAccess.ModeFlags.Write);
-        if (file == null)
+        var temporaryPath = _saveFilePath + ".tmp";
+        using (var file = FileAccess.Open(temporaryPath, FileAccess.ModeFlags.Write))
         {
-            GD.PushError($"Could not open save file '{_saveFilePath}' for writing: {FileAccess.GetOpenError()}.");
-            return false;
+            if (file == null)
+                return Fail($"Could not open save file '{temporaryPath}' for writing: {FileAccess.GetOpenError()}.");
+            file.StoreString(Json.Stringify(encoded));
+            file.Flush();
+            if (file.GetError() != Error.Ok)
+                return Fail($"Could not write save file '{temporaryPath}': {file.GetError()}.");
         }
 
-        file.StoreString(Json.Stringify(encoded));
-        if (file.GetError() != Error.Ok)
+        try
         {
-            GD.PushError($"Could not write save file '{_saveFilePath}': {file.GetError()}.");
-            return false;
+            System.IO.File.Move(ProjectSettings.GlobalizePath(temporaryPath),
+                ProjectSettings.GlobalizePath(_saveFilePath), true);
+        }
+        catch (System.Exception exception) when (exception is System.IO.IOException or System.UnauthorizedAccessException)
+        {
+            return Fail($"Could not replace save file '{_saveFilePath}': {exception.Message}");
         }
 
         return true;
+    }
+
+    private bool Fail(string error)
+    {
+        LastError = error;
+        GD.PushError(error);
+        return false;
     }
 
     public bool HasSaveGame()
@@ -47,24 +66,17 @@ public sealed class GamePersistence
 
     public bool TryLoadSaveGame(bool notifyStatus)
     {
+        LastError = "";
         if (!FileAccess.FileExists(_saveFilePath))
         {
+            LastError = "The selected save no longer exists.";
             return false;
         }
 
-        using var file = FileAccess.Open(_saveFilePath, FileAccess.ModeFlags.Read);
-        if (file == null)
-        {
-            return false;
-        }
+        if (!SaveGameSlots.TryRead(_saveFilePath, out var parsed, out var error))
+            return Fail(error);
 
-        var parsed = Json.ParseString(file.GetAsText());
-        if (parsed.VariantType != Variant.Type.Dictionary)
-        {
-            return false;
-        }
-
-        var decoded = DecodeDictionaryFromSave((Dictionary)parsed);
+        var decoded = DecodeDictionaryFromSave(parsed);
         ApplySaveData(decoded);
 
         return true;
