@@ -39,6 +39,8 @@ public interface IGamePersistenceHost
     void RestoreReserveRoster(Array<Dictionary> reserveRoster);
     Array<string> BuildRecruitedNpcIds();
     void RestoreRecruitedNpcIds(Array<string> recruitedNpcIds);
+    Array<Dictionary> BuildPendingLevelUpNotices();
+    void RestorePendingLevelUpNotices(Array<Dictionary> notices);
     Array<Dictionary> BuildUnitSnapshots();
     void ApplyUnitSnapshots(Array<Dictionary> snapshots);
     void RestoreFlowState(string flowStateToken);

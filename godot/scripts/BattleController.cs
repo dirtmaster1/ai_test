@@ -3906,13 +3906,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private static Dictionary BuildLevelUpNotice(Unit unit)
     {
+        var previousLevel = Mathf.Max(1, unit.Level - unit.UnallocatedStatPoints);
         return new Dictionary
         {
             { "unit_id", unit.UnitId },
             { "unit_name", unit.UnitName },
-            { "previous_level", unit.Level },
+            { "previous_level", previousLevel },
             { "level", unit.Level },
-            { "levels_gained", 0 },
+            { "levels_gained", unit.Level - previousLevel },
             { "max_hp_gain", 0 },
             { "max_mp_gain", 0 },
             { "mp_regen_gain", 0 },
@@ -3924,6 +3925,67 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             { "intelligence", unit.Intelligence },
             { "wisdom", unit.Wisdom }
         };
+    }
+
+    private static void UpdateLevelUpNoticeFromUnit(Dictionary notice, Unit unit)
+    {
+        notice["unit_id"] = unit.UnitId;
+        notice["unit_name"] = unit.UnitName;
+        notice["level"] = unit.Level;
+        notice["unallocated_stat_points"] = unit.UnallocatedStatPoints;
+        notice["strength"] = unit.Strength;
+        notice["dexterity"] = unit.Dexterity;
+        notice["constitution"] = unit.Constitution;
+        notice["intelligence"] = unit.Intelligence;
+        notice["wisdom"] = unit.Wisdom;
+    }
+
+    private Array<Dictionary> BuildPendingLevelUpNoticesSnapshot()
+    {
+        var notices = new Array<Dictionary>();
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.UnallocatedStatPoints <= 0)
+            {
+                continue;
+            }
+
+            var notice = _pendingLevelUpNoticesByUnitId.TryGetValue(unit.UnitId, out var pendingNotice)
+                ? CopyDictionary(pendingNotice)
+                : BuildLevelUpNotice(unit);
+            UpdateLevelUpNoticeFromUnit(notice, unit);
+            notices.Add(notice);
+        }
+
+        return notices;
+    }
+
+    private void RestorePendingLevelUpNotices(Array<Dictionary> notices)
+    {
+        _pendingLevelUpNoticesByUnitId.Clear();
+        foreach (var savedNotice in notices)
+        {
+            var unitId = GetString(savedNotice, "unit_id", "");
+            var unit = FindUnitById(unitId);
+            if (!IsUsableUnit(unit) || unit.Team != "player" || unit.UnallocatedStatPoints <= 0)
+            {
+                continue;
+            }
+
+            var notice = CopyDictionary(savedNotice);
+            UpdateLevelUpNoticeFromUnit(notice, unit);
+            _pendingLevelUpNoticesByUnitId[unitId] = notice;
+        }
+
+        foreach (var unit in _playerUnits)
+        {
+            if (IsUsableUnit(unit)
+                && unit.UnallocatedStatPoints > 0
+                && !_pendingLevelUpNoticesByUnitId.ContainsKey(unit.UnitId))
+            {
+                _pendingLevelUpNoticesByUnitId[unit.UnitId] = BuildLevelUpNotice(unit);
+            }
+        }
     }
 
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)
@@ -10143,6 +10205,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     void IGamePersistenceHost.RestoreReserveRoster(Array<Dictionary> reserveRoster) => RestoreReserveRosterSnapshot(reserveRoster);
     Array<string> IGamePersistenceHost.BuildRecruitedNpcIds() => BuildRecruitedNpcIdSnapshot();
     void IGamePersistenceHost.RestoreRecruitedNpcIds(Array<string> recruitedNpcIds) => RestoreRecruitedNpcIdSnapshot(recruitedNpcIds);
+    Array<Dictionary> IGamePersistenceHost.BuildPendingLevelUpNotices() => BuildPendingLevelUpNoticesSnapshot();
+    void IGamePersistenceHost.RestorePendingLevelUpNotices(Array<Dictionary> notices) => RestorePendingLevelUpNotices(notices);
 
     Array<Dictionary> IGamePersistenceHost.BuildUnitSnapshots()
     {

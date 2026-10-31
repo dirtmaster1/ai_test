@@ -8,6 +8,16 @@ func _initialize() -> void:
 func run_test() -> void:
     var checks = load("res://tests/ActionFeedbackChecks.cs").new()
     root.add_child(checks)
+    if OS.get_cmdline_user_args().has("--level-up-persistence-only"):
+        var persistence_failures = checks.call("RunLevelUpPersistenceChecks")
+        for failure in persistence_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if persistence_failures.is_empty():
+            print("PASS: pending level-up notices and remaining stat points survive save/load")
+        quit(0 if persistence_failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--level-up-only"):
         await check_level_up(checks, true)
         var level_up_failures = checks.call("GetFailures")

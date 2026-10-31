@@ -67,6 +67,82 @@ public partial class ActionFeedbackChecks : BattleController
         return _failures;
     }
 
+    public Array<string> RunLevelUpPersistenceChecks()
+    {
+        SetupFixture();
+        Reset(exploration: true);
+
+        var previousMaxHitPoints = _actor.MaxHitPoints;
+        var previousMaxMagicPoints = _actor.MaxMagicPoints;
+        var previousMagicRegen = _actor.MagicPointRegenPerTurn;
+        var previousActionPoints = _actor.ActionPoints;
+        var levelsGained = _actor.GrantExperience(700);
+        Call(
+            "RecordLevelUpNotice",
+            _actor,
+            1,
+            levelsGained,
+            _actor.MaxHitPoints - previousMaxHitPoints,
+            _actor.MaxMagicPoints - previousMaxMagicPoints,
+            _actor.MagicPointRegenPerTurn - previousMagicRegen,
+            _actor.ActionPoints - previousActionPoints);
+
+        var buildSaveData = typeof(GamePersistence).GetMethod(
+            "BuildSaveData",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var saveData = (Dictionary)buildSaveData.Invoke(Field<GamePersistence>("_persistence"), null);
+        var savedNotices = new Array<Dictionary>();
+        var savedNoticesValue = (Variant)saveData["pending_level_up_notices"];
+        foreach (var entry in (Godot.Collections.Array)savedNoticesValue)
+        {
+            savedNotices.Add((Dictionary)(Variant)entry);
+        }
+
+        Check(savedNotices.Count == 1
+            && ((Variant)savedNotices[0]["previous_level"]).AsInt32() == 1
+            && ((Variant)savedNotices[0]["level"]).AsInt32() == 4
+            && ((Variant)savedNotices[0]["unallocated_stat_points"]).AsInt32() == 3,
+            "Save data must preserve the pending level transition and all unspent stat points.");
+
+        Field<System.Collections.Generic.Dictionary<string, Dictionary>>("_pendingLevelUpNoticesByUnitId").Clear();
+        ((IGamePersistenceHost)this).RestorePendingLevelUpNotices(savedNotices);
+        Call("OnHudLevelUpRequested", _actor.UnitId);
+        var overlay = _testHud.GetNode<Control>("LevelUpOverlay");
+        var advancement = (Label)overlay.FindChildren("LevelUpAdvancementText", "Label", true, false)[0];
+        var prompt = (Label)overlay.FindChildren("LevelUpAllocationPrompt", "Label", true, false)[0];
+        Check(advancement.Text == "Thou hast advanced from level 1 to 4!"
+            && prompt.Text.Contains("Points remaining: 3", StringComparison.Ordinal),
+            "Restored level-up UI must show the saved level range and all three remaining points.");
+
+        Call("OnHudLevelUpStatSelected", _actor.UnitId, "strength");
+        var partialSaveData = (Dictionary)buildSaveData.Invoke(Field<GamePersistence>("_persistence"), null);
+        var partialNotices = new Array<Dictionary>();
+        foreach (var entry in (Godot.Collections.Array)(Variant)partialSaveData["pending_level_up_notices"])
+        {
+            partialNotices.Add((Dictionary)(Variant)entry);
+        }
+
+        Field<System.Collections.Generic.Dictionary<string, Dictionary>>("_pendingLevelUpNoticesByUnitId").Clear();
+        ((IGamePersistenceHost)this).RestorePendingLevelUpNotices(partialNotices);
+        var restoredNotice = Field<System.Collections.Generic.Dictionary<string, Dictionary>>("_pendingLevelUpNoticesByUnitId")[_actor.UnitId];
+        Check(_actor.UnallocatedStatPoints == 2
+            && ((Variant)restoredNotice["previous_level"]).AsInt32() == 1
+            && ((Variant)restoredNotice["unallocated_stat_points"]).AsInt32() == 2,
+            "Saving after a partial allocation must preserve the original level transition and remaining count.");
+
+        Call("OnHudLevelUpStatSelected", _actor.UnitId, "wisdom");
+        Call("OnHudLevelUpStatSelected", _actor.UnitId, "dexterity");
+        var strengthAfterSpending = _actor.Strength;
+        Call("OnHudLevelUpStatSelected", _actor.UnitId, "strength");
+        Check(_actor.UnallocatedStatPoints == 0
+            && !((Array<string>)Call("BuildPendingLevelUpUnitIds")).Contains(_actor.UnitId)
+            && _actor.Strength == strengthAfterSpending,
+            "The level-up badge must disappear at zero points and further selections must not grant stats.");
+
+        Cleanup();
+        return _failures;
+    }
+
     public Array<string> Run()
     {
         SetupFixture();

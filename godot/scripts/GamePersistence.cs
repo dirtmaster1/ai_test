@@ -155,6 +155,7 @@ public sealed class GamePersistence
         var partyRoster = _host.BuildPartyRoster();
         var reserveRoster = _host.BuildReserveRoster();
         var recruitedNpcIds = _host.BuildRecruitedNpcIds();
+        var pendingLevelUpNotices = _host.BuildPendingLevelUpNotices();
         var triggeredEventIds = new Array<string>();
         foreach (var eventId in _host.TriggeredEventIds)
         {
@@ -191,6 +192,7 @@ public sealed class GamePersistence
             { "party_roster", partyRoster },
             { "reserve_roster", reserveRoster },
             { "recruited_npc_ids", recruitedNpcIds },
+            { "pending_level_up_notices", pendingLevelUpNotices },
             { "unit_snapshots", unitSnapshots },
         };
     }
@@ -254,6 +256,7 @@ public sealed class GamePersistence
         RestoreEquippedItemsByUnit(GetDictionary(saveData, "equipped_items_by_unit_id"));
 
         _host.ApplyUnitSnapshots(GetDictionaryArray(saveData, "unit_snapshots"));
+        _host.RestorePendingLevelUpNotices(GetDictionaryArray(saveData, "pending_level_up_notices"));
 
         var explorerId = GetString(saveData, "explorer_unit_id", "");
         _host.SetExplorerUnitById(explorerId);
