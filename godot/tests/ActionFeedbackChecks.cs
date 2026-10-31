@@ -207,6 +207,28 @@ public partial class ActionFeedbackChecks : BattleController
 
         Reset();
         _log.Clear();
+        _testHud.AddCombatLogEntry(
+            "Vaelis ManyShot hits Giant Rat for 6. Giant Rat is defeated.",
+            HudController.CombatLogEntryType.PhysicalAttack);
+        Check(_log.ItemCount >= 2
+            && _log.GetItemText(_log.ItemCount - 1) == "Giant Rat is defeated.",
+            "Separate combat-log statements must appear on separate lines.");
+
+        Reset();
+        _log.Clear();
+        var rewardEnemy = Config("enemy", "enemy", new Vector2I(5, 2));
+        rewardEnemy["experience"] = 1000;
+        _enemy.Setup(rewardEnemy);
+        var experienceSummary = (string)Call("AwardExperienceForDefeat", _actor, _enemy);
+        _testHud.AddCombatLogEntry(experienceSummary);
+        Check(_log.ItemCount == 3
+            && _log.GetItemText(0) == "Each living party member gains 1000 XP."
+            && _log.GetItemText(1) == "Level up: caster to level 4."
+            && _log.GetItemText(2) == "Level up: ally to level 4.",
+            "XP rewards and each party member's level-up must be logged separately.");
+
+        Reset();
+        _log.Clear();
         const string repeatedEvent = "Enemy hits caster for 4.";
         _testHud.AddCombatLogEntry(repeatedEvent);
         _testHud.AddCombatLogEntry(repeatedEvent);

@@ -3912,7 +3912,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var levelsGained = unit.GrantExperience(xpReward);
             if (levelsGained > 0)
             {
-                levelUpNames.Add($"{unit.UnitName} to level {unit.Level}");
+                levelUpNames.Add($"Level up: {unit.UnitName} to level {unit.Level}");
                 RecordLevelUpNotice(
                     unit,
                     previousLevel,
@@ -3927,7 +3927,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (levelUpNames.Count > 0)
         {
-            return $"Each living party member gains {xpReward} XP. Level up: {string.Join(", ", levelUpNames)}!";
+            return $"Each living party member gains {xpReward} XP. {string.Join(". ", levelUpNames)}.";
         }
 
         return $"Each living party member gains {xpReward} XP.";

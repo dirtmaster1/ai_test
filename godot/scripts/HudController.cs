@@ -4247,10 +4247,14 @@ public partial class HudController : Control
         }
 
         var color = GetCombatLogEntryColor(entryType);
-        foreach (var wrappedLine in WrapCombatLogText(text))
+        foreach (var statement in SplitCombatLogStatements(text))
         {
-            _combatLog.AddItem(wrappedLine);
-            _combatLog.SetItemCustomFgColor(_combatLog.ItemCount - 1, color);
+            foreach (var wrappedLine in WrapCombatLogText(statement))
+            {
+                _combatLog.AddItem(wrappedLine);
+                _combatLog.SetItemCustomFgColor(_combatLog.ItemCount - 1, color);
+                _combatLog.SetItemTooltip(_combatLog.ItemCount - 1, "");
+            }
         }
 
         while (_combatLog.ItemCount > MaxLogEntries)
@@ -4260,6 +4264,48 @@ public partial class HudController : Control
 
         _combatLog.Select(_combatLog.ItemCount - 1);
         _combatLog.EnsureCurrentIsVisible();
+    }
+
+    private static IEnumerable<string> SplitCombatLogStatements(string text)
+    {
+        foreach (var sourceLine in text.Replace("\r", "").Split('\n'))
+        {
+            if (string.IsNullOrEmpty(sourceLine))
+            {
+                yield return "";
+                continue;
+            }
+
+            var statementStart = 0;
+            for (var index = 0; index < sourceLine.Length; index++)
+            {
+                var character = sourceLine[index];
+                if ((character != '.' && character != '!' && character != '?' && character != ';')
+                    || index + 1 >= sourceLine.Length
+                    || !char.IsWhiteSpace(sourceLine[index + 1]))
+                {
+                    continue;
+                }
+
+                var statement = sourceLine[statementStart..(index + 1)].Trim();
+                if (!string.IsNullOrEmpty(statement))
+                {
+                    yield return statement;
+                }
+
+                while (index + 1 < sourceLine.Length && char.IsWhiteSpace(sourceLine[index + 1]))
+                {
+                    index++;
+                }
+                statementStart = index + 1;
+            }
+
+            var remainingStatement = sourceLine[statementStart..].Trim();
+            if (!string.IsNullOrEmpty(remainingStatement))
+            {
+                yield return remainingStatement;
+            }
+        }
     }
 
     private static Color GetCombatLogEntryColor(CombatLogEntryType entryType) => entryType switch
