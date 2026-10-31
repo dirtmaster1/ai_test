@@ -247,8 +247,9 @@ public partial class SaveLoadMenu : CanvasLayer
         var previewWidth = memberCount == 0
             ? 0.0f
             : memberCount * PartyPreviewCellWidth + (memberCount - 1) * PartyPreviewSpacing;
-        var actionWidth = previewWidth + (delete == null ? 0.0f : DeleteButtonWidth)
-            + (memberCount > 0 && delete != null ? CardActionSpacing : 0.0f);
+        var reserveDeleteSpace = delete != null || memberCount > 0;
+        var actionWidth = previewWidth + (reserveDeleteSpace ? DeleteButtonWidth : 0.0f)
+            + (memberCount > 0 && reserveDeleteSpace ? CardActionSpacing : 0.0f);
         text.OffsetRight = -(actionWidth + 26.0f);
         var actions = new HBoxContainer
         {
@@ -318,6 +319,12 @@ public partial class SaveLoadMenu : CanvasLayer
 
         if (delete != null)
             actions.AddChild(delete);
+        else if (memberCount > 0)
+            actions.AddChild(new Control
+            {
+                CustomMinimumSize = new Vector2(DeleteButtonWidth, 0.0f),
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            });
     }
 
     private VBoxContainer AddCard(string nodeName, string title, string map, string detail, bool disabled, Action select)

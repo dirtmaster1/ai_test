@@ -373,13 +373,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var viewportSize = GetViewportRect().Size;
         DrawRect(
             new Rect2(Vector2.Zero, viewportSize),
-            new Color(0.05f, 0.05f, 0.06f),
+            Colors.Black,
             true
         );
 
         DrawRect(
             new Rect2(Vector2.Zero, new Vector2(_gridWidth * CellSize, _gridHeight * CellSize)),
-            new Color(0.08f, 0.08f, 0.1f),
+            Colors.Black,
             true
         );
 
@@ -389,7 +389,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             DrawLine(
                 new Vector2(lineX, 0),
                 new Vector2(lineX, _gridHeight * CellSize),
-                new Color(0.2f, 0.2f, 0.24f),
+                Colors.Black,
                 GridLineThickness
             );
         }
@@ -400,7 +400,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             DrawLine(
                 new Vector2(0, lineY),
                 new Vector2(_gridWidth * CellSize, lineY),
-                new Color(0.2f, 0.2f, 0.24f),
+                Colors.Black,
                 GridLineThickness
             );
         }

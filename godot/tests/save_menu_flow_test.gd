@@ -156,6 +156,11 @@ func check_auto_save_card(manual_count: int) -> void:
                 and portrait.mouse_filter == Control.MOUSE_FILTER_IGNORE
                 and portrait.tooltip_text.is_empty(),
                 "Each Auto-Save party portrait must display its level without hover behavior.")
+        if manual_count > 0:
+            var manual_preview = find("SaveCard_1").find_child("PartyPreview", true, false)
+            check(manual_preview != null
+                and abs(party_preview.get_global_rect().end.x - manual_preview.get_global_rect().end.x) < 1.0,
+                "Auto-Save party portraits must line up with manual save portraits despite having no delete button.")
 
 
 func return_to_main_menu() -> void:
