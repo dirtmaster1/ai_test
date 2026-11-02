@@ -428,7 +428,7 @@
 	  "id": "mages-amulet",
 	  "name": "Mage's Amulet",
 	  "type": "armor",
-	  "slot": "head",
+	  "slot": "neck",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
 	  "bonus_magic_point_regen": 2,
@@ -465,7 +465,7 @@
 	  "type": "scroll",
 	  "slot": "none",
 	  "description": "Teaches the Blessing spell. The scroll is consumed when learned.",
-	  "icon_id": "blessing",
+	  "icon_id": "blessing-scroll",
 	  "allowed_classes": [
 		"cleric",
 		"healer"

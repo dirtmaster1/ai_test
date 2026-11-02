@@ -340,6 +340,18 @@ public partial class ActionFeedbackChecks : BattleController
             ["healers-circlet"] = new(0, 3),
             ["mages-amulet"] = new(1, 3),
             ["boots-of-speed"] = new(6, 3),
+            ["ranger-cloak"] = new(6, 9),
+            ["copper-ring"] = new(2, 7),
+            ["silver-ring"] = new(3, 7),
+            ["silverleaf-pendant"] = new(4, 7),
+            ["trailblazer-leggings"] = new(5, 7),
+            ["blessing-scroll"] = new(6, 7),
+            ["web-scroll"] = new(0, 9),
+            ["greater-heal-scroll"] = new(1, 9),
+            ["lightning-bolt-scroll"] = new(2, 9),
+            ["identify-scroll"] = new(3, 9),
+            ["teleport-scroll"] = new(4, 9),
+            ["iron-ring"] = new(5, 9),
             ["healing-potion"] = new(0, 7),
             ["magic-potion"] = new(1, 7),
             ["gold"] = new(0, 8),
@@ -366,8 +378,8 @@ public partial class ActionFeedbackChecks : BattleController
             Check(icon != null && icon.Region == expectedRegion,
                 $"{entry.Key} must use its assigned 32px atlas cell");
             if (icon == null) continue;
-            Check(icon.Atlas.GetWidth() == 224 && icon.Atlas.GetHeight() == 288,
-                "Extended icon atlas must retain seven columns and add two rows");
+            Check(icon.Atlas.GetWidth() == 224 && icon.Atlas.GetHeight() == 320,
+                "Extended icon atlas must retain seven columns and contain ten rows");
             using var image = icon.Atlas.GetImage();
             using var cell = image.GetRegion(new Rect2I(entry.Value * 32, new Vector2I(32, 32)));
             Check(!cell.IsInvisible(), $"{entry.Key} atlas cell must contain visible artwork");
