@@ -51,6 +51,14 @@ public partial class ActionFeedbackChecks : BattleController
         return _failures;
     }
 
+    public Array<string> RunTeleportChecks()
+    {
+        SetupFixture();
+        CheckRequestedItemsAndTeleport();
+        Cleanup();
+        return _failures;
+    }
+
     public Array<string> RunKeyboardRepeatChecks()
     {
         SetupFixture();
@@ -153,6 +161,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckAbilityTray();
         CheckResources();
         CheckEquipmentStatBonuses();
+        CheckRequestedItemsAndTeleport();
         CheckActionPointsAndLevelUp();
         CheckTargets();
         CheckUtilities();
@@ -354,6 +363,15 @@ public partial class ActionFeedbackChecks : BattleController
             ["iron-ring"] = new(5, 9),
             ["healing-potion"] = new(0, 7),
             ["magic-potion"] = new(1, 7),
+            ["spear"] = new(3, 0),
+            ["one-handed-axe"] = new(5, 0),
+            ["broad-sword"] = new(0, 1),
+            ["one-handed-mace"] = new(3, 1),
+            ["metal-shield"] = new(1, 2),
+            ["leather-helm"] = new(5, 2),
+            ["full-plate-armor"] = new(6, 2),
+            ["plate-mail"] = new(3, 3),
+            ["teleport"] = new(2, 5),
             ["gold"] = new(0, 8),
             ["rusty-key"] = new(1, 8),
             ["pick-lock"] = new(2, 8),
@@ -446,6 +464,93 @@ public partial class ActionFeedbackChecks : BattleController
         Check(miloStock.Contains("boots-of-speed")
             && (int)Call("GetItemBuyPrice", "milo", "boots-of-speed") == 150,
             "Milo's stock must include Boots of Speed for 150 gold.");
+    }
+
+    private void CheckRequestedItemsAndTeleport()
+    {
+        var gameData = Field<GameData>("_gameData");
+        var itemIds = new[]
+        {
+            "iron-ring", "spear", "one-handed-axe", "broad-sword", "one-handed-mace",
+            "metal-shield", "leather-helm", "full-plate-armor", "plate-mail",
+            "web-scroll", "greater-heal-scroll", "lightning-bolt-scroll", "identify-scroll", "teleport-scroll"
+        };
+        foreach (var itemId in itemIds)
+        {
+            Check(gameData.GetItem(itemId).Count > 0, $"Game data must contain the {itemId} item.");
+        }
+
+        var expectedScrollSpells = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["web-scroll"] = "web",
+            ["greater-heal-scroll"] = "greater-heal",
+            ["lightning-bolt-scroll"] = "lightning-bolt",
+            ["identify-scroll"] = "identify",
+            ["teleport-scroll"] = "teleport"
+        };
+        foreach (var entry in expectedScrollSpells)
+        {
+            var scroll = gameData.GetItem(entry.Key);
+            var useEffect = (Dictionary)scroll["use_effect"];
+            Check(ReadString(useEffect, "type", "") == "learn_spell"
+                && ReadString(useEffect, "spell_id", "") == entry.Value
+                && ReadBool(scroll, "consumed_on_use", false),
+                $"{entry.Key} must teach {entry.Value} and be consumed on use.");
+        }
+
+        var ironRing = gameData.GetItem("iron-ring");
+        Check(ReadInt(ironRing, "bonus_armor_class", 0) == 1,
+            "Iron Ring must grant +1 armor class.");
+        Reset();
+        var baseArmorClass = _actor.ArmorClass;
+        Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId")[_actor.UnitId]
+            = new System.Collections.Generic.Dictionary<string, string> { ["ring"] = "iron-ring" };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.ArmorClass == baseArmorClass + 1,
+            "Equipping Iron Ring must increase armor class by 1.");
+
+        var teleport = gameData.GetSpell("teleport");
+        Check(ReadInt(teleport, "range", 0) == 6
+            && ReadInt(teleport, "destination_range", 0) == 5
+            && ReadInt(teleport, "mp_cost", 0) == 8
+            && ReadInt(teleport, "cooldown", 0) == 2,
+            "Teleport must have the requested target range, destination range, MP cost, and cooldown.");
+
+        Reset();
+        ConfigureActor("wizard", "teleport", "melee");
+        Check((bool)Call("IsValidTeleportTarget", _actor, _ally, _ally.GridPos, 6),
+            "Teleport may target a living ally as well as an enemy.");
+        Call("OnHudAbilityPressed", "teleport");
+        var profile = Call("ResolveActionProfile", _actor, "teleport");
+        var firstPrompt = Call("BuildActionTargetingHelpText", profile, 1).ToString();
+        var secondPrompt = Call("BuildActionTargetingHelpText", profile, 2).ToString();
+        Check(Field<bool>("_awaitingPlayerAttackDirection")
+            && firstPrompt.Contains("visible living unit")
+            && secondPrompt.Contains("destination tile"),
+            "Teleport must enter targeting mode with separate unit and destination instructions.");
+
+        var startingMana = _actor.MagicPoints;
+        var destination = new Vector2I(6, 3);
+        Call("TryResolvePlayerActionAtCell", _actor, _enemy.GridPos);
+        Check(Field<bool>("_awaitingTeleportDestination")
+            && Field<Unit>("_teleportTarget") == _enemy
+            && _actor.MagicPoints == startingMana
+            && !_actor.HasUsedAbilityThisTurn,
+            "Selecting a living target must start destination targeting without spending resources.");
+        Call("TryResolvePlayerActionAtCell", _actor, destination);
+        Check(_enemy.GridPos == destination
+            && _actor.MagicPoints == startingMana - 8
+            && _actor.GetAbilityCooldownRemaining("teleport") == 2
+            && _actor.HasUsedAbilityThisTurn
+            && !Field<bool>("_awaitingTeleportDestination")
+            && Field<Unit>("_teleportTarget") == null,
+            "Completing Teleport must move the selected unit, spend 8 MP, set its cooldown, and clear targeting.");
+
+        Reset();
+        ConfigureActor("cleric", "teleport", "melee");
+        Check(Call("GetActionFailureReason", _actor, Call("ResolveActionProfile", _actor, "teleport"))
+            .ToString().Contains("must be a wizard"),
+            "Teleport must be restricted to wizards.");
     }
 
     private void CheckConsumableActionBarIcons()
@@ -894,7 +999,9 @@ public partial class ActionFeedbackChecks : BattleController
         _door["is_open"] = false;
         Set("_awaitingPlayerAttackDirection", false);
         Set("_awaitingShadowStrikeAttack", false);
+        Set("_awaitingTeleportDestination", false);
         Set("_awaitingItemIdentifyTarget", false);
+        Set("_teleportTarget", null);
         Set("_shadowStrikeDestination", new Vector2I(-1, -1));
         Field<HashSet<string>>("_identifiedItemIds").Clear();
         Set("_mouseMoveInputLockedUntilMs", 0UL);

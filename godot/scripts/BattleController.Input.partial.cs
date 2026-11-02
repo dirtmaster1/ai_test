@@ -121,7 +121,9 @@ public partial class BattleController
             {
                 _awaitingPlayerAttackDirection = false;
                 _awaitingShadowStrikeAttack = false;
+                _awaitingTeleportDestination = false;
                 _awaitingItemIdentifyTarget = false;
+                _teleportTarget = null;
                 _shadowStrikeDestination = new Vector2I(-1, -1);
                 ClearMovementPreviewPath();
                 QueueRedraw();
@@ -189,6 +191,8 @@ public partial class BattleController
 
             _awaitingPlayerAttackDirection = true;
             _awaitingShadowStrikeAttack = false;
+            _awaitingTeleportDestination = false;
+            _teleportTarget = null;
             _shadowStrikeDestination = new Vector2I(-1, -1);
             SetSelectedAbilityId(active, selectedAbilityId);
             if (actionProfile.ActionType == "shadow_strike")
@@ -203,6 +207,10 @@ public partial class BattleController
                 }
             }
             else if (actionProfile.ActionType is "web" or "lightning_bolt" or "rain_of_arrows")
+            {
+                ShowActionTargetingPrompt(actionProfile, 1);
+            }
+            else if (actionProfile.ActionType == "teleport")
             {
                 ShowActionTargetingPrompt(actionProfile, 1);
             }

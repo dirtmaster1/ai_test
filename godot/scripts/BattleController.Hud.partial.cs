@@ -138,6 +138,19 @@ public partial class BattleController
             if (activePlayer != null)
             {
                 var profile = ResolveActionProfile(activePlayer, GetSelectedAbilityId(activePlayer));
+                if (profile.ActionType == "teleport")
+                {
+                    var prompt = BuildActionTargetingHelpText(profile, _awaitingTeleportDestination ? 2 : 1);
+                    if (!string.IsNullOrEmpty(prompt))
+                    {
+                        return prompt;
+                    }
+
+                    return _awaitingTeleportDestination
+                        ? "Teleport: select a visible unoccupied destination within 5 tiles of the caster. Press Esc to cancel."
+                        : "Teleport: select a visible living unit within 6 tiles. Press Esc to cancel.";
+                }
+
                 if (profile.ActionType == "shadow_strike")
                 {
                     var prompt = BuildActionTargetingHelpText(profile, _awaitingShadowStrikeAttack ? 2 : 1);

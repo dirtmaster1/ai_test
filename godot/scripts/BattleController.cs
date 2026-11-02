@@ -76,7 +76,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly List<string> _partyInventoryItemIds = new();
     private readonly HashSet<string> _identifiedItemIds = new(System.StringComparer.Ordinal);
     private bool _awaitingShadowStrikeAttack;
+    private bool _awaitingTeleportDestination;
     private bool _awaitingItemIdentifyTarget;
+    private Unit _teleportTarget;
     private Vector2I _shadowStrikeDestination = new(-1, -1);
     private readonly Array<Dictionary> _reservePartyRoster = new();
     private readonly System.Collections.Generic.Dictionary<string, int> _vendorGoldById = new();
@@ -445,7 +447,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mouseMoveInputLockedUntilMs = 0;
         _awaitingPlayerAttackDirection = false;
         _awaitingShadowStrikeAttack = false;
+        _awaitingTeleportDestination = false;
         _awaitingItemIdentifyTarget = false;
+        _teleportTarget = null;
         _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         QueueRedraw();
@@ -708,6 +712,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _awaitingPlayerAttackDirection = true;
         _awaitingShadowStrikeAttack = false;
+        _awaitingTeleportDestination = false;
+        _teleportTarget = null;
         _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         SyncHudFromGameState();
@@ -733,6 +739,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             ShowActionTargetingPrompt(actionProfile, 1);
         }
+        else if (actionProfile.ActionType == "teleport")
+        {
+            ShowActionTargetingPrompt(actionProfile, 1);
+        }
         QueueRedraw();
     }
 
@@ -753,7 +763,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             _awaitingPlayerAttackDirection = false;
             _awaitingShadowStrikeAttack = false;
+            _awaitingTeleportDestination = false;
             _awaitingItemIdentifyTarget = false;
+            _teleportTarget = null;
             _shadowStrikeDestination = new Vector2I(-1, -1);
             ClearMovementPreviewPath();
             QueueRedraw();
@@ -1379,6 +1391,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         _awaitingItemIdentifyTarget = true;
         _awaitingShadowStrikeAttack = false;
+        _awaitingTeleportDestination = false;
+        _teleportTarget = null;
         _shadowStrikeDestination = new Vector2I(-1, -1);
         _awaitingPlayerAttackDirection = true;
         _hud?.SetInventoryVisible(true);
@@ -1607,6 +1621,24 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             CancelAttackMode(false);
             ApplyActionResult(ResolveSuccessfulAction("attack"));
+            BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
+        if (actionProfile.ActionType == "teleport")
+        {
+            if (!TryUseTeleportAtCell(active, targetCell, actionProfile))
+            {
+                return;
+            }
+
+            if (_awaitingTeleportDestination)
+            {
+                return;
+            }
+
+            CancelAttackMode(false);
+            ApplyActionResult(ResolveSuccessfulAction(actionProfile.ActionType));
             BeginPostPlayerActionMouseMoveLock();
             return;
         }
@@ -2585,6 +2617,98 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _awaitingShadowStrikeAttack = false;
         _shadowStrikeDestination = new Vector2I(-1, -1);
         return true;
+    }
+
+    private bool TryUseTeleportAtCell(Unit caster, Vector2I targetCell, ActionProfile actionProfile)
+    {
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat)
+        {
+            return false;
+        }
+
+        if (!CanUseActionProfileNow(caster, actionProfile))
+        {
+            RejectPlayerAction(GetActionFailureReason(caster, actionProfile));
+            return false;
+        }
+
+        if (!_awaitingTeleportDestination)
+        {
+            var target = GetLivingUnitAtCell(targetCell);
+            if (!IsValidTeleportTarget(caster, target, targetCell, actionProfile.Range))
+            {
+                return RejectPlayerAction($"Select a visible living unit within {actionProfile.Range} tiles.");
+            }
+
+            _teleportTarget = target;
+            _awaitingTeleportDestination = true;
+            ShowActionTargetingPrompt(actionProfile, 2);
+            QueueRedraw();
+            return true;
+        }
+
+        var teleportTarget = _teleportTarget;
+        var destinationRange = GetTeleportDestinationRange(actionProfile);
+        if (!IsUsableUnit(teleportTarget) || teleportTarget.IsDead
+            || !IsValidTeleportDestination(caster, teleportTarget, targetCell, destinationRange))
+        {
+            return RejectPlayerAction(
+                $"Select a visible unoccupied tile within {destinationRange} tiles of the caster.");
+        }
+
+        if (!caster.TrySpendMagicPoints(actionProfile.MagicPointCost))
+        {
+            return RejectPlayerAction($"Not enough MP to cast {actionProfile.ActionName}.");
+        }
+
+        var fromCell = teleportTarget.GridPos;
+        if (!TryMoveUnit(teleportTarget, targetCell))
+        {
+            caster.RestoreMagicPoints(actionProfile.MagicPointCost);
+            return RejectPlayerAction("That destination cannot be reached.");
+        }
+
+        caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(CellCenter(fromCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT");
+        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT");
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, teleportTarget.UnitId);
+        _hud?.AddCombatLogEntry(
+            $"{caster.UnitName} casts Teleport, moving {teleportTarget.UnitName} from {fromCell} to {targetCell}." +
+            $" (MP -{actionProfile.MagicPointCost}) Cooldown: {actionProfile.CooldownTurns} turns.",
+            CombatLogEntryType.Buff);
+        _awaitingTeleportDestination = false;
+        _teleportTarget = null;
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
+    private bool IsValidTeleportTarget(Unit caster, Unit target, Vector2I targetCell, int maxRange)
+    {
+        return IsUsableUnit(caster)
+            && IsUsableUnit(target)
+            && !target.IsDead
+            && target.OccupiesCell(targetCell)
+            && caster.DistanceToUnitAt(caster.GridPos, target) <= maxRange
+            && IsFogCellCurrentlyVisible(targetCell)
+            && HasClearUnitLineOfSight(caster, target);
+    }
+
+    private bool IsValidTeleportDestination(Unit caster, Unit target, Vector2I destinationCell, int maxRange)
+    {
+        return IsUsableUnit(caster)
+            && IsUsableUnit(target)
+            && !target.IsDead
+            && destinationCell != target.GridPos
+            && IsInBounds(destinationCell)
+            && Unit.IsWithinRange(caster.GridPos, destinationCell, maxRange)
+            && IsFogCellCurrentlyVisible(destinationCell)
+            && CanUnitStandAt(target, destinationCell);
+    }
+
+    private int GetTeleportDestinationRange(ActionProfile actionProfile)
+    {
+        return Mathf.Max(1, GetInt(GetActionData(actionProfile.ActionId, out _), "destination_range", 5));
     }
 
     private async Task<bool> TryUseChargeAsync(Unit attacker, Vector2I targetCell, ActionProfile actionProfile)
@@ -5466,7 +5590,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     {
         _awaitingPlayerAttackDirection = false;
         _awaitingShadowStrikeAttack = false;
+        _awaitingTeleportDestination = false;
         _awaitingItemIdentifyTarget = false;
+        _teleportTarget = null;
         _shadowStrikeDestination = new Vector2I(-1, -1);
         ClearMovementPreviewPath();
         QueueRedraw();
@@ -5509,12 +5635,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var previewRange = actionProfile.ActionType == "shadow_strike" && _awaitingShadowStrikeAttack
             ? 1
-            : actionProfile.Range;
+            : actionProfile.ActionType == "teleport" && _awaitingTeleportDestination
+                ? GetTeleportDestinationRange(actionProfile)
+                : actionProfile.Range;
         for (var dx = -previewRange; dx <= previewRange; dx++)
         {
             for (var dy = -previewRange; dy <= previewRange; dy++)
             {
-                if (dx == 0 && dy == 0)
+                if (dx == 0 && dy == 0
+                    && (actionProfile.ActionType != "teleport" || _awaitingTeleportDestination))
                 {
                     continue;
                 }
@@ -5532,13 +5661,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 var cellRect = new Rect2(new Vector2(cell.X * CellSize, cell.Y * CellSize), new Vector2(CellSize, CellSize));
-                var target = IsHealingSpellAction(actionProfile.ActionType)
+                var target = actionProfile.ActionType == "teleport"
+                    ? GetLivingUnitAtCell(cell)
+                    : IsHealingSpellAction(actionProfile.ActionType)
                     ? GetPartyUnitAtCell(cell)
                     : actionProfile.ActionType == "heal"
                         ? GetLivingAllyAtCell(active.Team, cell)
                         : GetLivingEnemyAtCell(active.Team, cell);
                 var areaAction = actionProfile.ActionType is "sleep" or "area_attack" or "web" or "lightning_bolt" or "rain_of_arrows";
-                var valid = actionProfile.ActionType == "shadow_strike"
+                var valid = actionProfile.ActionType == "teleport"
+                    ? _awaitingTeleportDestination
+                        ? IsValidTeleportDestination(active, _teleportTarget, cell, previewRange)
+                        : IsValidTeleportTarget(active, target, cell, actionProfile.Range)
+                    : actionProfile.ActionType == "shadow_strike"
                     ? _awaitingShadowStrikeAttack
                         ? target != null
                             && active.CanAttackTarget(target, 1, _allUnits)
@@ -7968,6 +8103,32 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private bool TryGetDirectionalActionTargetCell(Unit active, Vector2I direction, ActionProfile actionProfile, out Vector2I targetCell)
     {
         targetCell = active.GridPos + direction;
+
+        if (actionProfile.ActionType == "teleport")
+        {
+            var range = _awaitingTeleportDestination
+                ? GetTeleportDestinationRange(actionProfile)
+                : actionProfile.Range;
+            for (var distance = 1; distance <= range; distance++)
+            {
+                var cell = active.GridPos + direction * distance;
+                if (!IsInBounds(cell))
+                {
+                    break;
+                }
+
+                var valid = _awaitingTeleportDestination
+                    ? IsValidTeleportDestination(active, _teleportTarget, cell, range)
+                    : IsValidTeleportTarget(active, GetLivingUnitAtCell(cell), cell, range);
+                if (valid)
+                {
+                    targetCell = cell;
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         if (actionProfile.ActionType is "sleep" or "area_attack")
         {

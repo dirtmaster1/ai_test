@@ -60,6 +60,16 @@ func run_test() -> void:
             print("PASS: equipment stat bonuses affect healing, maximum MP, and MP regeneration")
         quit(0 if equipment_failures.is_empty() else 1)
         return
+    if OS.get_cmdline_user_args().has("--teleport-only"):
+        var teleport_failures = checks.call("RunTeleportChecks")
+        for failure in teleport_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if teleport_failures.is_empty():
+            print("PASS: requested item data and two-step Teleport targeting, movement, cost, and cooldown")
+        quit(0 if teleport_failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--icon-only"):
         var icon_failures = checks.call("RunIconChecks")
         for failure in icon_failures:
