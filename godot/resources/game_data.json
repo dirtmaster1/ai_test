@@ -62,7 +62,7 @@
 	  "cooldown": 3,
 	  "allowed_classes": ["ranger"],
 	  "requires_ranged_weapon": true,
-	  "description": "Attack all units within 2 tiles of a target cell using your equipped ranged weapon.",
+	  "description": "Where is that shadow coming from?",
 	  "targeting_prompt": "Select a visible cell within your ranged weapon's range; all units within 2 tiles will be hit."
 	},
 	"shadow-strike": {
@@ -72,7 +72,7 @@
 	  "range": 5,
 	  "damage_multiplier": 4,
 	  "allowed_classes": ["thief"],
-	  "description": "Teleport within 5 tiles, then strike an adjacent enemy for 4x weapon damage.",
+	  "description": "A thief's argument that distance is merely a suggestion.",
 	  "targeting_steps": [
 		"Choose an unoccupied reachable tile within 5 tiles.",
 		"Select an adjacent enemy to attack for 4x weapon damage."
@@ -87,7 +87,7 @@
 	  "cooldown": 2,
 	  "duration_turns": 1,
 	  "allowed_classes": ["warrior"],
-	  "description": "Force nearby enemies to attack you on their next turn."
+	  "description": "Respect my authority!"
 	},
 	"poison-strike": {
 	  "id": "poison-strike",
@@ -133,7 +133,8 @@
 	  "range": 3,
 	  "heal_amount": 4,
 	  "mp_cost": 2,
-	  "cooldown": 1
+	  "cooldown": 1,
+	  "description": "A small kindness, wrapped in a glow."
 	},
 	"greater-heal": {
 	  "id": "greater-heal",
@@ -143,7 +144,8 @@
 	  "heal_amount": 10,
 	  "mp_cost": 4,
 	  "cooldown": 2,
-	  "allowed_classes": ["cleric", "healer"]
+	  "allowed_classes": ["cleric", "healer"],
+	  "description": "For when 'throw some dirt on it' just won't cut it."
 	},
 	"web": {
 	  "id": "web",
@@ -155,7 +157,7 @@
 	  "mp_cost": 6,
 	  "cooldown": 0,
 	  "allowed_classes": ["wizard"],
-	  "description": "Root all units in a 3x3 area for 2 turns.",
+	  "description": "The spiders call it interior decorating...",
 	  "targeting_prompt": "Select a visible cell within 5 tiles; all units in its 3x3 area will be rooted for 2 turns."
 	},
 	"lightning-bolt": {
@@ -168,7 +170,7 @@
 	  "mp_cost": 8,
 	  "cooldown": 0,
 	  "allowed_classes": ["wizard"],
-	  "description": "Strike every unit in a straight line up to 5 tiles away.",
+	  "description": "The sky's most concise rebuttal.",
 	  "targeting_prompt": "Select a visible cell directly up, down, left, right, or diagonally; all units up to 5 tiles along that line will be struck."
 	},
 	"teleport": {
@@ -181,7 +183,7 @@
 	  "cooldown": 2,
 	  "allowed_classes": ["wizard"],
 	  "icon_id": "teleport",
-	  "description": "Teleport a living unit within 6 tiles to an unoccupied tile within 5 tiles of the caster.",
+	  "description": "The fastest way to leave a conversation without saying goodbye.",
 	  "targeting_steps": [
 		"Select a visible living unit within 6 tiles of the caster.",
 		"Select a visible unoccupied destination tile within 5 tiles of the caster."
@@ -194,7 +196,7 @@
 	  "range": 0,
 	  "mp_cost": 3,
 	  "cooldown": 0,
-	  "description": "Identify one unknown item in the party inventory.",
+	  "description": "Because 'unidentified item' is a dreadful inventory label.",
 	  "targeting_prompt": "Select an unidentified item in the party inventory."
 	},
 	"magic-missile": {
@@ -204,7 +206,8 @@
 	  "range": 5,
 	  "damage": 6,
 	  "mp_cost": 3,
-	  "cooldown": 1
+	  "cooldown": 1,
+	  "description": "Say hello to my little friend."
 	},
 	"sleep": {
 	  "id": "sleep",
@@ -214,7 +217,8 @@
 	  "area_radius": 1,
 	  "duration_turns": 2,
 	  "mp_cost": 5,
-	  "cooldown": 3
+	  "cooldown": 3,
+	  "description": "The world's least subtle bedtime story."
 	},
 	"protection": {
 	  "id": "protection",
@@ -225,7 +229,8 @@
 	  "duration_turns": 2,
 	  "armor_class_bonus": 1,
 	  "mp_cost": 3,
-	  "cooldown": 2
+	  "cooldown": 2,
+	  "description": "A reassuring word from the heavens."
 	},
 	"fireball": {
 	  "id": "fireball",
@@ -236,7 +241,8 @@
 	  "area_radius": 2,
 	  "damage": 10,
 	  "mp_cost": 10,
-	  "cooldown": 0
+	  "cooldown": 0,
+	  "description": "A solid choice for getting rid of unwanted guests."
 	},
 	"remove-malady": {
 	  "id": "remove-malady",
@@ -248,7 +254,7 @@
 	  "mp_cost": 3,
 	  "cooldown": 0,
 	  "icon_id": "remove-malady",
-	  "description": "Removes every negative status effect from one ally within 5 tiles."
+	  "description": "Hello my lady."
 	},
 	"resurrect": {
 	  "id": "resurrect",
@@ -261,7 +267,7 @@
 	  "cooldown": 3,
 	  "experience_loss_percent": 5,
 	  "icon_id": "resurrect",
-	  "description": "Revives one fallen ally to full health at any distance, at a cost of 5% of the current level's XP.",
+	  "description": "Death undone.",
 	  "targeting_prompt": "Select a highlighted fallen party member from the party list."
 	},
 	"blessing": {
@@ -277,7 +283,7 @@
 	  "mp_cost": 5,
 	  "cooldown": 0,
 	  "icon_id": "blessing",
-	  "description": "Grants a powerful protective blessing to allies within 4 tiles of the chosen ally; cast range 5 tiles."
+	  "description": "The heavens have your back now."
 	}
   },
   "items": {
@@ -287,7 +293,8 @@
 	  "type": "armor",
 	  "slot": "1-handed",
 	  "base_armor_class": 1,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "Better than nothing."
 	},
 	"metal-shield": {
 	  "id": "metal-shield",
@@ -296,7 +303,7 @@
 	  "slot": "1-handed",
 	  "base_armor_class": 2,
 	  "bonus_armor_class": 0,
-	  "description": "A sturdy metal shield that grants 2 armor class."
+	  "description": "Can be used as a door."
 	},
 	"dagger": {
 	  "id": "dagger",
@@ -305,7 +312,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 4,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "Small enough to hide... in your back!"
 	},
 	"short-sword": {
 	  "id": "short-sword",
@@ -314,7 +322,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "I need to find something bigger."
 	},
 	"spear": {
 	  "id": "spear",
@@ -323,7 +332,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 2
+	  "range": 2,
+	  "description": "Reach out and touch someone."
 	},
 	"one-handed-axe": {
 	  "id": "one-handed-axe",
@@ -332,7 +342,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "Excellent for chopping wood and the occasional goblin."
 	},
 	"broad-sword": {
 	  "id": "broad-sword",
@@ -341,7 +352,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "If subtlety was available then this was not that."
 	},
 	"one-handed-mace": {
 	  "id": "one-handed-mace",
@@ -350,7 +362,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "A blunt instrument with a surprisingly sharp point of view."
 	},
 	"long-sword": {
 	  "id": "long-sword",
@@ -359,7 +372,8 @@
 	  "slot": "1-handed",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "Ok heres something bigger."
 	},
 	"short-bow": {
 	  "id": "short-bow",
@@ -368,7 +382,8 @@
 	  "slot": "2-handed",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
-	  "range": 5
+	  "range": 5,
+	  "description": "Quiet, portable, and less alarming to the neighbors than a siege engine."
 	},
 	"leather-armor": {
 	  "id": "leather-armor",
@@ -376,7 +391,8 @@
 	  "type": "armor",
 	  "slot": "body",
 	  "base_armor_class": 1,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "Proof that a good hide can have a second career."
 	},
 	"cloth-robe": {
 	  "id": "cloth-robe",
@@ -384,7 +400,8 @@
 	  "type": "armor",
 	  "slot": "body",
 	  "base_armor_class": 0,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "Comfortable enough for study; mysterious enough for everything else."
 	},
 	"iron-helmet": {
 	  "id": "iron-helmet",
@@ -392,7 +409,8 @@
 	  "type": "armor",
 	  "slot": "head",
 	  "base_armor_class": 1,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "It won't improve your judgment, but it may protect you from it."
 	},
 	"leather-helm": {
 	  "id": "leather-helm",
@@ -401,7 +419,7 @@
 	  "slot": "head",
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0,
-	  "description": "A leather helm that grants 1 armor class."
+	  "description": "For the adventurer who thinks with their head—and would like to keep doing so."
 	},
 	"plate-mail": {
 	  "id": "plate-mail",
@@ -409,7 +427,8 @@
 	  "type": "armor",
 	  "slot": "body",
 	  "base_armor_class": 3,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "The traditional uniform of people who have stopped worrying about stealth."
 	},
 	"full-plate-armor": {
 	  "id": "full-plate-armor",
@@ -417,7 +436,8 @@
 	  "type": "armor",
 	  "slot": "body",
 	  "base_armor_class": 4,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "A walking fortress, with all the subtlety of a dropped anvil."
 	},
 	"war-axe": {
 	  "id": "war-axe",
@@ -426,7 +446,8 @@
 	  "slot": "2-handed",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "A tool for disputes that have outgrown polite conversation."
 	},
 	"long-bow": {
 	  "id": "long-bow",
@@ -435,7 +456,8 @@
 	  "slot": "2-handed",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
-	  "range": 7
+	  "range": 7,
+	  "description": "For delivering barbs from a socially unacceptable distance."
 	},
 	"chain-mail": {
 	  "id": "chain-mail",
@@ -443,7 +465,8 @@
 	  "type": "armor",
 	  "slot": "body",
 	  "base_armor_class": 2,
-	  "bonus_armor_class": 0
+	  "bonus_armor_class": 0,
+	  "description": "A thousand tiny links that somehow hold together."
 	},
 	"boots-of-speed": {
 	  "id": "boots-of-speed",
@@ -453,7 +476,7 @@
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
 	  "bonus_movement": 2,
-	  "description": "Grants +2 movement per turn while equipped."
+	  "description": "You can't catch me, I'm the gingerbread man!"
 	},
 	"silverleaf-pendant": {
 	  "id": "silverleaf-pendant",
@@ -462,15 +485,16 @@
 	  "slot": "neck",
 	  "base_armor_class": 0,
 	  "bonus_max_magic_points": 1,
-	  "description": "A delicate pendant that grants 1 maximum magic point."
+	  "description": "A sliver of moonlit forest."
 	},
 	"trailblazer-leggings": {
 	  "id": "trailblazer-leggings",
 	  "name": "Trailblazer Leggings",
 	  "type": "armor",
 	  "slot": "legs",
-	  "base_armor_class": 1,
-	  "description": "Sturdy leggings made for long journeys."
+	  "base_armor_class": 0,
+	  "bonus_movement": 1,
+	  "description": "For taking the scenic route, even when the scenery bites back."
 	},
 	"ranger-cloak": {
 	  "id": "ranger-cloak",
@@ -478,8 +502,8 @@
 	  "type": "armor",
 	  "slot": "back",
 	  "base_armor_class": 0,
-	  "bonus_movement": 1,
-	  "description": "A light cloak that grants 1 movement per turn."
+	  "bonus_dexterity": 1,
+	  "description": "Into the wilderness we go."
 	},
 	"copper-ring": {
 	  "id": "copper-ring",
@@ -488,7 +512,7 @@
 	  "slot": "ring",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 1,
-	  "description": "A simple ring that grants 1 armor class."
+	  "description": "A modest band with grand dreams."
 	},
 	"iron-ring": {
 	  "id": "iron-ring",
@@ -497,7 +521,7 @@
 	  "slot": "ring",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 1,
-	  "description": "A sturdy iron ring that grants 1 armor class."
+	  "description": "Forged for those who are difficult to bend."
 	},
 	"silver-ring": {
 	  "id": "silver-ring",
@@ -506,7 +530,7 @@
 	  "slot": "ring",
 	  "base_armor_class": 0,
 	  "bonus_max_magic_points": 1,
-	  "description": "A polished ring that grants 1 maximum magic point."
+	  "description": "A little moonlight, captured before it could wander off."
 	},
 	"healers-circlet": {
 	  "id": "healers-circlet",
@@ -517,7 +541,7 @@
 	  "bonus_armor_class": 0,
 	  "bonus_healing": 3,
 	  "bonus_max_magic_points": 2,
-	  "description": "Healing spells restore 3 additional hit points. Grants 2 maximum magic points."
+	  "description": "The official headwear of 'I can fix this.'"
 	},
 	"mages-amulet": {
 	  "id": "mages-amulet",
@@ -528,7 +552,7 @@
 	  "bonus_armor_class": 0,
 	  "bonus_magic_point_regen": 2,
 	  "bonus_max_magic_points": 3,
-	  "description": "Grants 2 additional magic points of regeneration per turn and 3 maximum magic points."
+	  "description": "It hums softly, mostly when nobody else is listening."
 	},
 	"chieftain-club": {
 	  "id": "chieftain-club",
@@ -537,14 +561,15 @@
 	  "slot": "2-handed",
 	  "base_damage": 12,
 	  "bonus_damage": 0,
-	  "range": 1
+	  "range": 1,
+	  "description": "An heirloom with a long family history and a short temper."
 	},
 	"fireball-scroll": {
 	  "id": "fireball-scroll",
 	  "name": "Fireball Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Fireball spell. The scroll is consumed when learned.",
+	  "description": "The ink is warm to the touch. This is probably fine.",
 	  "allowed_classes": [
 		"wizard"
 	  ],
@@ -559,7 +584,7 @@
 	  "name": "Web Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Web spell. The scroll is consumed when learned.",
+	  "description": "The margins are full of tiny, eight-legged corrections.",
 	  "allowed_classes": ["wizard"],
 	  "use_effect": {
 		"type": "learn_spell",
@@ -572,7 +597,7 @@
 	  "name": "Greater Heal Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Greater Heal spell. The scroll is consumed when learned.",
+	  "description": "Written in a hand that has seen many patients and few thank-you notes.",
 	  "allowed_classes": ["cleric", "healer"],
 	  "use_effect": {
 		"type": "learn_spell",
@@ -585,7 +610,7 @@
 	  "name": "Lightning Bolt Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Lightning Bolt spell. The scroll is consumed when learned.",
+	  "description": "The script occasionally crackles when read aloud.",
 	  "allowed_classes": ["wizard"],
 	  "use_effect": {
 		"type": "learn_spell",
@@ -598,7 +623,7 @@
 	  "name": "Identify Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Identify spell. The scroll is consumed when learned.",
+	  "description": "The promise of fewer mysteries.",
 	  "use_effect": {
 		"type": "learn_spell",
 		"spell_id": "identify"
@@ -610,7 +635,7 @@
 	  "name": "Teleport Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Teleport spell. The scroll is consumed when learned.",
+	  "description": "The last page is missing, but seems to have arrived somewhere.",
 	  "allowed_classes": ["wizard"],
 	  "use_effect": {
 		"type": "learn_spell",
@@ -623,7 +648,7 @@
 	  "name": "Blessing Scroll",
 	  "type": "scroll",
 	  "slot": "none",
-	  "description": "Teaches the Blessing spell. The scroll is consumed when learned.",
+	  "description": "The calligraphy is so neat it feels slightly judgmental.",
 	  "icon_id": "blessing-scroll",
 	  "allowed_classes": [
 		"cleric",
@@ -640,7 +665,7 @@
 	  "name": "Healing Potion",
 	  "type": "potion",
 	  "slot": "consumable",
-	  "description": "Restores up to 6 hit points.",
+	  "description": "Smells like herbs and optimism.",
 	  "use_effect": {
 		"type": "restore_hit_points",
 		"amount": 6
@@ -652,7 +677,7 @@
 	  "name": "Magic Potion",
 	  "type": "potion",
 	  "slot": "consumable",
-	  "description": "Restores up to 4 magic points.",
+	  "description": "Glows just enough to make you distrust the bottle.",
 	  "use_effect": {
 		"type": "restore_magic_points",
 		"amount": 4
@@ -665,7 +690,7 @@
 	  "type": "key",
 	  "key_id": "rusty-key",
 	  "slot": "none",
-	  "description": "A worn rusty key."
+	  "description": "It opens something. The key would prefer not to discuss what."
 	}
   },
   "dialogues": {

@@ -60,6 +60,16 @@ func run_test() -> void:
             print("PASS: equipment stat bonuses affect healing, maximum MP, and MP regeneration")
         quit(0 if equipment_failures.is_empty() else 1)
         return
+    if OS.get_cmdline_user_args().has("--consumables-only"):
+        var consumable_failures = checks.call("RunConsumableChecks")
+        for failure in consumable_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if consumable_failures.is_empty():
+            print("PASS: inventory actions, consumable equipment, and double-click unequipping")
+        quit(0 if consumable_failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--teleport-only"):
         var teleport_failures = checks.call("RunTeleportChecks")
         for failure in teleport_failures:

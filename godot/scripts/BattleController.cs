@@ -8650,6 +8650,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var total_magic_point_regen = 0;
         var total_healing = 0;
         var total_movement_bonus = 0;
+        var total_dexterity_bonus = 0;
         foreach (var entry in equippedBySlot)
         {
             var itemData = _gameData.GetItem(entry.Value);
@@ -8682,6 +8683,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 total_magic_point_regen += GetInt(itemData, "bonus_magic_point_regen", 0);
                 total_healing += GetInt(itemData, "bonus_healing", 0);
                 total_movement_bonus += GetInt(itemData, "bonus_movement", 0);
+                total_dexterity_bonus += GetInt(itemData, "bonus_dexterity", 0);
             }
         }
 
@@ -8694,7 +8696,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         unit.SetWeaponBonuses(weaponDamageBonus, weaponRangeBonus);
         unit.SetArmorBonuses(total_armor_class);
-        unit.SetEquipmentStatBonuses(total_max_magic_points, total_magic_point_regen, total_healing, total_movement_bonus);
+        unit.SetEquipmentStatBonuses(total_max_magic_points, total_magic_point_regen, total_healing, total_movement_bonus, total_dexterity_bonus);
     }
 
     private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config, bool addToPartyInventory)

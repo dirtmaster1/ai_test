@@ -51,6 +51,14 @@ public partial class ActionFeedbackChecks : BattleController
         return _failures;
     }
 
+    public Array<string> RunConsumableChecks()
+    {
+        SetupFixture();
+        CheckConsumables();
+        Cleanup();
+        return _failures;
+    }
+
     public Array<string> RunTeleportChecks()
     {
         SetupFixture();
@@ -460,6 +468,40 @@ public partial class ActionFeedbackChecks : BattleController
         Check(_actor.MovementPerTurn == 3 && _actor.RemainingMovement == 3,
             "Unequipping Boots of Speed must remove its movement bonus.");
 
+        Reset();
+        var rangerCloak = Field<GameData>("_gameData").GetItem("ranger-cloak");
+        var baseDexterity = _actor.Dexterity;
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["back"] = "ranger-cloak"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(ReadInt(rangerCloak, "bonus_dexterity", 0) == 1
+            && _actor.Dexterity == baseDexterity + 1,
+            "Ranger Cloak must grant +1 Dexterity.");
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.Dexterity == baseDexterity + 1,
+            "Recalculating equipment bonuses must not stack Ranger Cloak's Dexterity bonus.");
+        equippedByUnit.Remove(_actor.UnitId);
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.Dexterity == baseDexterity,
+            "Unequipping Ranger Cloak must remove its Dexterity bonus.");
+
+        Reset();
+        var trailblazerLeggings = Field<GameData>("_gameData").GetItem("trailblazer-leggings");
+        var baseMovement = _actor.MovementPerTurn;
+        var baseEquipmentArmorClass = _actor.ArmorClass;
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["legs"] = "trailblazer-leggings"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(ReadInt(trailblazerLeggings, "base_armor_class", 0) == 0
+            && ReadInt(trailblazerLeggings, "bonus_movement", 0) == 1
+            && _actor.MovementPerTurn == baseMovement + 1
+            && _actor.ArmorClass == baseEquipmentArmorClass,
+            "Trailblazer Leggings must grant +1 movement and no armor class.");
+
         var miloStock = Field<GameData>("_gameData").GetVendorStartingInventory("milo");
         Check(miloStock.Contains("boots-of-speed")
             && (int)Call("GetItemBuyPrice", "milo", "boots-of-speed") == 150,
@@ -473,6 +515,7 @@ public partial class ActionFeedbackChecks : BattleController
         {
             "iron-ring", "spear", "one-handed-axe", "broad-sword", "one-handed-mace",
             "metal-shield", "leather-helm", "full-plate-armor", "plate-mail",
+            "trailblazer-leggings", "ranger-cloak",
             "web-scroll", "greater-heal-scroll", "lightning-bolt-scroll", "identify-scroll", "teleport-scroll"
         };
         foreach (var itemId in itemIds)
@@ -610,6 +653,13 @@ public partial class ActionFeedbackChecks : BattleController
 
         var draggedAbilityId = abilities[6]["id"].AsString();
         var trayAbility = grid.GetChild<AbilityBarButton>(6);
+        var trayEntries = (System.Collections.Generic.Dictionary<string, Dictionary>)typeof(HudController)
+            .GetField("_abilityTrayEntriesById", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+        var trayHoverContentBuilder = typeof(HudController).GetMethod("BuildAbilityHoverContent", BindingFlags.Static | BindingFlags.NonPublic);
+        var trayHoverContent = ((string, string))trayHoverContentBuilder.Invoke(null, new object[] { trayEntries[draggedAbilityId] });
+        Check(trayAbility.TooltipText == ""
+            && trayHoverContent.Item1.Contains("Drag onto a quick slot to assign it."),
+            "Ability tray buttons must use the shared custom hover card and retain the quick-slot assignment hint.");
         var quickSlot = _testHud.GetNode<AbilityBarButton>("ActionPanel/ActionVBox/ActionRow/ActionButtons/AbilityButton1");
         var dragData = Variant.From($"ability-tray:{draggedAbilityId}");
         var droppedSlotIndex = -1;
@@ -1167,18 +1217,43 @@ public partial class ActionFeedbackChecks : BattleController
         var badges = partyCard?.FindChildren("LevelUpBadge", "Button", true, false);
         Check(badges != null && badges.Count == 1,
             "A pending level-up must show its badge on the party portrait.");
+        Check(partyCard != null && partyCard.TooltipText == "",
+            "Party portraits must not show the obsolete native Open tooltip.");
         if (badges != null && badges.Count == 1)
         {
             var badge = (Button)badges[0];
             var portraitBounds = badge.GetParent<Control>().GetGlobalRect();
             var badgeBounds = badge.GetGlobalRect();
             var badgeStyle = badge.GetThemeStylebox("normal") as StyleBoxFlat;
+            var badgeGlyph = badge.GetNodeOrNull<Label>("LevelUpBadgeGlyph");
             Check(portraitBounds.HasPoint(badgeBounds.Position)
                 && portraitBounds.HasPoint(badgeBounds.End - Vector2.One)
                 && badge.Size.X <= 20.0f && badge.Size.Y <= 20.0f
                 && badgeStyle != null && badgeStyle.CornerRadiusTopLeft >= 8
-                && badge.GetNodeOrNull<Label>("LevelUpBadgeGlyph")?.Text == "+",
+                && badgeGlyph != null && badgeGlyph.Text == "+"
+                && badgeGlyph.OffsetTop == -1.0f && badgeGlyph.OffsetBottom == -1.0f,
                 "The compact, rounded level-up badge must stay entirely within the portrait.");
+            if (partyCard != null)
+            {
+                var showPartyCardHoverTooltip = typeof(HudController).GetMethod("ShowPartyCardHoverTooltip", BindingFlags.Instance | BindingFlags.NonPublic);
+                showPartyCardHoverTooltip.Invoke(_testHud, null);
+                var hoverPanel = (PanelContainer)typeof(HudController)
+                    .GetField("_itemHoverTooltipPanel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+                var hoverTitle = (Label)typeof(HudController)
+                    .GetField("_itemHoverTooltipTitle", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+                var hoverDetails = (Label)typeof(HudController)
+                    .GetField("_itemHoverTooltipDetails", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+                var hoverDescription = (Label)typeof(HudController)
+                    .GetField("_itemHoverTooltipDescription", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+                var hoverSeparator = (HSeparator)typeof(HudController)
+                    .GetField("_itemHoverTooltipSeparator", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+                Check(hoverPanel.Visible && hoverPanel.Size.X < 288.0f
+                    && hoverPanel.Size.X >= hoverTitle.GetCombinedMinimumSize().X
+                    && hoverTitle.Text == "Drag to change order"
+                    && hoverDetails.Text == ""
+                    && !hoverDescription.Visible && !hoverSeparator.Visible,
+                    "Party portrait hover must show only Drag to change order in a text-sized shared hover card.");
+            }
         }
         var labels = panel.FindChildren("*", "Label", true, false);
         Control lastRow = null;
@@ -1797,12 +1872,13 @@ public partial class ActionFeedbackChecks : BattleController
         inventory.Add("healing-potion");
         _actor.ApplyDamage(10);
         Call("SyncHudFromGameState");
-        var equipButton = HudField<Button>("_equipButton");
-        Check(!equipButton.Disabled && equipButton.Text == "Equip",
-            "A healing potion in shared inventory must be equipable, not directly usable");
-        equipButton.EmitSignal(Button.SignalName.Pressed);
+        var inventoryActionButton = HudField<Button>("_inventoryActionButton");
+        Check(!inventoryActionButton.Visible,
+            "Equippable items must not show a redundant inventory action button");
+        HudField<SharedPartyInventoryList>("_inventoryItemList")
+            .EmitSignal(ItemList.SignalName.ItemActivated, 0L);
         Check(equippedByUnit[_actor.UnitId]["consumable-1"] == "healing-potion",
-            "The first healing potion must equip to the first consumable slot");
+            "Double-clicking a healing potion must equip it to the first consumable slot");
         var inventorySlot = _testHud.GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
         Check(inventorySlot.Icon != null, "The equipped potion must appear in the inventory's consumable slot");
         var healingButton = HudField<Button>("_consumableButton1");
@@ -1816,12 +1892,22 @@ public partial class ActionFeedbackChecks : BattleController
         ResetConsumableState(exploration: true);
         inventory.Add("healing-potion");
         Call("SyncHudFromGameState");
-        HudField<Button>("_equipButton").EmitSignal(Button.SignalName.Pressed);
+        HudField<SharedPartyInventoryList>("_inventoryItemList")
+            .EmitSignal(ItemList.SignalName.ItemActivated, 0L);
         _testHud.GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button")
             .EmitSignal(Button.SignalName.Pressed);
-        HudField<Button>("_unequipButton").EmitSignal(Button.SignalName.Pressed);
+        var equippedPotionSlot = _testHud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
+        using (var doubleClick = new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Pressed = true,
+            DoubleClick = true
+        })
+        {
+            equippedPotionSlot._GuiInput(doubleClick);
+        }
         Check(!equippedByUnit.ContainsKey(_actor.UnitId) && inventory.Contains("healing-potion"),
-            "Unequipping a consumable must return it to shared inventory");
+            "Double-clicking an equipped consumable must return it to shared inventory");
 
         ResetConsumableState(exploration: true);
         inventory.Add("healing-potion");

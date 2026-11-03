@@ -37,6 +37,8 @@ public partial class Unit : Node2D
     private int _baseMaxMagicPoints;
     private int _equipmentMaxMagicPointBonus;
     private int _equipmentMagicPointRegenBonus;
+    private int _equipmentDexterityBonus;
+    private int _baseDexterity = 5;
     private int _baseMovementPerTurn = MaxMovementPerTurn;
     private int _equipmentMovementBonus;
     private string _tauntTargetUnitId = "";
@@ -57,7 +59,7 @@ public partial class Unit : Node2D
     public int Intelligence { get; private set; } = 5;
     public int Strength { get; private set; } = 5;
     public int Wisdom { get; private set; } = 5;
-    public int Dexterity { get; private set; } = 5;
+    public int Dexterity => _baseDexterity + _equipmentDexterityBonus;
     public int Constitution { get; private set; } = 5;
     public string PrimaryAbilityId { get; private set; } = "";
     public Array<string> AbilityIds { get; private set; } = new();
@@ -206,6 +208,7 @@ public partial class Unit : Node2D
         HitPoints = GetInt(config, "hit_points", MaxHitPoints);
         _equipmentMaxMagicPointBonus = 0;
         _equipmentMagicPointRegenBonus = 0;
+        _equipmentDexterityBonus = 0;
         _equipmentMovementBonus = 0;
         HealingSpellBonus = 0;
         _baseMaxMagicPoints = Mathf.Max(0, GetInt(config, "max_magic_points", 0));
@@ -215,7 +218,7 @@ public partial class Unit : Node2D
         Intelligence = GetInt(config, "intelligence", 5);
         Strength = GetInt(config, "strength", 5);
         Wisdom = GetInt(config, "wisdom", 5);
-        Dexterity = GetInt(config, "dexterity", 5);
+        _baseDexterity = GetInt(config, "dexterity", 5);
         Constitution = GetInt(config, "constitution", 5);
         Initiative = GetInt(config, "initiative", 10);
         Level = Mathf.Max(1, GetInt(config, "level", 1));
@@ -947,10 +950,11 @@ public partial class Unit : Node2D
         ArmorClassBonus = armorClassBonus;
     }
 
-    public void SetEquipmentStatBonuses(int maxMagicPointBonus, int magicPointRegenBonus, int healingSpellBonus, int movementBonus = 0)
+    public void SetEquipmentStatBonuses(int maxMagicPointBonus, int magicPointRegenBonus, int healingSpellBonus, int movementBonus = 0, int dexterityBonus = 0)
     {
         _equipmentMaxMagicPointBonus = maxMagicPointBonus;
         _equipmentMagicPointRegenBonus = magicPointRegenBonus;
+        _equipmentDexterityBonus = dexterityBonus;
         _equipmentMovementBonus = movementBonus;
         HealingSpellBonus = healingSpellBonus;
         MagicPoints = Mathf.Clamp(MagicPoints, 0, MaxMagicPoints);
@@ -1019,7 +1023,7 @@ public partial class Unit : Node2D
             { "intelligence", Intelligence },
             { "strength", Strength },
             { "wisdom", Wisdom },
-            { "dexterity", Dexterity },
+            { "dexterity", _baseDexterity },
             { "constitution", Constitution },
             { "unallocated_stat_points", UnallocatedStatPoints },
             { "cooldowns", cooldowns },
@@ -1048,7 +1052,7 @@ public partial class Unit : Node2D
         Intelligence = GetInt(snapshot, "intelligence", Intelligence);
         Strength = GetInt(snapshot, "strength", Strength);
         Wisdom = GetInt(snapshot, "wisdom", Wisdom);
-        Dexterity = GetInt(snapshot, "dexterity", Dexterity);
+        _baseDexterity = GetInt(snapshot, "dexterity", _baseDexterity);
         Constitution = GetInt(snapshot, "constitution", Constitution);
         _baseMovementPerTurn = Mathf.Max(1, GetInt(
             snapshot,
@@ -1800,7 +1804,7 @@ public partial class Unit : Node2D
                 break;
             case "dexterity":
             case "dex":
-                Dexterity += 1;
+                _baseDexterity += 1;
                 break;
             case "constitution":
             case "con":

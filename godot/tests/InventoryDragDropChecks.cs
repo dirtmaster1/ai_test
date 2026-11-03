@@ -42,25 +42,45 @@ public partial class InventoryDragDropChecks : Node
             "Party info must omit Team, Status, and the experience remaining suffix.");
 
         var characterTabs = hud.GetNode<TabContainer>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs");
+        var infoBackground = hud.GetNode<PanelContainer>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info/InfoBackground");
         Check(characterTabs.CurrentTab == 0, "The Info tab must be selected by default.");
         Check(characterTabs.GetTabTitle(0) == "Info" && characterTabs.GetTabTitle(1) == "Abilities & Spells",
             "The character record tabs must be Info and Abilities & Spells.");
-        hud.SetInventoryAbilities(new Array<Dictionary>
+        var testAbility = new Dictionary
         {
-            new()
-            {
-                { "id", "fireball" },
-                { "label", "Fireball" },
-                { "detail", "Fireball\nType: area_attack\nRange: 6\nRequirement: none\nStatus: ready" }
-            }
-        });
+            { "id", "fireball" },
+            { "label", "Fireball" },
+            { "detail", "Fireball\nType: area_attack\nRange: 6\nArea Radius: 2\nDamage: 10\nDescription: A bright idea.\nMP Cost: 10\nRequirement: none\nStatus: ready" }
+        };
+        hud.SetInventoryAbilities(new Array<Dictionary> { testAbility });
         var abilityList = hud.GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Abilities/InventoryAbilityList");
         var abilityTooltip = abilityList.GetItemTooltip(0);
-        Check(abilityTooltip.Contains("Range: 6")
-            && !abilityTooltip.Contains("Type:")
-            && !abilityTooltip.Contains("Requirement:")
-            && !abilityTooltip.Contains("Status:"),
-            "Abilities and spells tooltips must omit Type, Requirement, and Status.");
+        var abilityHoverContentBuilder = typeof(HudController).GetMethod("BuildAbilityHoverContent", BindingFlags.Static | BindingFlags.NonPublic);
+        var abilityHoverContent = ((string, string))abilityHoverContentBuilder.Invoke(null, new object[] { testAbility });
+        var tooltipDescription = (Label)typeof(HudController)
+            .GetField("_itemHoverTooltipDescription", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(hud);
+        var descriptionFont = tooltipDescription.GetThemeFont("font") as SystemFont;
+        Check(abilityTooltip == ""
+            && !abilityList.IsItemTooltipEnabled(0)
+            && abilityHoverContent.Item1.Contains("Range: 6")
+            && abilityHoverContent.Item1.Contains("Damage: 10")
+            && !abilityHoverContent.Item1.Contains("Type:")
+            && !abilityHoverContent.Item1.Contains("Requirement:")
+            && !abilityHoverContent.Item1.Contains("Status:")
+            && !abilityHoverContent.Item1.Contains("Description:")
+            && abilityHoverContent.Item2 == "A bright idea.",
+            "Ability hover content must separate its title and description from gameplay details.");
+        Check(descriptionFont != null && descriptionFont.FontItalic
+            && tooltipDescription.GetThemeFontSize("font_size") < 13,
+            "Hover descriptions must use smaller italic text.");
+        var tooltipPositionBuilder = typeof(HudController).GetMethod("CalculateHoverTooltipPosition", BindingFlags.Static | BindingFlags.NonPublic);
+        var nearBottomMouse = new Vector2(500.0f, 570.0f);
+        var tooltipSize = new Vector2(288.0f, 180.0f);
+        var viewportSize = new Vector2(1024.0f, 600.0f);
+        var nearBottomTooltipPosition = (Vector2)tooltipPositionBuilder.Invoke(null, new object[] { nearBottomMouse, tooltipSize, viewportSize });
+        Check(nearBottomTooltipPosition.Y < nearBottomMouse.Y
+            && nearBottomTooltipPosition.Y + tooltipSize.Y <= viewportSize.Y - 8.0f,
+            "Hover tooltips near the bottom of the viewport must flip above the cursor and remain fully visible.");
 
         var items = new Array<Dictionary>
         {
@@ -78,6 +98,21 @@ public partial class InventoryDragDropChecks : Node
             new() { { "id", "test-magic-potion" }, { "name", "Test Magic Potion" }, { "type", "potion" }, { "slot", "consumable" } },
             new() { { "id", "test-key" }, { "name", "Test Key" }, { "type", "key" }, { "slot", "none" } }
         };
+        var buttonRow = hud.GetNode<HBoxContainer>("InventoryPanel/InventoryVBox/InventoryButtons");
+        var actionSlot = buttonRow.GetChild<CenterContainer>(0);
+        var inventoryActionButton = actionSlot.GetNode<Button>("InventoryActionButton");
+        Check(buttonRow.GetChildCount() == 3
+            && buttonRow.GetChild<Button>(1).Name == "CloseInventoryButton"
+            && buttonRow.GetChild<Control>(2).Name == "InventoryButtonSpacer"
+            && buttonRow.GetNodeOrNull<Button>("EquipButton") == null
+            && buttonRow.GetNodeOrNull<Button>("UnequipButton") == null,
+            "The inventory button row must omit Equip and Unequip, with Close in the center position.");
+        hud.SetInventoryItems(new Array<Dictionary>
+        {
+            new() { { "id", "test-scroll" }, { "name", "Test Scroll" }, { "type", "scroll" } }
+        }, new Array<string>());
+        Check(inventoryActionButton.Visible && !inventoryActionButton.Disabled && inventoryActionButton.Text == "Learn Spell",
+            "Scrolls must retain a contextual Learn Spell action.");
         hud.SetInventoryItems(items, new Array<string>());
 
         var head = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
@@ -93,6 +128,10 @@ public partial class InventoryDragDropChecks : Node
         var consumable = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot1Button");
         var consumable2 = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/ConsumableSlots/ConsumableSlot2Button");
         var inventory = hud.GetNode<SharedPartyInventoryList>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList");
+        var infoPanelStyle = infoBackground.GetThemeStylebox("panel") as StyleBoxFlat;
+        var inventoryListStyle = inventory.GetThemeStylebox("panel") as StyleBoxFlat;
+        Check(infoPanelStyle != null && inventoryListStyle != null && infoPanelStyle.BgColor == inventoryListStyle.BgColor,
+            "The Party Info tab must use the same inset background color as the shared party inventory.");
         var activatedInventoryItemId = "";
         hud.EquipItemRequested += itemId => activatedInventoryItemId = itemId;
         inventory.EmitSignal(ItemList.SignalName.ItemActivated, 0L);
@@ -117,20 +156,32 @@ public partial class InventoryDragDropChecks : Node
         }
 
         var hoverDetailsBuilder = typeof(HudController).GetMethod("BuildItemHoverDetails", BindingFlags.Static | BindingFlags.NonPublic);
+        var itemHoverContentBuilder = typeof(HudController).GetMethod("BuildItemHoverContent", BindingFlags.Static | BindingFlags.NonPublic);
+        var testBootsHoverItem = new Dictionary
+        {
+            { "id", "test-boots" }, { "name", "Test Boots" }, { "type", "armor" },
+            { "base_armor_class", 1 }, { "bonus_armor_class", 2 }, { "bonus_movement", 2 },
+            { "description", "A pair of boots with excellent timing." }, { "price", 150 }
+        };
         var itemHoverDetails = (string)hoverDetailsBuilder.Invoke(null, new object[]
         {
-            new Dictionary
-            {
-                { "id", "test-boots" }, { "name", "Test Boots" }, { "type", "armor" },
-                { "base_armor_class", 1 }, { "bonus_armor_class", 2 }, { "bonus_movement", 2 }, { "price", 150 }
-            }
+            testBootsHoverItem
         });
+        var itemHoverContent = ((string, string))itemHoverContentBuilder.Invoke(null, new object[] { testBootsHoverItem });
         var weaponHoverDetails = (string)hoverDetailsBuilder.Invoke(null, new object[]
         {
             new Dictionary
             {
                 { "id", "test-sword" }, { "name", "Test Sword" }, { "type", "weapon" },
                 { "base_damage", 4 }, { "bonus_damage", 2 }
+            }
+        });
+        var noArmorClassHoverDetails = (string)hoverDetailsBuilder.Invoke(null, new object[]
+        {
+            new Dictionary
+            {
+                { "id", "test-cloak" }, { "name", "Test Cloak" }, { "type", "armor" },
+                { "base_armor_class", 0 }, { "bonus_armor_class", 0 }, { "bonus_dexterity", 1 }
             }
         });
         hud.SetVendorItems(new Array<Dictionary>
@@ -143,11 +194,17 @@ public partial class InventoryDragDropChecks : Node
         var itemHoverTooltipPanel = (PanelContainer)typeof(HudController)
             .GetField("_itemHoverTooltipPanel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(hud);
         Check(inventory.GetItemTooltip(0) == ""
+            && !inventory.IsItemTooltipEnabled(0)
             && vendorBuyList.GetItemTooltip(0) == ""
             && itemHoverDetails.Contains("Armor Class: +3")
             && !itemHoverDetails.Contains("(+2)")
             && itemHoverDetails.Contains("Movement per turn: +2")
+            && itemHoverDetails.Contains("A pair of boots with excellent timing.")
+            && !itemHoverContent.Item1.Contains(itemHoverContent.Item2)
+            && itemHoverContent.Item2 == "A pair of boots with excellent timing."
             && itemHoverDetails.Contains("Price: 150 gp")
+            && !noArmorClassHoverDetails.Contains("Armor Class:")
+            && noArmorClassHoverDetails.Contains("Dexterity: +1")
             && weaponHoverDetails.Contains("Damage: +6")
             && !weaponHoverDetails.Contains("(+2)")
             && itemHoverTooltipLayer.Layer > 0
@@ -223,6 +280,9 @@ public partial class InventoryDragDropChecks : Node
         {
             new() { { "id", "test-helmet" }, { "name", "Test Helmet" }, { "type", "armor" }, { "slot", "head" }, { "slot_key", "head" } }
         });
+        var equippedItemList = hud.GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/InventoryEquippedItemList");
+        Check(equippedItemList.ItemCount == 1 && !equippedItemList.IsItemTooltipEnabled(0),
+            "Equipped inventory entries must suppress native tooltips in favor of the shared hover card.");
         Variant equippedHelmet = "equipped-slot:head";
         Check(inventory._CanDropData(Vector2.Zero, equippedHelmet), "Equipped items must be droppable into shared inventory.");
         Check(!inventory._CanDropData(Vector2.Zero, helmet), "Shared inventory must reject its own item payload.");

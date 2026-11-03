@@ -175,10 +175,10 @@ public partial class UtilityAbilityChecks : BattleController
             Check(keyIndex >= 0, "Rusty Key must appear in the shared inventory list");
             typeof(HudController).GetMethod("UpdateInventoryPrimaryAction", BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(_testHud, new object[] { keyItem });
-            var equipButton = (Button)typeof(HudController)
-                .GetField("_equipButton", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
-            Check(equipButton.Disabled && equipButton.Text == "Passive",
-                "Key items must remain visible in shared inventory but cannot be equipped or used");
+            var inventoryActionButton = (Button)typeof(HudController)
+                .GetField("_inventoryActionButton", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            Check(!inventoryActionButton.Visible && inventoryActionButton.Disabled,
+                "Key items must remain visible in shared inventory without an inventory action button");
 
             Call("TryOpenDoorAtCell", _doorCell);
             var keyDialog = Dialog() ?? throw new System.InvalidOperationException("Missing key unlock confirmation");

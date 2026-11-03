@@ -3,10 +3,14 @@ using Godot;
 
 public static class TacticalTheme
 {
-    private static FontFile _bodyFont;
+    private static SystemFont _bodyFont;
     private static FontFile _headerFont;
 
-    public static FontFile BodyFont => _bodyFont ??= LoadFont("res://assets/fonts/IMFeENrm28P.ttf");
+    public static Font BodyFont => _bodyFont ??= new SystemFont
+    {
+        FontNames = new[] { "Segoe UI", "Arial", "sans-serif" },
+        AllowSystemFallback = true
+    };
     public static FontFile HeaderFont => _headerFont ??= LoadFont("res://assets/fonts/GrenzeGotisch-wght.ttf");
 
     public static readonly Color Backdrop = new(0.035f, 0.04f, 0.045f, 1.0f);

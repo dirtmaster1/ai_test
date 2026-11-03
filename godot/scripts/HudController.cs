@@ -244,6 +244,7 @@ public partial class HudController : Control
     private PanelContainer _inventoryPanel;
     private Label _inventoryUnitLabel;
     private TabContainer _inventoryTabs;
+    private PanelContainer _inventoryInfoBackground;
     private Label _inventoryCharacterSummary;
     private ItemList _inventoryAbilityList;
     private Label _inventoryGoldLabel;
@@ -252,8 +253,7 @@ public partial class HudController : Control
     private SharedPartyInventoryList _inventoryItemList;
     private Button _inventoryPrevUnitButton;
     private Button _inventoryNextUnitButton;
-    private Button _equipButton;
-    private Button _unequipButton;
+    private Button _inventoryActionButton;
     private Button _closeInventoryButton;
     private EquipmentSlotButton _headSlotButton;
     private EquipmentSlotButton _neckSlotButton;
@@ -299,6 +299,8 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryEquippedEntriesBySlot = new();
     private readonly System.Collections.Generic.HashSet<string> _equippedItemIds = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryAbilityEntriesById = new();
+    private readonly System.Collections.Generic.Dictionary<string, Dictionary> _abilityTrayEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveActiveEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveRosterEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<Button, string> _abilityIdsByButton = new();
@@ -322,6 +324,8 @@ public partial class HudController : Control
     private PanelContainer _itemHoverTooltipPanel;
     private Label _itemHoverTooltipTitle;
     private Label _itemHoverTooltipDetails;
+    private Label _itemHoverTooltipDescription;
+    private HSeparator _itemHoverTooltipSeparator;
     private string _itemHoverTooltipKey = "";
 
     private readonly System.Collections.Generic.Dictionary<Control, Vector2> _panelOffsets = new();
@@ -424,7 +428,8 @@ public partial class HudController : Control
         _inventoryTabs.CurrentTab = 0;
         _inventoryTabs.SetTabTitle(0, "Info");
         _inventoryTabs.SetTabTitle(1, "Abilities & Spells");
-        _inventoryCharacterSummary = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info/InventoryCharacterSummary");
+        _inventoryInfoBackground = GetNode<PanelContainer>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info/InfoBackground");
+        _inventoryCharacterSummary = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info/InfoBackground/InventoryCharacterSummary");
         _inventoryAbilityList = GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Abilities/InventoryAbilityList");
         _inventoryEquippedItemList = GetNode<ItemList>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/InventoryEquippedItemList");
         _inventoryGoldLabel = GetNode<Label>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryTreasuryRow/InventoryGoldLabel");
@@ -433,8 +438,7 @@ public partial class HudController : Control
         _inventoryItemList = GetNode<SharedPartyInventoryList>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList");
         _inventoryPrevUnitButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryCycleButtons/PrevUnitButton");
         _inventoryNextUnitButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryCycleButtons/NextUnitButton");
-        _equipButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/EquipButton");
-        _unequipButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/UnequipButton");
+        _inventoryActionButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/InventoryActionSlot/InventoryActionButton");
         _closeInventoryButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/CloseInventoryButton");
         _headSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
         _neckSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/NeckSlot");
@@ -516,10 +520,8 @@ public partial class HudController : Control
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
         _inventoryPrevUnitButton.Pressed += OnInventoryPrevUnitButtonPressed;
         _inventoryNextUnitButton.Pressed += OnInventoryNextUnitButtonPressed;
-        _equipButton.Pressed += OnEquipButtonPressed;
-        _unequipButton.Pressed += OnUnequipButtonPressed;
+        _inventoryActionButton.Pressed += OnInventoryActionButtonPressed;
         _closeInventoryButton.Pressed += OnCloseInventoryButtonPressed;
-        _inventoryEquippedItemList.ItemSelected += OnInventoryEquippedItemSelected;
         _inventoryItemList.ItemSelected += OnInventoryItemSelected;
         _inventoryItemList.ItemActivated += OnInventoryItemActivated;
         _inventoryItemList.EquippedItemDroppedIntoInventory += OnEquippedItemDroppedIntoInventory;
@@ -740,9 +742,9 @@ public partial class HudController : Control
             _closeHelpButton.Pressed -= OnCloseHelpButtonPressed;
         }
 
-        if (_equipButton != null)
+        if (_inventoryActionButton != null)
         {
-            _equipButton.Pressed -= OnEquipButtonPressed;
+            _inventoryActionButton.Pressed -= OnInventoryActionButtonPressed;
         }
 
         if (_inventoryPrevUnitButton != null)
@@ -755,11 +757,6 @@ public partial class HudController : Control
             _inventoryNextUnitButton.Pressed -= OnInventoryNextUnitButtonPressed;
         }
 
-        if (_unequipButton != null)
-        {
-            _unequipButton.Pressed -= OnUnequipButtonPressed;
-        }
-
         if (_closeInventoryButton != null)
         {
             _closeInventoryButton.Pressed -= OnCloseInventoryButtonPressed;
@@ -770,11 +767,6 @@ public partial class HudController : Control
             _inventoryItemList.ItemSelected -= OnInventoryItemSelected;
             _inventoryItemList.ItemActivated -= OnInventoryItemActivated;
             _inventoryItemList.EquippedItemDroppedIntoInventory -= OnEquippedItemDroppedIntoInventory;
-        }
-
-        if (_inventoryEquippedItemList != null)
-        {
-            _inventoryEquippedItemList.ItemSelected -= OnInventoryEquippedItemSelected;
         }
 
         if (_headSlotButton != null)
@@ -1170,7 +1162,7 @@ public partial class HudController : Control
         SetHelpVisible(false);
     }
 
-    private void OnEquipButtonPressed()
+    private void OnInventoryActionButtonPressed()
     {
         if (_inventoryItemList == null)
         {
@@ -1194,10 +1186,7 @@ public partial class HudController : Control
         if (_inventoryItemsById.TryGetValue(itemId, out var itemData) && IsUsableInventoryItem(itemData))
         {
             EmitSignal(SignalName.UseItemRequested, itemId);
-            return;
         }
-
-        EmitSignal(SignalName.EquipItemRequested, itemId);
     }
 
     private void ConfigureEquipmentSlotDragDrop(EquipmentSlotButton button, string targetSlotKey)
@@ -1252,30 +1241,6 @@ public partial class HudController : Control
     private void OnInventoryNextUnitButtonPressed()
     {
         EmitSignal(SignalName.InventoryCycleRequested, 1);
-    }
-
-    private void OnUnequipButtonPressed()
-    {
-        if (_inventoryEquippedItemList == null)
-        {
-            return;
-        }
-
-        var selected = _inventoryEquippedItemList.GetSelectedItems();
-        if (selected.Length == 0)
-        {
-            return;
-        }
-
-        var index = selected[0];
-        var metadata = _inventoryEquippedItemList.GetItemMetadata(index);
-        var slotKey = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
-        if (string.IsNullOrEmpty(slotKey))
-        {
-            return;
-        }
-
-        EmitSignal(SignalName.UnequipItemRequested, slotKey);
     }
 
     private void OnCloseInventoryButtonPressed()
@@ -1413,10 +1378,6 @@ public partial class HudController : Control
         if (!_inventoryEquippedEntriesBySlot.ContainsKey(slotKey))
         {
             _inventoryEquippedItemList?.DeselectAll();
-            if (_unequipButton != null)
-            {
-                _unequipButton.Disabled = true;
-            }
             return;
         }
 
@@ -1429,28 +1390,6 @@ public partial class HudController : Control
             }
         }
 
-        if (_unequipButton != null)
-        {
-            _unequipButton.Disabled = false;
-        }
-    }
-
-    private void OnInventoryEquippedItemSelected(long index)
-    {
-        if (_inventoryEquippedItemList == null)
-        {
-            return;
-        }
-
-        var metadata = _inventoryEquippedItemList.GetItemMetadata((int)index);
-        var slotKey = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
-        if (string.IsNullOrEmpty(slotKey) || !_inventoryEquippedEntriesBySlot.ContainsKey(slotKey))
-        {
-            _unequipButton.Disabled = true;
-            return;
-        }
-
-        _unequipButton.Disabled = false;
     }
 
     private void OnLootItemSelected(long index)
@@ -2111,6 +2050,7 @@ public partial class HudController : Control
             VariationEmbolden = 0.2f
         });
         StyleBodyLabel(_inventoryCharacterSummary, bodyColor, 13);
+        StylePanel(_inventoryInfoBackground, TacticalTheme.CreatePanel(true, 4));
         StyleBodyLabel(_inventoryGoldLabel, bodyColor, 14);
         StyleBodyLabel(_lootDetailsLabel, mutedBodyColor, 13);
         StyleBodyLabel(_vendorMessageLabel, bodyColor, 14);
@@ -2148,8 +2088,7 @@ public partial class HudController : Control
         StyleButton(_closeHelpButton, false);
         StyleButton(_inventoryPrevUnitButton, false);
         StyleButton(_inventoryNextUnitButton, false);
-        StyleButton(_equipButton, true);
-        StyleButton(_unequipButton, false);
+        StyleButton(_inventoryActionButton, true);
         StyleButton(_closeInventoryButton, false);
         StyleButton(_headSlotButton, false, 12);
         StyleButton(_neckSlotButton, false, 12);
@@ -2549,6 +2488,7 @@ public partial class HudController : Control
 
     private void RebuildAbilityTray(Array<Dictionary> abilities, bool canUseAnyAbility)
     {
+        _abilityTrayEntriesById.Clear();
         foreach (var child in _abilityTrayGrid.GetChildren())
         {
             _abilityTrayGrid.RemoveChild(child);
@@ -2568,6 +2508,9 @@ public partial class HudController : Control
                 continue;
             }
 
+            var hoverEntry = entry.Duplicate();
+            hoverEntry["show_tray_drag_hint"] = true;
+            _abilityTrayEntriesById[abilityId] = hoverEntry;
             var label = GetString(entry, "label", abilityId);
             var cooldownRemaining = GetInt(entry, "cooldown_remaining", 0);
             var isEnabled = GetInt(entry, "is_enabled", 0) == 1;
@@ -2581,7 +2524,7 @@ public partial class HudController : Control
                 Text = label,
                 ExpandIcon = true,
                 IconAlignment = HorizontalAlignment.Left,
-                TooltipText = $"{GetString(entry, "detail", label)}\nDrag onto a quick slot to assign it.",
+                TooltipText = "",
                 Disabled = !canUseAnyAbility,
                 FocusMode = FocusModeEnum.None,
                 SizeFlagsHorizontal = SizeFlags.ExpandFill
@@ -2692,6 +2635,8 @@ public partial class HudController : Control
         _inventoryItemList.Clear();
         _inventoryItemsById.Clear();
         ConfigureIconList(_inventoryItemList);
+        _inventoryActionButton.Visible = false;
+        _inventoryActionButton.Disabled = true;
 
         if (items == null)
         {
@@ -2713,6 +2658,7 @@ public partial class HudController : Control
             var itemIndex = _inventoryItemList.ItemCount - 1;
             _inventoryItemList.SetItemMetadata(itemIndex, id);
             _inventoryItemList.SetItemTooltip(itemIndex, "");
+            _inventoryItemList.SetItemTooltipEnabled(itemIndex, false);
         }
 
         if (_inventoryItemList.ItemCount > 0)
@@ -2723,11 +2669,6 @@ public partial class HudController : Control
             {
                 UpdateInventoryPrimaryAction(firstItem);
             }
-        }
-        else
-        {
-            _equipButton.Disabled = true;
-            _equipButton.Text = "Equip";
         }
     }
 
@@ -2741,7 +2682,6 @@ public partial class HudController : Control
         _inventoryEquippedItemList.Clear();
         _inventoryEquippedEntriesBySlot.Clear();
         ConfigureIconList(_inventoryEquippedItemList);
-        _unequipButton.Disabled = true;
         ResetEquipmentSlot(_headSlotButton, "HEAD");
         ResetEquipmentSlot(_neckSlotButton, "NECK");
         ResetEquipmentSlot(_bodySlotButton, "BODY");
@@ -2775,13 +2715,13 @@ public partial class HudController : Control
             var itemIndex = _inventoryEquippedItemList.ItemCount - 1;
             _inventoryEquippedItemList.SetItemMetadata(itemIndex, slotKey);
             _inventoryEquippedItemList.SetItemTooltip(itemIndex, "");
+            _inventoryEquippedItemList.SetItemTooltipEnabled(itemIndex, false);
             ApplyEquipmentSlotEntry(slotKey, entry);
         }
 
         if (_inventoryEquippedItemList.ItemCount > 0)
         {
             _inventoryEquippedItemList.Select(0);
-            OnInventoryEquippedItemSelected(0);
         }
     }
 
@@ -2809,6 +2749,7 @@ public partial class HudController : Control
         }
 
         _inventoryAbilityList.Clear();
+        _inventoryAbilityEntriesById.Clear();
         ConfigureIconList(_inventoryAbilityList);
         if (abilities == null)
         {
@@ -2818,11 +2759,44 @@ public partial class HudController : Control
         foreach (var ability in abilities)
         {
             var label = GetString(ability, "label", "Ability");
-            var icon = GetGameIcon(GetString(ability, "id", ""));
+            var abilityId = GetString(ability, "id", "");
+            var icon = GetGameIcon(abilityId);
             var index = _inventoryAbilityList.AddItem(label, icon);
-            var detail = GetString(ability, "detail", label);
-            _inventoryAbilityList.SetItemTooltip(index, RemoveAbilityTooltipProperties(detail));
+            _inventoryAbilityList.SetItemTooltip(index, "");
+            _inventoryAbilityList.SetItemTooltipEnabled(index, false);
+            if (!string.IsNullOrEmpty(abilityId))
+            {
+                _inventoryAbilityList.SetItemMetadata(index, abilityId);
+                _inventoryAbilityEntriesById[abilityId] = ability;
+            }
         }
+    }
+
+    private static (string Details, string Description) BuildAbilityHoverContent(Dictionary ability)
+    {
+        var detail = RemoveAbilityTooltipProperties(GetString(ability, "detail", GetString(ability, "label", "Ability")));
+        var details = new List<string>();
+        var description = "";
+        var lines = detail.Split('\n');
+        for (var index = 1; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            if (line.StartsWith("Description:", StringComparison.Ordinal))
+            {
+                description = line["Description:".Length..].Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(line))
+            {
+                details.Add(line);
+            }
+        }
+
+        if (GetBool(ability, "show_tray_drag_hint", false))
+        {
+            details.Add("Drag onto a quick slot to assign it.");
+        }
+
+        return (string.Join("\n", details), description);
     }
 
     private static string RemoveAbilityTooltipProperties(string detail)
@@ -2968,11 +2942,7 @@ public partial class HudController : Control
             CustomMinimumSize = new Vector2(0.0f, 84.0f),
             FocusMode = FocusModeEnum.All,
             MouseDefaultCursorShape = CursorShape.PointingHand,
-            TooltipText = targetHighlighted
-                ? $"Select {unit.UnitName} to resurrect"
-                : reorderEnabled
-                ? $"Open {unit.UnitName}\nDrag to change marching order"
-                : $"Open {unit.UnitName}"
+            TooltipText = ""
         };
         card.AddThemeStyleboxOverride("normal", CreatePartyCardStyle(cardBackground, accent, targetHighlighted ? 3 : selected ? 2 : 1));
         card.AddThemeStyleboxOverride("hover", CreatePartyCardStyle(new Color(0.09f, 0.095f, 0.1f, 1.0f), new Color(0.88f, 0.73f, 0.4f, 1.0f), 2));
@@ -3017,7 +2987,7 @@ public partial class HudController : Control
             var levelUpButton = new Button
             {
                 Name = "LevelUpBadge",
-                TooltipText = $"View {unit.UnitName}'s level-up gains",
+                TooltipText = "",
                 CustomMinimumSize = new Vector2(18.0f, 18.0f),
                 Size = new Vector2(18.0f, 18.0f),
                 Position = new Vector2(30.0f, 30.0f),
@@ -3041,6 +3011,8 @@ public partial class HudController : Control
             TacticalTheme.ApplyLabel(glyph, TacticalTheme.BrassBright, 13);
             levelUpButton.AddChild(glyph);
             glyph.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            glyph.OffsetTop = -1.0f;
+            glyph.OffsetBottom = -1.0f;
             levelUpButton.Pressed += () => EmitSignal(SignalName.LevelUpRequested, unit.UnitId);
             portraitContainer.AddChild(levelUpButton);
         }
@@ -3743,7 +3715,9 @@ public partial class HudController : Control
             var base_dmg = GetInt(item, "base_damage", 0);
             var bonus_dmg = GetInt(item, "bonus_damage", 0);
             var range = GetInt(item, "range", 0);
-            return $"{prefix}{name} - Weapon\nDamage: +{base_dmg + bonus_dmg}\nRange: +{range}";
+            var description = GetString(item, "description", "");
+            var descriptionDetail = string.IsNullOrWhiteSpace(description) ? "" : $"\n{description}";
+            return $"{prefix}{name} - Weapon{descriptionDetail}\nDamage: +{base_dmg + bonus_dmg}\nRange: +{range}";
         }
 
         if (type == "armor")
@@ -3751,7 +3725,11 @@ public partial class HudController : Control
             var base_armor_class = GetInt(item, "base_armor_class", 0);
             var bonus_armor_class = GetInt(item, "bonus_armor_class", 0);
             var bonuses = BuildEquipmentBonusDetail(item);
-            return $"{prefix}{name} - Armor\nArmor Class: +{base_armor_class + bonus_armor_class}{bonuses}";
+            var description = GetString(item, "description", "");
+            var armorClass = base_armor_class + bonus_armor_class;
+            var descriptionDetail = string.IsNullOrWhiteSpace(description) ? "" : $"\n{description}";
+            var armorClassDetail = armorClass == 0 ? "" : $"\nArmor Class: +{armorClass}";
+            return $"{prefix}{name} - Armor{descriptionDetail}{armorClassDetail}{bonuses}";
         }
 
         if (type == "scroll")
@@ -3802,6 +3780,27 @@ public partial class HudController : Control
         return details;
     }
 
+    private static (string Details, string Description) BuildItemHoverContent(Dictionary item)
+    {
+        var description = GetString(item, "description", "");
+        var details = BuildItemHoverDetails(item);
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return (details, "");
+        }
+
+        var remainingDetails = new List<string>();
+        foreach (var line in details.Split('\n'))
+        {
+            if (line != description)
+            {
+                remainingDetails.Add(line);
+            }
+        }
+
+        return (string.Join("\n", remainingDetails), description);
+    }
+
     private void CreateItemHoverTooltip()
     {
         _itemHoverTooltipLayer = new CanvasLayer
@@ -3816,7 +3815,6 @@ public partial class HudController : Control
             Name = "ItemHoverTooltip",
             Visible = false,
             MouseFilter = MouseFilterEnum.Ignore,
-            CustomMinimumSize = new Vector2(288.0f, 0.0f),
             ZIndex = 1000
         };
         var panelStyle = new StyleBoxFlat
@@ -3855,16 +3853,16 @@ public partial class HudController : Control
         _itemHoverTooltipTitle.AddThemeFontSizeOverride("font_size", 15);
         content.AddChild(_itemHoverTooltipTitle);
 
-        var separator = new HSeparator
+        _itemHoverTooltipSeparator = new HSeparator
         {
             MouseFilter = MouseFilterEnum.Ignore
         };
-        separator.AddThemeStyleboxOverride("separator", new StyleBoxLine
+        _itemHoverTooltipSeparator.AddThemeStyleboxOverride("separator", new StyleBoxLine
         {
             Color = _worldHoverBorder,
             Thickness = 1
         });
-        content.AddChild(separator);
+        content.AddChild(_itemHoverTooltipSeparator);
 
         _itemHoverTooltipDetails = new Label
         {
@@ -3877,6 +3875,24 @@ public partial class HudController : Control
         _itemHoverTooltipDetails.AddThemeFontSizeOverride("font_size", 13);
         content.AddChild(_itemHoverTooltipDetails);
 
+        _itemHoverTooltipDescription = new Label
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(256.0f, 0.0f),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        _itemHoverTooltipDescription.AddThemeColorOverride("font_color", TacticalTheme.ParchmentMuted);
+        _itemHoverTooltipDescription.AddThemeFontOverride("font", new SystemFont
+        {
+            FontNames = new[] { "Segoe UI", "Arial", "sans-serif" },
+            FontItalic = true,
+            AllowSystemFallback = true
+        });
+        _itemHoverTooltipDescription.AddThemeFontSizeOverride("font_size", 11);
+        content.AddChild(_itemHoverTooltipDescription);
+
         margins.AddChild(content);
         _itemHoverTooltipPanel.AddChild(margins);
         _itemHoverTooltipLayer.AddChild(_itemHoverTooltipPanel);
@@ -3886,12 +3902,27 @@ public partial class HudController : Control
     {
         if (GetViewport().GuiIsDragging())
         {
-            _itemHoverTooltipPanel.Visible = false;
+            HideItemHoverTooltip();
+            return;
+        }
+
+        var hoveredPartyCard = FindPartyCardAncestor(GetViewport().GuiGetHoveredControl());
+        if (hoveredPartyCard != null && hoveredPartyCard.IsVisibleInTree())
+        {
+            if (hoveredPartyCard.ReorderEnabled)
+            {
+                ShowPartyCardHoverTooltip();
+            }
+            else
+            {
+                HideItemHoverTooltip();
+            }
             return;
         }
 
         Dictionary item = null;
         var equipped = false;
+        var foundAbility = false;
         var foundItem = TryGetHoveredItem(_inventoryItemList, _inventoryItemsById, out item);
         if (!foundItem)
         {
@@ -3908,42 +3939,110 @@ public partial class HudController : Control
             foundItem = TryGetHoveredEquipmentSlot(out item);
             equipped = foundItem;
         }
+        if (!foundItem)
+        {
+            foundItem = TryGetHoveredItem(_inventoryAbilityList, _inventoryAbilityEntriesById, out item);
+            foundAbility = foundItem;
+        }
+        if (!foundItem)
+        {
+            foundItem = TryGetHoveredAbilityTrayEntry(out item);
+            foundAbility = foundItem;
+        }
 
         if (!foundItem || item == null)
         {
-            _itemHoverTooltipKey = "";
-            _itemHoverTooltipPanel.Visible = false;
+            HideItemHoverTooltip();
             return;
         }
 
         var id = GetString(item, "id", GetString(item, "name", "item"));
-        equipped |= _equippedItemIds.Contains(id);
-        var tooltipKey = $"{id}:{equipped}:{GetInt(item, "price", -1)}";
+        if (!foundAbility)
+        {
+            equipped |= _equippedItemIds.Contains(id);
+        }
+
+        var hoverContent = foundAbility
+            ? BuildAbilityHoverContent(item)
+            : BuildItemHoverContent(item);
+        var tooltipKey = $"{id}:{equipped}:{GetInt(item, "price", -1)}:{hoverContent.Details}:{hoverContent.Description}";
+        var title = equipped
+            ? $"{GetString(item, "name", id)} (equipped)"
+            : GetString(item, foundAbility ? "label" : "name", id);
+        ShowItemHoverTooltip(tooltipKey, title, hoverContent.Details, hoverContent.Description);
+    }
+
+    private void ShowItemHoverTooltip(string tooltipKey, string title, string details, string description)
+    {
         if (_itemHoverTooltipKey != tooltipKey)
         {
-            _itemHoverTooltipTitle.Text = equipped
-                ? $"{GetString(item, "name", id)} (equipped)"
-                : GetString(item, "name", id);
-            _itemHoverTooltipDetails.Text = BuildItemHoverDetails(item);
+            _itemHoverTooltipTitle.Text = title;
+            _itemHoverTooltipDetails.Text = details;
+            _itemHoverTooltipDetails.Visible = !string.IsNullOrWhiteSpace(details);
+            _itemHoverTooltipDescription.Text = description;
+            _itemHoverTooltipDescription.Visible = !string.IsNullOrWhiteSpace(description);
+            _itemHoverTooltipSeparator.Visible = _itemHoverTooltipDetails.Visible || _itemHoverTooltipDescription.Visible;
             _itemHoverTooltipPanel.Size = _itemHoverTooltipPanel.GetCombinedMinimumSize();
             _itemHoverTooltipKey = tooltipKey;
         }
 
         var viewportSize = GetViewportRect().Size;
         var tooltipSize = _itemHoverTooltipPanel.Size;
-        var cursor = GetViewport().GetMousePosition() + new Vector2(14.0f, 14.0f);
-        if (cursor.X + tooltipSize.X > viewportSize.X)
-        {
-            cursor.X = viewportSize.X - tooltipSize.X - 8.0f;
-        }
-
-        if (cursor.Y + tooltipSize.Y > viewportSize.Y)
-        {
-            cursor.Y = viewportSize.Y - tooltipSize.Y - 8.0f;
-        }
-
-        _itemHoverTooltipPanel.Position = new Vector2(Mathf.Max(0.0f, cursor.X), Mathf.Max(0.0f, cursor.Y));
+        _itemHoverTooltipPanel.Position = CalculateHoverTooltipPosition(
+            GetViewport().GetMousePosition(),
+            tooltipSize,
+            viewportSize);
         _itemHoverTooltipPanel.Visible = true;
+    }
+
+    private void ShowPartyCardHoverTooltip()
+    {
+        ShowItemHoverTooltip("party-card:reorder", "Drag to change order", "", "");
+    }
+
+    private void HideItemHoverTooltip()
+    {
+        _itemHoverTooltipKey = "";
+        _itemHoverTooltipPanel.Visible = false;
+    }
+
+    private static PartyCard FindPartyCardAncestor(Control control)
+    {
+        while (control != null)
+        {
+            if (control is PartyCard partyCard)
+            {
+                return partyCard;
+            }
+
+            control = control.GetParent() as Control;
+        }
+
+        return null;
+    }
+
+    private static Vector2 CalculateHoverTooltipPosition(Vector2 mousePosition, Vector2 tooltipSize, Vector2 viewportSize)
+    {
+        const float margin = 8.0f;
+        const float cursorOffset = 14.0f;
+        var maxX = Mathf.Max(margin, viewportSize.X - tooltipSize.X - margin);
+        var maxY = Mathf.Max(margin, viewportSize.Y - tooltipSize.Y - margin);
+        var x = mousePosition.X + cursorOffset;
+        if (x > maxX)
+        {
+            x = mousePosition.X - tooltipSize.X - cursorOffset;
+        }
+
+        x = Mathf.Clamp(x, margin, maxX);
+        var y = mousePosition.Y + cursorOffset;
+        if (y > maxY)
+        {
+            var aboveY = mousePosition.Y - tooltipSize.Y - cursorOffset;
+            y = aboveY >= margin ? aboveY : maxY;
+        }
+
+        y = Mathf.Clamp(y, margin, maxY);
+        return new Vector2(x, y);
     }
 
     private static bool TryGetHoveredItem(ItemList list, System.Collections.Generic.Dictionary<string, Dictionary> itemsById, out Dictionary item)
@@ -3963,6 +4062,33 @@ public partial class HudController : Control
         var metadata = list.GetItemMetadata(index);
         return metadata.VariantType == Variant.Type.String
             && itemsById.TryGetValue(metadata.AsString(), out item);
+    }
+
+    private bool TryGetHoveredAbilityTrayEntry(out Dictionary entry)
+    {
+        entry = null;
+        if (_abilityTrayGrid == null || !_abilityTrayGrid.IsVisibleInTree())
+        {
+            return false;
+        }
+
+        foreach (var child in _abilityTrayGrid.GetChildren())
+        {
+            if (child is not AbilityBarButton button || !button.IsVisibleInTree())
+            {
+                continue;
+            }
+
+            var localMouse = button.GetLocalMousePosition();
+            if (!new Rect2(Vector2.Zero, button.Size).HasPoint(localMouse))
+            {
+                continue;
+            }
+
+            return _abilityTrayEntriesById.TryGetValue(button.AbilityId, out entry);
+        }
+
+        return false;
     }
 
     private bool TryGetHoveredEquipmentSlot(out Dictionary item)
@@ -4005,6 +4131,7 @@ public partial class HudController : Control
         AddEquipmentBonus(bonuses, "max MP", GetInt(item, "bonus_max_magic_points", 0));
         AddEquipmentBonus(bonuses, "MP regen", GetInt(item, "bonus_magic_point_regen", 0));
         AddEquipmentBonus(bonuses, "movement", GetInt(item, "bonus_movement", 0));
+        AddEquipmentBonus(bonuses, "dexterity", GetInt(item, "bonus_dexterity", 0));
         return bonuses.Count == 0 ? "" : $" {string.Join(" ", bonuses)}";
     }
 
@@ -4015,6 +4142,7 @@ public partial class HudController : Control
         AddEquipmentBonus(bonuses, "Maximum MP", GetInt(item, "bonus_max_magic_points", 0));
         AddEquipmentBonus(bonuses, "MP regeneration per turn", GetInt(item, "bonus_magic_point_regen", 0));
         AddEquipmentBonus(bonuses, "Movement per turn", GetInt(item, "bonus_movement", 0));
+        AddEquipmentBonus(bonuses, "Dexterity", GetInt(item, "bonus_dexterity", 0));
         return bonuses.Count == 0 ? "" : $"\n{string.Join("\n", bonuses)}";
     }
 
@@ -4028,27 +4156,17 @@ public partial class HudController : Control
 
     private void UpdateInventoryPrimaryAction(Dictionary item)
     {
-        if (_equipButton == null)
+        if (_inventoryActionButton == null)
         {
             return;
         }
 
         var type = GetString(item, "type", "item");
-        var isConsumable = IsConsumableItem(item);
         var isIdentified = GetBool(item, "is_identified", true);
-        var consumableSlotsFull = _inventoryEquippedEntriesBySlot.ContainsKey("consumable-1")
-            && _inventoryEquippedEntriesBySlot.ContainsKey("consumable-2");
-        var canEquip = isIdentified && (type is "weapon" or "armor" || isConsumable && !consumableSlotsFull);
         var canUse = isIdentified && IsUsableInventoryItem(item);
-        _equipButton.Disabled = !canEquip && !canUse;
-        _equipButton.Text = !isIdentified ? "Unidentified" : type switch
-        {
-            "key" => "Passive",
-            "scroll" => "Learn Spell",
-            "potion" or "food" or "consumable" => consumableSlotsFull ? "Slots Full" : "Equip",
-            "weapon" or "armor" => "Equip",
-            _ => "Unavailable"
-        };
+        _inventoryActionButton.Visible = canUse;
+        _inventoryActionButton.Disabled = !canUse;
+        _inventoryActionButton.Text = type == "scroll" ? "Learn Spell" : "Use";
     }
 
     private static bool IsUsableInventoryItem(Dictionary item)

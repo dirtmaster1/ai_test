@@ -585,7 +585,12 @@ current_tab = 0
 [node name="Info" type="ScrollContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs"]
 layout_mode = 2
 
-[node name="InventoryCharacterSummary" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info"]
+[node name="InfoBackground" type="PanelContainer" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="InventoryCharacterSummary" type="Label" parent="InventoryPanel/InventoryVBox/InventoryColumns/CharacterColumn/CharacterColumnVBox/CharacterTabs/Info/InfoBackground"]
 layout_mode = 2
 size_flags_horizontal = 3
 autowrap_mode = 3
@@ -805,20 +810,24 @@ allow_reselect = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="EquipButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
+[node name="InventoryActionSlot" type="CenterContainer" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Equip"
 
-[node name="UnequipButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
+[node name="InventoryActionButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons/InventoryActionSlot"]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Unequip"
+text = "Learn Spell"
 
 [node name="CloseInventoryButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Close"
+
+[node name="InventoryButtonSpacer" type="Control" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="LootPanel" type="PanelContainer" parent="."]
 visible = false
