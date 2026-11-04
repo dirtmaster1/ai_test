@@ -57,8 +57,18 @@ func run_test() -> void:
         checks.queue_free()
         await process_frame
         if equipment_failures.is_empty():
-            print("PASS: equipment stat bonuses affect healing, maximum MP, and MP regeneration")
+            print("PASS: equipment bonuses and player dual-wield damage are applied correctly")
         quit(0 if equipment_failures.is_empty() else 1)
+        return
+    if OS.get_cmdline_user_args().has("--class-ability-only"):
+        var ability_failures = checks.call("RunClassAbilityChecks")
+        for failure in ability_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if ability_failures.is_empty():
+            print("PASS: class level-3 abilities unlock and appear with icons and hover details")
+        quit(0 if ability_failures.is_empty() else 1)
         return
     if OS.get_cmdline_user_args().has("--consumables-only"):
         var consumable_failures = checks.call("RunConsumableChecks")

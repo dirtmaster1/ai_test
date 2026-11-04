@@ -64,6 +64,12 @@ public partial class HudController : Control
     public delegate void LoadRequestedEventHandler();
 
     [Signal]
+    public delegate void AdminGrantExperienceRequestedEventHandler(string unitId, int amount);
+
+    [Signal]
+    public delegate void AdminAddItemRequestedEventHandler(string itemId);
+
+    [Signal]
     public delegate void MainMenuRequestedEventHandler();
 
     [Signal]
@@ -112,6 +118,7 @@ public partial class HudController : Control
         ["long-bow"] = new(4, 1),
         ["war-axe"] = new(6, 0),
         ["chieftain-club"] = new(6, 1),
+        ["staff"] = new(6, 1),
         ["broad-sword"] = new(0, 1),
         ["one-handed-mace"] = new(3, 1),
         ["small-shield"] = new(0, 2),
@@ -198,6 +205,21 @@ public partial class HudController : Control
     private GameOptionsManager _gameOptionsManager;
     private Button _saveButton;
     private Button _loadButton;
+    private Button _adminButton;
+    private PanelContainer _adminPanel;
+    private Label _adminHeader;
+    private Label _adminExperienceUnitLabel;
+    private Label _adminExperienceAmountLabel;
+    private Label _adminItemsHeader;
+    private OptionButton _adminExperienceUnitOption;
+    private SpinBox _adminExperienceAmount;
+    private Button _adminGrantExperienceButton;
+    private ItemList _adminItemList;
+    private Button _adminAddItemButton;
+    private Label _adminStatusLabel;
+    private Button _adminCloseButton;
+    private string _adminPartySignature = "";
+    private string _adminItemCatalogSignature = "";
     private PanelContainer _helpPanel;
     private Label _helpHeader;
     private Label _helpBody;
@@ -379,6 +401,20 @@ public partial class HudController : Control
         UpdateCombatMessageDurationLabel(_combatMessageDurationSlider.Value);
         _saveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton");
         _loadButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/LoadButton");
+        _adminButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/AdminButton");
+        _adminButton.Visible = ProjectSettings.GetSetting("game/admin_menu_enabled", false).AsBool();
+        _adminPanel = GetNode<PanelContainer>("AdminPanel");
+        _adminHeader = GetNode<Label>("AdminPanel/AdminVBox/AdminHeader");
+        _adminExperienceUnitLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminExperienceUnitRow/AdminExperienceUnitLabel");
+        _adminExperienceAmountLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminExperienceRow/AdminExperienceAmountLabel");
+        _adminItemsHeader = GetNode<Label>("AdminPanel/AdminVBox/AdminItemsHeader");
+        _adminExperienceUnitOption = GetNode<OptionButton>("AdminPanel/AdminVBox/AdminExperienceUnitRow/AdminExperienceUnitOption");
+        _adminExperienceAmount = GetNode<SpinBox>("AdminPanel/AdminVBox/AdminExperienceRow/AdminExperienceAmount");
+        _adminGrantExperienceButton = GetNode<Button>("AdminPanel/AdminVBox/AdminExperienceRow/AdminGrantExperienceButton");
+        _adminItemList = GetNode<ItemList>("AdminPanel/AdminVBox/AdminItemList");
+        _adminAddItemButton = GetNode<Button>("AdminPanel/AdminVBox/AdminItemButtons/AdminAddItemButton");
+        _adminStatusLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminStatusLabel");
+        _adminCloseButton = GetNode<Button>("AdminPanel/AdminVBox/AdminCloseButton");
         _helpPanel = GetNode<PanelContainer>("HelpPanel");
         _helpHeader = GetNode<Label>("HelpPanel/HelpVBox/HelpHeader");
         _helpBody = GetNode<Label>("HelpPanel/HelpVBox/HelpBody");
@@ -517,6 +553,10 @@ public partial class HudController : Control
         _combatMessageDurationSlider.ValueChanged += OnCombatMessageDurationChanged;
         _saveButton.Pressed += OnSaveButtonPressed;
         _loadButton.Pressed += OnLoadButtonPressed;
+        _adminButton.Pressed += OnAdminButtonPressed;
+        _adminGrantExperienceButton.Pressed += OnAdminGrantExperienceButtonPressed;
+        _adminAddItemButton.Pressed += OnAdminAddItemButtonPressed;
+        _adminCloseButton.Pressed += OnAdminCloseButtonPressed;
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
         _inventoryPrevUnitButton.Pressed += OnInventoryPrevUnitButtonPressed;
         _inventoryNextUnitButton.Pressed += OnInventoryNextUnitButtonPressed;
@@ -568,6 +608,7 @@ public partial class HudController : Control
         RegisterDraggable(_actionDragHandle, _actionPanel);
         RegisterDraggable(_combatLogHeader, _combatLogPanel);
         RegisterDraggable(_inventoryUnitLabel, _inventoryPanel);
+        RegisterDraggable(_adminHeader, _adminPanel);
         RegisterDraggable(_lootHeader, _lootPanel);
         RegisterDraggable(_vendorHeader, _vendorPanel);
         RegisterDraggable(_reserveHeader, _reservePanel);
@@ -735,6 +776,26 @@ public partial class HudController : Control
         if (_loadButton != null)
         {
             _loadButton.Pressed -= OnLoadButtonPressed;
+        }
+
+        if (_adminButton != null)
+        {
+            _adminButton.Pressed -= OnAdminButtonPressed;
+        }
+
+        if (_adminGrantExperienceButton != null)
+        {
+            _adminGrantExperienceButton.Pressed -= OnAdminGrantExperienceButtonPressed;
+        }
+
+        if (_adminAddItemButton != null)
+        {
+            _adminAddItemButton.Pressed -= OnAdminAddItemButtonPressed;
+        }
+
+        if (_adminCloseButton != null)
+        {
+            _adminCloseButton.Pressed -= OnAdminCloseButtonPressed;
         }
 
         if (_closeHelpButton != null)
@@ -1155,6 +1216,59 @@ public partial class HudController : Control
     private void OnLoadButtonPressed()
     {
         EmitSignal(SignalName.LoadRequested);
+    }
+
+    private void OnAdminButtonPressed()
+    {
+        _adminPanel.Visible = !_adminPanel.Visible;
+        if (_adminPanel.Visible)
+        {
+            _adminPanel.MoveToFront();
+        }
+    }
+
+    private void OnAdminGrantExperienceButtonPressed()
+    {
+        if (_adminExperienceUnitOption.Selected < 0)
+        {
+            return;
+        }
+
+        var metadata = _adminExperienceUnitOption.GetSelectedMetadata();
+        var unitId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        var amount = Mathf.RoundToInt((float)_adminExperienceAmount.Value);
+        if (string.IsNullOrEmpty(unitId) || amount <= 0)
+        {
+            return;
+        }
+
+        EmitSignal(SignalName.AdminGrantExperienceRequested, unitId, amount);
+    }
+
+    private void OnAdminAddItemButtonPressed()
+    {
+        if (_adminItemList == null)
+        {
+            return;
+        }
+
+        var selected = _adminItemList.GetSelectedItems();
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        var metadata = _adminItemList.GetItemMetadata(selected[0]);
+        var itemId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (!string.IsNullOrEmpty(itemId))
+        {
+            EmitSignal(SignalName.AdminAddItemRequested, itemId);
+        }
+    }
+
+    private void OnAdminCloseButtonPressed()
+    {
+        _adminPanel.Visible = false;
     }
 
     private void OnCloseHelpButtonPressed()
@@ -2006,6 +2120,7 @@ public partial class HudController : Control
         StylePanel(_abilityTrayPanel, panelStyle);
         StylePanel(_helpPanel, panelStyle);
         StylePanel(_settingsPanel, panelStyle);
+        StylePanel(_adminPanel, panelStyle);
         StylePanel(_soundFxPanel, panelStyle);
         StylePanel(_gameOptionsPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
@@ -2016,6 +2131,8 @@ public partial class HudController : Control
         StyleHeaderLabel(_utilityHeader, headerColor);
         StyleHeaderLabel(_helpHeader, headerColor);
         StyleHeaderLabel(_settingsHeader, headerColor);
+        StyleHeaderLabel(_adminHeader, headerColor);
+        StyleHeaderLabel(_adminItemsHeader, headerColor);
         StyleHeaderLabel(_soundFxHeader, headerColor);
         StyleHeaderLabel(_gameOptionsHeader, headerColor);
         StyleHeaderLabel(_partyHeader, headerColor);
@@ -2043,6 +2160,9 @@ public partial class HudController : Control
         StyleBodyLabel(_combatMessageDurationValue, headerColor, 14);
         StyleBodyLabel(_backgroundVolumeLabel, bodyColor, 14);
         StyleBodyLabel(_backgroundVolumeValue, headerColor, 14);
+        StyleBodyLabel(_adminExperienceUnitLabel, bodyColor, 14);
+        StyleBodyLabel(_adminExperienceAmountLabel, bodyColor, 14);
+        StyleBodyLabel(_adminStatusLabel, mutedBodyColor, 13);
         TacticalTheme.ApplyHeaderLabel(_inventoryUnitLabel, TacticalTheme.BrassBright, 20);
         _inventoryUnitLabel.AddThemeFontOverride("font", new FontVariation
         {
@@ -2060,6 +2180,11 @@ public partial class HudController : Control
         StyleButton(_inventoryButton, false);
         StyleButton(_helpButton, false);
         StyleButton(_settingsButton, false);
+        StyleButton(_adminButton, false);
+        StyleButton(_adminExperienceUnitOption, false);
+        StyleButton(_adminGrantExperienceButton, true);
+        StyleButton(_adminAddItemButton, true);
+        StyleButton(_adminCloseButton, false);
         StyleButton(_soundFxButton, false);
         StyleButton(_gameOptionsButton, false);
         StyleButton(_mainMenuButton, false);
@@ -2121,6 +2246,7 @@ public partial class HudController : Control
         StyleItemList(_vendorSellList, bodyColor, mutedBodyColor);
         StyleItemList(_reserveActivePartyList, bodyColor, mutedBodyColor);
         StyleItemList(_reserveRosterList, bodyColor, mutedBodyColor);
+        StyleItemList(_adminItemList, bodyColor, mutedBodyColor);
 
         var inventoryInnerPanels = new[]
         {
@@ -2774,7 +2900,13 @@ public partial class HudController : Control
 
     private static (string Details, string Description) BuildAbilityHoverContent(Dictionary ability)
     {
-        var detail = RemoveAbilityTooltipProperties(GetString(ability, "detail", GetString(ability, "label", "Ability")));
+        var abilityDetail = GetString(ability, "detail", "");
+        if (string.IsNullOrWhiteSpace(abilityDetail))
+        {
+            return BuildStructuredAbilityHoverContent(ability);
+        }
+
+        var detail = RemoveAbilityTooltipProperties(abilityDetail);
         var details = new List<string>();
         var description = "";
         var lines = detail.Split('\n');
@@ -2797,6 +2929,65 @@ public partial class HudController : Control
         }
 
         return (string.Join("\n", details), description);
+    }
+
+    private static (string Details, string Description) BuildStructuredAbilityHoverContent(Dictionary ability)
+    {
+        var details = new List<string>();
+        var range = GetInt(ability, "range", 0);
+        if (range > 0)
+        {
+            details.Add($"Range: {range}");
+        }
+        else if (GetBool(ability, "requires_ranged_weapon", false))
+        {
+            details.Add("Range: Uses equipped ranged weapon");
+        }
+
+        var damageMultiplier = GetInt(ability, "damage_multiplier", 0);
+        if (damageMultiplier > 1)
+        {
+            details.Add($"Damage: {damageMultiplier}x weapon damage");
+        }
+        else
+        {
+            var damage = GetInt(ability, "damage", 0);
+            if (damage > 0)
+            {
+                details.Add($"Damage: {damage}");
+            }
+        }
+
+        var areaRadius = GetInt(ability, "area_radius", 0);
+        if (areaRadius > 0)
+        {
+            details.Add($"Area radius: {areaRadius}");
+        }
+
+        var cooldown = GetInt(ability, "cooldown", 0);
+        if (cooldown > 0)
+        {
+            details.Add($"Cooldown: {cooldown} turns");
+        }
+
+        var duration = GetInt(ability, "duration_turns", 0);
+        if (duration > 0)
+        {
+            details.Add($"Duration: {duration} turns");
+        }
+
+        var targetingPrompt = GetString(ability, "targeting_prompt", "");
+        if (!string.IsNullOrWhiteSpace(targetingPrompt))
+        {
+            details.Add(targetingPrompt);
+        }
+
+        foreach (var step in GetStringArrayFromDictionary(ability, "targeting_steps"))
+        {
+            details.Add($"- {step}");
+        }
+
+        return (string.Join("\n", details), GetString(ability, "description", ""));
     }
 
     private static string RemoveAbilityTooltipProperties(string detail)
@@ -2841,6 +3032,161 @@ public partial class HudController : Control
         }
     }
 
+    public void SetAdminItems(Array<Dictionary> items)
+    {
+        if (_adminItemList == null)
+        {
+            return;
+        }
+
+        var catalog = new List<Dictionary>();
+        if (items != null)
+        {
+            foreach (var item in items)
+            {
+                var id = GetString(item, "id", "");
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    catalog.Add(item);
+                }
+            }
+        }
+
+        catalog.Sort((left, right) => string.Compare(
+            GetString(left, "name", GetString(left, "id", "")),
+            GetString(right, "name", GetString(right, "id", "")),
+            StringComparison.CurrentCultureIgnoreCase));
+
+        var signatureBuilder = new StringBuilder();
+        foreach (var item in catalog)
+        {
+            signatureBuilder.Append(GetString(item, "id", ""))
+                .Append(':')
+                .Append(GetString(item, "name", ""))
+                .Append(':')
+                .Append(GetString(item, "type", ""))
+                .Append('|');
+        }
+
+        var signature = signatureBuilder.ToString();
+        if (signature == _adminItemCatalogSignature)
+        {
+            return;
+        }
+
+        var selectedItemId = "";
+        var selected = _adminItemList.GetSelectedItems();
+        if (selected.Length > 0)
+        {
+            var metadata = _adminItemList.GetItemMetadata(selected[0]);
+            selectedItemId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        }
+
+        _adminItemCatalogSignature = signature;
+        _adminItemList.Clear();
+        foreach (var item in catalog)
+        {
+            var itemId = GetString(item, "id", "");
+            var itemName = GetString(item, "name", itemId);
+            var itemType = GetString(item, "type", "item");
+            _adminItemList.AddItem($"{itemName} ({itemType})", GetItemIcon(item));
+            var index = _adminItemList.ItemCount - 1;
+            _adminItemList.SetItemMetadata(index, itemId);
+            _adminItemList.SetItemTooltip(index, GetString(item, "description", ""));
+        }
+
+        _adminAddItemButton.Disabled = _adminItemList.ItemCount == 0;
+        for (var index = 0; index < _adminItemList.ItemCount; index++)
+        {
+            var metadata = _adminItemList.GetItemMetadata(index);
+            if (metadata.VariantType == Variant.Type.String && metadata.AsString() == selectedItemId)
+            {
+                _adminItemList.Select(index);
+                return;
+            }
+        }
+
+        if (_adminItemList.ItemCount > 0)
+        {
+            _adminItemList.Select(0);
+        }
+    }
+
+    public void SetAdminPartyUnits(Array<Unit> party)
+    {
+        if (_adminExperienceUnitOption == null)
+        {
+            return;
+        }
+
+        var selectedUnitId = "";
+        if (_adminExperienceUnitOption.Selected >= 0)
+        {
+            var selectedMetadata = _adminExperienceUnitOption.GetSelectedMetadata();
+            selectedUnitId = selectedMetadata.VariantType == Variant.Type.String ? selectedMetadata.AsString() : "";
+        }
+
+        var signatureBuilder = new StringBuilder();
+        if (party != null)
+        {
+            foreach (var unit in party)
+            {
+                if (unit != null)
+                {
+                    signatureBuilder.Append(unit.UnitId).Append(':')
+                        .Append(unit.UnitName).Append(':')
+                        .Append(unit.Level).Append(':')
+                        .Append(unit.Experience).Append(':')
+                        .Append(unit.ExperienceToNextLevel).Append('|');
+                }
+            }
+        }
+
+        var signature = signatureBuilder.ToString();
+        if (signature == _adminPartySignature)
+        {
+            return;
+        }
+
+        _adminPartySignature = signature;
+        _adminExperienceUnitOption.Clear();
+        var selectedIndex = -1;
+        if (party != null)
+        {
+            foreach (var unit in party)
+            {
+                if (unit == null || string.IsNullOrWhiteSpace(unit.UnitId))
+                {
+                    continue;
+                }
+
+                _adminExperienceUnitOption.AddItem(
+                    $"{unit.UnitName} - Level {unit.Level} ({unit.Experience}/{unit.ExperienceToNextLevel} XP)");
+                var index = _adminExperienceUnitOption.ItemCount - 1;
+                _adminExperienceUnitOption.SetItemMetadata(index, unit.UnitId);
+                if (unit.UnitId == selectedUnitId)
+                {
+                    selectedIndex = index;
+                }
+            }
+        }
+
+        _adminExperienceUnitOption.Disabled = _adminExperienceUnitOption.ItemCount == 0;
+        _adminGrantExperienceButton.Disabled = _adminExperienceUnitOption.ItemCount == 0;
+        if (_adminExperienceUnitOption.ItemCount > 0)
+        {
+            _adminExperienceUnitOption.Select(selectedIndex >= 0 ? selectedIndex : 0);
+        }
+    }
+
+    public void SetAdminStatus(string status)
+    {
+        if (_adminStatusLabel != null)
+        {
+            _adminStatusLabel.Text = status ?? "";
+        }
+    }
+
     public void SetPartyList(
         Array<Unit> party,
         string selectedUnitId,
@@ -2852,6 +3198,8 @@ public partial class HudController : Control
         {
             return;
         }
+
+        SetAdminPartyUnits(party);
 
         var signatureBuilder = new StringBuilder($"{selectedUnitId}|{reorderEnabled}");
         if (pendingLevelUpUnitIds != null)
@@ -3556,6 +3904,32 @@ public partial class HudController : Control
         return ((Variant)dict[key]).AsString();
     }
 
+    private static Array<string> GetStringArrayFromDictionary(Dictionary dict, string key)
+    {
+        var result = new Array<string>();
+        if (dict == null || !dict.ContainsKey(key))
+        {
+            return result;
+        }
+
+        var raw = (Variant)dict[key];
+        if (raw.VariantType != Variant.Type.Array)
+        {
+            return result;
+        }
+
+        foreach (var entry in (Godot.Collections.Array)raw)
+        {
+            var value = (Variant)entry;
+            if (value.VariantType == Variant.Type.String)
+            {
+                result.Add(value.AsString());
+            }
+        }
+
+        return result;
+    }
+
     private static Texture2D GetItemIcon(Dictionary item)
     {
         if (item == null)
@@ -3906,6 +4280,13 @@ public partial class HudController : Control
             return;
         }
 
+        var learnedAbilityButton = FindLevelUpLearnedAbilityButton(GetViewport().GuiGetHoveredControl());
+        if (learnedAbilityButton != null)
+        {
+            ShowLevelUpAbilityHoverTooltip(learnedAbilityButton);
+            return;
+        }
+
         var hoveredPartyCard = FindPartyCardAncestor(GetViewport().GuiGetHoveredControl());
         if (hoveredPartyCard != null && hoveredPartyCard.IsVisibleInTree())
         {
@@ -4000,10 +4381,43 @@ public partial class HudController : Control
         ShowItemHoverTooltip("party-card:reorder", "Drag to change order", "", "");
     }
 
+    private void ShowLevelUpAbilityHoverTooltip(Button button)
+    {
+        var abilityId = button.GetMeta("level_up_ability_id", "").AsString();
+        if (string.IsNullOrWhiteSpace(abilityId))
+        {
+            HideItemHoverTooltip();
+            return;
+        }
+
+        var ability = GetNodeOrNull<GameData>("/root/GameData")?.GetAbility(abilityId) ?? new Dictionary();
+        var hoverContent = BuildAbilityHoverContent(ability);
+        ShowItemHoverTooltip(
+            $"level-up-ability:{abilityId}:{hoverContent.Details}:{hoverContent.Description}",
+            GetString(ability, "name", abilityId),
+            hoverContent.Details,
+            hoverContent.Description);
+    }
+
     private void HideItemHoverTooltip()
     {
         _itemHoverTooltipKey = "";
         _itemHoverTooltipPanel.Visible = false;
+    }
+
+    private static Button FindLevelUpLearnedAbilityButton(Control control)
+    {
+        while (control != null)
+        {
+            if (control is Button button && button.HasMeta("level_up_ability_id"))
+            {
+                return button;
+            }
+
+            control = control.GetParent() as Control;
+        }
+
+        return null;
     }
 
     private static PartyCard FindPartyCardAncestor(Control control)
@@ -4639,6 +5053,7 @@ public partial class HudController : Control
             bonuses.AddChild(bonus);
         }
         content.AddChild(bonuses);
+        AddLevelUpLearnedAbilities(notice, content);
         content.AddChild(new HSeparator { Name = "LevelUpSectionSeparator" });
 
         var statSection = new VBoxContainer { Name = "LevelUpStatSection" };
@@ -4726,6 +5141,68 @@ public partial class HudController : Control
         content.AddChild(closeButton);
 
         panel.AddChild(content);
+    }
+
+    private void AddLevelUpLearnedAbilities(Dictionary notice, VBoxContainer content)
+    {
+        var learnedAbilityIds = GetStringArrayFromDictionary(notice, "learned_ability_ids");
+        if (learnedAbilityIds.Count == 0)
+        {
+            return;
+        }
+
+        var gameData = GetNodeOrNull<GameData>("/root/GameData");
+        var section = new VBoxContainer
+        {
+            Name = "LevelUpLearnedAbilities"
+        };
+        section.AddThemeConstantOverride("separation", 4);
+
+        var title = new Label
+        {
+            Name = "LevelUpLearnedAbilitiesTitle",
+            Text = "New Skill Learned",
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        TacticalTheme.ApplyHeaderLabel(title, TacticalTheme.BrassBright, 18);
+        section.AddChild(title);
+
+        var abilityRow = new HBoxContainer
+        {
+            Name = "LevelUpLearnedAbilityIcons"
+        };
+        abilityRow.AddThemeConstantOverride("separation", 8);
+        foreach (var abilityId in learnedAbilityIds)
+        {
+            if (string.IsNullOrWhiteSpace(abilityId))
+            {
+                continue;
+            }
+
+            var ability = gameData?.GetAbility(abilityId) ?? new Dictionary();
+            var abilityName = GetString(ability, "name", abilityId);
+            var button = new Button
+            {
+                Name = $"LevelUpLearnedAbility_{abilityId}",
+                Text = abilityName,
+                Icon = GetGameIcon(abilityId),
+                ExpandIcon = true,
+                IconAlignment = HorizontalAlignment.Left,
+                TooltipText = "",
+                CustomMinimumSize = new Vector2(180.0f, 42.0f),
+                FocusMode = FocusModeEnum.None,
+                MouseDefaultCursorShape = CursorShape.PointingHand
+            };
+            button.SetMeta("level_up_ability_id", abilityId);
+            TacticalTheme.ApplyButton(button);
+            abilityRow.AddChild(button);
+        }
+
+        if (abilityRow.GetChildCount() > 0)
+        {
+            section.AddChild(abilityRow);
+            content.AddChild(section);
+        }
     }
 
     public void UpdateLevelUpDialog(Dictionary notice)

@@ -1,3 +1,6 @@
+using Godot;
+using Godot.Collections;
+
 public partial class BattleController
 {
     // Architecture: HUD synchronization only (game state -> UI projection).
@@ -91,6 +94,31 @@ public partial class BattleController
             _hud.SetLootPanelVisible(false);
             _hud.SetReservePanelVisible(false);
         }
+    }
+
+    private Array<Dictionary> BuildAdminItemCatalogForHud()
+    {
+        var items = new Array<Dictionary>();
+        if (_gameData == null)
+        {
+            return items;
+        }
+
+        foreach (var itemKey in _gameData.Items.Keys)
+        {
+            var itemId = ((Variant)itemKey).AsString();
+            var item = _gameData.GetItem(itemId);
+            if (item.Count == 0)
+            {
+                continue;
+            }
+
+            var entry = CopyDictionary(item);
+            entry["id"] = itemId;
+            items.Add(entry);
+        }
+
+        return items;
     }
 
     private string BuildCurrentTargetingHelpText()

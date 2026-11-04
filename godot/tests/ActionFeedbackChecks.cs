@@ -51,6 +51,14 @@ public partial class ActionFeedbackChecks : BattleController
         return _failures;
     }
 
+    public Array<string> RunClassAbilityChecks()
+    {
+        SetupFixture();
+        CheckClassAbilityUnlocks();
+        Cleanup();
+        return _failures;
+    }
+
     public Array<string> RunConsumableChecks()
     {
         SetupFixture();
@@ -171,6 +179,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckEquipmentStatBonuses();
         CheckRequestedItemsAndTeleport();
         CheckActionPointsAndLevelUp();
+        CheckClassAbilityUnlocks();
         CheckTargets();
         CheckUtilities();
         CheckMovement();
@@ -375,6 +384,7 @@ public partial class ActionFeedbackChecks : BattleController
             ["one-handed-axe"] = new(5, 0),
             ["broad-sword"] = new(0, 1),
             ["one-handed-mace"] = new(3, 1),
+            ["staff"] = new(6, 1),
             ["metal-shield"] = new(1, 2),
             ["leather-helm"] = new(5, 2),
             ["full-plate-armor"] = new(6, 2),
@@ -506,6 +516,144 @@ public partial class ActionFeedbackChecks : BattleController
         Check(miloStock.Contains("boots-of-speed")
             && (int)Call("GetItemBuyPrice", "milo", "boots-of-speed") == 150,
             "Milo's stock must include Boots of Speed for 150 gold.");
+
+        Reset();
+        var gameData = Field<GameData>("_gameData");
+        gameData.Items["test-odd-offhand-weapon"] = new Dictionary
+        {
+            { "id", "test-odd-offhand-weapon" },
+            { "name", "Odd Offhand Weapon" },
+            { "type", "weapon" },
+            { "slot", "1-handed" },
+            { "base_damage", 5 },
+            { "bonus_damage", 0 },
+            { "range", 1 }
+        };
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["1-handed-a"] = "short-sword",
+            ["1-handed-b"] = "test-odd-offhand-weapon"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.WeaponAttackDamageBonus == 8,
+            "Dual wielding must halve off-hand damage and round odd damage down.");
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.WeaponAttackDamageBonus == 8,
+            "Recalculating dual-wield bonuses must not apply the off-hand penalty repeatedly.");
+
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["1-handed-a"] = "short-sword"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.WeaponAttackDamageBonus == 6,
+            "A single weapon must retain its full damage.");
+        equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["1-handed-a"] = "short-sword",
+            ["1-handed-b"] = "small-shield"
+        };
+        Call("ApplyEquippedItemBonuses", _actor);
+        Check(_actor.WeaponAttackDamageBonus == 6,
+            "A weapon paired with a shield must retain its full damage.");
+        equippedByUnit[_enemy.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["1-handed-a"] = "short-sword",
+            ["1-handed-b"] = "test-odd-offhand-weapon"
+        };
+        Call("ApplyEquippedItemBonuses", _enemy);
+        Check(_enemy.WeaponAttackDamageBonus == 11,
+            "The player dual-wield penalty must not change enemy weapon damage.");
+        gameData.Items.Remove("test-odd-offhand-weapon");
+    }
+
+    private void CheckClassAbilityUnlocks()
+    {
+        var abilitiesByClass = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["thief"] = "shadow-strike",
+            ["ranger"] = "rain-of-arrows",
+            ["warrior"] = "taunt"
+        };
+        foreach (var entry in abilitiesByClass)
+        {
+            var config = Config("caster", "player", new Vector2I(2, 2));
+            config["class_id"] = entry.Key;
+            config["level"] = 2;
+            config["experience"] = 199;
+            config["ability_ids"] = new Array<string> { "melee" };
+            _actor.Setup(config);
+
+            var levelsGained = _actor.GrantExperience(1);
+            Check(levelsGained == 1
+                && _actor.Level == 3
+                && _actor.HasAbility(entry.Value)
+                && _actor.LastLevelUpLearnedAbilityIds.Contains(entry.Value),
+                $"{entry.Key} must learn {entry.Value} upon reaching level 3.");
+        }
+
+        var levelUpConfig = Config("caster", "player", new Vector2I(2, 2));
+        levelUpConfig["class_id"] = "thief";
+        levelUpConfig["level"] = 2;
+        levelUpConfig["experience"] = 199;
+        levelUpConfig["ability_ids"] = new Array<string> { "melee" };
+        _actor.Setup(levelUpConfig);
+
+        var previousMaxHitPoints = _actor.MaxHitPoints;
+        var previousMaxMagicPoints = _actor.MaxMagicPoints;
+        var previousMagicRegen = _actor.MagicPointRegenPerTurn;
+        var previousActionPoints = _actor.ActionPoints;
+        var gained = _actor.GrantExperience(1);
+        Field<System.Collections.Generic.Dictionary<string, Dictionary>>("_pendingLevelUpNoticesByUnitId").Clear();
+        Call(
+            "RecordLevelUpNotice",
+            _actor,
+            2,
+            gained,
+            _actor.MaxHitPoints - previousMaxHitPoints,
+            _actor.MaxMagicPoints - previousMaxMagicPoints,
+            _actor.MagicPointRegenPerTurn - previousMagicRegen,
+            _actor.ActionPoints - previousActionPoints);
+        Call("RecordLevelUpLearnedAbilities", _actor);
+        Call("OnHudLevelUpRequested", _actor.UnitId);
+
+        var overlay = _testHud.GetNode<CenterContainer>("LevelUpOverlay");
+        var learnedSection = overlay.FindChildren("LevelUpLearnedAbilities", "VBoxContainer", true, false);
+        var learnedButtons = overlay.FindChildren("LevelUpLearnedAbility_shadow-strike", "Button", true, false);
+        var learnedButton = learnedButtons.Count > 0 ? (Button)learnedButtons[0] : null;
+        Check(learnedSection.Count > 0 && learnedButton != null
+            && learnedButton.Text == "Shadow Strike"
+            && learnedButton.Icon != null
+            && learnedButton.TooltipText == "",
+            "The level-up display must show the learned skill's icon without the native Godot tooltip.");
+        if (learnedButton != null)
+        {
+            typeof(HudController).GetMethod("ShowLevelUpAbilityHoverTooltip", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_testHud, new object[] { learnedButton });
+            var hoverPanel = (PanelContainer)typeof(HudController)
+                .GetField("_itemHoverTooltipPanel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            var hoverTitle = (Label)typeof(HudController)
+                .GetField("_itemHoverTooltipTitle", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            var hoverDetails = (Label)typeof(HudController)
+                .GetField("_itemHoverTooltipDetails", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            var hoverDescription = (Label)typeof(HudController)
+                .GetField("_itemHoverTooltipDescription", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            var hoverSeparator = (HSeparator)typeof(HudController)
+                .GetField("_itemHoverTooltipSeparator", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_testHud);
+            Check(hoverPanel.Visible
+                && hoverTitle.Text == "Shadow Strike"
+                && hoverDetails.Text.Contains("Range: 5", StringComparison.Ordinal)
+                && hoverDetails.Text.Contains("Damage: 4x weapon damage", StringComparison.Ordinal)
+                && hoverDetails.Text.Contains("Choose an unoccupied reachable tile", StringComparison.Ordinal)
+                && hoverDescription.Text == "A thief's argument that distance is merely a suggestion."
+                && hoverDescription.Visible
+                && hoverSeparator.Visible,
+                "The learned-skill hover must use the shared item tooltip layout and formatted ability details.");
+        }
+
+        overlay.Free();
+        Field<System.Collections.Generic.Dictionary<string, Dictionary>>("_pendingLevelUpNoticesByUnitId").Clear();
+        Reset();
     }
 
     private void CheckRequestedItemsAndTeleport()
@@ -514,6 +662,7 @@ public partial class ActionFeedbackChecks : BattleController
         var itemIds = new[]
         {
             "iron-ring", "spear", "one-handed-axe", "broad-sword", "one-handed-mace",
+            "staff",
             "metal-shield", "leather-helm", "full-plate-armor", "plate-mail",
             "trailblazer-leggings", "ranger-cloak",
             "web-scroll", "greater-heal-scroll", "lightning-bolt-scroll", "identify-scroll", "teleport-scroll"
@@ -522,6 +671,14 @@ public partial class ActionFeedbackChecks : BattleController
         {
             Check(gameData.GetItem(itemId).Count > 0, $"Game data must contain the {itemId} item.");
         }
+
+        var staff = gameData.GetItem("staff");
+        Check(ReadString(staff, "type", "") == "weapon"
+            && ReadString(staff, "slot", "") == "2-handed"
+            && ReadInt(staff, "base_damage", 0) == 5
+            && EquipmentSlotRules.CanEquipItemToSlot(staff, "1-handed-a")
+            && !EquipmentSlotRules.CanEquipItemToSlot(staff, "1-handed-b"),
+            "Staff must be a 5-damage two-handed weapon that occupies the main hand.");
 
         var expectedScrollSpells = new System.Collections.Generic.Dictionary<string, string>
         {

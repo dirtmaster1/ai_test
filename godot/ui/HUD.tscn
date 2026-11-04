@@ -21,7 +21,7 @@ anchor_left = 1.0
 offset_left = -220.0
 offset_top = 12.0
 offset_right = -24.0
-offset_bottom = 270.0
+offset_bottom = 310.0
 
 [node name="UtilityVBox" type="VBoxContainer" parent="UtilityPanel"]
 layout_mode = 2
@@ -62,6 +62,11 @@ text = "Load"
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Settings"
+
+[node name="AdminButton" type="Button" parent="UtilityPanel/UtilityVBox/UtilityButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Admin"
 
 [node name="SettingsPanel" type="PanelContainer" parent="."]
 visible = false
@@ -112,6 +117,87 @@ text = "Main Menu"
 [node name="CloseSettingsButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
+text = "Close"
+
+[node name="AdminPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -340.0
+offset_right = 290.0
+offset_bottom = 340.0
+
+[node name="AdminVBox" type="VBoxContainer" parent="AdminPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AdminHeader" type="Label" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Admin - Play Testing"
+
+[node name="AdminExperienceUnitRow" type="HBoxContainer" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AdminExperienceUnitLabel" type="Label" parent="AdminPanel/AdminVBox/AdminExperienceUnitRow"]
+layout_mode = 2
+text = "Player Unit"
+
+[node name="AdminExperienceUnitOption" type="OptionButton" parent="AdminPanel/AdminVBox/AdminExperienceUnitRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="AdminExperienceRow" type="HBoxContainer" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AdminExperienceAmountLabel" type="Label" parent="AdminPanel/AdminVBox/AdminExperienceRow"]
+layout_mode = 2
+text = "Experience to grant"
+
+[node name="AdminExperienceAmount" type="SpinBox" parent="AdminPanel/AdminVBox/AdminExperienceRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 999999.0
+step = 1.0
+value = 100.0
+
+[node name="AdminGrantExperienceButton" type="Button" parent="AdminPanel/AdminVBox/AdminExperienceRow"]
+layout_mode = 2
+text = "Grant XP"
+
+[node name="AdminItemsHeader" type="Label" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+text = "All Items"
+
+[node name="AdminItemList" type="ItemList" parent="AdminPanel/AdminVBox"]
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_vertical = 3
+allow_reselect = true
+
+[node name="AdminItemButtons" type="HBoxContainer" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AdminAddItemButton" type="Button" parent="AdminPanel/AdminVBox/AdminItemButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Add Selected Item"
+
+[node name="AdminStatusLabel" type="Label" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = ""
+
+[node name="AdminCloseButton" type="Button" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
 text = "Close"
 
 [node name="GameOptionsPanel" type="PanelContainer" parent="."]

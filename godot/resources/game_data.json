@@ -134,7 +134,7 @@
 	  "heal_amount": 4,
 	  "mp_cost": 2,
 	  "cooldown": 1,
-	  "description": "A small kindness, wrapped in a glow."
+	  "description": "Thanks I needed that finger."
 	},
 	"greater-heal": {
 	  "id": "greater-heal",
@@ -145,7 +145,7 @@
 	  "mp_cost": 4,
 	  "cooldown": 2,
 	  "allowed_classes": ["cleric", "healer"],
-	  "description": "For when 'throw some dirt on it' just won't cut it."
+	  "description": "My leg came back!"
 	},
 	"web": {
 	  "id": "web",
@@ -170,7 +170,7 @@
 	  "mp_cost": 8,
 	  "cooldown": 0,
 	  "allowed_classes": ["wizard"],
-	  "description": "The sky's most concise rebuttal.",
+	  "description": "Judgement from the sky above.",
 	  "targeting_prompt": "Select a visible cell directly up, down, left, right, or diagonally; all units up to 5 tiles along that line will be struck."
 	},
 	"teleport": {
@@ -196,7 +196,7 @@
 	  "range": 0,
 	  "mp_cost": 3,
 	  "cooldown": 0,
-	  "description": "Because 'unidentified item' is a dreadful inventory label.",
+	  "description": "Unidentified items begone!",
 	  "targeting_prompt": "Select an unidentified item in the party inventory."
 	},
 	"magic-missile": {
@@ -230,7 +230,7 @@
 	  "armor_class_bonus": 1,
 	  "mp_cost": 3,
 	  "cooldown": 2,
-	  "description": "A reassuring word from the heavens."
+	  "description": "A shield from the heavens."
 	},
 	"fireball": {
 	  "id": "fireball",
@@ -353,7 +353,7 @@
 	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1,
-	  "description": "If subtlety was available then this was not that."
+	  "description": "Nothing subtle about this blade."
 	},
 	"one-handed-mace": {
 	  "id": "one-handed-mace",
@@ -363,7 +363,7 @@
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 1,
-	  "description": "A blunt instrument with a surprisingly sharp point of view."
+	  "description": "A blunt instrument."
 	},
 	"long-sword": {
 	  "id": "long-sword",
@@ -383,7 +383,7 @@
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 5,
-	  "description": "Quiet, portable, and less alarming to the neighbors than a siege engine."
+	  "description": "Hey you over there, catch!"
 	},
 	"leather-armor": {
 	  "id": "leather-armor",
@@ -401,7 +401,7 @@
 	  "slot": "body",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
-	  "description": "Comfortable enough for study; mysterious enough for everything else."
+	  "description": "Comfortable enough for study."
 	},
 	"iron-helmet": {
 	  "id": "iron-helmet",
@@ -419,7 +419,7 @@
 	  "slot": "head",
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0,
-	  "description": "For the adventurer who thinks with their head—and would like to keep doing so."
+	  "description": "For the adventurer who thinks with their head."
 	},
 	"plate-mail": {
 	  "id": "plate-mail",
@@ -437,7 +437,7 @@
 	  "slot": "body",
 	  "base_armor_class": 4,
 	  "bonus_armor_class": 0,
-	  "description": "A walking fortress, with all the subtlety of a dropped anvil."
+	  "description": "A walking fortress."
 	},
 	"war-axe": {
 	  "id": "war-axe",
@@ -563,6 +563,16 @@
 	  "bonus_damage": 0,
 	  "range": 1,
 	  "description": "An heirloom with a long family history and a short temper."
+	},
+	"staff": {
+	  "id": "staff",
+	  "name": "Staff",
+	  "type": "weapon",
+	  "slot": "2-handed",
+	  "base_damage": 5,
+	  "bonus_damage": 0,
+	  "range": 1,
+	  "description": "A sturdy two-handed staff for measured strikes."
 	},
 	"fireball-scroll": {
 	  "id": "fireball-scroll",
@@ -690,7 +700,7 @@
 	  "type": "key",
 	  "key_id": "rusty-key",
 	  "slot": "none",
-	  "description": "It opens something. The key would prefer not to discuss what."
+	  "description": "It opens something nearby."
 	}
   },
   "dialogues": {
@@ -847,11 +857,11 @@
 	  "buy_price_multiplier": 1.0,
 	  "sell_price_multiplier": 1.0,
 	  "starting_inventory_item_ids": [
-		"leather-armor",
-		"leather-armor",
 		"small-shield",
-		"short-sword",
-		"boots-of-speed"
+		"boots-of-speed",
+		"fireball-scroll",
+		"healing-potion",
+		"magic-potion"
 	  ]
 	},
 	"mira": {
@@ -908,9 +918,6 @@
 		  "melee",
 		  "magic-missile",
 		  "sleep",
-		  "web",
-		  "lightning-bolt",
-		  "identify",
 		  "defend"
 		],
 		"initiative": 10,
@@ -924,7 +931,8 @@
 		"wisdom": 5,
 		"dexterity": 5,
 		"starting_equipment": [
-          "cloth-robe"
+          "cloth-robe",
+		  "staff"
 		]
 	  },
 	  "warrior": {
@@ -937,9 +945,11 @@
 		"ability_ids": [
 		  "melee",
 		  "charge",
-		  "taunt",
 		  "defend"
 		],
+		"level_up_abilities": {
+		  "3": "taunt"
+		},
 		"initiative": 11,
 		"hit_points": 14,
 		"max_hit_points": 14,
@@ -949,9 +959,8 @@
 		"dexterity": 5,
 		"constitution": 10,
 		"starting_equipment": [
-		  "war-axe",
-		  "iron-helmet",
-          "leather-armor"
+		  "short-sword",
+		  "leather-armor"
 		]
 	  },
 	  "cleric": {
@@ -963,8 +972,6 @@
 		"primary_ability_id": "lesser-heal",
 		"ability_ids": [ 
 		  "lesser-heal",
-		  "greater-heal",
-		  "identify",
 		  "protection",
 		  "melee",
 		  "defend"
@@ -980,8 +987,7 @@
 		"wisdom": 10,
 		"dexterity": 5,
 		"starting_equipment": [
-		  "small-shield",
-		  "short-sword",
+		  "one-handed-mace",
           "leather-armor"
 		]
 	  },
@@ -994,11 +1000,13 @@
 		"primary_ability_id": "ranged",
 		"ability_ids": [
 		  "ranged",
-		  "rain-of-arrows",
 		  "pin",
 		  "melee",
 		  "defend"
 		],
+		"level_up_abilities": {
+		  "3": "rain-of-arrows"
+		},
 		"initiative": 14,
 		"hit_points": 10,
 		"max_hit_points": 10,
@@ -1021,12 +1029,14 @@
 		"primary_ability_id": "melee",
 		"ability_ids": [
 		  "melee",
-		  "shadow-strike",
 		  "poison-strike",
 		  "disarm-trap",
 		  "pick-lock",
 		  "defend"
 		],
+		"level_up_abilities": {
+		  "3": "shadow-strike"
+		},
 		"initiative": 15,
 		"hit_points": 9,
 		"max_hit_points": 9,
@@ -1038,7 +1048,6 @@
 		"wisdom": 6,
 		"dexterity": 12,
 		"starting_equipment": [
-		  "leather-armor",
 		  "dagger"
 		]
 	  },

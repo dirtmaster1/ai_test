@@ -68,6 +68,7 @@ public partial class Unit : Node2D
     public int Initiative { get; private set; } = 10;
     public int Level { get; private set; } = 1;
     public int Experience { get; private set; }
+    public Array<string> LastLevelUpLearnedAbilityIds { get; } = new();
     public int ActionPoints { get; private set; } = 1;
     public int RemainingActionPoints { get; private set; } = 1;
     public int UnallocatedStatPoints { get; private set; }
@@ -227,6 +228,11 @@ public partial class Unit : Node2D
         UnallocatedStatPoints = Mathf.Max(0, GetInt(config, "unallocated_stat_points", 0));
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
+        LastLevelUpLearnedAbilityIds.Clear();
+        if (Level >= 3)
+        {
+            LearnConfiguredLevelUpAbility(3, false);
+        }
         BaseUnarmedDamage = Mathf.Max(1, GetInt(config, "base_unarmed_damage", 1));
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", 0));
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", GetInt(config, "base_attack_range", 1));
@@ -767,6 +773,7 @@ public partial class Unit : Node2D
 
     public int GrantExperience(int amount)
     {
+        LastLevelUpLearnedAbilityIds.Clear();
         var gain = Mathf.Max(0, amount);
         if (gain <= 0)
         {
@@ -781,6 +788,10 @@ public partial class Unit : Node2D
             Level += 1;
             levelsGained += 1;
             ApplyLevelUpGains();
+            if (Level == 3)
+            {
+                LearnConfiguredLevelUpAbility(Level, true);
+            }
             if (Level == 4 || Level == 9)
             {
                 ActionPoints += 1;
@@ -1047,6 +1058,11 @@ public partial class Unit : Node2D
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
         Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
+        LastLevelUpLearnedAbilityIds.Clear();
+        if (Level >= 3)
+        {
+            LearnConfiguredLevelUpAbility(3, false);
+        }
         ActionPoints = Mathf.Max(0, GetInt(snapshot, "action_points", ActionPoints));
         UnallocatedStatPoints = Mathf.Max(0, GetInt(snapshot, "unallocated_stat_points", UnallocatedStatPoints));
         Intelligence = GetInt(snapshot, "intelligence", Intelligence);
@@ -1779,6 +1795,29 @@ public partial class Unit : Node2D
         _baseMaxMagicPoints += magicPointGain;
         MagicPoints = Mathf.Min(MaxMagicPoints, MagicPoints + magicPointGain);
         MagicPointRegenPerTurn += 1;
+    }
+
+    private void LearnConfiguredLevelUpAbility(int level, bool trackAsNewlyLearned)
+    {
+        if (Team != "player")
+        {
+            return;
+        }
+
+        var gameData = GetNodeOrNull<GameData>("/root/GameData");
+        if (gameData == null)
+        {
+            return;
+        }
+
+        var levelUpAbilities = GetDictionary(gameData.GetCharacterTemplate(ClassId), "level_up_abilities");
+        var abilityId = GetString(levelUpAbilities, level.ToString(), "");
+        if (!LearnAbility(abilityId) || !trackAsNewlyLearned)
+        {
+            return;
+        }
+
+        LastLevelUpLearnedAbilityIds.Add(abilityId);
     }
 
     public bool TryAllocateStatPoint(string statName)

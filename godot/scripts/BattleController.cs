@@ -241,6 +241,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
+        _hud?.SetAdminItems(BuildAdminItemCatalogForHud());
         _persistence = new GamePersistence(this, SaveFilePath);
         _recoveryPersistence = new GamePersistence(this, RecoverySaveFilePath);
         _lootRng.Randomize();
@@ -251,6 +252,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             _hud.SaveRequested += OnHudSaveRequested;
             _hud.LoadRequested += OnHudLoadRequested;
+            _hud.AdminGrantExperienceRequested += OnHudAdminGrantExperienceRequested;
+            _hud.AdminAddItemRequested += OnHudAdminAddItemRequested;
             _hud.MainMenuRequested += OnHudMainMenuRequested;
             _hud.AbilityPressed += OnHudAbilityPressed;
             _hud.QuickAbilitySlotDropRequested += OnHudQuickAbilitySlotDropRequested;
@@ -342,6 +345,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             _hud.SaveRequested -= OnHudSaveRequested;
             _hud.LoadRequested -= OnHudLoadRequested;
+            _hud.AdminGrantExperienceRequested -= OnHudAdminGrantExperienceRequested;
+            _hud.AdminAddItemRequested -= OnHudAdminAddItemRequested;
             _hud.MainMenuRequested -= OnHudMainMenuRequested;
             _hud.AbilityPressed -= OnHudAbilityPressed;
             _hud.QuickAbilitySlotDropRequested -= OnHudQuickAbilitySlotDropRequested;
@@ -891,6 +896,56 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         SyncHudFromGameState();
+    }
+
+    private void OnHudAdminGrantExperienceRequested(string unitId, int amount)
+    {
+        var unit = FindUnitById(unitId);
+        if (!IsUsableUnit(unit) || unit.Team != "player" || !_playerUnits.Contains(unit) || amount <= 0)
+        {
+            _hud?.SetAdminStatus("Select a current party member and a positive XP amount.");
+            return;
+        }
+
+        var previousLevel = unit.Level;
+        var previousMaxHitPoints = unit.MaxHitPoints;
+        var previousMaxMagicPoints = unit.MaxMagicPoints;
+        var previousMagicRegen = unit.MagicPointRegenPerTurn;
+        var previousActionPoints = unit.ActionPoints;
+        var levelsGained = unit.GrantExperience(amount);
+        if (levelsGained > 0)
+        {
+            RecordLevelUpNotice(
+                unit,
+                previousLevel,
+                levelsGained,
+                unit.MaxHitPoints - previousMaxHitPoints,
+                unit.MaxMagicPoints - previousMaxMagicPoints,
+                unit.MagicPointRegenPerTurn - previousMagicRegen,
+                unit.ActionPoints - previousActionPoints);
+            RecordLevelUpLearnedAbilities(unit);
+            _hud?.ShowCombatBanner($"LEVEL UP - {unit.UnitName} - LEVEL {unit.Level}", TacticalTheme.BrassBright);
+        }
+
+        _hud?.SetAdminStatus($"{unit.UnitName} gained {amount} XP.");
+        _hud?.AddCombatLogEntry($"{unit.UnitName} gains {amount} XP.");
+        SyncHudFromGameState();
+        _persistence?.PersistSaveGame(false);
+    }
+
+    private void OnHudAdminAddItemRequested(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId) || _gameData == null || _gameData.GetItem(itemId).Count == 0)
+        {
+            _hud?.SetAdminStatus("That item is not available.");
+            return;
+        }
+
+        _partyInventoryItemIds.Add(itemId);
+        _hud?.SetAdminStatus($"Added {GetItemName(itemId)} to party inventory.");
+        _hud?.AddCombatLogEntry($"Admin added {GetItemName(itemId)} to party inventory.");
+        SyncHudFromGameState();
+        _persistence?.PersistSaveGame(false);
     }
 
     private void OnHudPartyOrderRequested(string sourceUnitId, string targetUnitId)
@@ -4045,6 +4100,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     unit.MaxMagicPoints - previousMaxMagicPoints,
                     unit.MagicPointRegenPerTurn - previousMagicRegen,
                     unit.ActionPoints - previousActionPoints);
+                RecordLevelUpLearnedAbilities(unit);
                 _hud?.ShowCombatBanner($"LEVEL UP - {unit.UnitName} - LEVEL {unit.Level}", TacticalTheme.BrassBright);
             }
         }
@@ -4089,6 +4145,31 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         notice["wisdom"] = unit.Wisdom;
     }
 
+    private void RecordLevelUpLearnedAbilities(Unit unit)
+    {
+        if (unit == null || unit.LastLevelUpLearnedAbilityIds.Count == 0)
+        {
+            return;
+        }
+
+        if (!_pendingLevelUpNoticesByUnitId.TryGetValue(unit.UnitId, out var notice))
+        {
+            notice = BuildLevelUpNotice(unit);
+            _pendingLevelUpNoticesByUnitId[unit.UnitId] = notice;
+        }
+
+        var learnedAbilityIds = TryGetStringArray(notice, "learned_ability_ids");
+        foreach (var abilityId in unit.LastLevelUpLearnedAbilityIds)
+        {
+            if (!learnedAbilityIds.Contains(abilityId))
+            {
+                learnedAbilityIds.Add(abilityId);
+            }
+        }
+
+        notice["learned_ability_ids"] = learnedAbilityIds;
+    }
+
     private static Dictionary BuildLevelUpNotice(Unit unit)
     {
         var previousLevel = Mathf.Max(1, unit.Level - unit.UnallocatedStatPoints);
@@ -4103,6 +4184,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             { "max_mp_gain", 0 },
             { "mp_regen_gain", 0 },
             { "action_point_gain", 0 },
+            { "learned_ability_ids", new Array<string>() },
             { "unallocated_stat_points", unit.UnallocatedStatPoints },
             { "strength", unit.Strength },
             { "dexterity", unit.Dexterity },
@@ -6998,16 +7080,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             "leather-armor" => 15,
             "short-bow" => 18,
             "short-sword" => 20,
-            "healers-circlet" => 25,
-            "mages-amulet" => 25,
+            "healers-circlet" => 250,
+            "mages-amulet" => 250,
             "boots-of-speed" => 150,
             "chain-mail" => 30,
-            "fireball-scroll" => 30,
-            "healing-potion" => 12,
-            "magic-potion" => 12,
-            "long-bow" => 35,
-            "war-axe" => 40,
-            "chieftain-club" => 45,
+            "fireball-scroll" => 300,
+            "healing-potion" => 50,
+            "magic-potion" => 50,
+            "long-bow" => 55,
+            "war-axe" => 60,
+            "chieftain-club" => 450,
             _ => 10
         };
     }
@@ -8642,6 +8724,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        var hasDualWieldWeapons = unit.Team == "player"
+            && equippedBySlot.TryGetValue("1-handed-a", out var mainHandItemId)
+            && equippedBySlot.TryGetValue("1-handed-b", out var offHandItemId)
+            && IsOneHandedWeapon(mainHandItemId)
+            && IsOneHandedWeapon(offHandItemId);
+
         var totalWeaponDamage = 0;
         var bestWeaponRange = 0;
         var hasEquippedWeapon = false;
@@ -8670,7 +8758,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 var base_dmg = GetInt(itemData, "base_damage", 0);
                 var bonus_dmg = GetInt(itemData, "bonus_damage", 0);
                 var range = GetInt(itemData, "range", 0);
-                totalWeaponDamage += base_dmg + bonus_dmg;
+                var weaponDamage = base_dmg + bonus_dmg;
+                if (hasDualWieldWeapons && entry.Key == "1-handed-b")
+                {
+                    weaponDamage = Mathf.FloorToInt(weaponDamage / 2.0f);
+                }
+
+                totalWeaponDamage += weaponDamage;
                 bestWeaponRange = Mathf.Max(bestWeaponRange, range);
                 hasEquippedWeapon = true;
             }
@@ -8697,6 +8791,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         unit.SetWeaponBonuses(weaponDamageBonus, weaponRangeBonus);
         unit.SetArmorBonuses(total_armor_class);
         unit.SetEquipmentStatBonuses(total_max_magic_points, total_magic_point_regen, total_healing, total_movement_bonus, total_dexterity_bonus);
+    }
+
+    private bool IsOneHandedWeapon(string itemId)
+    {
+        var itemData = _gameData.GetItem(itemId);
+        return GetString(itemData, "type", "") == "weapon"
+            && GetString(itemData, "slot", "") == "1-handed";
     }
 
     private void ApplyStartingEquipmentFromConfig(Unit unit, Dictionary config, bool addToPartyInventory)

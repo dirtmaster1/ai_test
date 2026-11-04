@@ -69,6 +69,7 @@ After building, run the focused regression checks with a Godot .NET executable:
 ```powershell
 godot --headless --path . --script res://tests/action_feedback_test.gd
 godot --headless --path . --script res://tests/utility_abilities_test.gd
+godot --headless --path . --script res://tests/action_feedback_test.gd -- --class-ability-only
 ```
 
 For level-up layout only, run
