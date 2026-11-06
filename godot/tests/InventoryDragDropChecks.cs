@@ -101,6 +101,7 @@ public partial class InventoryDragDropChecks : Node
         var buttonRow = hud.GetNode<HBoxContainer>("InventoryPanel/InventoryVBox/InventoryButtons");
         var actionSlot = buttonRow.GetChild<CenterContainer>(0);
         var inventoryActionButton = actionSlot.GetNode<Button>("InventoryActionButton");
+        var learnSpellButton = hud.GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList/InventoryLearnSpellButton");
         Check(buttonRow.GetChildCount() == 3
             && buttonRow.GetChild<Button>(1).Name == "CloseInventoryButton"
             && buttonRow.GetChild<Control>(2).Name == "InventoryButtonSpacer"
@@ -110,10 +111,16 @@ public partial class InventoryDragDropChecks : Node
         hud.SetInventoryItems(new Array<Dictionary>
         {
             new() { { "id", "test-scroll" }, { "name", "Test Scroll" }, { "type", "scroll" } }
-        }, new Array<string>());
-        Check(inventoryActionButton.Visible && !inventoryActionButton.Disabled && inventoryActionButton.Text == "Learn Spell",
-            "Scrolls must retain a contextual Learn Spell action.");
+        }, new Array<string>(), new Array<string> { "test-scroll" });
+        Check(!inventoryActionButton.Visible
+            && inventoryActionButton.Text == "Use"
+            && learnSpellButton.Visible
+            && !learnSpellButton.Disabled
+            && learnSpellButton.Text == "Learn Spell"
+            && learnSpellButton.GetParent() == hud.GetNode("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList"),
+            "Learn Spell must appear beside a scroll the current party member can learn, not in the bottom action slot.");
         hud.SetInventoryItems(items, new Array<string>());
+        Check(!learnSpellButton.Visible, "The contextual Learn Spell button must hide for items that cannot teach spells.");
 
         var head = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
         var neck = hud.GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/NeckSlot");

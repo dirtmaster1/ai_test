@@ -384,7 +384,7 @@ public partial class ActionFeedbackChecks : BattleController
             ["one-handed-axe"] = new(5, 0),
             ["broad-sword"] = new(0, 1),
             ["one-handed-mace"] = new(3, 1),
-            ["staff"] = new(6, 1),
+            ["staff"] = new(5, 1),
             ["metal-shield"] = new(1, 2),
             ["leather-helm"] = new(5, 2),
             ["full-plate-armor"] = new(6, 2),
@@ -1565,8 +1565,33 @@ public partial class ActionFeedbackChecks : BattleController
         ExpectFailure(() => Call("TryOpenDoorAtCell", _doorCell), "Door locked - use Pick Lock.");
         Reset(exploration: true);
         _actor.SetGridPos(new Vector2I(1, 2));
+        Set("_selectedCharacterUnitId", _ally.UnitId);
+        Set("_explorerUnit", _ally);
+        Set("_isExplorationAutoMoving", true);
         RefreshFog();
-        ExpectFailure(() => Call("TryOpenDoorAtCell", _doorCell), "Move adjacent to the door.");
+        Call("TryOpenDoorAtCell", _doorCell);
+        Check(Field<bool>("_hasPendingExplorationClickMove")
+            && Field<Vector2I>("_pendingExplorationClickTarget") == _doorCell
+            && Field<bool>("_pendingExplorationClickInteracts")
+            && Field<bool>("_pendingExplorationClickTargetsDoor"),
+            "An out-of-range door click must queue movement and open the door upon arrival.");
+        Set("_isExplorationAutoMoving", false);
+        Set("_hasPendingExplorationClickMove", false);
+        Set("_pendingExplorationClickInteracts", false);
+        Set("_pendingExplorationClickTargetsDoor", false);
+        var approachArguments = new object[]
+        {
+            _actor,
+            _doorCell,
+            new System.Collections.Generic.List<Unit> { _actor, _ally },
+            new Vector2I(-1, -1),
+            new Array<Vector2I>()
+        };
+        var approachMethod = typeof(BattleController).GetMethod("TryFindInteractionApproachPath", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check((bool)approachMethod.Invoke(this, approachArguments)
+            && Unit.IsWithinRange(_actor.GridPos, (Vector2I)approachArguments[3], 1)
+            && ((Array<Vector2I>)approachArguments[4]).Count > 0,
+            "Automatic interaction movement must choose a reachable tile adjacent to the object.");
         Reset(exploration: true);
         _door["locked"] = false;
         _door["is_open"] = true;
@@ -1641,8 +1666,20 @@ public partial class ActionFeedbackChecks : BattleController
             { "id", "chest" }, { "name", "Chest" }, { "type", "chest" },
             { "grid_pos", new Vector2I(6, 4) }, { "gold_amount", 1 }
         });
-        ExpectFailure(() => Call("TryOpenExplorationInteractionAtCell", new Vector2I(6, 4)),
-            "Move adjacent to interact with that object.");
+        _ally.SetGridPos(new Vector2I(5, 4));
+        Set("_selectedCharacterUnitId", _ally.UnitId);
+        Set("_explorerUnit", _ally);
+        Set("_isExplorationAutoMoving", true);
+        Call("TryOpenExplorationInteractionAtCell", new Vector2I(6, 4));
+        Check(Field<bool>("_hasPendingExplorationClickMove")
+            && Field<Vector2I>("_pendingExplorationClickTarget") == new Vector2I(6, 4)
+            && Field<bool>("_pendingExplorationClickInteracts")
+            && !Field<bool>("_pendingExplorationClickTargetsDoor"),
+            "An out-of-range chest click must queue movement before opening the chest.");
+        Set("_isExplorationAutoMoving", false);
+        Set("_hasPendingExplorationClickMove", false);
+        Set("_pendingExplorationClickInteracts", false);
+        Set("_pendingExplorationClickTargetsDoor", false);
         ExpectFailure(() => Call("TryExecuteExplorationInteractionById", _actor, "prop:chest"),
             "Move adjacent to interact with Chest.");
         Reset(exploration: true);
@@ -1736,11 +1773,15 @@ public partial class ActionFeedbackChecks : BattleController
             && !miloPages[0].ContainsKey("choices"),
             "Milo's welcome dialogue must be nonempty and offer only the Open Store action.");
 
+        var storeTabs = _testHud.GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
+        storeTabs.CurrentTab = 1;
+        _testHud.SetVendorPanelVisible(false);
         _testHud.OpenVendorPanel("Milo the Armorer");
-        Check(_testHud.GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs").Visible
+        Check(storeTabs.Visible
+            && storeTabs.CurrentTab == 0
             && _testHud.GetNodeOrNull<Button>("VendorPanel/VendorVBox/VendorChoiceButtons/TalkButton") == null
             && typeof(BattleController).GetMethod("ConfirmNpcRecruitAsync", BindingFlags.Instance | BindingFlags.NonPublic) == null,
-            "Opening the store must show only the store interface without a talk button or recruit confirmation dialog.");
+            "Reopening the store from Sell must select Buy and show only the store interface.");
     }
 
     private void CheckHealerServices()
@@ -1891,12 +1932,18 @@ public partial class ActionFeedbackChecks : BattleController
             && partyInventory.Contains("blessing-scroll")
             && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 2,
             "The Blessing scroll must be purchasable for 100 gp and leave Eldius's finite stock.");
+        Call("SyncHudFromGameState");
+        Check(!HudField<Button>("_inventoryLearnSpellButton").Visible,
+            "The Learn Spell button must stay hidden when the selected party member cannot learn a scroll's spell.");
         ExpectFailure(() => Call("OnHudUseItemRequested", "blessing-scroll"),
             "caster cannot use Blessing Scroll - requires cleric, healer.");
         var clericConfig = Config("caster", "player", _actor.GridPos);
         clericConfig["class_id"] = "cleric";
         clericConfig["ability_ids"] = new Array<string> { "melee" };
         _actor.Setup(clericConfig);
+        Call("SyncHudFromGameState");
+        Check(HudField<Button>("_inventoryLearnSpellButton").Visible,
+            "A learnable scroll must show its Learn Spell button beside the inventory item.");
         Call("OnHudUseItemRequested", "blessing-scroll");
         Check(_actor.HasAbility("blessing")
             && !partyInventory.Contains("blessing-scroll"),

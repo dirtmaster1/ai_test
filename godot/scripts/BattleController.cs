@@ -121,7 +121,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private string _activeEncounterId = "";
     private string _currentMapId = "forest-town";
     private string _selectedCharacterUnitId = "";
-    private int _partyGold = 500;
+    private int _partyGold = 50;
     private readonly System.Collections.Generic.Dictionary<string, string> _selectedAbilityIdByUnitId = new();
     private readonly System.Collections.Generic.Dictionary<string, List<string>> _quickAbilityIdsByUnitId = new();
     private readonly Array<Vector2I> _movementPreviewPath = new();
@@ -139,6 +139,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private int _explorationMoveRequestId;
     private bool _hasPendingExplorationClickMove;
     private Vector2I _pendingExplorationClickTarget;
+    private bool _pendingExplorationClickInteracts;
+    private bool _pendingExplorationClickTargetsDoor;
     private bool _hasPendingExplorationManualMove;
     private Vector2I _pendingExplorationManualDelta;
     private bool _isPlayerMovementAnimating;
@@ -253,6 +255,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.SaveRequested += OnHudSaveRequested;
             _hud.LoadRequested += OnHudLoadRequested;
             _hud.AdminGrantExperienceRequested += OnHudAdminGrantExperienceRequested;
+            _hud.AdminAdjustGoldRequested += OnHudAdminAdjustGoldRequested;
             _hud.AdminAddItemRequested += OnHudAdminAddItemRequested;
             _hud.MainMenuRequested += OnHudMainMenuRequested;
             _hud.AbilityPressed += OnHudAbilityPressed;
@@ -346,6 +349,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _hud.SaveRequested -= OnHudSaveRequested;
             _hud.LoadRequested -= OnHudLoadRequested;
             _hud.AdminGrantExperienceRequested -= OnHudAdminGrantExperienceRequested;
+            _hud.AdminAdjustGoldRequested -= OnHudAdminAdjustGoldRequested;
             _hud.AdminAddItemRequested -= OnHudAdminAddItemRequested;
             _hud.MainMenuRequested -= OnHudMainMenuRequested;
             _hud.AbilityPressed -= OnHudAbilityPressed;
@@ -948,6 +952,35 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _persistence?.PersistSaveGame(false);
     }
 
+    private void OnHudAdminAdjustGoldRequested(int amount, bool addGold)
+    {
+        if (amount <= 0)
+        {
+            _hud?.SetAdminStatus("Enter a positive gold amount.");
+            return;
+        }
+
+        var currentGold = Mathf.Max(0, _partyGold);
+        var adjustedAmount = addGold
+            ? Mathf.Min(amount, int.MaxValue - currentGold)
+            : Mathf.Min(amount, currentGold);
+        if (adjustedAmount <= 0)
+        {
+            _hud?.SetAdminStatus(addGold
+                ? "Party gold is already at the maximum."
+                : "The party has no gold to remove.");
+            return;
+        }
+
+        _partyGold = addGold ? currentGold + adjustedAmount : currentGold - adjustedAmount;
+        var action = addGold ? "Added" : "Removed";
+        _hud?.SetAdminStatus($"{action} {adjustedAmount} gp. Party now has {_partyGold} gp.");
+        _hud?.AddCombatLogEntry(
+            $"Admin {action.ToLowerInvariant()} {adjustedAmount} gp {(addGold ? "to" : "from")} the party.");
+        SyncHudFromGameState();
+        _persistence?.PersistSaveGame(false);
+    }
+
     private void OnHudPartyOrderRequested(string sourceUnitId, string targetUnitId)
     {
         if (_flowState != BattleFlowState.Exploration
@@ -1216,43 +1249,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        var useEffect = GetDictionary(itemData, "use_effect");
-        var effectType = GetString(useEffect, "type", "");
-        if (effectType != "learn_spell")
+        if (!TryGetLearnableSpellFromItem(target, itemId, itemData, out var spellId, out var failureText))
         {
-            RejectPlayerAction($"{GetString(itemData, "name", itemId)} cannot be used.");
-            return;
-        }
-
-        var allowedClasses = TryGetStringArray(itemData, "allowed_classes");
-        var classAllowed = allowedClasses.Count == 0;
-        foreach (var allowedClass in allowedClasses)
-        {
-            if (string.Equals(allowedClass, target.ClassId, System.StringComparison.OrdinalIgnoreCase))
-            {
-                classAllowed = true;
-                break;
-            }
-        }
-
-        if (!classAllowed)
-        {
-            RejectPlayerAction($"{target.UnitName} cannot use {itemName} - requires {string.Join(", ", allowedClasses)}.");
-            return;
-        }
-
-        var spellId = GetString(useEffect, "spell_id", "");
-        if (string.IsNullOrEmpty(spellId) || _gameData.GetSpell(spellId).Count == 0)
-        {
-            RejectPlayerAction($"{itemName} does not contain a valid spell.");
-            return;
-        }
-
-        var spellData = _gameData.GetSpell(spellId);
-        if (!CanUnitCastHealingSpell(target, spellId))
-        {
-            var spellAllowedClasses = TryGetStringArray(spellData, "allowed_classes");
-            RejectPlayerAction($"{target.UnitName} cannot learn {GetActionDisplayName(spellId)} - requires {string.Join(", ", spellAllowedClasses)}.");
+            RejectPlayerAction(failureText);
             return;
         }
 
@@ -1271,6 +1270,59 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _hud?.AddCombatLogEntry($"{target.UnitName} consumes {itemName} and learns {GetActionDisplayName(spellId)}.");
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
+    }
+
+    private bool TryGetLearnableSpellFromItem(Unit target, string itemId, Dictionary itemData, out string spellId, out string failureText)
+    {
+        spellId = "";
+        var itemName = GetString(itemData, "name", itemId);
+        var useEffect = GetDictionary(itemData, "use_effect");
+        if (GetString(useEffect, "type", "") != "learn_spell")
+        {
+            failureText = $"{itemName} cannot be used.";
+            return false;
+        }
+
+        var allowedClasses = TryGetStringArray(itemData, "allowed_classes");
+        var classAllowed = allowedClasses.Count == 0;
+        foreach (var allowedClass in allowedClasses)
+        {
+            if (string.Equals(allowedClass, target.ClassId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                classAllowed = true;
+                break;
+            }
+        }
+
+        if (!classAllowed)
+        {
+            failureText = $"{target.UnitName} cannot use {itemName} - requires {string.Join(", ", allowedClasses)}.";
+            return false;
+        }
+
+        spellId = GetString(useEffect, "spell_id", "");
+        var spellData = string.IsNullOrEmpty(spellId) ? new Dictionary() : _gameData.GetSpell(spellId);
+        if (spellData.Count == 0)
+        {
+            failureText = $"{itemName} does not contain a valid spell.";
+            return false;
+        }
+
+        if (!CanUnitCastHealingSpell(target, spellId))
+        {
+            var spellAllowedClasses = TryGetStringArray(spellData, "allowed_classes");
+            failureText = $"{target.UnitName} cannot learn {GetActionDisplayName(spellId)} - requires {string.Join(", ", spellAllowedClasses)}.";
+            return false;
+        }
+
+        if (target.HasAbility(spellId))
+        {
+            failureText = $"{target.UnitName} already knows {GetActionDisplayName(spellId)}.";
+            return false;
+        }
+
+        failureText = "";
+        return true;
     }
 
     private void OnHudConsumablePressed(string slotKey)
@@ -1562,7 +1614,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        var explorer = GetExplorerUnit();
+        var explorer = GetMarchingOrderLeader();
         if (explorer == null)
         {
             return;
@@ -3172,7 +3224,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _equippedItemsByUnitId.Clear();
             _partyInventoryItemIds.Clear();
             _reservePartyRoster.Clear();
-            _partyGold = 500;
+            _partyGold = 50;
             _vendorGoldById.Clear();
             _vendorInventoryItemIdsById.Clear();
             EnsureDefaultVendorState();
@@ -6449,14 +6501,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var explorer = GetExplorerUnit();
+        var explorer = GetMarchingOrderLeader();
         if (explorer == null || !IsInBounds(clickedCell) || !IsFogCellRevealed(clickedCell))
         {
             return false;
         }
 
         var visibleMapProps = BuildVisibleMapProps();
-        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, visibleMapProps, BuildRevealedLootBags(), _openedPropIds, _gameData, out var entries, out var statusText))
+        var revealedLootBags = BuildRevealedLootBags();
+        if (_mapLoader == null || !_mapLoader.TryBuildExplorationClickLootEntries(explorer, clickedCell, visibleMapProps, revealedLootBags, _openedPropIds, _gameData, out var entries, out var statusText))
         {
             return false;
         }
@@ -6465,7 +6518,15 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (entries.Count == 0 && !string.IsNullOrEmpty(statusText))
         {
-            RejectPlayerAction(statusText);
+            if (Chebyshev(explorer.GridPos, clickedCell) > 1
+                && HasExplorationInteractableAtCell(clickedCell, visibleMapProps, revealedLootBags))
+            {
+                BeginExplorationClickMove(clickedCell, interactAfterMove: true);
+            }
+            else
+            {
+                RejectPlayerAction(statusText);
+            }
         }
 
         if (entries.Count > 0)
@@ -6514,6 +6575,31 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return true;
+    }
+
+    private bool HasExplorationInteractableAtCell(
+        Vector2I cell,
+        Array<Dictionary> mapProps,
+        Array<Dictionary> lootBags)
+    {
+        foreach (var prop in mapProps)
+        {
+            if (GetString(prop, "type", "prop") != "trap"
+                && GetVector2I(prop, "grid_pos", new Vector2I(-9999, -9999)) == cell)
+            {
+                return true;
+            }
+        }
+
+        foreach (var bag in lootBags)
+        {
+            if (GetVector2I(bag, "grid_pos", new Vector2I(-9999, -9999)) == cell)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async void BeginRestPointInteraction(string propId)
@@ -8463,6 +8549,33 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return items;
     }
 
+    private Array<string> BuildLearnableSpellScrollItemIdsForHud(Unit target, Array<Dictionary> items)
+    {
+        var itemIds = new Array<string>();
+        if (!IsUsableUnit(target) || target.IsDead || target.Team != "player" || items == null)
+        {
+            return itemIds;
+        }
+
+        foreach (var item in items)
+        {
+            var itemId = GetString(item, "id", "");
+            if (string.IsNullOrEmpty(itemId)
+                || !GetBool(item, "is_identified", true)
+                || GetString(item, "type", "") != "scroll")
+            {
+                continue;
+            }
+
+            if (TryGetLearnableSpellFromItem(target, itemId, item, out _, out _))
+            {
+                itemIds.Add(itemId);
+            }
+        }
+
+        return itemIds;
+    }
+
     private bool IsItemIdentified(string itemId, Dictionary itemData)
     {
         var requiresIdentification = GetBool(itemData, "requires_identification", false)
@@ -9770,7 +9883,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
-    private async void BeginExplorationClickMove(Vector2I targetCell)
+    private async void BeginExplorationClickMove(
+        Vector2I targetCell,
+        bool interactAfterMove = false,
+        bool targetsDoor = false)
     {
         if (!CanBeginExplorationClickMove(targetCell))
         {
@@ -9782,6 +9898,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _explorationMoveRequestId++;
             _hasPendingExplorationClickMove = true;
             _pendingExplorationClickTarget = targetCell;
+            _pendingExplorationClickInteracts = interactAfterMove;
+            _pendingExplorationClickTargetsDoor = targetsDoor;
             _hasPendingExplorationManualMove = false;
             return;
         }
@@ -9802,12 +9920,33 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
-            var path = FindExplorationPath(leader.GridPos, targetCell, party);
-            if (path.Count == 0)
+            var movementTargetCell = targetCell;
+            Array<Vector2I> path;
+            if (interactAfterMove)
+            {
+                if (!TryFindInteractionApproachPath(
+                    leader,
+                    targetCell,
+                    party,
+                    out movementTargetCell,
+                    out path))
+                {
+                    RejectPlayerAction("No reachable space beside that object.");
+                    return;
+                }
+            }
+            else
+            {
+                path = FindExplorationPath(leader.GridPos, movementTargetCell, party);
+            }
+
+            if (path.Count == 0 && leader.GridPos != movementTargetCell)
             {
                 if (ValidatePlayerMovement(leader, targetCell, pathing: false))
                 {
-                    RejectPlayerAction("No path to that location.");
+                    RejectPlayerAction(interactAfterMove
+                        ? "No reachable space beside that object."
+                        : "No path to that location.");
                 }
                 return;
             }
@@ -9834,6 +9973,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 {
                     _explorationMoveRequestId++;
                     _hasPendingExplorationClickMove = false;
+                    _pendingExplorationClickInteracts = false;
+                    _pendingExplorationClickTargetsDoor = false;
                     _hasPendingExplorationManualMove = false;
                     return;
                 }
@@ -9852,12 +9993,72 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     return;
                 }
             }
+
+            if (interactAfterMove
+                && _flowState == BattleFlowState.Exploration
+                && requestId == _explorationMoveRequestId
+                && IsUsableUnit(leader)
+                && leader.GridPos == movementTargetCell)
+            {
+                if (targetsDoor)
+                {
+                    TryOpenDoorAtCell(targetCell);
+                }
+                else
+                {
+                    TryOpenExplorationInteractionAtCell(targetCell);
+                }
+            }
         }
         finally
         {
             _isExplorationAutoMoving = false;
             ContinuePendingExplorationMove();
         }
+    }
+
+    private bool TryFindInteractionApproachPath(
+        Unit leader,
+        Vector2I interactionCell,
+        List<Unit> party,
+        out Vector2I approachCell,
+        out Array<Vector2I> path)
+    {
+        approachCell = new Vector2I(-1, -1);
+        path = new Array<Vector2I>();
+        if (!IsUsableUnit(leader) || leader.IsDead || party == null || party.Count == 0)
+        {
+            return false;
+        }
+
+        if (Chebyshev(leader.GridPos, interactionCell) <= 1)
+        {
+            approachCell = leader.GridPos;
+            return true;
+        }
+
+        Array<Vector2I> shortestPath = null;
+        foreach (var direction in AttackDirections)
+        {
+            var candidateCell = interactionCell + direction;
+            var candidatePath = FindExplorationPath(leader.GridPos, candidateCell, party);
+            if (candidatePath.Count == 0
+                || shortestPath != null && candidatePath.Count >= shortestPath.Count)
+            {
+                continue;
+            }
+
+            shortestPath = candidatePath;
+            approachCell = candidateCell;
+        }
+
+        if (shortestPath == null)
+        {
+            return false;
+        }
+
+        path = shortestPath;
+        return true;
     }
 
     private bool CanBeginExplorationClickMove(Vector2I targetCell)
@@ -9887,6 +10088,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _hasPendingExplorationManualMove = true;
         _pendingExplorationManualDelta = delta;
         _hasPendingExplorationClickMove = false;
+        _pendingExplorationClickInteracts = false;
+        _pendingExplorationClickTargetsDoor = false;
     }
 
     private void ContinuePendingExplorationMove()
@@ -9894,6 +10097,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_flowState != BattleFlowState.Exploration)
         {
             _hasPendingExplorationClickMove = false;
+            _pendingExplorationClickInteracts = false;
+            _pendingExplorationClickTargetsDoor = false;
             _hasPendingExplorationManualMove = false;
             return;
         }
@@ -9909,8 +10114,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (_hasPendingExplorationClickMove)
         {
             var targetCell = _pendingExplorationClickTarget;
+            var interactAfterMove = _pendingExplorationClickInteracts;
+            var targetsDoor = _pendingExplorationClickTargetsDoor;
             _hasPendingExplorationClickMove = false;
-            BeginExplorationClickMove(targetCell);
+            _pendingExplorationClickInteracts = false;
+            _pendingExplorationClickTargetsDoor = false;
+            BeginExplorationClickMove(targetCell, interactAfterMove, targetsDoor);
         }
     }
 
@@ -10324,7 +10533,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var explorer = _flowState == BattleFlowState.Combat
             ? GetActivePlayerUnit()
-            : GetSelectedCharacterPartyUnit() ?? GetExplorerUnit();
+            : GetMarchingOrderLeader();
         if (!IsUsableUnit(explorer) || explorer.IsDead)
         {
             return false;
@@ -10333,7 +10542,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var doorCell = GetVector2I(door, "cell", new Vector2I(-9999, -9999));
         if (Chebyshev(explorer.GridPos, doorCell) > 1)
         {
-            RejectPlayerAction("Move adjacent to the door.");
+            if (_flowState == BattleFlowState.Exploration)
+            {
+                BeginExplorationClickMove(doorCell, interactAfterMove: true, targetsDoor: true);
+            }
+            else
+            {
+                RejectPlayerAction("Move adjacent to the door.");
+            }
             return true;
         }
 

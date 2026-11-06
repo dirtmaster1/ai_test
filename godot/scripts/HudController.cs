@@ -70,6 +70,9 @@ public partial class HudController : Control
     public delegate void AdminAddItemRequestedEventHandler(string itemId);
 
     [Signal]
+    public delegate void AdminAdjustGoldRequestedEventHandler(int amount, bool addGold);
+
+    [Signal]
     public delegate void MainMenuRequestedEventHandler();
 
     [Signal]
@@ -118,7 +121,7 @@ public partial class HudController : Control
         ["long-bow"] = new(4, 1),
         ["war-axe"] = new(6, 0),
         ["chieftain-club"] = new(6, 1),
-        ["staff"] = new(6, 1),
+        ["staff"] = new(5, 1),
         ["broad-sword"] = new(0, 1),
         ["one-handed-mace"] = new(3, 1),
         ["small-shield"] = new(0, 2),
@@ -210,10 +213,14 @@ public partial class HudController : Control
     private Label _adminHeader;
     private Label _adminExperienceUnitLabel;
     private Label _adminExperienceAmountLabel;
+    private Label _adminGoldAmountLabel;
     private Label _adminItemsHeader;
     private OptionButton _adminExperienceUnitOption;
     private SpinBox _adminExperienceAmount;
     private Button _adminGrantExperienceButton;
+    private SpinBox _adminGoldAmount;
+    private Button _adminAddGoldButton;
+    private Button _adminRemoveGoldButton;
     private ItemList _adminItemList;
     private Button _adminAddItemButton;
     private Label _adminStatusLabel;
@@ -276,7 +283,9 @@ public partial class HudController : Control
     private Button _inventoryPrevUnitButton;
     private Button _inventoryNextUnitButton;
     private Button _inventoryActionButton;
+    private Button _inventoryLearnSpellButton;
     private Button _closeInventoryButton;
+    private readonly HashSet<string> _learnableScrollItemIds = new();
     private EquipmentSlotButton _headSlotButton;
     private EquipmentSlotButton _neckSlotButton;
     private EquipmentSlotButton _bodySlotButton;
@@ -407,10 +416,14 @@ public partial class HudController : Control
         _adminHeader = GetNode<Label>("AdminPanel/AdminVBox/AdminHeader");
         _adminExperienceUnitLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminExperienceUnitRow/AdminExperienceUnitLabel");
         _adminExperienceAmountLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminExperienceRow/AdminExperienceAmountLabel");
+        _adminGoldAmountLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminGoldRow/AdminGoldAmountLabel");
         _adminItemsHeader = GetNode<Label>("AdminPanel/AdminVBox/AdminItemsHeader");
         _adminExperienceUnitOption = GetNode<OptionButton>("AdminPanel/AdminVBox/AdminExperienceUnitRow/AdminExperienceUnitOption");
         _adminExperienceAmount = GetNode<SpinBox>("AdminPanel/AdminVBox/AdminExperienceRow/AdminExperienceAmount");
         _adminGrantExperienceButton = GetNode<Button>("AdminPanel/AdminVBox/AdminExperienceRow/AdminGrantExperienceButton");
+        _adminGoldAmount = GetNode<SpinBox>("AdminPanel/AdminVBox/AdminGoldRow/AdminGoldAmount");
+        _adminAddGoldButton = GetNode<Button>("AdminPanel/AdminVBox/AdminGoldRow/AdminAddGoldButton");
+        _adminRemoveGoldButton = GetNode<Button>("AdminPanel/AdminVBox/AdminGoldRow/AdminRemoveGoldButton");
         _adminItemList = GetNode<ItemList>("AdminPanel/AdminVBox/AdminItemList");
         _adminAddItemButton = GetNode<Button>("AdminPanel/AdminVBox/AdminItemButtons/AdminAddItemButton");
         _adminStatusLabel = GetNode<Label>("AdminPanel/AdminVBox/AdminStatusLabel");
@@ -475,7 +488,9 @@ public partial class HudController : Control
         _inventoryPrevUnitButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryCycleButtons/PrevUnitButton");
         _inventoryNextUnitButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryCycleButtons/NextUnitButton");
         _inventoryActionButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/InventoryActionSlot/InventoryActionButton");
+        _inventoryLearnSpellButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList/InventoryLearnSpellButton");
         _closeInventoryButton = GetNode<Button>("InventoryPanel/InventoryVBox/InventoryButtons/CloseInventoryButton");
+        _inventoryLearnSpellButton.FocusMode = FocusModeEnum.None;
         _headSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/HeadSlot");
         _neckSlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/NeckSlot");
         _bodySlotButton = GetNode<EquipmentSlotButton>("InventoryPanel/InventoryVBox/InventoryColumns/EquipmentColumn/EquipmentColumnVBox/DollStage/DollControl/BodySlot");
@@ -555,12 +570,15 @@ public partial class HudController : Control
         _loadButton.Pressed += OnLoadButtonPressed;
         _adminButton.Pressed += OnAdminButtonPressed;
         _adminGrantExperienceButton.Pressed += OnAdminGrantExperienceButtonPressed;
+        _adminAddGoldButton.Pressed += OnAdminAddGoldButtonPressed;
+        _adminRemoveGoldButton.Pressed += OnAdminRemoveGoldButtonPressed;
         _adminAddItemButton.Pressed += OnAdminAddItemButtonPressed;
         _adminCloseButton.Pressed += OnAdminCloseButtonPressed;
         _closeHelpButton.Pressed += OnCloseHelpButtonPressed;
         _inventoryPrevUnitButton.Pressed += OnInventoryPrevUnitButtonPressed;
         _inventoryNextUnitButton.Pressed += OnInventoryNextUnitButtonPressed;
         _inventoryActionButton.Pressed += OnInventoryActionButtonPressed;
+        _inventoryLearnSpellButton.Pressed += OnInventoryLearnSpellButtonPressed;
         _closeInventoryButton.Pressed += OnCloseInventoryButtonPressed;
         _inventoryItemList.ItemSelected += OnInventoryItemSelected;
         _inventoryItemList.ItemActivated += OnInventoryItemActivated;
@@ -788,6 +806,16 @@ public partial class HudController : Control
             _adminGrantExperienceButton.Pressed -= OnAdminGrantExperienceButtonPressed;
         }
 
+        if (_adminAddGoldButton != null)
+        {
+            _adminAddGoldButton.Pressed -= OnAdminAddGoldButtonPressed;
+        }
+
+        if (_adminRemoveGoldButton != null)
+        {
+            _adminRemoveGoldButton.Pressed -= OnAdminRemoveGoldButtonPressed;
+        }
+
         if (_adminAddItemButton != null)
         {
             _adminAddItemButton.Pressed -= OnAdminAddItemButtonPressed;
@@ -806,6 +834,11 @@ public partial class HudController : Control
         if (_inventoryActionButton != null)
         {
             _inventoryActionButton.Pressed -= OnInventoryActionButtonPressed;
+        }
+
+        if (_inventoryLearnSpellButton != null)
+        {
+            _inventoryLearnSpellButton.Pressed -= OnInventoryLearnSpellButtonPressed;
         }
 
         if (_inventoryPrevUnitButton != null)
@@ -1245,6 +1278,25 @@ public partial class HudController : Control
         EmitSignal(SignalName.AdminGrantExperienceRequested, unitId, amount);
     }
 
+    private void OnAdminAddGoldButtonPressed()
+    {
+        EmitAdminGoldAdjustmentRequested(true);
+    }
+
+    private void OnAdminRemoveGoldButtonPressed()
+    {
+        EmitAdminGoldAdjustmentRequested(false);
+    }
+
+    private void EmitAdminGoldAdjustmentRequested(bool addGold)
+    {
+        var amount = (int)System.Math.Round(_adminGoldAmount.Value);
+        if (amount > 0)
+        {
+            EmitSignal(SignalName.AdminAdjustGoldRequested, amount, addGold);
+        }
+    }
+
     private void OnAdminAddItemButtonPressed()
     {
         if (_adminItemList == null)
@@ -1297,7 +1349,30 @@ public partial class HudController : Control
             return;
         }
 
-        if (_inventoryItemsById.TryGetValue(itemId, out var itemData) && IsUsableInventoryItem(itemData))
+        if (_inventoryItemsById.TryGetValue(itemId, out var itemData)
+            && IsUsableInventoryItem(itemData)
+            && GetString(itemData, "type", "") != "scroll")
+        {
+            EmitSignal(SignalName.UseItemRequested, itemId);
+        }
+    }
+
+    private void OnInventoryLearnSpellButtonPressed()
+    {
+        if (_inventoryItemList == null)
+        {
+            return;
+        }
+
+        var selected = _inventoryItemList.GetSelectedItems();
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        var metadata = _inventoryItemList.GetItemMetadata(selected[0]);
+        var itemId = metadata.VariantType == Variant.Type.String ? metadata.AsString() : "";
+        if (!string.IsNullOrEmpty(itemId) && _learnableScrollItemIds.Contains(itemId))
         {
             EmitSignal(SignalName.UseItemRequested, itemId);
         }
@@ -1725,6 +1800,7 @@ public partial class HudController : Control
     public override void _Process(double delta)
     {
         UpdateItemHoverTooltip();
+        PositionInventoryLearnSpellButton();
     }
 
     public override void _Draw()
@@ -2162,6 +2238,7 @@ public partial class HudController : Control
         StyleBodyLabel(_backgroundVolumeValue, headerColor, 14);
         StyleBodyLabel(_adminExperienceUnitLabel, bodyColor, 14);
         StyleBodyLabel(_adminExperienceAmountLabel, bodyColor, 14);
+        StyleBodyLabel(_adminGoldAmountLabel, bodyColor, 14);
         StyleBodyLabel(_adminStatusLabel, mutedBodyColor, 13);
         TacticalTheme.ApplyHeaderLabel(_inventoryUnitLabel, TacticalTheme.BrassBright, 20);
         _inventoryUnitLabel.AddThemeFontOverride("font", new FontVariation
@@ -2183,6 +2260,8 @@ public partial class HudController : Control
         StyleButton(_adminButton, false);
         StyleButton(_adminExperienceUnitOption, false);
         StyleButton(_adminGrantExperienceButton, true);
+        StyleButton(_adminAddGoldButton, true);
+        StyleButton(_adminRemoveGoldButton, true);
         StyleButton(_adminAddItemButton, true);
         StyleButton(_adminCloseButton, false);
         StyleButton(_soundFxButton, false);
@@ -2214,6 +2293,7 @@ public partial class HudController : Control
         StyleButton(_inventoryPrevUnitButton, false);
         StyleButton(_inventoryNextUnitButton, false);
         StyleButton(_inventoryActionButton, true);
+        StyleButton(_inventoryLearnSpellButton, true);
         StyleButton(_closeInventoryButton, false);
         StyleButton(_headSlotButton, false, 12);
         StyleButton(_neckSlotButton, false, 12);
@@ -2739,7 +2819,10 @@ public partial class HudController : Control
         }
     }
 
-    public void SetInventoryItems(Array<Dictionary> items, Array<string> equippedItemIds)
+    public void SetInventoryItems(
+        Array<Dictionary> items,
+        Array<string> equippedItemIds,
+        Array<string> learnableScrollItemIds = null)
     {
         if (_inventoryItemList == null)
         {
@@ -2760,9 +2843,23 @@ public partial class HudController : Control
 
         _inventoryItemList.Clear();
         _inventoryItemsById.Clear();
+        _learnableScrollItemIds.Clear();
+        if (learnableScrollItemIds != null)
+        {
+            foreach (var itemId in learnableScrollItemIds)
+            {
+                if (!string.IsNullOrWhiteSpace(itemId))
+                {
+                    _learnableScrollItemIds.Add(itemId);
+                }
+            }
+        }
+
         ConfigureIconList(_inventoryItemList);
         _inventoryActionButton.Visible = false;
         _inventoryActionButton.Disabled = true;
+        _inventoryLearnSpellButton.Visible = false;
+        _inventoryLearnSpellButton.Disabled = true;
 
         if (items == null)
         {
@@ -3744,7 +3841,6 @@ public partial class HudController : Control
         if (_vendorStoreTabs != null)
         {
             _vendorStoreTabs.Visible = true;
-            _vendorStoreTabs.CurrentTab = 0;
             _vendorStoreTabs.SetTabTitle(0, healingServicesOnly ? "Healer Shop" : "Buy");
             _vendorStoreTabs.GetChild<Control>(1).Visible = !healingServicesOnly;
         }
@@ -3760,6 +3856,10 @@ public partial class HudController : Control
         }
 
         SetVendorPanelVisible(true);
+        if (_vendorStoreTabs != null)
+        {
+            _vendorStoreTabs.CurrentTab = 0;
+        }
     }
 
     public void SetVendorPanelVisible(bool visible)
@@ -4570,17 +4670,52 @@ public partial class HudController : Control
 
     private void UpdateInventoryPrimaryAction(Dictionary item)
     {
-        if (_inventoryActionButton == null)
+        if (_inventoryActionButton == null || _inventoryLearnSpellButton == null)
         {
             return;
         }
 
         var type = GetString(item, "type", "item");
         var isIdentified = GetBool(item, "is_identified", true);
-        var canUse = isIdentified && IsUsableInventoryItem(item);
+        var isScroll = type == "scroll";
+        var canUse = isIdentified && !isScroll && IsUsableInventoryItem(item);
+        var canLearnSpell = isIdentified
+            && isScroll
+            && _learnableScrollItemIds.Contains(GetString(item, "id", ""));
         _inventoryActionButton.Visible = canUse;
         _inventoryActionButton.Disabled = !canUse;
-        _inventoryActionButton.Text = type == "scroll" ? "Learn Spell" : "Use";
+        _inventoryActionButton.Text = "Use";
+        _inventoryLearnSpellButton.Visible = canLearnSpell;
+        _inventoryLearnSpellButton.Disabled = !canLearnSpell;
+        if (canLearnSpell)
+        {
+            PositionInventoryLearnSpellButton();
+        }
+    }
+
+    private void PositionInventoryLearnSpellButton()
+    {
+        if (_inventoryLearnSpellButton == null
+            || !_inventoryLearnSpellButton.Visible
+            || _inventoryItemList == null)
+        {
+            return;
+        }
+
+        var selected = _inventoryItemList.GetSelectedItems();
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        var itemRect = _inventoryItemList.GetItemRect(selected[0]);
+        var buttonSize = _inventoryLearnSpellButton.GetCombinedMinimumSize();
+        var maxX = Mathf.Max(0.0f, _inventoryItemList.Size.X - buttonSize.X - 8.0f);
+        var x = Mathf.Min(itemRect.End.X + 8.0f, maxX);
+        _inventoryLearnSpellButton.Size = buttonSize;
+        _inventoryLearnSpellButton.Position = new Vector2(
+            x,
+            itemRect.Position.Y + (itemRect.Size.Y - buttonSize.Y) * 0.5f);
     }
 
     private static bool IsUsableInventoryItem(Dictionary item)

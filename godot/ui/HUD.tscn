@@ -172,6 +172,31 @@ value = 100.0
 layout_mode = 2
 text = "Grant XP"
 
+[node name="AdminGoldRow" type="HBoxContainer" parent="AdminPanel/AdminVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AdminGoldAmountLabel" type="Label" parent="AdminPanel/AdminVBox/AdminGoldRow"]
+layout_mode = 2
+text = "Gold amount"
+
+[node name="AdminGoldAmount" type="SpinBox" parent="AdminPanel/AdminVBox/AdminGoldRow"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 2147483647.0
+step = 1.0
+value = 50.0
+
+[node name="AdminAddGoldButton" type="Button" parent="AdminPanel/AdminVBox/AdminGoldRow"]
+layout_mode = 2
+text = "Add Gold"
+
+[node name="AdminRemoveGoldButton" type="Button" parent="AdminPanel/AdminVBox/AdminGoldRow"]
+layout_mode = 2
+text = "Remove Gold"
+
 [node name="AdminItemsHeader" type="Label" parent="AdminPanel/AdminVBox"]
 layout_mode = 2
 text = "All Items"
@@ -892,6 +917,13 @@ size_flags_vertical = 3
 fixed_icon_size = Vector2i(32, 32)
 allow_reselect = true
 
+[node name="InventoryLearnSpellButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryColumns/InventoryColumn/InventoryColumnVBox/InventoryItemList"]
+visible = false
+layout_mode = 0
+offset_right = 112.0
+offset_bottom = 30.0
+text = "Learn Spell"
+
 [node name="InventoryButtons" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
 layout_mode = 2
 theme_override_constants/separation = 8
@@ -904,7 +936,7 @@ size_flags_horizontal = 3
 visible = false
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Learn Spell"
+text = "Use"
 
 [node name="CloseInventoryButton" type="Button" parent="InventoryPanel/InventoryVBox/InventoryButtons"]
 layout_mode = 2

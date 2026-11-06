@@ -645,4 +645,23 @@ public partial class BattleController
 
         return null;
     }
+
+    private Unit GetMarchingOrderLeader()
+    {
+        PruneInvalidUnitReferences();
+
+        foreach (var unit in _playerUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != "player")
+            {
+                continue;
+            }
+
+            _explorerUnit = unit;
+            return unit;
+        }
+
+        _explorerUnit = null;
+        return null;
+    }
 }

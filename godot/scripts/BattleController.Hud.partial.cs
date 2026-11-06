@@ -76,7 +76,11 @@ public partial class BattleController
             );
             _hud.SetInventoryAbilities(BuildAbilityEntriesForHud(inventoryTarget));
             _hud.SetInventoryEquippedItems(BuildInventoryEquippedEntries(inventoryTarget));
-            _hud.SetInventoryItems(BuildInventoryItemsForHud(), GetEquippedItemIds(inventoryTarget));
+            var inventoryItems = BuildInventoryItemsForHud();
+            _hud.SetInventoryItems(
+                inventoryItems,
+                GetEquippedItemIds(inventoryTarget),
+                BuildLearnableSpellScrollItemIdsForHud(inventoryTarget, inventoryItems));
         }
         else
         {
@@ -85,7 +89,7 @@ public partial class BattleController
 
         if (_flowState == BattleFlowState.Exploration)
         {
-            var explorer = GetExplorerUnit();
+            var explorer = GetMarchingOrderLeader();
             _hud.SetLootEntries(BuildNearbyLootEntries(explorer));
             _hud.SetReserveEntries(BuildActivePartyReserveEntriesForHud(), BuildReserveRosterEntriesForHud());
         }
