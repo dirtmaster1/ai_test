@@ -39,7 +39,6 @@ project/assembly_name="DarkDungeonTactics"
 
 [game]
 
-; Set to false to hide the play-testing admin menu.
 admin_menu_enabled=true
 
 [gui]
