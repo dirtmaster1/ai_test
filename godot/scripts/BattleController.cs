@@ -1137,7 +1137,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
-            EquipItemToUnit(target, itemData, itemId);
+            if (!CanClassEquipItem(target, itemData))
+            {
+                RejectPlayerAction(
+                    $"{target.UnitName} cannot equip {GetString(itemData, "name", itemId)} because of class restrictions.");
+                return;
+            }
+
+            if (!EquipItemToUnit(target, itemData, itemId))
+            {
+                RejectPlayerAction($"{GetString(itemData, "name", itemId)} cannot be equipped.");
+                return;
+            }
         }
 
         ApplyEquippedItemBonuses(target);
@@ -1169,15 +1180,27 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (!EquipmentSlotRules.CanEquipItemToSlot(itemData, slotKey)
-            || !EquipItemToSpecificSlot(target, itemData, itemId, slotKey))
+        var itemName = GetString(itemData, "name", itemId);
+        if (!EquipmentSlotRules.CanEquipItemToSlot(itemData, slotKey))
         {
-            RejectPlayerAction($"{GetString(itemData, "name", itemId)} cannot be equipped in {slotKey}.");
+            RejectPlayerAction($"{itemName} cannot be equipped in {slotKey}.");
+            return;
+        }
+
+        if (!CanClassEquipItem(target, itemData))
+        {
+            RejectPlayerAction($"{target.UnitName} cannot equip {itemName} because of class restrictions.");
+            return;
+        }
+
+        if (!EquipItemToSpecificSlot(target, itemData, itemId, slotKey))
+        {
+            RejectPlayerAction($"{itemName} cannot be equipped in {slotKey}.");
             return;
         }
 
         ApplyEquippedItemBonuses(target);
-        _hud?.AddCombatLogEntry($"{target.UnitName} equipped {GetString(itemData, "name", itemId)}.");
+        _hud?.AddCombatLogEntry($"{target.UnitName} equipped {itemName}.");
         SetStatusHelp();
         _persistence.PersistSaveGame(false);
     }
@@ -1196,7 +1219,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var sourceItem = _gameData.GetItem(sourceItemId);
-        if (!EquipmentSlotRules.CanEquipItemToSlot(sourceItem, targetSlotKey))
+        if (!EquipmentSlotRules.CanEquipItemToSlot(sourceItem, targetSlotKey)
+            || !CanClassEquipItem(target, sourceItem))
         {
             return;
         }
@@ -1204,7 +1228,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (equippedBySlot.TryGetValue(targetSlotKey, out var targetItemId))
         {
             var targetItem = _gameData.GetItem(targetItemId);
-            if (!EquipmentSlotRules.CanEquipItemToSlot(targetItem, sourceSlotKey))
+            if (!EquipmentSlotRules.CanEquipItemToSlot(targetItem, sourceSlotKey)
+                || !CanClassEquipItem(target, targetItem))
             {
                 return;
             }
@@ -8943,7 +8968,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            EquipItemToUnit(unit, itemData, itemId);
+            if (!EquipItemToUnit(unit, itemData, itemId))
+            {
+                GD.PushWarning($"Starting equipment '{itemId}' is not allowed for class '{unit.ClassId}'.");
+            }
         }
     }
 
@@ -9028,9 +9056,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return false;
     }
 
+    private bool CanClassEquipItem(Unit unit, Dictionary itemData)
+    {
+        return unit != null
+            && itemData != null
+            && EquipmentSlotRules.CanClassEquipItem(
+                itemData,
+                unit.ClassId,
+                _gameData?.GetClassEquipmentRules(unit.ClassId));
+    }
+
     private bool EquipItemToSpecificSlot(Unit unit, Dictionary itemData, string itemId, string targetSlotKey)
     {
-        if (unit == null || string.IsNullOrEmpty(unit.UnitId))
+        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || !CanClassEquipItem(unit, itemData))
         {
             return false;
         }
@@ -9127,17 +9165,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
-    private void EquipItemToUnit(Unit unit, Dictionary itemData, string itemId)
+    private bool EquipItemToUnit(Unit unit, Dictionary itemData, string itemId)
     {
-        if (unit == null || string.IsNullOrEmpty(unit.UnitId) || itemData == null)
+        if (unit == null
+            || string.IsNullOrEmpty(unit.UnitId)
+            || itemData == null
+            || !CanClassEquipItem(unit, itemData))
         {
-            return;
+            return false;
         }
 
         var slot = GetString(itemData, "slot", "");
         if (string.IsNullOrEmpty(slot))
         {
-            return;
+            return false;
         }
 
         if (!_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot))
@@ -9159,7 +9200,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             equippedBySlot["2-handed"] = itemId;
-            return;
+            return true;
         }
 
         if (slot == "1-handed")
@@ -9172,23 +9213,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (!equippedBySlot.ContainsKey("1-handed-a"))
             {
                 equippedBySlot["1-handed-a"] = itemId;
-                return;
+                return true;
             }
 
             if (!equippedBySlot.ContainsKey("1-handed-b"))
             {
                 equippedBySlot["1-handed-b"] = itemId;
-                return;
+                return true;
             }
 
             if (equippedBySlot.TryGetValue("1-handed-a", out var replacedOneHanded))
             {
                 equippedBySlot["1-handed-a"] = itemId;
                 EnsureSharedInventoryHasUnequippedCount(replacedOneHanded, 1);
-                return;
+                return true;
             }
 
-            return;
+            return false;
         }
 
         if (slot == "ring")
@@ -9202,17 +9243,54 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             equippedBySlot[targetRingSlot] = itemId;
-            return;
+            return true;
         }
 
         if (equippedBySlot.TryGetValue(slot, out var replacedSlottedItem))
         {
             equippedBySlot[slot] = itemId;
             EnsureSharedInventoryHasUnequippedCount(replacedSlottedItem, 1);
-            return;
+            return true;
         }
 
         equippedBySlot[slot] = itemId;
+        return true;
+    }
+
+    private void ReturnClassIneligibleEquippedItemsToInventory(Unit unit)
+    {
+        if (unit == null
+            || unit.Team != "player"
+            || _gameData == null
+            || !_equippedItemsByUnitId.TryGetValue(unit.UnitId, out var equippedBySlot)
+            || equippedBySlot.Count == 0)
+        {
+            return;
+        }
+
+        var invalidSlots = new List<string>();
+        foreach (var entry in equippedBySlot)
+        {
+            var itemData = _gameData.GetItem(entry.Value);
+            if (itemData.Count > 0 && !CanClassEquipItem(unit, itemData))
+            {
+                invalidSlots.Add(entry.Key);
+            }
+        }
+
+        foreach (var slotKey in invalidSlots)
+        {
+            var itemId = equippedBySlot[slotKey];
+            equippedBySlot.Remove(slotKey);
+            EnsureSharedInventoryHasUnequippedCount(itemId, 1);
+            _hud?.AddCombatLogEntry(
+                $"{GetString(_gameData.GetItem(itemId), "name", itemId)} was returned to shared inventory because {unit.UnitName}'s class cannot equip it.");
+        }
+
+        if (equippedBySlot.Count == 0)
+        {
+            _equippedItemsByUnitId.Remove(unit.UnitId);
+        }
     }
 
     private void EnsureSharedInventoryHasUnequippedCount(string itemId, int minimumUnequippedCount)
@@ -10803,6 +10881,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 unit.ApplyRuntimeSnapshot(snapshot);
             }
 
+            ReturnClassIneligibleEquippedItemsToInventory(unit);
             ApplyEquippedItemBonuses(unit);
         }
 

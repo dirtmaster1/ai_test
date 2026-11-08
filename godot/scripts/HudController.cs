@@ -330,6 +330,8 @@ public partial class HudController : Control
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryEquippedEntriesBySlot = new();
     private readonly System.Collections.Generic.HashSet<string> _equippedItemIds = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryItemsById = new();
+    private Dictionary _inventoryClassEquipmentRules = new();
+    private string _inventoryClassId = "";
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _inventoryAbilityEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _abilityTrayEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _reserveActiveEntriesById = new();
@@ -1394,6 +1396,12 @@ public partial class HudController : Control
             && EquipmentSlotRules.CanEquipItemToSlot(itemData, targetSlotKey);
     }
 
+    private bool CanEquipInventoryItemToSlot(Dictionary itemData, string targetSlotKey)
+    {
+        return EquipmentSlotRules.CanEquipItemToSlot(itemData, targetSlotKey)
+            && EquipmentSlotRules.CanClassEquipItem(itemData, _inventoryClassId, _inventoryClassEquipmentRules);
+    }
+
     private void OnInventoryItemDroppedOnEquipmentSlot(string itemId, string targetSlotKey)
     {
         EmitSignal(SignalName.EquipItemToSlotRequested, itemId, targetSlotKey);
@@ -1404,7 +1412,7 @@ public partial class HudController : Control
         return EquipmentSlotRules.CanMoveBetweenSlots(sourceSlotKey, targetSlotKey)
             && sourceSlotKey != targetSlotKey
             && _inventoryEquippedEntriesBySlot.TryGetValue(sourceSlotKey, out var sourceEntry)
-            && EquipmentSlotRules.CanEquipItemToSlot(sourceEntry, targetSlotKey);
+            && CanEquipInventoryItemToSlot(sourceEntry, targetSlotKey);
     }
 
     private void OnEquippedItemDroppedOnEquipmentSlot(string sourceSlotKey, string targetSlotKey)
@@ -2822,8 +2830,13 @@ public partial class HudController : Control
     public void SetInventoryItems(
         Array<Dictionary> items,
         Array<string> equippedItemIds,
-        Array<string> learnableScrollItemIds = null)
+        Array<string> learnableScrollItemIds = null,
+        string inventoryClassId = "",
+        Dictionary classEquipmentRules = null)
     {
+        _inventoryClassId = inventoryClassId?.Trim().ToLowerInvariant() ?? "";
+        _inventoryClassEquipmentRules = classEquipmentRules ?? new Dictionary();
+
         if (_inventoryItemList == null)
         {
             return;

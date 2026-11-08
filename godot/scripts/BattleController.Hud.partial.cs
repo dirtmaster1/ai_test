@@ -80,7 +80,9 @@ public partial class BattleController
             _hud.SetInventoryItems(
                 inventoryItems,
                 GetEquippedItemIds(inventoryTarget),
-                BuildLearnableSpellScrollItemIdsForHud(inventoryTarget, inventoryItems));
+                BuildLearnableSpellScrollItemIdsForHud(inventoryTarget, inventoryItems),
+                inventoryTarget.ClassId,
+                _gameData?.GetClassEquipmentRules(inventoryTarget.ClassId));
         }
         else
         {

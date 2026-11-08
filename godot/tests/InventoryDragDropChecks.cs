@@ -18,6 +18,7 @@ public partial class InventoryDragDropChecks : Node
 
         var hud = hudScene.Instantiate<HudController>();
         AddChild(hud);
+        CheckClassEquipmentRestrictions(hud);
 
         var summaryUnit = new Unit();
         summaryUnit.Setup(new Dictionary { { "id", "summary-test-unit" }, { "team", "player" } });
@@ -561,6 +562,168 @@ public partial class InventoryDragDropChecks : Node
         partyAlly.Free();
         partyMember.Free();
         controller.Free();
+    }
+
+    private void CheckClassEquipmentRestrictions(HudController hud)
+    {
+        var gameData = new GameData();
+        gameData.LoadData();
+        var templates = (Dictionary)gameData.Characters["templates"];
+        var classRules = (Dictionary)gameData.Characters["equipment_rules"];
+        var weaponTypes = new System.Collections.Generic.HashSet<string>();
+        var armorWeights = new System.Collections.Generic.HashSet<string>();
+        var playerClassCount = 0;
+
+        foreach (var key in templates.Keys)
+        {
+            var classId = ((Variant)key).AsString();
+            var template = gameData.GetCharacterTemplate(classId);
+            if (((Variant)template["team"]).AsString() != "player")
+            {
+                continue;
+            }
+
+            playerClassCount++;
+            Check(classRules.ContainsKey(classId),
+                $"Player class '{classId}' must have equipment restrictions.");
+            var rules = gameData.GetClassEquipmentRules(classId);
+            Check(rules.ContainsKey("allowed_weapon_types") && rules.ContainsKey("allowed_armor_weights"),
+                $"Player class '{classId}' must define weapon and armor allowances.");
+        }
+
+        foreach (var key in gameData.Items.Keys)
+        {
+            var itemId = ((Variant)key).AsString();
+            var item = gameData.GetItem(itemId);
+            var itemType = ((Variant)item["type"]).AsString();
+            if (itemType == "weapon")
+            {
+                Check(item.ContainsKey("weapon_type"),
+                    $"Weapon '{itemId}' must define a weapon_type.");
+                weaponTypes.Add(((Variant)item["weapon_type"]).AsString());
+            }
+            else if (itemType == "armor")
+            {
+                Check(item.ContainsKey("armor_weight"),
+                    $"Armor '{itemId}' must define an armor_weight.");
+                armorWeights.Add(((Variant)item["armor_weight"]).AsString());
+            }
+        }
+
+        Check(playerClassCount == 5, "All five current player classes must have equipment rules.");
+        Check(weaponTypes.SetEquals(new[] { "axe", "bow", "club", "dagger", "mace", "spear", "staff", "sword" }),
+            "Current weapons must use the expected weapon type categories.");
+        Check(armorWeights.SetEquals(new[] { "heavy", "light", "medium" }),
+            "Current armor must use light, medium, or heavy armor weights.");
+
+        var wizardRules = gameData.GetClassEquipmentRules("wizard");
+        var warriorRules = gameData.GetClassEquipmentRules("warrior");
+        Check(EquipmentSlotRules.CanClassEquipItem(gameData.GetItem("dagger"), "wizard", wizardRules)
+            && EquipmentSlotRules.CanClassEquipItem(gameData.GetItem("staff"), "wizard", wizardRules)
+            && !EquipmentSlotRules.CanClassEquipItem(gameData.GetItem("short-sword"), "wizard", wizardRules)
+            && EquipmentSlotRules.CanClassEquipItem(gameData.GetItem("cloth-robe"), "wizard", wizardRules)
+            && !EquipmentSlotRules.CanClassEquipItem(gameData.GetItem("plate-mail"), "wizard", wizardRules),
+            "Wizards must equip daggers, two-handed staffs, and light armor only.");
+
+        foreach (var key in gameData.Items.Keys)
+        {
+            var item = gameData.GetItem(((Variant)key).AsString());
+            var itemType = ((Variant)item["type"]).AsString();
+            if (itemType is "weapon" or "armor")
+            {
+                Check(EquipmentSlotRules.CanClassEquipItem(item, "warrior", warriorRules),
+                    $"Warriors must equip every current weapon and armor item; failed on '{((Variant)item["id"]).AsString()}'.");
+            }
+        }
+
+        var controller = new BattleController();
+        typeof(BattleController)
+            .GetField("_gameData", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(controller, gameData);
+        var wizard = new Unit();
+        wizard.Setup(new Dictionary
+        {
+            { "id", "equipment-restriction-wizard" },
+            { "class_id", "wizard" },
+            { "team", "player" }
+        });
+        var equipGeneric = typeof(BattleController)
+            .GetMethod("EquipItemToUnit", BindingFlags.Instance | BindingFlags.NonPublic);
+        Check(!(bool)equipGeneric.Invoke(controller, new object[] { wizard, gameData.GetItem("short-sword"), "short-sword" })
+            && (bool)equipGeneric.Invoke(controller, new object[] { wizard, gameData.GetItem("staff"), "staff" }),
+            "The backend must reject class-ineligible equipment and accept eligible equipment.");
+
+        var equippedItems = (System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>)typeof(BattleController)
+            .GetField("_equippedItemsByUnitId", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(controller);
+        var partyInventory = (List<string>)typeof(BattleController)
+            .GetField("_partyInventoryItemIds", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(controller);
+        equippedItems[wizard.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            { "1-handed-a", "short-sword" }
+        };
+        partyInventory.Add("short-sword");
+        typeof(BattleController)
+            .GetMethod("ReturnClassIneligibleEquippedItemsToInventory", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(controller, new object[] { wizard });
+        Check(!equippedItems.ContainsKey(wizard.UnitId) && partyInventory.FindAll(itemId => itemId == "short-sword").Count == 1,
+            "Loading must return class-ineligible saved equipment to shared inventory.");
+
+        ((Array<Unit>)typeof(BattleController)
+            .GetField("_playerUnits", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(controller)).Add(wizard);
+        typeof(BattleController)
+            .GetField("_selectedCharacterUnitId", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(controller, wizard.UnitId);
+        typeof(BattleController)
+            .GetField("_hud", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(controller, hud);
+        typeof(BattleController)
+            .GetMethod("OnHudEquipItemRequested", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(controller, new object[] { "short-sword" });
+        var bannerLabel = (Label)typeof(HudController)
+            .GetField("_combatBannerLabel", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(hud);
+        var bannerPanel = (PanelContainer)typeof(HudController)
+            .GetField("_combatBannerPanel", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(hud);
+        var bannerStyle = bannerPanel.GetThemeStylebox("panel") as StyleBoxFlat;
+        Check(bannerLabel.Text.Contains("cannot equip Short Sword because of class restrictions")
+            && bannerStyle != null && bannerStyle.BorderColor == new Color("ff5555"),
+            "A class-restricted equip attempt must show a red warning banner explaining the restriction.");
+
+        hud.SetInventoryItems(
+            new Array<Dictionary>
+            {
+                gameData.GetItem("dagger"),
+                gameData.GetItem("short-sword"),
+                gameData.GetItem("staff")
+            },
+            new Array<string>(),
+            null,
+            "wizard",
+            wizardRules);
+        var canDropInventoryItem = typeof(HudController)
+            .GetMethod("CanDropInventoryItemToSlot", BindingFlags.Instance | BindingFlags.NonPublic);
+        var requestedEquipItemId = "";
+        HudController.EquipItemRequestedEventHandler equipRequestedHandler = itemId => requestedEquipItemId = itemId;
+        hud.EquipItemRequested += equipRequestedHandler;
+        Check((bool)canDropInventoryItem.Invoke(hud, new object[] { "dagger", "1-handed-a" })
+            && (bool)canDropInventoryItem.Invoke(hud, new object[] { "short-sword", "1-handed-a" })
+            && (bool)canDropInventoryItem.Invoke(hud, new object[] { "staff", "1-handed-a" }),
+            "The HUD must let a class-restricted item reach the equip handler so it can show a rejection banner.");
+        typeof(HudController)
+            .GetMethod("OnInventoryItemActivated", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(hud, new object[] { 1L });
+        Check(requestedEquipItemId == "short-sword",
+            "Activating a class-restricted item must reach the equip handler for a rejection banner.");
+        hud.EquipItemRequested -= equipRequestedHandler;
+
+        hud.SetInventoryItems(new Array<Dictionary>(), new Array<string>());
+        wizard.Free();
+        controller.Free();
+        gameData.Free();
     }
 
     private void Check(bool condition, string message)

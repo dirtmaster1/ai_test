@@ -292,6 +292,7 @@
 	  "name": "Small Shield",
 	  "type": "armor",
 	  "slot": "1-handed",
+	  "armor_weight": "light",
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0,
 	  "description": "Better than nothing."
@@ -301,6 +302,7 @@
 	  "name": "Metal Shield",
 	  "type": "armor",
 	  "slot": "1-handed",
+	  "armor_weight": "medium",
 	  "base_armor_class": 2,
 	  "bonus_armor_class": 0,
 	  "description": "Can be used as a door."
@@ -310,6 +312,7 @@
 	  "name": "Dagger",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "dagger",
 	  "base_damage": 4,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -320,6 +323,7 @@
 	  "name": "Short Sword",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "sword",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -330,6 +334,7 @@
 	  "name": "Spear",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "spear",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 2,
@@ -340,6 +345,7 @@
 	  "name": "One-Handed Axe",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "axe",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -350,6 +356,7 @@
 	  "name": "Broad Sword",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "sword",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -360,6 +367,7 @@
 	  "name": "One-Handed Mace",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "mace",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -370,6 +378,7 @@
 	  "name": "Long Sword",
 	  "type": "weapon",
 	  "slot": "1-handed",
+	  "weapon_type": "sword",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -380,6 +389,7 @@
 	  "name": "Short Bow",
 	  "type": "weapon",
 	  "slot": "2-handed",
+	  "weapon_type": "bow",
 	  "base_damage": 6,
 	  "bonus_damage": 0,
 	  "range": 5,
@@ -390,6 +400,7 @@
 	  "name": "Leather Armor",
 	  "type": "armor",
 	  "slot": "body",
+	  "armor_weight": "light",
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0,
 	  "description": "Proof that a good hide can have a second career."
@@ -399,6 +410,7 @@
 	  "name": "Cloth Robe",
 	  "type": "armor",
 	  "slot": "body",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
 	  "description": "Comfortable enough for study."
@@ -408,6 +420,7 @@
 	  "name": "Iron Helmet",
 	  "type": "armor",
 	  "slot": "head",
+	  "armor_weight": "heavy",
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0,
 	  "description": "It won't improve your judgment, but it may protect you from it."
@@ -417,6 +430,7 @@
 	  "name": "Leather Helm",
 	  "type": "armor",
 	  "slot": "head",
+	  "armor_weight": "light",
 	  "base_armor_class": 1,
 	  "bonus_armor_class": 0,
 	  "description": "For the adventurer who thinks with their head."
@@ -426,6 +440,7 @@
 	  "name": "Plate Mail",
 	  "type": "armor",
 	  "slot": "body",
+	  "armor_weight": "heavy",
 	  "base_armor_class": 3,
 	  "bonus_armor_class": 0,
 	  "description": "The traditional uniform of people who have stopped worrying about stealth."
@@ -435,6 +450,7 @@
 	  "name": "Full Plate Armor",
 	  "type": "armor",
 	  "slot": "body",
+	  "armor_weight": "heavy",
 	  "base_armor_class": 4,
 	  "bonus_armor_class": 0,
 	  "description": "A walking fortress."
@@ -444,6 +460,7 @@
 	  "name": "War Axe",
 	  "type": "weapon",
 	  "slot": "2-handed",
+	  "weapon_type": "axe",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -454,6 +471,7 @@
 	  "name": "Long Bow",
 	  "type": "weapon",
 	  "slot": "2-handed",
+	  "weapon_type": "bow",
 	  "base_damage": 8,
 	  "bonus_damage": 0,
 	  "range": 7,
@@ -464,6 +482,7 @@
 	  "name": "Chain Mail",
 	  "type": "armor",
 	  "slot": "body",
+	  "armor_weight": "medium",
 	  "base_armor_class": 2,
 	  "bonus_armor_class": 0,
 	  "description": "A thousand tiny links that somehow hold together."
@@ -473,6 +492,7 @@
 	  "name": "Boots of Speed",
 	  "type": "armor",
 	  "slot": "feet",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
 	  "bonus_movement": 2,
@@ -483,6 +503,7 @@
 	  "name": "Silverleaf Pendant",
 	  "type": "armor",
 	  "slot": "neck",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_max_magic_points": 1,
 	  "description": "A sliver of moonlit forest."
@@ -492,6 +513,7 @@
 	  "name": "Trailblazer Leggings",
 	  "type": "armor",
 	  "slot": "legs",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_movement": 1,
 	  "description": "For taking the scenic route, even when the scenery bites back."
@@ -501,6 +523,7 @@
 	  "name": "Ranger Cloak",
 	  "type": "armor",
 	  "slot": "back",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_dexterity": 1,
 	  "description": "Into the wilderness we go."
@@ -510,6 +533,7 @@
 	  "name": "Copper Ring",
 	  "type": "armor",
 	  "slot": "ring",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 1,
 	  "description": "A modest band with grand dreams."
@@ -519,6 +543,7 @@
 	  "name": "Iron Ring",
 	  "type": "armor",
 	  "slot": "ring",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 1,
 	  "description": "Forged for those who are difficult to bend."
@@ -528,6 +553,7 @@
 	  "name": "Silver Ring",
 	  "type": "armor",
 	  "slot": "ring",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_max_magic_points": 1,
 	  "description": "A little moonlight, captured before it could wander off."
@@ -537,6 +563,7 @@
 	  "name": "Healer's Circlet",
 	  "type": "armor",
 	  "slot": "head",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
 	  "bonus_healing": 3,
@@ -548,6 +575,7 @@
 	  "name": "Mage's Amulet",
 	  "type": "armor",
 	  "slot": "neck",
+	  "armor_weight": "light",
 	  "base_armor_class": 0,
 	  "bonus_armor_class": 0,
 	  "bonus_magic_point_regen": 2,
@@ -559,6 +587,7 @@
 	  "name": "Chieftain Club",
 	  "type": "weapon",
 	  "slot": "2-handed",
+	  "weapon_type": "club",
 	  "base_damage": 12,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -569,6 +598,7 @@
 	  "name": "Staff",
 	  "type": "weapon",
 	  "slot": "2-handed",
+	  "weapon_type": "staff",
 	  "base_damage": 5,
 	  "bonus_damage": 0,
 	  "range": 1,
@@ -900,6 +930,28 @@
 	}
   },
   "characters": {
+	"equipment_rules": {
+	  "wizard": {
+		"allowed_armor_weights": ["light"],
+		"allowed_weapon_types": ["dagger", "staff"]
+	  },
+	  "warrior": {
+		"allowed_armor_weights": ["light", "medium", "heavy"],
+		"allowed_weapon_types": ["*"]
+	  },
+	  "cleric": {
+		"allowed_armor_weights": ["light", "medium"],
+		"allowed_weapon_types": ["dagger", "mace", "spear", "staff"]
+	  },
+	  "ranger": {
+		"allowed_armor_weights": ["light", "medium"],
+		"allowed_weapon_types": ["axe", "bow", "dagger", "spear", "sword"]
+	  },
+	  "thief": {
+		"allowed_armor_weights": ["light"],
+		"allowed_weapon_types": ["bow", "dagger", "sword"]
+	  }
+	},
 	"default_party": [
 	  "warrior",
 	  "ranger",

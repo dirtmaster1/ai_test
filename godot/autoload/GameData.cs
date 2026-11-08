@@ -151,6 +151,12 @@ public partial class GameData : Node
         return TryGetDictionary(templates, id);
     }
 
+    public Dictionary GetClassEquipmentRules(string classId)
+    {
+        var equipmentRules = TryGetDictionary(Characters, "equipment_rules");
+        return TryGetDictionary(equipmentRules, classId?.Trim().ToLowerInvariant() ?? "");
+    }
+
     public Array<Dictionary> GetDefaultPartyTemplates()
     {
         var result = new Array<Dictionary>();
