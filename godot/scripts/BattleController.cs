@@ -981,7 +981,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _persistence?.PersistSaveGame(false);
     }
 
-    private void OnHudPartyOrderRequested(string sourceUnitId, string targetUnitId)
+    private void OnHudPartyOrderRequested(string sourceUnitId, string targetUnitId, bool insertAfter)
     {
         if (_flowState != BattleFlowState.Exploration
             || string.IsNullOrEmpty(sourceUnitId)
@@ -1012,7 +1012,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         var movedUnit = _playerUnits[sourceIndex];
         _playerUnits.RemoveAt(sourceIndex);
-        _playerUnits.Insert(targetIndex, movedUnit);
+        if (sourceIndex < targetIndex)
+        {
+            targetIndex--;
+        }
+
+        var insertIndex = Mathf.Clamp(targetIndex + (insertAfter ? 1 : 0), 0, _playerUnits.Count);
+        _playerUnits.Insert(insertIndex, movedUnit);
 
         foreach (var unit in _playerUnits)
         {
@@ -3043,15 +3049,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     enemyUnit,
                     enemyUnit.GridPos,
                     Mathf.Max(_walkableCells.Count, _gridWidth * _gridHeight));
+                var movementOptions = BuildAiActionOptions(enemyUnit);
                 if (!_aiDirector.TryChooseStepTowardActionRange(
                     enemyUnit,
-                    BuildAiTargetCandidates(enemyUnit),
-                    BuildAiActionOptions(enemyUnit),
-                    target => CanAiMoveTowardTarget(enemyUnit, target),
+                    BuildAiMovementTargetCandidates(enemyUnit, movementOptions),
+                    movementOptions,
+                    CanAiPlanActionOnTarget,
                     cell => CanUnitStandAt(enemyUnit, cell),
                     HasClearLineOfSight,
                     findPathFromCurrentCell,
-                    out var step))
+                    out var step,
+                    ScoreAiAction))
                 {
                     break;
                 }
@@ -3676,18 +3684,32 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
-        var choice = _aiDirector.ChooseAction(actor, BuildAiActionOptions(actor), _allUnits, CanAiActionTarget);
+        var choice = _aiDirector.ChooseAction(
+            actor,
+            BuildAiActionOptions(actor),
+            _allUnits,
+            CanAiActionTarget,
+            ScoreAiAction);
         if (!choice.HasChoice || choice.Target == null)
         {
             return CombatActionResult.Failed;
         }
 
         var actionProfile = ResolveActionProfile(actor, choice.AbilityId);
+        if (choice.Target != actor)
+        {
+            choice.Target.FlashFocusHighlight(new Color("ff8059"), 0.9f);
+        }
+
         SetSelectedAbilityId(actor, choice.AbilityId);
         var actionSuccess = IsHealingSpellAction(actionProfile.ActionType)
             ? TryCastCombatHealingSpell(actor, choice.Target, actionProfile)
             : actionProfile.ActionType == "heal"
                 ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost)
+                : actionProfile.ActionType == "sleep"
+                    ? TryCastSleepAtCell(actor, choice.Target.GridPos, actionProfile)
+                    : actionProfile.ActionType == "area_attack"
+                        ? TryCastAreaAttackAtCell(actor, choice.Target.GridPos, actionProfile)
                 : actionProfile.ActionType == "web"
                     ? TryCastWebAtCell(actor, choice.Target.GridPos, actionProfile)
                     : actionProfile.ActionType == "lightning_bolt"
@@ -3696,6 +3718,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                             ? TryUseRainOfArrowsAtCell(actor, choice.Target.GridPos, actionProfile)
                             : actionProfile.ActionType == "taunt"
                                 ? TryUseTaunt(actor, actionProfile)
+                                : actionProfile.ActionType == "pin"
+                                    ? TryUsePinShot(actor, choice.Target.GridPos, actionProfile)
                                 : actionProfile.ActionType == "shadow_strike"
                                     ? TryUseAiShadowStrike(actor, choice.Target, actionProfile)
                                     : TryAttackTarget(actor, choice.Target, actionProfile.Damage, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost);
@@ -3705,7 +3729,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
-        return ResolveSuccessfulAction(actionProfile.ActionType);
+        var resolvedActionType = actionProfile.ActionType is "pin" or "poison_strike"
+            ? "attack"
+            : actionProfile.ActionType;
+        return ResolveSuccessfulAction(resolvedActionType);
     }
 
     private List<AiDirector.ActionOption> BuildAiActionOptions(Unit actor)
@@ -3725,13 +3752,278 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             var profile = ResolveActionProfile(actor, abilityId);
             var canUseNow = CanUseActionProfileNow(actor, profile);
-            var canPlanFromMovement = profile.ActionType == "attack"
-                && actor.GetAbilityCooldownRemaining(profile.ActionId) <= 0
-                && CanCastAction(actor, profile);
+            var canPlanFromMovement = IsAiPositionableAction(profile.ActionType)
+                && CanUseActionProfileNow(actor, profile);
             options.Add(new AiDirector.ActionOption(abilityId, profile.ActionType, profile.Range, canUseNow, canPlanFromMovement));
         }
 
         return options;
+    }
+
+    private static bool IsAiPositionableAction(string actionType)
+    {
+        return actionType is "attack" or "pin" or "area_attack" or "sleep" or "web"
+            or "lightning_bolt" or "rain_of_arrows" or "shadow_strike" or "heal"
+            or "remove_malady" or "resurrect" or "blessing";
+    }
+
+    private Array<Unit> BuildAiMovementTargetCandidates(Unit actor, IEnumerable<AiDirector.ActionOption> options)
+    {
+        var candidates = BuildAiTargetCandidates(actor);
+        if (!IsUsableUnit(actor) || actor.HasStatusEffect("taunted") || options == null)
+        {
+            return candidates;
+        }
+
+        var canHealAlly = false;
+        var canResurrectAlly = false;
+        foreach (var option in options)
+        {
+            canHealAlly |= option.CanPlanFromMovement
+                && (option.ActionType == "heal" || IsHealingSpellAction(option.ActionType));
+            canResurrectAlly |= option.CanPlanFromMovement && option.ActionType == "resurrect";
+        }
+
+        if (!canHealAlly)
+        {
+            return candidates;
+        }
+
+        var seenUnitIds = new HashSet<string>(System.StringComparer.Ordinal);
+        foreach (var candidate in candidates)
+        {
+            if (candidate != null)
+            {
+                seenUnitIds.Add(candidate.UnitId);
+            }
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit)
+                || unit.Team != actor.Team
+                || unit.IsDead && !canResurrectAlly
+                || !seenUnitIds.Add(unit.UnitId))
+            {
+                continue;
+            }
+
+            candidates.Add(unit);
+        }
+
+        return candidates;
+    }
+
+    private bool CanAiPlanActionOnTarget(Unit actor, Unit target, AiDirector.ActionOption option)
+    {
+        if (!IsUsableUnit(actor) || !IsUsableUnit(target))
+        {
+            return false;
+        }
+
+        if (actor.HasStatusEffect("taunted")
+            && !string.Equals(target.UnitId, actor.TauntTargetUnitId, System.StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (option.ActionType == "heal")
+        {
+            return !target.IsDead
+                && target.Team == actor.Team
+                && target.HitPoints < target.MaxHitPoints;
+        }
+
+        if (IsHealingSpellAction(option.ActionType))
+        {
+            if (target.Team != actor.Team)
+            {
+                return false;
+            }
+
+            if (target.Team == "enemy" && !_activeCombatEnemyUnitIds.Contains(target.UnitId))
+            {
+                return false;
+            }
+
+            var spell = _gameData?.GetSpell(option.AbilityId) ?? new Dictionary();
+            return spell.Count > 0 && CanApplyHealingSpellEffect(target, spell, out _);
+        }
+
+        return !target.IsDead && IsValidAttackTarget(actor, target);
+    }
+
+    private float ScoreAiAction(Unit actor, Unit target, AiDirector.ActionOption option)
+    {
+        var profile = ResolveActionProfile(actor, option.AbilityId);
+        var actionData = GetActionData(option.AbilityId, out _);
+        var score = 0.0f;
+
+        if (profile.ActionType == "heal")
+        {
+            var missingHitPoints = Mathf.Max(0, target.MaxHitPoints - target.HitPoints);
+            var effectiveHealing = Mathf.Min(missingHitPoints, profile.HealAmount);
+            score = effectiveHealing * 1.2f
+                + (target.MaxHitPoints > 0 ? (float)missingHitPoints / target.MaxHitPoints * 2.0f : 0.0f);
+        }
+        else if (IsHealingSpellAction(profile.ActionType))
+        {
+            if (profile.ActionType == "remove_malady")
+            {
+                score = target.HasNegativeStatusEffects() ? 7.0f : 0.0f;
+            }
+            else if (profile.ActionType == "resurrect")
+            {
+                score = target.IsDead ? 12.0f : 0.0f;
+            }
+            else if (profile.ActionType == "blessing")
+            {
+                var radius = Mathf.Max(0, profile.AreaRadius);
+                foreach (var unit in _allUnits)
+                {
+                    if (IsUsableUnit(unit) && !unit.IsDead && unit.Team == actor.Team
+                        && Unit.IsWithinRange(target.GridPos, unit.GetClosestCell(target.GridPos), radius)
+                        && !unit.HasStatusEffect("protection"))
+                    {
+                        score += 2.0f;
+                    }
+                }
+            }
+        }
+        else if (profile.ActionType == "taunt")
+        {
+            foreach (var unit in _allUnits)
+            {
+                if (IsUsableUnit(unit) && !unit.IsDead && unit.Team != actor.Team
+                    && Unit.IsWithinRange(actor.GridPos, unit.GetClosestCell(actor.GridPos), profile.AreaRadius)
+                    && !unit.HasStatusEffect("taunted"))
+                {
+                    score += 2.0f;
+                }
+            }
+        }
+        else
+        {
+            foreach (var affectedUnit in GetAiActionAffectedUnits(actor, target, profile))
+            {
+                if (profile.ActionType == "sleep" && IsUndead(affectedUnit))
+                {
+                    continue;
+                }
+
+                var damage = EstimateAiActionDamage(actor, affectedUnit, profile, actionData);
+                if (affectedUnit.Team == actor.Team)
+                {
+                    score -= damage * 1.75f;
+                }
+                else
+                {
+                    score += damage * 1.25f;
+                    if (damage >= affectedUnit.HitPoints && damage > 0)
+                    {
+                        score += 4.0f;
+                    }
+
+                    score += Mathf.Min(1.5f, Mathf.Max(0, affectedUnit.AttackDamage) * 0.1f);
+                }
+
+                if (profile.ActionType is "web" or "sleep" or "pin")
+                {
+                    var effectId = profile.ActionType switch
+                    {
+                        "web" => "webbed",
+                        "pin" => "pinned",
+                        _ => "sleep"
+                    };
+                    if (!affectedUnit.HasStatusEffect(effectId))
+                    {
+                        var controlValue = 2.5f + Mathf.Min(2.0f, Mathf.Max(0, affectedUnit.AttackDamage) * 0.15f);
+                        score += affectedUnit.Team == actor.Team ? -controlValue * 1.75f : controlValue;
+                    }
+                }
+            }
+        }
+
+        score -= profile.MagicPointCost * 0.35f;
+        score -= profile.CooldownTurns * 0.15f;
+        return score;
+    }
+
+    private List<Unit> GetAiActionAffectedUnits(Unit actor, Unit target, ActionProfile profile)
+    {
+        var affected = new List<Unit>();
+        var isAreaAction = profile.ActionType is "area_attack" or "sleep" or "web" or "rain_of_arrows";
+        var isLightningBolt = profile.ActionType == "lightning_bolt";
+        var direction = isLightningBolt
+            ? new Vector2I((target.GridPos.X - actor.GridPos.X).CompareTo(0), (target.GridPos.Y - actor.GridPos.Y).CompareTo(0))
+            : Vector2I.Zero;
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead)
+            {
+                continue;
+            }
+
+            var isAffected = unit == target;
+            if (isAreaAction)
+            {
+                isAffected = Unit.IsWithinRange(target.GridPos, unit.GetClosestCell(target.GridPos), profile.AreaRadius);
+            }
+            else if (isLightningBolt)
+            {
+                isAffected = false;
+                for (var distance = 1; distance <= profile.Range; distance++)
+                {
+                    var cell = actor.GridPos + direction * distance;
+                    if (!IsInBounds(cell) || IsBlockedCell(cell) || !HasClearLineOfSight(actor.GridPos, cell))
+                    {
+                        break;
+                    }
+
+                    if (unit.OccupiesCell(cell))
+                    {
+                        isAffected = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isAffected)
+            {
+                affected.Add(unit);
+            }
+        }
+
+        return affected;
+    }
+
+    private float EstimateAiActionDamage(Unit actor, Unit target, ActionProfile profile, Dictionary actionData)
+    {
+        var damage = (float)profile.Damage;
+        if (profile.ActionType == "lightning_bolt")
+        {
+            var minimum = GetInt(actionData, "min_damage", profile.Damage);
+            var maximum = GetInt(actionData, "max_damage", minimum);
+            damage = (minimum + maximum) * 0.5f;
+        }
+        else if (profile.ActionType == "rain_of_arrows")
+        {
+            damage = actor.AttackDamage;
+        }
+        else if (profile.ActionType == "shadow_strike")
+        {
+            damage = Mathf.Max(1, actor.AttackDamage) * Mathf.Max(1, GetInt(actionData, "damage_multiplier", 4));
+        }
+
+        var damageAfterArmor = profile.IsMagical || profile.ActionType == "lightning_bolt"
+            || profile.ActionType == "area_attack" || profile.ActionType == "sleep" || profile.ActionType == "web"
+            ? damage
+            : Mathf.Max(0.0f, damage - target.ArmorClass);
+        var damageBlockedByDefend = target.IsDefending
+            ? Mathf.FloorToInt(damageAfterArmor * Unit.DefendDamageReductionPercent / 100.0f)
+            : 0;
+        return Mathf.Max(0.0f, damageAfterArmor - damageBlockedByDefend);
     }
 
     private bool CanAiActionTarget(Unit actor, Unit target, AiDirector.ActionOption option)
@@ -5868,6 +6160,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 DrawAreaPreviewOverlay(canvas, hoveredCell, actionProfile.AreaRadius);
             }
+            DrawCombatTargetPreview(canvas, active, actionProfile);
             return;
         }
 
@@ -5894,15 +6187,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     canvas.DrawRect(lineRect, new Color("a2efff", 0.9f), false, 2.0f);
                 }
             }
+            DrawCombatTargetPreview(canvas, active, actionProfile);
             return;
         }
 
         if (!TryGetAreaPreviewCenterCell(active, actionProfile, out var areaCenter))
         {
+            DrawCombatTargetPreview(canvas, active, actionProfile);
             return;
         }
 
         DrawAreaPreviewOverlay(canvas, areaCenter, actionProfile.AreaRadius);
+        DrawCombatTargetPreview(canvas, active, actionProfile);
     }
 
     private void DrawHealerServicePreviewOverlay(CanvasItem canvas)
@@ -5996,6 +6292,204 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var centerRect = new Rect2(new Vector2(centerCell.X * CellSize, centerCell.Y * CellSize), new Vector2(CellSize, CellSize));
         canvas.DrawRect(centerRect, new Color(0.85f, 0.95f, 1.0f, 0.2f), true);
         canvas.DrawRect(centerRect, new Color(0.95f, 1.0f, 1.0f, 1.0f), false, 3.0f);
+    }
+
+    private void DrawCombatTargetPreview(CanvasItem canvas, Unit active, ActionProfile actionProfile)
+    {
+        var hoveredCell = WorldToCell(ToLocal(GetGlobalMousePosition()));
+        if (!IsInBounds(hoveredCell))
+        {
+            return;
+        }
+
+        if (actionProfile.ActionType == "heal")
+        {
+            var ally = GetLivingAllyAtCell(active.Team, hoveredCell);
+            if (ally != null && active.CanHealTarget(ally, actionProfile.Range, _allUnits)
+                && HasClearUnitLineOfSight(active, ally))
+            {
+                var healing = Mathf.Min(actionProfile.HealAmount, Mathf.Max(0, ally.MaxHitPoints - ally.HitPoints));
+                DrawCombatPreviewLabel(canvas, hoveredCell, $"Healing: +{healing} HP");
+            }
+
+            return;
+        }
+
+        if (actionProfile.ActionType == "blessing")
+        {
+            var center = GetPartyUnitAtCell(hoveredCell);
+            if (center == null
+                || !CanCastHealingSpellOnTarget(active, center, actionProfile, out _))
+            {
+                return;
+            }
+
+            var protectedCount = 0;
+            foreach (var unit in _allUnits)
+            {
+                if (IsUsableUnit(unit) && !unit.IsDead && unit.Team == active.Team
+                    && Unit.IsWithinRange(center.GridPos, unit.GetClosestCell(center.GridPos), actionProfile.AreaRadius)
+                    && !unit.HasStatusEffect("protection"))
+                {
+                    protectedCount++;
+                }
+            }
+
+            DrawCombatPreviewLabel(canvas, hoveredCell, $"Protects: {protectedCount} allies");
+            return;
+        }
+
+        if (actionProfile.ActionType is "sleep" or "area_attack" or "web" or "lightning_bolt" or "rain_of_arrows")
+        {
+            if (!Unit.IsWithinRange(active.GridPos, hoveredCell, actionProfile.Range)
+                || !HasClearLineOfSight(active.GridPos, hoveredCell)
+                || actionProfile.ActionType == "lightning_bolt" && !IsEightDirectionLine(active.GridPos, hoveredCell))
+            {
+                return;
+            }
+
+            var previewTargets = GetCombatPreviewTargets(active, actionProfile, hoveredCell);
+            var enemyCount = 0;
+            var allyCount = 0;
+            var enemyDamage = 0;
+            var allyDamage = 0;
+            var actionableCount = 0;
+            var actionData = GetActionData(actionProfile.ActionId, out _);
+            foreach (var target in previewTargets)
+            {
+                if (actionProfile.ActionType == "sleep" && IsUndead(target))
+                {
+                    continue;
+                }
+
+                actionableCount++;
+                var damage = Mathf.RoundToInt(EstimateAiActionDamage(active, target, actionProfile, actionData));
+                if (target.Team == active.Team)
+                {
+                    allyCount++;
+                    allyDamage += damage;
+                }
+                else
+                {
+                    enemyCount++;
+                    enemyDamage += damage;
+                }
+            }
+
+            var text = actionProfile.ActionType is "sleep" or "web"
+                ? $"Affects: {enemyCount} foes / {allyCount} allies"
+                : $"Damage: {enemyDamage} foes / {allyDamage} allies";
+            if (actionableCount > 0)
+            {
+                DrawCombatPreviewLabel(canvas, hoveredCell, text);
+            }
+
+            return;
+        }
+
+        if (actionProfile.ActionType == "shadow_strike" && !_awaitingShadowStrikeAttack)
+        {
+            return;
+        }
+
+        if (actionProfile.ActionType is not ("attack" or "pin" or "shadow_strike"))
+        {
+            return;
+        }
+
+        var enemy = GetLivingEnemyAtCell(active.Team, hoveredCell);
+        if (enemy == null || !active.CanUseActionAtRange(enemy,
+                actionProfile.ActionType == "shadow_strike" ? 1 : actionProfile.Range,
+                _allUnits)
+            || !HasClearUnitLineOfSight(active, enemy))
+        {
+            return;
+        }
+
+        var directDamage = actionProfile.ActionType == "shadow_strike"
+            ? Mathf.Max(1, active.AttackDamage) * Mathf.Max(1, GetInt(GetActionData(actionProfile.ActionId, out _), "damage_multiplier", 4))
+            : actionProfile.Damage;
+        var afterArmor = actionProfile.IsMagical
+            ? directDamage
+            : Mathf.Max(0, directDamage - enemy.ArmorClass);
+        var armorReduction = directDamage - afterArmor;
+        var defendReduction = enemy.IsDefending
+            ? Mathf.FloorToInt(afterArmor * Unit.DefendDamageReductionPercent / 100.0f)
+            : 0;
+        DrawCombatPreviewLabel(
+            canvas,
+            hoveredCell,
+            $"Damage: {Mathf.Max(0, afterArmor - defendReduction)}  Armor: -{armorReduction}  Defend: -{defendReduction}");
+    }
+
+    private List<Unit> GetCombatPreviewTargets(Unit active, ActionProfile actionProfile, Vector2I centerCell)
+    {
+        var targets = new List<Unit>();
+        var seenUnitIds = new HashSet<string>(System.StringComparer.Ordinal);
+        if (actionProfile.ActionType == "lightning_bolt")
+        {
+            var direction = new Vector2I(
+                (centerCell.X - active.GridPos.X).CompareTo(0),
+                (centerCell.Y - active.GridPos.Y).CompareTo(0));
+            for (var distance = 1; distance <= actionProfile.Range; distance++)
+            {
+                var cell = active.GridPos + direction * distance;
+                if (!IsInBounds(cell) || IsBlockedCell(cell) || !HasClearLineOfSight(active.GridPos, cell))
+                {
+                    break;
+                }
+
+                foreach (var unit in _allUnits)
+                {
+                    if (IsUsableUnit(unit) && !unit.IsDead && unit.OccupiesCell(cell)
+                        && seenUnitIds.Add(unit.UnitId))
+                    {
+                        targets.Add(unit);
+                    }
+                }
+            }
+
+            return targets;
+        }
+
+        foreach (var unit in _allUnits)
+        {
+            if (!IsUsableUnit(unit) || unit.IsDead
+                || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), actionProfile.AreaRadius))
+            {
+                continue;
+            }
+
+            targets.Add(unit);
+        }
+
+        return targets;
+    }
+
+    private void DrawCombatPreviewLabel(CanvasItem canvas, Vector2I cell, string text)
+    {
+        const float width = 250.0f;
+        const float height = 42.0f;
+        var x = (float)(cell.X * CellSize);
+        var y = cell.Y * CellSize - height;
+        if (y < 0)
+        {
+            y = cell.Y * CellSize + CellSize;
+        }
+
+        x = Mathf.Clamp(x, 0.0f, Mathf.Max(0.0f, _gridWidth * CellSize - width));
+        y = Mathf.Clamp(y, 0.0f, Mathf.Max(0.0f, _gridHeight * CellSize - height));
+        var rect = new Rect2(new Vector2(x, y), new Vector2(width, height));
+        canvas.DrawRect(rect, new Color("111923", 0.94f), true);
+        canvas.DrawRect(rect, new Color("e8c879", 0.95f), false, 1.5f);
+        canvas.DrawString(
+            TacticalTheme.BodyFont,
+            new Vector2(x + 7.0f, y + 25.0f),
+            text,
+            HorizontalAlignment.Left,
+            width - 14.0f,
+            12,
+            new Color("fff1cf"));
     }
 
     private void DrawMovementPreviewOverlay(CanvasItem canvas)

@@ -82,7 +82,7 @@ public partial class HudController : Control
     public delegate void PartyUnitSelectedEventHandler(string unitId);
 
     [Signal]
-    public delegate void PartyOrderRequestedEventHandler(string sourceUnitId, string targetUnitId);
+    public delegate void PartyOrderRequestedEventHandler(string sourceUnitId, string targetUnitId, bool insertAfter);
 
     [Signal]
     public delegate void LevelUpRequestedEventHandler(string unitId);
@@ -371,6 +371,11 @@ public partial class HudController : Control
     private Control _resizePanel;
     private Vector2 _resizeStartMouseGlobal;
     private Vector2 _resizeStartSize;
+    private bool _isReorderingPartyCards;
+    private string _partyCardDragUnitId = "";
+    private readonly List<string> _partyCardOrderAtDragStart = new();
+    private Color _partyCardDragSourceModulate = Colors.White;
+    private bool _partyCardDropCommitted;
     private const float MinResizablePanelWidth = 260.0f;
     private const float MinResizablePanelHeight = 160.0f;
 
@@ -1809,6 +1814,153 @@ public partial class HudController : Control
     {
         UpdateItemHoverTooltip();
         PositionInventoryLearnSpellButton();
+        UpdatePartyCardDragOrder();
+    }
+
+    private void UpdatePartyCardDragOrder()
+    {
+        var viewport = GetViewport();
+        if (!viewport.GuiIsDragging())
+        {
+            FinishPartyCardDrag();
+            return;
+        }
+
+        if (_partyList == null || _partyCardDropCommitted)
+        {
+            return;
+        }
+
+        var dragData = viewport.GuiGetDragData();
+        if (dragData.VariantType != Variant.Type.String || string.IsNullOrEmpty(dragData.AsString()))
+        {
+            return;
+        }
+
+        var draggedUnitId = dragData.AsString();
+        var draggedCard = FindPartyCard(draggedUnitId);
+        if (draggedCard == null || !draggedCard.ReorderEnabled)
+        {
+            return;
+        }
+
+        if (!_isReorderingPartyCards || _partyCardDragUnitId != draggedUnitId)
+        {
+            BeginPartyCardDrag(draggedCard);
+        }
+
+        var mouseInList = _partyList.GetGlobalTransformWithCanvas().AffineInverse() * viewport.GetMousePosition();
+        var targetIndex = 0;
+        foreach (var child in _partyList.GetChildren())
+        {
+            if (child is not PartyCard card || card == draggedCard)
+            {
+                continue;
+            }
+
+            if (mouseInList.Y >= card.Position.Y + card.Size.Y * 0.5f)
+            {
+                targetIndex++;
+            }
+        }
+
+        MovePartyCardToIndex(draggedUnitId, targetIndex);
+    }
+
+    private void BeginPartyCardDrag(PartyCard draggedCard)
+    {
+        _isReorderingPartyCards = true;
+        _partyCardDropCommitted = false;
+        _partyCardDragUnitId = draggedCard.UnitId;
+        _partyCardDragSourceModulate = draggedCard.Modulate;
+        _partyCardOrderAtDragStart.Clear();
+        foreach (var child in _partyList.GetChildren())
+        {
+            if (child is PartyCard card)
+            {
+                _partyCardOrderAtDragStart.Add(card.UnitId);
+            }
+        }
+
+        draggedCard.Modulate = new Color(
+            _partyCardDragSourceModulate.R,
+            _partyCardDragSourceModulate.G,
+            _partyCardDragSourceModulate.B,
+            _partyCardDragSourceModulate.A * 0.4f);
+    }
+
+    private void MovePartyCardToIndex(string unitId, int targetIndex)
+    {
+        var draggedCard = FindPartyCard(unitId);
+        if (draggedCard == null || _partyList == null)
+        {
+            return;
+        }
+
+        var cardCount = 0;
+        foreach (var child in _partyList.GetChildren())
+        {
+            if (child is PartyCard)
+            {
+                cardCount++;
+            }
+        }
+
+        if (cardCount == 0)
+        {
+            return;
+        }
+
+        var clampedIndex = Mathf.Clamp(targetIndex, 0, cardCount - 1);
+        if (draggedCard.GetIndex() != clampedIndex)
+        {
+            _partyList.MoveChild(draggedCard, clampedIndex);
+        }
+    }
+
+    private PartyCard FindPartyCard(string unitId)
+    {
+        if (_partyList == null || string.IsNullOrEmpty(unitId))
+        {
+            return null;
+        }
+
+        foreach (var child in _partyList.GetChildren())
+        {
+            if (child is PartyCard card && card.UnitId == unitId)
+            {
+                return card;
+            }
+        }
+
+        return null;
+    }
+
+    private void FinishPartyCardDrag()
+    {
+        if (!_isReorderingPartyCards)
+        {
+            return;
+        }
+
+        if (!_partyCardDropCommitted)
+        {
+            for (var index = 0; index < _partyCardOrderAtDragStart.Count; index++)
+            {
+                MovePartyCardToIndex(_partyCardOrderAtDragStart[index], index);
+            }
+        }
+
+        var draggedCard = FindPartyCard(_partyCardDragUnitId);
+        if (draggedCard != null)
+        {
+            draggedCard.Modulate = _partyCardDragSourceModulate;
+        }
+
+        _isReorderingPartyCards = false;
+        _partyCardDropCommitted = false;
+        _partyCardDragUnitId = "";
+        _partyCardOrderAtDragStart.Clear();
     }
 
     public override void _Draw()
@@ -3407,7 +3559,15 @@ public partial class HudController : Control
         card.AddThemeStyleboxOverride("pressed", CreatePartyCardStyle(new Color(0.035f, 0.04f, 0.045f, 1.0f), accent, 2));
         card.AddThemeStyleboxOverride("focus", CreatePartyCardStyle(new Color(0.075f, 0.08f, 0.085f, 1.0f), new Color(0.95f, 0.82f, 0.5f, 1.0f), 2));
         card.UnitSelected += unitId => EmitSignal(SignalName.PartyUnitSelected, unitId);
-        card.ReorderRequested += (sourceUnitId, targetUnitId) => EmitSignal(SignalName.PartyOrderRequested, sourceUnitId, targetUnitId);
+        card.ReorderRequested += (sourceUnitId, targetUnitId, insertAfter) =>
+        {
+            if (_isReorderingPartyCards && sourceUnitId == _partyCardDragUnitId)
+            {
+                _partyCardDropCommitted = true;
+            }
+
+            EmitSignal(SignalName.PartyOrderRequested, sourceUnitId, targetUnitId, insertAfter);
+        };
 
         var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         row.AddThemeConstantOverride("separation", 8);

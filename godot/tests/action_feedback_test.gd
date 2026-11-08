@@ -50,6 +50,26 @@ func run_test() -> void:
             print("PASS: Defend indicators clear at combat end and on the unit's next turn")
         quit(0 if defend_failures.is_empty() else 1)
         return
+    if OS.get_cmdline_user_args().has("--tactical-ai-only"):
+        var tactical_ai_failures = checks.call("RunTacticalAiChecks")
+        for failure in tactical_ai_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if tactical_ai_failures.is_empty():
+            print("PASS: tactical AI action scoring")
+        quit(0 if tactical_ai_failures.is_empty() else 1)
+        return
+    if OS.get_cmdline_user_args().has("--party-reorder-only"):
+        var reorder_failures = checks.call("RunPartyReorderChecks")
+        for failure in reorder_failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if reorder_failures.is_empty():
+            print("PASS: party card drag placement and march-order insertion")
+        quit(0 if reorder_failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--equipment-only"):
         var equipment_failures = checks.call("RunEquipmentBonusChecks")
         for failure in equipment_failures:

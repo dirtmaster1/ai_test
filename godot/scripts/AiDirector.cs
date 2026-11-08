@@ -54,13 +54,64 @@ public partial class AiDirector : Node
         }
     }
 
-    public ActionChoice ChooseAction(Unit actor, IEnumerable<ActionOption> options, Array<Unit> candidates, Func<Unit, Unit, ActionOption, bool> canTarget)
+    public ActionChoice ChooseAction(
+        Unit actor,
+        IEnumerable<ActionOption> options,
+        Array<Unit> candidates,
+        Func<Unit, Unit, ActionOption, bool> canTarget,
+        Func<Unit, Unit, ActionOption, float> scoreAction = null)
     {
         if (actor == null || options == null || candidates == null || canTarget == null)
         {
             return ActionChoice.None;
         }
 
+        if (scoreAction == null)
+        {
+            return ChooseActionInAbilityOrder(actor, options, candidates, canTarget);
+        }
+
+        var bestChoice = ActionChoice.None;
+        var bestScore = float.NegativeInfinity;
+        foreach (var option in options)
+        {
+            if (!option.CanUseNow || option.ActionType == "defend")
+            {
+                continue;
+            }
+
+            foreach (var target in candidates)
+            {
+                if (!canTarget(actor, target, option))
+                {
+                    continue;
+                }
+
+                var score = scoreAction(actor, target, option);
+                if (score <= 0.0f)
+                {
+                    continue;
+                }
+
+                if (bestChoice.HasChoice && score <= bestScore)
+                {
+                    continue;
+                }
+
+                bestChoice = ActionChoice.Create(option, target);
+                bestScore = score;
+            }
+        }
+
+        return bestChoice;
+    }
+
+    private static ActionChoice ChooseActionInAbilityOrder(
+        Unit actor,
+        IEnumerable<ActionOption> options,
+        Array<Unit> candidates,
+        Func<Unit, Unit, ActionOption, bool> canTarget)
+    {
         foreach (var option in options)
         {
             if (!option.CanUseNow || option.ActionType == "defend")
@@ -71,7 +122,6 @@ public partial class AiDirector : Node
             var target = option.ActionType == "heal"
                 ? ChooseMostInjuredTarget(actor, option, candidates, canTarget)
                 : ChooseNearestTarget(actor, option, candidates, canTarget);
-
             if (target != null)
             {
                 return ActionChoice.Create(option, target);
@@ -91,35 +141,79 @@ public partial class AiDirector : Node
         Func<Vector2I, Array<Vector2I>> findPath,
         out Vector2I step)
     {
+        return TryChooseStepTowardActionRange(
+            actor,
+            targets,
+            options,
+            (_, target, _) => isValidTarget != null && isValidTarget(target),
+            canStandAtCell,
+            hasLineOfSight,
+            findPath,
+            out step);
+    }
+
+    public bool TryChooseStepTowardActionRange(
+        Unit actor,
+        Array<Unit> targets,
+        IEnumerable<ActionOption> options,
+        Func<Unit, Unit, ActionOption, bool> canPlanActionOnTarget,
+        Func<Vector2I, bool> canStandAtCell,
+        Func<Vector2I, Vector2I, bool> hasLineOfSight,
+        Func<Vector2I, Array<Vector2I>> findPath,
+        out Vector2I step,
+        Func<Unit, Unit, ActionOption, float> scoreAction = null)
+    {
         step = actor?.GridPos ?? Vector2I.Zero;
-        if (actor == null || actor.IsDead || actor.RemainingMovement <= 0 || targets == null || options == null || isValidTarget == null || canStandAtCell == null || hasLineOfSight == null || findPath == null)
+        if (actor == null || actor.IsDead || actor.RemainingMovement <= 0 || targets == null || options == null || canPlanActionOnTarget == null || canStandAtCell == null || hasLineOfSight == null || findPath == null)
         {
             return false;
         }
 
         var bestPath = new Array<Vector2I>();
-        var bestDistanceToTarget = int.MaxValue;
+        var bestScore = float.NegativeInfinity;
 
         foreach (var target in targets)
         {
-            if (!isValidTarget(target))
+            if (target == null)
             {
                 continue;
             }
 
-            foreach (var candidate in GetCandidateActionCellsForTarget(actor, target, options, canStandAtCell, hasLineOfSight))
+            foreach (var option in options)
             {
-                var path = findPath(candidate);
-                if (path.Count == 0)
+                if (!option.CanPlanFromMovement
+                    || target.IsDead && option.ActionType != "resurrect"
+                    || !canPlanActionOnTarget(actor, target, option))
                 {
                     continue;
                 }
 
-                var distanceToTarget = Manhattan(candidate, target.GridPos);
-                if (bestPath.Count == 0 || path.Count < bestPath.Count || (path.Count == bestPath.Count && distanceToTarget < bestDistanceToTarget))
+                foreach (var candidate in GetCandidateActionCellsForTarget(actor, target, option, canStandAtCell, hasLineOfSight))
                 {
+                    var path = findPath(candidate);
+                    if (path.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var actionScore = scoreAction?.Invoke(actor, target, option) ?? 1.0f;
+                    if (scoreAction != null && actionScore <= 0.0f)
+                    {
+                        continue;
+                    }
+
+                    var travelCost = Mathf.Max(0, path.Count - 1);
+                    var rangePreference = option.Range > 1
+                        ? Mathf.Min(option.Range, Manhattan(candidate, target.GridPos)) * 0.05f
+                        : 0.0f;
+                    var score = actionScore + rangePreference - travelCost * 0.15f;
+                    if (bestPath.Count > 0 && score <= bestScore)
+                    {
+                        continue;
+                    }
+
                     bestPath = path;
-                    bestDistanceToTarget = distanceToTarget;
+                    bestScore = score;
                 }
             }
         }
@@ -184,46 +278,43 @@ public partial class AiDirector : Node
         return best;
     }
 
-    private static Array<Vector2I> GetCandidateActionCellsForTarget(Unit actor, Unit target, IEnumerable<ActionOption> options, Func<Vector2I, bool> canStandAtCell, Func<Vector2I, Vector2I, bool> hasLineOfSight)
+    private static Array<Vector2I> GetCandidateActionCellsForTarget(
+        Unit actor,
+        Unit target,
+        ActionOption option,
+        Func<Vector2I, bool> canStandAtCell,
+        Func<Vector2I, Vector2I, bool> hasLineOfSight)
     {
         var candidates = new Array<Vector2I>();
         var candidateSet = new HashSet<Vector2I>();
-        if (actor == null || target == null || options == null)
+        if (actor == null || target == null || !option.CanPlanFromMovement)
         {
             return candidates;
         }
 
-        foreach (var option in options)
+        for (var dx = -option.Range - actor.FootprintSize + 1; dx < option.Range + target.FootprintSize; dx++)
         {
-            if (!option.CanPlanFromMovement || option.ActionType != "attack")
+            for (var dy = -option.Range - actor.FootprintSize + 1; dy < option.Range + target.FootprintSize; dy++)
             {
-                continue;
-            }
-
-            for (var dx = -option.Range - actor.FootprintSize + 1; dx < option.Range + target.FootprintSize; dx++)
-            {
-                for (var dy = -option.Range - actor.FootprintSize + 1; dy < option.Range + target.FootprintSize; dy++)
+                var candidate = target.GridPos + new Vector2I(dx, dy);
+                if (candidate == actor.GridPos || candidateSet.Contains(candidate))
                 {
-                    var candidate = target.GridPos + new Vector2I(dx, dy);
-                    if (candidate == actor.GridPos || candidateSet.Contains(candidate))
-                    {
-                        continue;
-                    }
-
-                    if (!canStandAtCell(candidate))
-                    {
-                        continue;
-                    }
-
-                    var fromCell = actor.GetClosestCellAt(candidate, target.GridPos);
-                    if (actor.DistanceToUnitAt(candidate, target) > option.Range || !hasLineOfSight(fromCell, target.GetClosestCell(fromCell)))
-                    {
-                        continue;
-                    }
-
-                    candidates.Add(candidate);
-                    candidateSet.Add(candidate);
+                    continue;
                 }
+
+                if (!canStandAtCell(candidate))
+                {
+                    continue;
+                }
+
+                var fromCell = actor.GetClosestCellAt(candidate, target.GridPos);
+                if (actor.DistanceToUnitAt(candidate, target) > option.Range || !hasLineOfSight(fromCell, target.GetClosestCell(fromCell)))
+                {
+                    continue;
+                }
+
+                candidates.Add(candidate);
+                candidateSet.Add(candidate);
             }
         }
 

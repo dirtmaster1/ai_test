@@ -59,6 +59,24 @@ public partial class ActionFeedbackChecks : BattleController
         return _failures;
     }
 
+    public Array<string> RunTacticalAiChecks()
+    {
+        SetupFixture();
+        CheckAiActionScoring();
+        Cleanup();
+        return _failures;
+    }
+
+    public Array<string> RunPartyReorderChecks()
+    {
+        SetupFixture();
+        CheckPartyCardDropPlacement();
+        CheckPartyCardsReorderDuringDrag();
+        CheckPartyOrderInsertion();
+        Cleanup();
+        return _failures;
+    }
+
     public Array<string> RunConsumableChecks()
     {
         SetupFixture();
@@ -192,6 +210,7 @@ public partial class ActionFeedbackChecks : BattleController
         CheckRainOfArrows();
         CheckShadowStrike();
         CheckTauntTargeting();
+        CheckAiActionScoring();
         CheckIdentifyInventoryFlow();
         CheckCombatEndClearsCombatStatuses();
         CheckCombatTargetClickReleaseDoesNotMoveInExploration();
@@ -2356,6 +2375,125 @@ public partial class ActionFeedbackChecks : BattleController
         _enemy.ProcessStartOfTurnStatusEffects();
         Check(!_enemy.HasStatusEffect("taunted") && string.IsNullOrEmpty(_enemy.TauntTargetUnitId),
             "Taunt must expire after the enemy's next turn");
+    }
+
+    private void CheckPartyCardDropPlacement()
+    {
+        var target = new PartyCard
+        {
+            UnitId = _ally.UnitId,
+            ReorderEnabled = true,
+            Size = new Vector2(100.0f, 84.0f)
+        };
+        AddChild(target);
+
+        var receivedInsertAfter = false;
+        var receivedDrop = false;
+        target.ReorderRequested += (sourceUnitId, targetUnitId, insertAfter) =>
+        {
+            receivedDrop = sourceUnitId == _actor.UnitId && targetUnitId == _ally.UnitId;
+            receivedInsertAfter = insertAfter;
+        };
+
+        target._DropData(new Vector2(10.0f, 10.0f), Variant.From(_actor.UnitId));
+        Check(receivedDrop && !receivedInsertAfter,
+            "Dropping on the top half of a party card must insert the dragged member before it.");
+
+        receivedDrop = false;
+        target._DropData(new Vector2(10.0f, 74.0f), Variant.From(_actor.UnitId));
+        Check(receivedDrop && receivedInsertAfter,
+            "Dropping on the bottom half of a party card must insert the dragged member after it.");
+        target.QueueFree();
+
+        var siblingCards = new VBoxContainer();
+        AddChild(siblingCards);
+        var previousCard = new PartyCard { UnitId = _ally.UnitId, ReorderEnabled = true };
+        var draggedCard = new PartyCard { UnitId = _actor.UnitId, ReorderEnabled = true };
+        siblingCards.AddChild(previousCard);
+        siblingCards.AddChild(draggedCard);
+        var droppedOnDraggedCard = false;
+        draggedCard.ReorderRequested += (sourceUnitId, targetUnitId, insertAfter) =>
+        {
+            droppedOnDraggedCard = sourceUnitId == _actor.UnitId
+                && targetUnitId == _ally.UnitId
+                && insertAfter;
+        };
+        draggedCard._DropData(Vector2.Zero, Variant.From(_actor.UnitId));
+        Check(droppedOnDraggedCard,
+            "Dropping on the live-reordered source card must commit its position after the preceding card.");
+        siblingCards.QueueFree();
+    }
+
+    private void CheckPartyOrderInsertion()
+    {
+        Reset(exploration: true);
+        var party = Field<Array<Unit>>("_playerUnits");
+        Call("OnHudPartyOrderRequested", _actor.UnitId, _ally.UnitId, true);
+        Check(party.Count == 2 && party[0] == _ally && party[1] == _actor,
+            "Dragging a party member below another card must move it after that card.");
+
+        Call("OnHudPartyOrderRequested", _actor.UnitId, _ally.UnitId, false);
+        Check(party.Count == 2 && party[0] == _actor && party[1] == _ally,
+            "Dragging a party member above another card must move it before that card.");
+    }
+
+    private void CheckPartyCardsReorderDuringDrag()
+    {
+        Reset(exploration: true);
+        var partyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
+        _testHud.Call("MovePartyCardToIndex", _actor.UnitId, 1);
+        Check(partyCards.GetChild(0) is PartyCard firstCard
+            && partyCards.GetChild(1) is PartyCard secondCard
+            && firstCard.UnitId == _ally.UnitId
+            && secondCard.UnitId == _actor.UnitId,
+            "The party list must move neighboring cards immediately while a card is dragged past them.");
+    }
+
+    private void CheckAiActionScoring()
+    {
+        var director = new AiDirector();
+        AddChild(director);
+        var options = new List<AiDirector.ActionOption>
+        {
+            new("low-priority", "attack", 1, true, false),
+            new("high-priority", "attack", 1, true, false)
+        };
+        var candidates = new Array<Unit> { _actor, _ally };
+        var choice = director.ChooseAction(
+            _enemy,
+            options,
+            candidates,
+            (_, _, _) => true,
+            (_, _, option) => option.AbilityId == "high-priority" ? 5.0f : 1.0f);
+        Check(choice.HasChoice && choice.AbilityId == "high-priority",
+            "Enemy AI must choose the highest-scoring available action instead of the first listed ability.");
+
+        var noValueChoice = director.ChooseAction(
+            _enemy,
+            options,
+            candidates,
+            (_, _, _) => true,
+            (_, _, _) => 0.0f);
+        Check(!noValueChoice.HasChoice,
+            "Enemy AI must skip actions whose tactical value is non-positive.");
+        director.QueueFree();
+
+        Reset();
+        var archerConfig = Config("enemy", "enemy", _enemy.GridPos);
+        archerConfig["class_id"] = "ranger";
+        archerConfig["ability_ids"] = new Array<string> { "pin" };
+        archerConfig["primary_ability_id"] = "pin";
+        _enemy.Setup(archerConfig);
+        Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId")[_enemy.UnitId] =
+            new System.Collections.Generic.Dictionary<string, string> { { "2-handed", "short-bow" } };
+        Call("ApplyEquippedItemBonuses", _enemy);
+        var pinDirector = new AiDirector();
+        AddChild(pinDirector);
+        Set("_aiDirector", pinDirector);
+        Call("TryExecuteAiAction", _enemy);
+        Check(_actor.HasStatusEffect("pinned"),
+            "Enemy AI must execute ranged Pin attacks and apply their movement-preventing effect.");
+        pinDirector.QueueFree();
     }
 
     private void CheckIdentifyInventoryFlow()
