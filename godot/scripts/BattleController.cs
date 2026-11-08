@@ -33,6 +33,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     }
 
     private Node2D _unitsRoot;
+    private Node2D _mapsRoot;
+    private GameOptionsManager _gameOptionsManager;
     private TurnManager _turnManager;
     private AiDirector _aiDirector;
     private MapLoader _mapLoader;
@@ -230,6 +232,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     // Architecture: Lifecycle, rendering, and combat-resolution orchestration.
     public override void _Ready()
     {
+        _mapsRoot = GetNode<Node2D>("Maps");
+        _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
+        ApplyMapBrightness(_gameOptionsManager.MapBrightness);
+        _gameOptionsManager.MapBrightnessChanged += OnMapBrightnessChanged;
         _unitsRoot = GetNode<Node2D>("Units");
         _turnManager = GetNode<TurnManager>("TurnManager");
         _aiDirector = GetNode<AiDirector>("AiDirector");
@@ -330,6 +336,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     public override void _ExitTree()
     {
+        if (_gameOptionsManager != null)
+        {
+            _gameOptionsManager.MapBrightnessChanged -= OnMapBrightnessChanged;
+        }
+
         CancelPendingCombatIntro();
         if (IsInstanceValid(_defeatRecoveryDialog))
         {
@@ -416,6 +427,21 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 GridLineThickness
             );
         }
+    }
+
+    private void OnMapBrightnessChanged(float brightness)
+    {
+        ApplyMapBrightness(brightness);
+    }
+
+    private void ApplyMapBrightness(float brightness)
+    {
+        if (_mapsRoot == null)
+        {
+            return;
+        }
+
+        _mapsRoot.Modulate = new Color(brightness, brightness, brightness, 1.0f);
     }
 
     public void DrawWorldOverlays(CanvasItem canvas)

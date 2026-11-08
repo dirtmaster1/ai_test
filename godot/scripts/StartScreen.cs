@@ -18,12 +18,18 @@ public partial class StartScreen : Control
     private Button _quitButton;
     private PanelContainer _settingsPanel;
     private Button _soundFxButton;
+    private Button _graphicsButton;
     private Button _settingsBackButton;
     private PanelContainer _soundFxPanel;
+    private PanelContainer _graphicsPanel;
     private Label _backgroundVolumeValue;
     private HSlider _backgroundVolumeSlider;
     private Button _soundFxBackButton;
+    private Label _mapBrightnessValue;
+    private HSlider _mapBrightnessSlider;
+    private Button _graphicsBackButton;
     private AudioManager _audioManager;
+    private GameOptionsManager _gameOptionsManager;
     private SaveLoadMenu _saveLoadMenu;
 
     public override void _Ready()
@@ -41,12 +47,18 @@ public partial class StartScreen : Control
         _quitButton = GetNode<Button>("CenterPanel/VBox/Buttons/QuitButton");
         _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
         _soundFxButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
+        _graphicsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/GraphicsButton");
         _settingsBackButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SettingsBackButton");
         _soundFxPanel = GetNode<PanelContainer>("SoundFxPanel");
+        _graphicsPanel = GetNode<PanelContainer>("GraphicsPanel");
         _backgroundVolumeValue = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeValue");
         _backgroundVolumeSlider = GetNode<HSlider>("SoundFxPanel/SoundFxVBox/BackgroundVolumeSlider");
         _soundFxBackButton = GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton");
+        _mapBrightnessValue = GetNode<Label>("GraphicsPanel/GraphicsVBox/MapBrightnessRow/MapBrightnessValue");
+        _mapBrightnessSlider = GetNode<HSlider>("GraphicsPanel/GraphicsVBox/MapBrightnessSlider");
+        _graphicsBackButton = GetNode<Button>("GraphicsPanel/GraphicsVBox/GraphicsBackButton");
         _audioManager = GetNode<AudioManager>("/root/AudioManager");
+        _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
 
         ApplyFantasyMenuStyling();
         SizeMainMenuButtons();
@@ -58,13 +70,18 @@ public partial class StartScreen : Control
         _settingsButton.Pressed += OnSettingsPressed;
         _quitButton.Pressed += OnQuitPressed;
         _soundFxButton.Pressed += OnSoundFxPressed;
+        _graphicsButton.Pressed += OnGraphicsPressed;
         _settingsBackButton.Pressed += OnSettingsBackPressed;
         _soundFxBackButton.Pressed += OnSoundFxBackPressed;
+        _graphicsBackButton.Pressed += OnGraphicsBackPressed;
         _backgroundVolumeSlider.ValueChanged += OnBackgroundVolumeChanged;
+        _mapBrightnessSlider.ValueChanged += OnMapBrightnessChanged;
 
         _savePathLabel.Text = $"Named saves: {ProjectSettings.GlobalizePath(SaveGameSlots.DirectoryPath)}";
         _backgroundVolumeSlider.Value = _audioManager.BackgroundMusicVolume * 100.0f;
         UpdateBackgroundVolumeLabel(_backgroundVolumeSlider.Value);
+        _mapBrightnessSlider.Value = _gameOptionsManager.MapBrightness * 100.0f;
+        UpdateMapBrightnessLabel(_mapBrightnessSlider.Value);
         RefreshSaveState();
         _statusLabel.Text = GameLaunchOptions.LoadError;
         GameLaunchOptions.LoadError = "";
@@ -140,9 +157,21 @@ public partial class StartScreen : Control
         _centerPanel.Visible = true;
     }
 
+    private void OnGraphicsPressed()
+    {
+        _settingsPanel.Visible = false;
+        _graphicsPanel.Visible = true;
+    }
+
     private void OnSoundFxBackPressed()
     {
         _soundFxPanel.Visible = false;
+        _settingsPanel.Visible = true;
+    }
+
+    private void OnGraphicsBackPressed()
+    {
+        _graphicsPanel.Visible = false;
         _settingsPanel.Visible = true;
     }
 
@@ -153,9 +182,20 @@ public partial class StartScreen : Control
         _audioManager.SetBackgroundMusicVolume(volume);
     }
 
+    private void OnMapBrightnessChanged(double value)
+    {
+        UpdateMapBrightnessLabel(value);
+        _gameOptionsManager.SetMapBrightness((float)value / 100.0f);
+    }
+
     private void UpdateBackgroundVolumeLabel(double value)
     {
         _backgroundVolumeValue.Text = $"{Mathf.RoundToInt((float)value)}%";
+    }
+
+    private void UpdateMapBrightnessLabel(double value)
+    {
+        _mapBrightnessValue.Text = $"{Mathf.RoundToInt((float)value)}%";
     }
 
     private void RefreshSaveState()
@@ -181,16 +221,24 @@ public partial class StartScreen : Control
         TacticalTheme.ApplyButton(_quitButton, false, 16);
         _settingsPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
         _soundFxPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
+        _graphicsPanel.AddThemeStyleboxOverride("panel", TacticalTheme.CreateFramePanel(22));
         var settingsTitle = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsTitle");
         var soundFxTitle = GetNode<Label>("SoundFxPanel/SoundFxVBox/SoundFxTitle");
+        var graphicsTitle = GetNode<Label>("GraphicsPanel/GraphicsVBox/GraphicsTitle");
         var backgroundVolumeLabel = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeLabel");
+        var mapBrightnessLabel = GetNode<Label>("GraphicsPanel/GraphicsVBox/MapBrightnessRow/MapBrightnessLabel");
         TacticalTheme.ApplyHeaderLabel(settingsTitle, TacticalTheme.BrassBright, 24);
         TacticalTheme.ApplyHeaderLabel(soundFxTitle, TacticalTheme.BrassBright, 24);
+        TacticalTheme.ApplyHeaderLabel(graphicsTitle, TacticalTheme.BrassBright, 24);
         TacticalTheme.ApplyLabel(backgroundVolumeLabel, TacticalTheme.Parchment, 16);
         TacticalTheme.ApplyLabel(_backgroundVolumeValue, TacticalTheme.BrassBright, 16);
+        TacticalTheme.ApplyLabel(mapBrightnessLabel, TacticalTheme.Parchment, 16);
+        TacticalTheme.ApplyLabel(_mapBrightnessValue, TacticalTheme.BrassBright, 16);
         TacticalTheme.ApplyButton(_soundFxButton, true, 16);
+        TacticalTheme.ApplyButton(_graphicsButton, true, 16);
         TacticalTheme.ApplyButton(_settingsBackButton, false, 16);
         TacticalTheme.ApplyButton(_soundFxBackButton, false, 16);
+        TacticalTheme.ApplyButton(_graphicsBackButton, false, 16);
         _backgroundVolumeSlider.AddThemeStyleboxOverride("slider", new StyleBoxFlat
         {
             BgColor = TacticalTheme.IronInset,
@@ -208,6 +256,30 @@ public partial class StartScreen : Control
             CornerRadiusBottomLeft = 3
         });
         _backgroundVolumeSlider.AddThemeStyleboxOverride("grabber_area_highlight", new StyleBoxFlat
+        {
+            BgColor = TacticalTheme.BrassBright,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        });
+        _mapBrightnessSlider.AddThemeStyleboxOverride("slider", new StyleBoxFlat
+        {
+            BgColor = TacticalTheme.IronInset,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        });
+        _mapBrightnessSlider.AddThemeStyleboxOverride("grabber_area", new StyleBoxFlat
+        {
+            BgColor = TacticalTheme.Brass,
+            CornerRadiusTopLeft = 3,
+            CornerRadiusTopRight = 3,
+            CornerRadiusBottomRight = 3,
+            CornerRadiusBottomLeft = 3
+        });
+        _mapBrightnessSlider.AddThemeStyleboxOverride("grabber_area_highlight", new StyleBoxFlat
         {
             BgColor = TacticalTheme.BrassBright,
             CornerRadiusTopLeft = 3,

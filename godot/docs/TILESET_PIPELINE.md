@@ -31,6 +31,30 @@ The dungeon atlas is the first manifest-managed atlas. Its source files are name
 
 A no-op build compares decoded pixels and does not rewrite the existing PNG, avoiding meaningless binary Git changes.
 
+## Forest Water Ripple POC
+
+The forest lake and bridge artwork shares atlas cells, including water pixels
+with bridge shadows. The POC therefore leaves the painted map and TileSet
+metadata unchanged and applies `assets/vfx/forest_water_ripple.gdshader` only
+to the `forest-town-base` layer in `scenes/Main.tscn`. The shader masks blue
+water pixels and blends in a four-frame ripple texture; shore, bridge, and
+terrain colors remain on their original atlas art. Ripple sampling uses map
+world coordinates so it stays continuous across neighboring tile cells, and
+the shader uses the incoming `COLOR` value to avoid multiplying the atlas
+texture a second time.
+
+`art/vfx/forest_water_ripples_source.png` keeps the original four-by-four
+Retro Diffusion animation sheet. Edit it in GIMP without changing its 256x256
+grid, then run `.\tools\prepare_water_animation.ps1`. The script selects four
+evenly spaced frames and blends their eight-pixel edge bands so each 64x64
+frame tiles cleanly. The output,
+`assets/vfx/forest_water_ripples_64x4.png`, is a horizontal strip of four
+frames. Tune the animation speed and blend amount in
+`assets/vfx/forest_water_ripple_material.tres`. This VFX texture is separate
+from the manifest-managed terrain atlases and should not be added to
+`tilesets.json`. Map brightness is controlled separately through Settings >
+Graphics and affects map layers only; its default is 100%.
+
 ## Commands
 
 ```powershell

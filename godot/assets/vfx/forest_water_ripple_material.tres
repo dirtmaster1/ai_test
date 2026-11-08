@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://assets/vfx/forest_water_ripple.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/vfx/forest_water_ripples_64x4.png" id="2_frames"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/water_frames = ExtResource("2_frames")
+shader_parameter/frame_rate = 5.0
+shader_parameter/blend_strength = 0.18

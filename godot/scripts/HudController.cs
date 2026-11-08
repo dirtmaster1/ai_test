@@ -187,14 +187,17 @@ public partial class HudController : Control
     private Button _settingsButton;
     private Button _soundFxButton;
     private Button _gameOptionsButton;
+    private Button _graphicsButton;
     private Button _mainMenuButton;
     private Button _closeSettingsButton;
     private PanelContainer _settingsPanel;
     private Label _settingsHeader;
     private PanelContainer _soundFxPanel;
     private PanelContainer _gameOptionsPanel;
+    private PanelContainer _graphicsPanel;
     private Label _soundFxHeader;
     private Label _gameOptionsHeader;
+    private Label _graphicsHeader;
     private CheckButton _healthBarsToggle;
     private Label _combatMessageDurationLabel;
     private Label _combatMessageDurationValue;
@@ -202,8 +205,12 @@ public partial class HudController : Control
     private Label _backgroundVolumeLabel;
     private Label _backgroundVolumeValue;
     private HSlider _backgroundVolumeSlider;
+    private Label _mapBrightnessLabel;
+    private Label _mapBrightnessValue;
+    private HSlider _mapBrightnessSlider;
     private Button _soundFxBackButton;
     private Button _gameOptionsBackButton;
+    private Button _graphicsBackButton;
     private AudioManager _audioManager;
     private GameOptionsManager _gameOptionsManager;
     private Button _saveButton;
@@ -391,19 +398,26 @@ public partial class HudController : Control
         _settingsButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SettingsButton");
         _soundFxButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/SoundFxButton");
         _gameOptionsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/GameOptionsButton");
+        _graphicsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/GraphicsButton");
         _mainMenuButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/MainMenuButton");
         _closeSettingsButton = GetNode<Button>("SettingsPanel/SettingsVBox/SettingsButtons/CloseSettingsButton");
         _settingsPanel = GetNode<PanelContainer>("SettingsPanel");
         _settingsHeader = GetNode<Label>("SettingsPanel/SettingsVBox/SettingsHeader");
         _soundFxPanel = GetNode<PanelContainer>("SoundFxPanel");
         _gameOptionsPanel = GetNode<PanelContainer>("GameOptionsPanel");
+        _graphicsPanel = GetNode<PanelContainer>("GraphicsPanel");
         _soundFxHeader = GetNode<Label>("SoundFxPanel/SoundFxVBox/SoundFxHeader");
         _gameOptionsHeader = GetNode<Label>("GameOptionsPanel/GameOptionsVBox/GameOptionsHeader");
+        _graphicsHeader = GetNode<Label>("GraphicsPanel/GraphicsVBox/GraphicsHeader");
         _combatMessageDurationLabel = GetNode<Label>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow/CombatMessageDurationLabel");
         _backgroundVolumeLabel = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeLabel");
         _backgroundVolumeValue = GetNode<Label>("SoundFxPanel/SoundFxVBox/BackgroundVolumeRow/BackgroundVolumeValue");
         _backgroundVolumeSlider = GetNode<HSlider>("SoundFxPanel/SoundFxVBox/BackgroundVolumeSlider");
+        _mapBrightnessLabel = GetNode<Label>("GraphicsPanel/GraphicsVBox/MapBrightnessRow/MapBrightnessLabel");
+        _mapBrightnessValue = GetNode<Label>("GraphicsPanel/GraphicsVBox/MapBrightnessRow/MapBrightnessValue");
+        _mapBrightnessSlider = GetNode<HSlider>("GraphicsPanel/GraphicsVBox/MapBrightnessSlider");
         _soundFxBackButton = GetNode<Button>("SoundFxPanel/SoundFxVBox/SoundFxBackButton");
+        _graphicsBackButton = GetNode<Button>("GraphicsPanel/GraphicsVBox/GraphicsBackButton");
         _audioManager = GetNode<AudioManager>("/root/AudioManager");
         _healthBarsToggle = GetNode<CheckButton>("GameOptionsPanel/GameOptionsVBox/HealthBarsToggle");
         _combatMessageDurationValue = GetNode<Label>("GameOptionsPanel/GameOptionsVBox/CombatMessageDurationRow/CombatMessageDurationValue");
@@ -415,6 +429,8 @@ public partial class HudController : Control
         _healthBarsToggle.ButtonPressed = _gameOptionsManager.HealthBarsEnabled;
         _combatMessageDurationSlider.Value = _gameOptionsManager.CombatMessageDurationMultiplier;
         UpdateCombatMessageDurationLabel(_combatMessageDurationSlider.Value);
+        _mapBrightnessSlider.Value = _gameOptionsManager.MapBrightness * 100.0f;
+        UpdateMapBrightnessLabel(_mapBrightnessSlider.Value);
         _saveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/SaveButton");
         _loadButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/LoadButton");
         _adminButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/AdminButton");
@@ -566,11 +582,14 @@ public partial class HudController : Control
         _helpButton.Pressed += OnHelpButtonPressed;
         _soundFxButton.Pressed += OnSoundFxButtonPressed;
         _gameOptionsButton.Pressed += OnGameOptionsButtonPressed;
+        _graphicsButton.Pressed += OnGraphicsButtonPressed;
         _mainMenuButton.Pressed += OnMainMenuButtonPressed;
         _closeSettingsButton.Pressed += OnCloseSettingsButtonPressed;
         _soundFxBackButton.Pressed += OnSoundFxBackButtonPressed;
         _gameOptionsBackButton.Pressed += OnGameOptionsBackButtonPressed;
+        _graphicsBackButton.Pressed += OnGraphicsBackButtonPressed;
         _backgroundVolumeSlider.ValueChanged += OnBackgroundVolumeChanged;
+        _mapBrightnessSlider.ValueChanged += OnMapBrightnessChanged;
         _healthBarsToggle.Toggled += OnHealthBarsToggled;
         _combatMessageDurationSlider.ValueChanged += OnCombatMessageDurationChanged;
         _saveButton.Pressed += OnSaveButtonPressed;
@@ -758,6 +777,11 @@ public partial class HudController : Control
             _gameOptionsButton.Pressed -= OnGameOptionsButtonPressed;
         }
 
+        if (_graphicsButton != null)
+        {
+            _graphicsButton.Pressed -= OnGraphicsButtonPressed;
+        }
+
         if (_closeSettingsButton != null)
         {
             _closeSettingsButton.Pressed -= OnCloseSettingsButtonPressed;
@@ -778,9 +802,19 @@ public partial class HudController : Control
             _gameOptionsBackButton.Pressed -= OnGameOptionsBackButtonPressed;
         }
 
+        if (_graphicsBackButton != null)
+        {
+            _graphicsBackButton.Pressed -= OnGraphicsBackButtonPressed;
+        }
+
         if (_backgroundVolumeSlider != null)
         {
             _backgroundVolumeSlider.ValueChanged -= OnBackgroundVolumeChanged;
+        }
+
+        if (_mapBrightnessSlider != null)
+        {
+            _mapBrightnessSlider.ValueChanged -= OnMapBrightnessChanged;
         }
 
         if (_healthBarsToggle != null)
@@ -1196,6 +1230,13 @@ public partial class HudController : Control
         _gameOptionsPanel.MoveToFront();
     }
 
+    private void OnGraphicsButtonPressed()
+    {
+        _settingsPanel.Visible = false;
+        _graphicsPanel.Visible = true;
+        _graphicsPanel.MoveToFront();
+    }
+
     private void OnCloseSettingsButtonPressed()
     {
         _settingsPanel.Visible = false;
@@ -1220,10 +1261,23 @@ public partial class HudController : Control
         _settingsPanel.MoveToFront();
     }
 
+    private void OnGraphicsBackButtonPressed()
+    {
+        _graphicsPanel.Visible = false;
+        _settingsPanel.Visible = true;
+        _settingsPanel.MoveToFront();
+    }
+
     private void OnBackgroundVolumeChanged(double value)
     {
         UpdateBackgroundVolumeLabel(value);
         _audioManager.SetBackgroundMusicVolume(Mathf.Clamp((float)value / 100.0f, 0.0f, 1.0f));
+    }
+
+    private void OnMapBrightnessChanged(double value)
+    {
+        UpdateMapBrightnessLabel(value);
+        _gameOptionsManager.SetMapBrightness((float)value / 100.0f);
     }
 
     private void OnHealthBarsToggled(bool enabled)
@@ -1241,6 +1295,11 @@ public partial class HudController : Control
     private void UpdateBackgroundVolumeLabel(double value)
     {
         _backgroundVolumeValue.Text = $"{Mathf.RoundToInt((float)value)}%";
+    }
+
+    private void UpdateMapBrightnessLabel(double value)
+    {
+        _mapBrightnessValue.Text = $"{Mathf.RoundToInt((float)value)}%";
     }
 
     private void UpdateCombatMessageDurationLabel(double value)
@@ -2107,12 +2166,15 @@ public partial class HudController : Control
         var inventorySize = new Vector2(Mathf.Min(1040.0f, size.X - Margin * 2.0f), Mathf.Min(620.0f, size.Y - Margin * 2.0f));
         var inventoryPosition = new Vector2((size.X - inventorySize.X) * 0.5f, (size.Y - inventorySize.Y) * 0.5f);
         ApplyPanelRect(_inventoryPanel, new Rect2(inventoryPosition, inventorySize), size);
-        var settingsSize = new Vector2(420.0f, 304.0f);
+        var settingsSize = new Vector2(420.0f, 360.0f);
         var settingsPosition = (size - settingsSize) * 0.5f;
         ApplyPanelRect(_settingsPanel, new Rect2(settingsPosition, settingsSize), size);
         var soundFxSize = new Vector2(520.0f, 260.0f);
         var soundFxPosition = (size - soundFxSize) * 0.5f;
         ApplyPanelRect(_soundFxPanel, new Rect2(soundFxPosition, soundFxSize), size);
+        var graphicsSize = new Vector2(520.0f, 260.0f);
+        var graphicsPosition = (size - graphicsSize) * 0.5f;
+        ApplyPanelRect(_graphicsPanel, new Rect2(graphicsPosition, graphicsSize), size);
     }
 
     private void RegisterDraggable(Control handle, Control panel)
@@ -2359,6 +2421,7 @@ public partial class HudController : Control
         StylePanel(_adminPanel, panelStyle);
         StylePanel(_soundFxPanel, panelStyle);
         StylePanel(_gameOptionsPanel, panelStyle);
+        StylePanel(_graphicsPanel, panelStyle);
         StylePanel(_lootPanel, panelStyle);
         StylePanel(_vendorPanel, panelStyle);
         StylePanel(_reservePanel, panelStyle);
@@ -2371,6 +2434,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_adminItemsHeader, headerColor);
         StyleHeaderLabel(_soundFxHeader, headerColor);
         StyleHeaderLabel(_gameOptionsHeader, headerColor);
+        StyleHeaderLabel(_graphicsHeader, headerColor);
         StyleHeaderLabel(_partyHeader, headerColor);
         StyleHeaderLabel(_abilityTrayHeader, headerColor);
         StyleHeaderLabel(_combatLogHeader, headerColor);
@@ -2396,6 +2460,8 @@ public partial class HudController : Control
         StyleBodyLabel(_combatMessageDurationValue, headerColor, 14);
         StyleBodyLabel(_backgroundVolumeLabel, bodyColor, 14);
         StyleBodyLabel(_backgroundVolumeValue, headerColor, 14);
+        StyleBodyLabel(_mapBrightnessLabel, bodyColor, 14);
+        StyleBodyLabel(_mapBrightnessValue, headerColor, 14);
         StyleBodyLabel(_adminExperienceUnitLabel, bodyColor, 14);
         StyleBodyLabel(_adminExperienceAmountLabel, bodyColor, 14);
         StyleBodyLabel(_adminGoldAmountLabel, bodyColor, 14);
@@ -2426,11 +2492,13 @@ public partial class HudController : Control
         StyleButton(_adminCloseButton, false);
         StyleButton(_soundFxButton, false);
         StyleButton(_gameOptionsButton, false);
+        StyleButton(_graphicsButton, false);
         StyleButton(_mainMenuButton, false);
         StyleButton(_healthBarsToggle, false);
         StyleButton(_closeSettingsButton, false);
         StyleButton(_soundFxBackButton, false);
         StyleButton(_gameOptionsBackButton, false);
+        StyleButton(_graphicsBackButton, false);
         StyleButton(_saveButton, false);
         StyleButton(_loadButton, false);
         StyleButton(_reserveButton, false);
@@ -3879,6 +3947,7 @@ public partial class HudController : Control
         return _settingsPanel?.Visible == true
             || _soundFxPanel?.Visible == true
             || _gameOptionsPanel?.Visible == true
+            || _graphicsPanel?.Visible == true
             || _helpPanel?.Visible == true
             || _abilityTrayPanel?.Visible == true
             || _inventoryPanel?.Visible == true

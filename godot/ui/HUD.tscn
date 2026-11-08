@@ -109,6 +109,11 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Game Options"
 
+[node name="GraphicsButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Graphics"
+
 [node name="MainMenuButton" type="Button" parent="SettingsPanel/SettingsVBox/SettingsButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -275,6 +280,55 @@ ticks_on_borders = true
 focus_mode = 2
 
 [node name="GameOptionsBackButton" type="Button" parent="GameOptionsPanel/GameOptionsVBox"]
+layout_mode = 2
+text = "Back"
+
+[node name="GraphicsPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -130.0
+offset_right = 260.0
+offset_bottom = 130.0
+
+[node name="GraphicsVBox" type="VBoxContainer" parent="GraphicsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="GraphicsHeader" type="Label" parent="GraphicsPanel/GraphicsVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Graphics"
+
+[node name="MapBrightnessRow" type="HBoxContainer" parent="GraphicsPanel/GraphicsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MapBrightnessLabel" type="Label" parent="GraphicsPanel/GraphicsVBox/MapBrightnessRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Map Brightness"
+
+[node name="MapBrightnessValue" type="Label" parent="GraphicsPanel/GraphicsVBox/MapBrightnessRow"]
+layout_mode = 2
+text = "100%"
+horizontal_alignment = 2
+
+[node name="MapBrightnessSlider" type="HSlider" parent="GraphicsPanel/GraphicsVBox"]
+layout_mode = 2
+min_value = 50.0
+max_value = 150.0
+step = 5.0
+value = 100.0
+tick_count = 11
+ticks_on_borders = true
+focus_mode = 2
+
+[node name="GraphicsBackButton" type="Button" parent="GraphicsPanel/GraphicsVBox"]
 layout_mode = 2
 text = "Back"
 
