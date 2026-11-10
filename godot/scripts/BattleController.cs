@@ -60,6 +60,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private ImageTexture _fogOverlayTexture;
     private ImageTexture _fogPreviousOverlayTexture;
     private ShaderMaterial _fogOverlayMaterial;
+    private ShaderMaterial _waterRippleMaterial;
+    private TileMapLayer _waterRippleLayer;
     private float _fogStepBlend = 1.0f;
     private Rect2 _fogOverlayRect;
     private readonly Array<Dictionary> _mapDoors = new();
@@ -230,9 +232,34 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     }
 
     // Architecture: Lifecycle, rendering, and combat-resolution orchestration.
+    private void UpdateWaterRippleTransform()
+    {
+        if (_waterRippleMaterial == null)
+        {
+            return;
+        }
+
+        var canvasToWorld = _waterRippleLayer.GetGlobalTransformWithCanvas().AffineInverse();
+        _waterRippleMaterial.SetShaderParameter("canvas_to_world_x", canvasToWorld.X);
+        _waterRippleMaterial.SetShaderParameter("canvas_to_world_y", canvasToWorld.Y);
+        _waterRippleMaterial.SetShaderParameter("canvas_to_world_origin", canvasToWorld.Origin);
+    }
+
+    private void InitializeWaterRipples()
+    {
+        _waterRippleLayer = GetNodeOrNull<TileMapLayer>("Maps/forest-town-base");
+        _waterRippleMaterial = _waterRippleLayer?.Material as ShaderMaterial;
+        if (_waterRippleMaterial != null)
+        {
+            // Party-follow tweens run after _Process; use the final transform for this draw.
+            RenderingServer.FramePreDraw += UpdateWaterRippleTransform;
+        }
+    }
+
     public override void _Ready()
     {
         _mapsRoot = GetNode<Node2D>("Maps");
+        InitializeWaterRipples();
         _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
         ApplyMapBrightness(_gameOptionsManager.MapBrightness);
         _gameOptionsManager.MapBrightnessChanged += OnMapBrightnessChanged;
@@ -336,6 +363,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     public override void _ExitTree()
     {
+        RenderingServer.FramePreDraw -= UpdateWaterRippleTransform;
         if (_gameOptionsManager != null)
         {
             _gameOptionsManager.MapBrightnessChanged -= OnMapBrightnessChanged;

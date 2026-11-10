@@ -7,4 +7,6 @@
 shader = ExtResource("1_shader")
 shader_parameter/water_frames = ExtResource("2_frames")
 shader_parameter/frame_rate = 5.0
-shader_parameter/blend_strength = 0.18
+shader_parameter/blend_strength = 0.28
+shader_parameter/ripple_pattern_size = 96.0
+shader_parameter/flow_velocity = Vector2(18, 9)

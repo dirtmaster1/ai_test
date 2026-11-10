@@ -39,21 +39,44 @@ metadata unchanged and applies `assets/vfx/forest_water_ripple.gdshader` only
 to the `forest-town-base` layer in `scenes/Main.tscn`. The shader masks blue
 water pixels and blends in a four-frame ripple texture; shore, bridge, and
 terrain colors remain on their original atlas art. Ripple sampling uses map
-world coordinates so it stays continuous across neighboring tile cells, and
-the shader uses the incoming `COLOR` value to avoid multiplying the atlas
-texture a second time.
+map-local coordinates reconstructed from screen fragments and the inverse of
+the water layer's full `GetGlobalTransformWithCanvas()` transform, including
+the map node's position and scale. Party follow moves that node, not just the
+viewport canvas. `BattleController` updates the shader in `FramePreDraw`,
+after movement tweens, and disconnects on tree exit. This keeps ripple
+placement continuous across tile edges and its flow speed independent of
+party movement, panning, and zooming, without a one-frame lag.
+A 96-pixel pattern period avoids repeating the same
+ripple placement at every 64-pixel tile edge. The shader uses the incoming
+`COLOR` value to avoid multiplying the atlas texture a second time.
+The pattern also travels continuously at `flow_velocity` world pixels per
+second, so ripples move through tile interiors between atlas frame changes.
 
 `art/vfx/forest_water_ripples_source.png` keeps the original four-by-four
 Retro Diffusion animation sheet. Edit it in GIMP without changing its 256x256
 grid, then run `.\tools\prepare_water_animation.ps1`. The script selects four
-evenly spaced frames and blends their eight-pixel edge bands so each 64x64
-frame tiles cleanly. The output,
+evenly spaced frames, crops each to its inner 48x48 pixels to remove the
+source's flickering border, and scales back to 64x64 with nearest-neighbor
+sampling. It then blends eight-pixel edge bands so each frame tiles cleanly.
+The output,
 `assets/vfx/forest_water_ripples_64x4.png`, is a horizontal strip of four
-frames. Tune the animation speed and blend amount in
+frames. Tune the animation speed, flow velocity, blend amount, and ripple pattern size in
 `assets/vfx/forest_water_ripple_material.tres`. This VFX texture is separate
 from the manifest-managed terrain atlases and should not be added to
 `tilesets.json`. Map brightness is controlled separately through Settings >
 Graphics and affects map layers only; its default is 100%.
+
+Run `godot --path . --script res://tests/water_ripple_test.gd` with a graphics
+renderer (not `--headless`) to verify visible motion in every tile-interior
+quadrant (at least 60% of pixels within 0.8 seconds and 95% within 4 seconds),
+seamless frames without border-concentrated flicker, movement between atlas
+frames, unchanged non-water pixels, and map anchoring under pan/zoom.
+It uses the production controller's transform updates to compare moving-map
+pixels against stationary-map pixels at matching animation times, and checks
+the transform on every rendered frame of a party-follow-speed tween.
+Set `WATER_RIPPLE_SCREENSHOT` to a PNG path
+to capture the rendered test surface. The test does not start an adventure
+or modify saves.
 
 ## Commands
 

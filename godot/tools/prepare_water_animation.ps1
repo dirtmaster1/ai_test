@@ -38,9 +38,12 @@ try {
         try {
             $sourceX = ($frameIndex % 4) * 64
             $sourceY = [int][Math]::Floor($frameIndex / 4) * 64
+            # The source's outer eight pixels contain a flickering frame, not water motion.
             for ($y = 0; $y -lt 64; $y++) {
                 for ($x = 0; $x -lt 64; $x++) {
-                    $frame.SetPixel($x, $y, $source.GetPixel($sourceX + $x, $sourceY + $y))
+                    $sampleX = $sourceX + 8 + [int][Math]::Floor($x * 48.0 / 64.0)
+                    $sampleY = $sourceY + 8 + [int][Math]::Floor($y * 48.0 / 64.0)
+                    $frame.SetPixel($x, $y, $source.GetPixel($sampleX, $sampleY))
                 }
             }
 
