@@ -10936,7 +10936,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         foreach (var pair in visualTo)
         {
             pair.Key.BeginWalking(pair.Value - visualFrom[pair.Key]);
-            tween.Parallel().TweenProperty(pair.Key, "position", pair.Value, ExplorationStepSeconds);
+            tween.Parallel().TweenMethod(Callable.From<Vector2>(pair.Key.SetWalkPosition),
+                visualFrom[pair.Key], pair.Value, ExplorationStepSeconds);
         }
 
         var viewStartCenter = (GetViewportRect().Size * 0.5f - Position) / Scale;

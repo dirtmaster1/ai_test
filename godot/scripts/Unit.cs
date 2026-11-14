@@ -29,8 +29,8 @@ public partial class Unit : Node2D
     private const int CellSize = 64;
     private const int AtlasTileSize = 64;
     private const string UnitAtlasPath = "res://assets/tilesets/units_2_64.png";
-    private const int WalkAnimationFrameCount = 4;
-    private const float WalkAnimationFrameSeconds = 0.035f;
+    private const int DirectionalWalkFrameCount = 8;
+    private const float WalkStopGraceSeconds = 0.08f;
     public const int MaxMovementPerTurn = 3;
     public const int DefendDamageReductionPercent = 10;
 
@@ -118,13 +118,16 @@ public partial class Unit : Node2D
     private bool _isSelectionHighlighted;
     private Texture2D _unitAtlas;
     private Texture2D _walkAtlas;
+    private Texture2D _walkIdleAtlas;
     private Texture2D _customSpriteTexture;
     private string _spriteTexturePath = "";
     private bool _isWalking;
     private GameOptionsManager _gameOptionsManager;
-    private float _walkAnimationElapsed;
     private int _walkAnimationFrame = -1;
     private int _walkAnimationDirection;
+    private float _walkCycleDistance;
+    private float _walkDistance;
+    private float _walkStopRemaining;
     private bool _spriteFlipH;
     private bool _spriteFlipV;
     private bool _spriteTranspose;
@@ -163,20 +166,16 @@ public partial class Unit : Node2D
 
     public override void _Process(double delta)
     {
-        if (!_isWalking || _walkAtlas == null)
+        if (!_isWalking || _walkStopRemaining <= 0.0f)
         {
             return;
         }
 
-        _walkAnimationElapsed += (float)delta;
-        var frame = (int)(_walkAnimationElapsed / WalkAnimationFrameSeconds) % WalkAnimationFrameCount;
-        if (frame == _walkAnimationFrame)
+        _walkStopRemaining -= (float)delta;
+        if (_walkStopRemaining <= 0.0f)
         {
-            return;
+            StopWalking();
         }
-
-        _walkAnimationFrame = frame;
-        ConfigureSpriteRegion();
     }
 
     public void Setup(Dictionary config)
@@ -194,6 +193,12 @@ public partial class Unit : Node2D
         _customSpriteTexture = string.IsNullOrEmpty(_spriteTexturePath) ? null : GD.Load<Texture2D>(_spriteTexturePath);
         var walkAtlasPath = Team == "player" ? GetWalkAtlasPath(ClassId) : "";
         _walkAtlas = null;
+        _walkIdleAtlas = null;
+        _isWalking = false;
+        _walkDistance = 0.0f;
+        _walkStopRemaining = 0.0f;
+        _walkAnimationDirection = 2;
+        _walkAnimationFrame = -1;
         if (!string.IsNullOrEmpty(walkAtlasPath))
         {
             _walkAtlas = GD.Load<Texture2D>(walkAtlasPath);
@@ -201,6 +206,24 @@ public partial class Unit : Node2D
             {
                 GD.PushError($"Missing walk animation atlas at '{walkAtlasPath}'.");
             }
+            var idlePath = $"res://assets/animations/player/{ClassId}_idle.png";
+            _walkIdleAtlas = GD.Load<Texture2D>(idlePath);
+            if (_walkIdleAtlas == null || _walkIdleAtlas.GetSize() != new Vector2(64, 256)
+                || _walkAtlas == null || _walkAtlas.GetSize() != new Vector2(512, 256))
+            {
+                GD.PushError($"Invalid directional animation assets for '{ClassId}': expected 512x256 walk and 64x256 idle sheets.");
+                _walkAtlas = null;
+                _walkIdleAtlas = null;
+            }
+            _walkCycleDistance = ClassId switch
+            {
+                "warrior" => 256.0f,
+                "wizard" => 320.0f,
+                "ranger" => 224.0f,
+                "cleric" => 288.0f,
+                "thief" => 208.0f,
+                _ => throw new System.InvalidOperationException($"Missing walk cycle distance for '{ClassId}'."),
+            };
         }
         EncounterId = GetString(config, "encounter_id", "");
         _tauntTargetUnitId = "";
@@ -1170,13 +1193,41 @@ public partial class Unit : Node2D
             return;
         }
 
+        if (direction.IsZeroApprox())
+        {
+            return;
+        }
+
         _walkAnimationDirection = Mathf.Abs(direction.X) >= Mathf.Abs(direction.Y)
             ? direction.X >= 0.0f ? 1 : 3
             : direction.Y >= 0.0f ? 2 : 0;
-        _walkAnimationElapsed = 0.0f;
-        _walkAnimationFrame = 0;
+        if (!_isWalking)
+        {
+            _walkDistance = 0.0f;
+            _walkAnimationFrame = 0;
+        }
+        _walkStopRemaining = 0.0f;
         _isWalking = true;
         ConfigureSpriteRegion();
+    }
+
+    public void SetWalkPosition(Vector2 position)
+    {
+        var distance = Position.DistanceTo(position);
+        Position = position;
+        if (!_isWalking || _walkIdleAtlas == null || _customSpriteTexture != null)
+        {
+            return;
+        }
+
+        _walkDistance = (_walkDistance + distance / FootprintSize) % _walkCycleDistance;
+        var frame = Mathf.Min(DirectionalWalkFrameCount - 1,
+            (int)(_walkDistance * DirectionalWalkFrameCount / _walkCycleDistance));
+        if (frame != _walkAnimationFrame)
+        {
+            _walkAnimationFrame = frame;
+            ConfigureSpriteRegion();
+        }
     }
 
     public void EndWalking()
@@ -1186,8 +1237,14 @@ public partial class Unit : Node2D
             return;
         }
 
+        // Consecutive grid tweens hand off without flashing idle or resetting the gait.
+        _walkStopRemaining = WalkStopGraceSeconds;
+    }
+
+    private void StopWalking()
+    {
         _isWalking = false;
-        _walkAnimationElapsed = 0.0f;
+        _walkStopRemaining = 0.0f;
         _walkAnimationFrame = -1;
         ConfigureSpriteRegion();
     }
@@ -1199,7 +1256,7 @@ public partial class Unit : Node2D
         var tween = CreateTween();
         tween.SetTrans(Tween.TransitionType.Sine);
         tween.SetEase(Tween.EaseType.InOut);
-        tween.TweenProperty(this, "position", targetPosition, duration);
+        tween.TweenMethod(Callable.From<Vector2>(SetWalkPosition), Position, targetPosition, duration);
         try
         {
             await ToSignal(tween, Tween.SignalName.Finished);
@@ -1507,6 +1564,10 @@ public partial class Unit : Node2D
             return;
         }
 
+        _sprite.TextureFilter = _walkIdleAtlas != null && _customSpriteTexture == null
+            ? TextureFilterEnum.Nearest
+            : TextureFilterEnum.ParentNode;
+
         if (_customSpriteTexture != null)
         {
             _sprite.Texture = _customSpriteTexture;
@@ -1526,6 +1587,15 @@ public partial class Unit : Node2D
                 AtlasTileSize,
                 AtlasTileSize
             );
+            return;
+        }
+
+        if (_walkIdleAtlas != null)
+        {
+            _sprite.Texture = _walkIdleAtlas;
+            _sprite.RegionEnabled = true;
+            ConfigureSpriteTransform(Vector2.One * FootprintSize);
+            _sprite.RegionRect = new Rect2(0, _walkAnimationDirection * AtlasTileSize, AtlasTileSize, AtlasTileSize);
             return;
         }
 
