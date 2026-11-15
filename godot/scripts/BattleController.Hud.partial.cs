@@ -12,6 +12,9 @@ public partial class BattleController
         }
 
         _hud.SetHelpText(BuildCurrentTargetingHelpText());
+        _hud.SetQuestJournalEntries(
+            _questManager?.BuildJournalEntries(completed: false) ?? new Array<Dictionary>(),
+            _questManager?.BuildJournalEntries(completed: true) ?? new Array<Dictionary>());
 
         var active = _turnManager?.GetActiveUnit();
         _hud.SetTurnOrder(BuildTurnOrderForHud(), active);

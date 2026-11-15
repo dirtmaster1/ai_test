@@ -733,6 +733,27 @@
 	  "description": "It opens something nearby."
 	}
   },
+  "quests": {
+    "defeat-necromancer": {
+      "id": "defeat-necromancer",
+      "title": "The Necromancer",
+      "giver_npc_id": "forest-elder",
+      "description": "Defeat the necromancer who is raising the dead in the graveyard.",
+      "objectives": [
+        {
+          "id": "defeat-necromancer",
+          "type": "defeat_enemy",
+          "map_id": "necromancers-crypt",
+          "target_enemy_id": "necromancers-crypt-encounter-main-necromancer-9--3",
+          "description": "Defeat the necromancer in the crypt."
+        }
+      ],
+      "rewards": {
+        "gold": 1000,
+        "item_ids": ["full-plate-armor"]
+      }
+    }
+  },
   "dialogues": {
 	"forest-town-bandit-intro": {
 	  "id": "forest-town-bandit-intro",
@@ -1214,17 +1235,17 @@
 		"name": "Necromancer",
 		"race": "human",
 		"team": "enemy",
-		"experience": 45,
+		"experience": 450,
 		"primary_ability_id": "magic-missile",
 		"ability_ids": [
 		  "magic-missile",
 		  "melee"
 		],
 		"initiative": 13,
-		"hit_points": 9,
-		"max_hit_points": 9,
-		"magic_points": 8,
-		"max_magic_points": 8,
+		"hit_points": 55,
+		"max_hit_points": 55,
+		"magic_points": 30,
+		"max_magic_points": 30,
 		"intelligence": 10,
 		"strength": 4,
 		"wisdom": 8,

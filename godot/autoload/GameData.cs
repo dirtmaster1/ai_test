@@ -9,6 +9,7 @@ public partial class GameData : Node
     public Dictionary Abilities { get; private set; } = new();
     public Dictionary Spells { get; private set; } = new();
     public Dictionary Items { get; private set; } = new();
+    public Dictionary Quests { get; private set; } = new();
     public Dictionary Dialogues { get; private set; } = new();
     public Dictionary Vendors { get; private set; } = new();
     public Dictionary HealingServices { get; private set; } = new();
@@ -25,6 +26,7 @@ public partial class GameData : Node
         Abilities = TryGetDictionary(RawData, "abilities");
         Spells = TryGetDictionary(RawData, "spells");
         Items = TryGetDictionary(RawData, "items");
+        Quests = TryGetDictionary(RawData, "quests");
         Dialogues = TryGetDictionary(RawData, "dialogues");
         Vendors = TryGetDictionary(RawData, "vendors");
         HealingServices = TryGetDictionary(RawData, "healing_services");
@@ -77,6 +79,11 @@ public partial class GameData : Node
     public Dictionary GetItem(string id)
     {
         return TryGetDictionary(Items, id);
+    }
+
+    public Dictionary GetQuest(string id)
+    {
+        return TryGetDictionary(Quests, id);
     }
 
     public Dictionary GetDialogue(string id)

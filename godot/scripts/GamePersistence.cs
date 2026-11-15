@@ -198,6 +198,7 @@ public sealed class GamePersistence
             { "looted_bag_ids_by_map", BuildSetMapSnapshot(_host.LootedBagIdsByMap) },
             { "revealed_fog_cell_ids_by_map", BuildSetMapSnapshot(_host.RevealedFogCellIdsByMap) },
             { "loot_bags_by_map", BuildLootBagsByMapSnapshot(_host.LootBagsByMap) },
+            { "quest_states", _host.BuildQuestStateSnapshot() },
             { "triggered_event_ids", triggeredEventIds },
             { "completed_combat_intro_encounter_ids_by_map", BuildSetMapSnapshot(_host.CompletedCombatIntroEncounterIdsByMap) },
             { "event_spawned_unit_configs_by_map", BuildEventSpawnedUnitConfigsSnapshot(_host.EventSpawnedUnitConfigsByMap) },
@@ -244,6 +245,7 @@ public sealed class GamePersistence
         RestoreSetMapSnapshot(GetDictionary(saveData, "looted_bag_ids_by_map"), _host.LootedBagIdsByMap);
         RestoreSetMapSnapshot(GetDictionary(saveData, "revealed_fog_cell_ids_by_map"), _host.RevealedFogCellIdsByMap);
         RestoreLootBagsByMapSnapshot(GetDictionary(saveData, "loot_bags_by_map"), _host.LootBagsByMap);
+        _host.RestoreQuestStateSnapshot(GetDictionary(saveData, "quest_states"));
         RestoreTriggeredEventIds(GetStringArray(saveData, "triggered_event_ids"));
         RestoreEventSpawnedUnitConfigs(GetDictionary(saveData, "event_spawned_unit_configs_by_map"));
         _host.RestoreRecruitedNpcIds(GetStringArray(saveData, "recruited_npc_ids"));

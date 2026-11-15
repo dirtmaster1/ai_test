@@ -44,6 +44,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private CombatEffectsDirector _combatEffectsDirector;
     private EventBus _eventBus;
     private GameData _gameData;
+    private QuestManager _questManager;
     private GamePersistence _persistence;
     private GamePersistence _recoveryPersistence;
     private AcceptDialog _defeatRecoveryDialog;
@@ -374,6 +375,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         _eventBus = GetNodeOrNull<EventBus>("/root/EventBus");
         _gameData = GetNodeOrNull<GameData>("/root/GameData");
+        if (_gameData == null)
+        {
+            GD.PushError("GameData autoload is unavailable; quests cannot be initialized.");
+        }
+        else
+        {
+            _questManager = new QuestManager(_gameData);
+        }
         _hud?.SetAdminItems(BuildAdminItemCatalogForHud());
         _persistence = new GamePersistence(this, SaveFilePath);
         _recoveryPersistence = new GamePersistence(this, RecoverySaveFilePath);
@@ -4908,7 +4917,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            _defeatedEnemyIds.Add(enemy.UnitId);
+            if (_defeatedEnemyIds.Add(enemy.UnitId)
+                && _questManager?.NotifyEnemyDefeated(_currentMapId, enemy.UnitId) == true)
+            {
+                SyncHudFromGameState();
+                _persistence?.PersistSaveGame(false);
+            }
         }
     }
 
@@ -8051,6 +8065,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return;
             }
 
+            if (action == "accept_quest")
+            {
+                AcceptQuest(GetString(selectedChoice, "quest_id", ""));
+                break;
+            }
+
+            if (action == "claim_quest")
+            {
+                ClaimQuestReward(GetString(selectedChoice, "quest_id", ""));
+                break;
+            }
+
             if (GetBool(selectedChoice, "end", false))
             {
                 break;
@@ -8085,6 +8111,14 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             AddNpcDialogueActionChoices(npcProp, choices, !hasConfiguredHealingServices);
+            if (_questManager != null)
+            {
+                var giverNpcId = GetString(npcProp, "npc_id", "");
+                foreach (var questChoice in _questManager.BuildDialogueChoices(giverNpcId))
+                {
+                    choices.Add(questChoice);
+                }
+            }
         }
 
         foreach (var choice in pageChoices)
@@ -8093,6 +8127,59 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         return choices;
+    }
+
+    private void AcceptQuest(string questId)
+    {
+        if (_questManager == null
+            || !_questManager.TryAcceptQuest(questId, _defeatedEnemyIdsByMap))
+        {
+            RejectPlayerAction("This quest is unavailable or has already been accepted.");
+            return;
+        }
+
+        var quest = _gameData.GetQuest(questId);
+        var questName = GetString(quest, "title", questId);
+        _hud?.ShowCombatBanner($"Quest Accepted: {questName}", new Color(0.3f, 1.0f, 0.45f, 1.0f));
+        _hud?.AddCombatLogEntry($"Quest accepted: {questName}.");
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
+    }
+
+    private void ClaimQuestReward(string questId)
+    {
+        if (_questManager == null || !_questManager.IsReadyToTurnIn(questId))
+        {
+            RejectPlayerAction("This quest is not ready to turn in.");
+            return;
+        }
+
+        if (!_questManager.TryGetRewardData(questId, out var goldReward, out var itemRewards))
+        {
+            RejectPlayerAction("The quest reward could not be granted. Please report this issue.");
+            return;
+        }
+
+        var totalGold = (long)_partyGold + goldReward;
+        if (totalGold > int.MaxValue)
+        {
+            RejectPlayerAction("The party cannot carry any more gold to claim this reward.");
+            return;
+        }
+
+        if (!_questManager.TryMarkCompleted(questId))
+        {
+            RejectPlayerAction("This quest reward has already been claimed.");
+            return;
+        }
+
+        _partyGold = (int)totalGold;
+        _partyInventoryItemIds.AddRange(itemRewards);
+        var quest = _gameData.GetQuest(questId);
+        _hud?.AddCombatLogEntry(
+            $"Quest completed: {GetString(quest, "title", questId)}. Reward: {_questManager.GetRewardSummary(questId)}.");
+        SyncHudFromGameState();
+        _persistence.PersistSaveGame(false);
     }
 
     private static void AddNpcDialogueActionChoices(
@@ -11470,6 +11557,28 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.LootedBagIdsByMap => _lootedBagIdsByMap;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.RevealedFogCellIdsByMap => _revealedFogCellIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.LootBagsByMap => _lootBagsByMap;
+    Dictionary IGamePersistenceHost.BuildQuestStateSnapshot()
+    {
+        if (_questManager == null)
+        {
+            GD.PushError("Cannot save quest progress because the quest manager is unavailable.");
+            return new Dictionary();
+        }
+
+        return _questManager.BuildSnapshot();
+    }
+
+    void IGamePersistenceHost.RestoreQuestStateSnapshot(Dictionary snapshot)
+    {
+        if (_questManager == null)
+        {
+            GD.PushError("Cannot restore quest progress because the quest manager is unavailable.");
+            return;
+        }
+
+        _questManager.RestoreSnapshot(snapshot);
+    }
+
     HashSet<string> IGamePersistenceHost.TriggeredEventIds => _triggeredEventIds;
     System.Collections.Generic.Dictionary<string, HashSet<string>> IGamePersistenceHost.CompletedCombatIntroEncounterIdsByMap => _completedCombatIntroEncounterIdsByMap;
     System.Collections.Generic.Dictionary<string, Array<Dictionary>> IGamePersistenceHost.EventSpawnedUnitConfigsByMap => _eventSpawnedUnitConfigsByMap;

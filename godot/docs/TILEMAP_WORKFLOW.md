@@ -192,6 +192,14 @@ Paint from the `event_triggers_64.png` atlas source in the shared `map_markers_6
 
 Create tile alternatives when configuring different events so editing one event does not change other markers that share the base tile. Tiles with the same `event_id` execute only once, even if the party enters another linked tile or reloads the save. `spawn_enemies` places the requested enemies in the nearest valid, unoccupied cells around the tile that triggered the event. Spawned units use the `event_id` as their encounter ID and are restored with the map.
 
+### Quest definitions
+
+Define quests in the `quests` object in `resources/game_data.json`. Each quest needs a stable `id`, `title`, `giver_npc_id`, at least one objective, and reward data. `giver_npc_id` must match the NPC marker's `npc_id` custom data, not its separate `dialogue_id`. The current proof of concept supports `defeat_enemy` objectives with a `map_id` and stable `target_enemy_id`; use an explicit enemy marker `id` where possible so the objective remains linked if marker placement changes. The necromancer quest targets the existing crypt encounter enemy ID.
+
+Quest givers expose an accept choice until the quest is accepted, then expose a reward claim choice after every objective is complete. Claiming adds rewards to shared party gold and inventory and moves the quest to the completed list in the Quests journal. Accepted objectives, completed quests, and claim state are saved with the game. Enemy defeat objectives also recognize enemies defeated before the quest was accepted.
+
+Run the focused quest checks with `godot --headless --path . res://tests/quest_test.tscn`.
+
 ### NPC markers
 
 Set these custom data keys on a tile or tile alternative:

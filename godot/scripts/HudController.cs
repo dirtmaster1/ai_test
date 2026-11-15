@@ -102,6 +102,8 @@ public partial class HudController : Control
     private const float SidebarRightInset = 24.0f;
     private const int ItemIconCellSize = 32;
     private const string ItemIconAtlasPath = "res://assets/ui/icon_misc_1.png";
+    private const float QuestCardWidth = 420.0f;
+    private const float QuestRewardColumnWidth = 128.0f;
     private static readonly Color PartyDetailTextColor = new(0.76f, 0.73f, 0.66f);
     private static readonly Color CombatLogNormalColor = new("e0d3b4");
     private static readonly Color CombatLogPhysicalAttackColor = new("ff9b64");
@@ -274,6 +276,7 @@ public partial class HudController : Control
     private Button _endTurnButton;
     private Button _inventoryButton;
     private Button _reserveButton;
+    private Button _questButton;
     private Label _combatLogHeader;
     private ItemList _combatLog;
     private Button _combatLogResizeHandle;
@@ -330,6 +333,13 @@ public partial class HudController : Control
     private Button _storeToReserveButton;
     private Button _bringFromReserveButton;
     private Button _closeReserveButton;
+    private PanelContainer _questPanel;
+    private Label _questHeader;
+    private ScrollContainer _currentQuestScroll;
+    private ScrollContainer _completedQuestScroll;
+    private HBoxContainer _currentQuestCards;
+    private HBoxContainer _completedQuestCards;
+    private Button _closeQuestButton;
     private string _lootAllInteractionId = "";
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _lootEntriesById = new();
     private readonly System.Collections.Generic.Dictionary<string, Dictionary> _vendorBuyItemsById = new();
@@ -490,6 +500,16 @@ public partial class HudController : Control
         _endTurnButton.FocusMode = FocusModeEnum.None;
         _inventoryButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/InventoryButton");
         _reserveButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/ReserveButton");
+        _questButton = GetNode<Button>("UtilityPanel/UtilityVBox/UtilityButtons/QuestButton");
+        _questPanel = GetNode<PanelContainer>("QuestPanel");
+        _questHeader = GetNode<Label>("QuestPanel/QuestVBox/QuestHeader");
+        _currentQuestScroll = GetNode<ScrollContainer>("QuestPanel/QuestVBox/QuestTabs/Current");
+        _completedQuestScroll = GetNode<ScrollContainer>("QuestPanel/QuestVBox/QuestTabs/Completed");
+        _currentQuestCards = GetNode<HBoxContainer>("QuestPanel/QuestVBox/QuestTabs/Current/CurrentQuestCards");
+        _completedQuestCards = GetNode<HBoxContainer>("QuestPanel/QuestVBox/QuestTabs/Completed/CompletedQuestCards");
+        ConfigureQuestScroll(_currentQuestScroll, _currentQuestCards);
+        ConfigureQuestScroll(_completedQuestScroll, _completedQuestCards);
+        _closeQuestButton = GetNode<Button>("QuestPanel/QuestVBox/CloseQuestButton");
         _combatLogHeader = GetNode<Label>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogHeader");
         _combatLogMinimizeButton = GetNode<Button>("CombatLogPanel/CombatLogVBox/CombatLogHeaderRow/CombatLogMinimizeButton");
         _combatLog = GetNode<ItemList>("CombatLogPanel/CombatLogVBox/CombatLog");
@@ -560,6 +580,7 @@ public partial class HudController : Control
         _inventoryPanel.MouseFilter = MouseFilterEnum.Stop;
         _vendorPanel.MouseFilter = MouseFilterEnum.Stop;
         _reservePanel.MouseFilter = MouseFilterEnum.Stop;
+        _questPanel.MouseFilter = MouseFilterEnum.Stop;
 
         _abilityButton1.Pressed += OnAbilityButton1Pressed;
         _abilityButton2.Pressed += OnAbilityButton2Pressed;
@@ -578,6 +599,8 @@ public partial class HudController : Control
         _endTurnButton.Pressed += OnEndTurnButtonPressed;
         _inventoryButton.Pressed += OnInventoryButtonPressed;
         _reserveButton.Pressed += OnReserveButtonPressed;
+        _questButton.Pressed += OnQuestButtonPressed;
+        _closeQuestButton.Pressed += OnCloseQuestButtonPressed;
         _settingsButton.Pressed += OnSettingsButtonPressed;
         _helpButton.Pressed += OnHelpButtonPressed;
         _soundFxButton.Pressed += OnSoundFxButtonPressed;
@@ -750,6 +773,16 @@ public partial class HudController : Control
         if (_reserveButton != null)
         {
             _reserveButton.Pressed -= OnReserveButtonPressed;
+        }
+
+        if (_questButton != null)
+        {
+            _questButton.Pressed -= OnQuestButtonPressed;
+        }
+
+        if (_closeQuestButton != null)
+        {
+            _closeQuestButton.Pressed -= OnCloseQuestButtonPressed;
         }
 
         if (_combatLogMinimizeButton != null)
@@ -1056,6 +1089,296 @@ public partial class HudController : Control
         }
     }
 
+    public void SetQuestPanelVisible(bool visible)
+    {
+        if (_questPanel != null)
+        {
+            _questPanel.Visible = visible;
+            if (visible)
+            {
+                _questPanel.MoveToFront();
+            }
+        }
+    }
+
+    public void SetQuestJournalEntries(Array<Dictionary> currentEntries, Array<Dictionary> completedEntries)
+    {
+        PopulateQuestCards(_currentQuestCards, currentEntries, "No current quests.");
+        PopulateQuestCards(_completedQuestCards, completedEntries, "No completed quests yet.");
+    }
+
+    private static void ConfigureQuestScroll(ScrollContainer scroll, HBoxContainer cards)
+    {
+        if (scroll != null)
+        {
+            scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Auto;
+            scroll.VerticalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        }
+
+        if (cards != null)
+        {
+            cards.AddThemeConstantOverride("separation", 14);
+            cards.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            cards.SizeFlagsVertical = Control.SizeFlags.ShrinkBegin;
+        }
+    }
+
+    private void PopulateQuestCards(HBoxContainer cards, Array<Dictionary> entries, string emptyText)
+    {
+        if (cards == null)
+        {
+            return;
+        }
+
+        foreach (var child in cards.GetChildren())
+        {
+            cards.RemoveChild(child);
+            child.QueueFree();
+        }
+
+        if (entries == null || entries.Count == 0)
+        {
+            var emptyLabel = new Label
+            {
+                Text = emptyText,
+                CustomMinimumSize = new Vector2(QuestCardWidth, 0),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(emptyLabel, TacticalTheme.ParchmentMuted, 16);
+            cards.AddChild(emptyLabel);
+            return;
+        }
+
+        for (var index = 0; index < entries.Count; index++)
+        {
+            cards.AddChild(CreateQuestCard(entries[index], index));
+        }
+    }
+
+    private Control CreateQuestCard(Dictionary entry, int index)
+    {
+        var card = new PanelContainer
+        {
+            Name = $"QuestCard_{index}",
+            CustomMinimumSize = new Vector2(QuestCardWidth, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+            MouseFilter = Control.MouseFilterEnum.Stop
+        };
+        card.AddThemeStyleboxOverride("panel", TacticalTheme.CreatePanel(true, 10));
+
+        var layout = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        layout.AddThemeConstantOverride("separation", 10);
+        card.AddChild(layout);
+
+        var details = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        details.AddThemeConstantOverride("separation", 3);
+        layout.AddChild(details);
+
+        var titleAndStatus = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        titleAndStatus.AddThemeConstantOverride("separation", 6);
+        details.AddChild(titleAndStatus);
+
+        var title = new Label
+        {
+            Name = "QuestTitle",
+            Text = GetString(entry, "title", "Quest"),
+            AutowrapMode = TextServer.AutowrapMode.Off,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        TacticalTheme.ApplyHeaderLabel(title, TacticalTheme.BrassBright, 20);
+        titleAndStatus.AddChild(title);
+
+        var statusText = GetString(entry, "status", "");
+        if (!string.IsNullOrWhiteSpace(statusText) && statusText != "In progress")
+        {
+            var status = new Label
+            {
+                Name = "QuestStatus",
+                Text = statusText,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            var statusColor = statusText is "Completed" or "Ready to turn in"
+                ? TacticalTheme.Positive
+                : TacticalTheme.ParchmentMuted;
+            TacticalTheme.ApplyLabel(status, statusColor, 11);
+            titleAndStatus.AddChild(status);
+        }
+
+        var description = GetString(entry, "description", "");
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var descriptionLabel = new Label
+            {
+                Name = "QuestDescription",
+                Text = description,
+                CustomMinimumSize = new Vector2(0, 30),
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                VerticalAlignment = VerticalAlignment.Top,
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(descriptionLabel, TacticalTheme.Parchment, 12);
+            details.AddChild(descriptionLabel);
+        }
+
+        AddQuestObjectiveLabels(details, entry);
+        AddQuestRewardIcons(layout, entry);
+        return card;
+    }
+
+    private static void AddQuestObjectiveLabels(VBoxContainer details, Dictionary entry)
+    {
+        if (!entry.ContainsKey("objectives"))
+        {
+            return;
+        }
+
+        var objectivesValue = (Variant)entry["objectives"];
+        if (objectivesValue.VariantType != Variant.Type.Array)
+        {
+            return;
+        }
+
+        foreach (var objectiveValue in (Godot.Collections.Array)objectivesValue)
+        {
+            var objectiveVariant = (Variant)objectiveValue;
+            if (objectiveVariant.VariantType != Variant.Type.Dictionary)
+            {
+                continue;
+            }
+
+            var objective = (Dictionary)objectiveVariant;
+            var completed = objective.ContainsKey("completed")
+                && ((Variant)objective["completed"]).AsBool();
+            var objectiveLabel = new Label
+            {
+                Name = $"QuestObjective_{GetString(objective, "id", "objective")}",
+                Text = $"{(completed ? "[x]" : "[ ]")} {GetString(objective, "description", "Objective")}",
+                CustomMinimumSize = new Vector2(0, 18),
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                VerticalAlignment = VerticalAlignment.Top,
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(
+                objectiveLabel,
+                completed ? TacticalTheme.Positive : TacticalTheme.ParchmentMuted,
+                11);
+            details.AddChild(objectiveLabel);
+        }
+    }
+
+    private static void AddQuestRewardIcons(HBoxContainer layout, Dictionary entry)
+    {
+        var rewards = new VBoxContainer
+        {
+            Name = "QuestRewards",
+            CustomMinimumSize = new Vector2(QuestRewardColumnWidth, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            Alignment = BoxContainer.AlignmentMode.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        rewards.AddThemeConstantOverride("separation", 5);
+        layout.AddChild(rewards);
+
+        var rewardHeader = new Label
+        {
+            Text = "REWARDS",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        TacticalTheme.ApplyLabel(rewardHeader, TacticalTheme.BrassBright, 11);
+        rewards.AddChild(rewardHeader);
+
+        var gold = GetInt(entry, "reward_gold", 0);
+        if (gold > 0)
+        {
+            var goldRow = new HBoxContainer
+            {
+                Name = "QuestRewardRow_gold",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                Alignment = BoxContainer.AlignmentMode.Begin,
+                MouseFilter = Control.MouseFilterEnum.Stop,
+                TooltipText = $"{gold:N0} gold"
+            };
+            goldRow.AddThemeConstantOverride("separation", 4);
+            goldRow.AddChild(CreateQuestRewardIcon("gold", "Gold", 28));
+            var goldLabel = new Label
+            {
+                Text = $"{gold:N0} gp",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                VerticalAlignment = VerticalAlignment.Center,
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(goldLabel, TacticalTheme.Parchment, 13);
+            goldRow.AddChild(goldLabel);
+            rewards.AddChild(goldRow);
+        }
+
+        var itemIds = TryGetStringArray(entry, "reward_item_ids");
+        var itemNames = TryGetStringArray(entry, "reward_item_names");
+        for (var index = 0; index < itemIds.Count; index++)
+        {
+            var itemId = itemIds[index];
+            var itemName = index < itemNames.Count ? itemNames[index] : itemId;
+            var itemRow = new HBoxContainer
+            {
+                Name = $"QuestRewardRow_{itemId}",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                Alignment = BoxContainer.AlignmentMode.Begin,
+                MouseFilter = Control.MouseFilterEnum.Stop,
+                TooltipText = itemName
+            };
+            itemRow.AddThemeConstantOverride("separation", 4);
+            itemRow.AddChild(CreateQuestRewardIcon(itemId, itemName, 28));
+            var itemLabel = new Label
+            {
+                Text = itemName,
+                AutowrapMode = TextServer.AutowrapMode.Off,
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                VerticalAlignment = VerticalAlignment.Center,
+                MouseFilter = Control.MouseFilterEnum.Ignore
+            };
+            TacticalTheme.ApplyLabel(itemLabel, TacticalTheme.Parchment, 11);
+            itemRow.AddChild(itemLabel);
+            rewards.AddChild(itemRow);
+        }
+    }
+
+    private static TextureRect CreateQuestRewardIcon(string iconId, string tooltip, float size)
+    {
+        return new TextureRect
+        {
+            Name = $"QuestRewardIcon_{iconId}",
+            Texture = GetGameIcon(iconId),
+            CustomMinimumSize = new Vector2(size, size),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            TooltipText = tooltip,
+            MouseFilter = Control.MouseFilterEnum.Stop
+        };
+    }
+
     public void SetConsumableButtons(Array<Dictionary> consumables, bool canUseAnyConsumable)
     {
         _consumableSlotKeysByButton.Clear();
@@ -1199,6 +1522,16 @@ public partial class HudController : Control
     private void OnReserveButtonPressed()
     {
         ToggleReserveVisible();
+    }
+
+    private void OnQuestButtonPressed()
+    {
+        SetQuestPanelVisible(!_questPanel.Visible);
+    }
+
+    private void OnCloseQuestButtonPressed()
+    {
+        SetQuestPanelVisible(false);
     }
 
     private void OnSettingsButtonPressed()
@@ -2425,6 +2758,7 @@ public partial class HudController : Control
         StylePanel(_lootPanel, panelStyle);
         StylePanel(_vendorPanel, panelStyle);
         StylePanel(_reservePanel, panelStyle);
+        StylePanel(_questPanel, panelStyle);
         StylePanel(_combatBannerPanel, panelStyle);
 
         StyleHeaderLabel(_utilityHeader, headerColor);
@@ -2441,6 +2775,7 @@ public partial class HudController : Control
         StyleHeaderLabel(_lootHeader, headerColor);
         StyleHeaderLabel(_vendorHeader, headerColor);
         StyleHeaderLabel(_reserveHeader, headerColor);
+        StyleHeaderLabel(_questHeader, headerColor);
 
         if (_combatBannerLabel != null)
         {
@@ -2502,6 +2837,8 @@ public partial class HudController : Control
         StyleButton(_saveButton, false);
         StyleButton(_loadButton, false);
         StyleButton(_reserveButton, false);
+        StyleButton(_questButton, false);
+        StyleButton(_closeQuestButton, false);
         StyleButton(_combatLogMinimizeButton, false);
         StyleButton(_abilityButton1, false);
         StyleButton(_abilityButton2, false);
@@ -3953,7 +4290,8 @@ public partial class HudController : Control
             || _inventoryPanel?.Visible == true
             || _lootPanel?.Visible == true
             || _vendorPanel?.Visible == true
-            || _reservePanel?.Visible == true;
+            || _reservePanel?.Visible == true
+            || _questPanel?.Visible == true;
     }
 
     public void SetLootPanelVisible(bool visible)
