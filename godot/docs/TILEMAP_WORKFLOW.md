@@ -188,6 +188,8 @@ Set these custom data keys on an event trigger tile or tile alternative:
 - `enemy_count`: number of enemies to spawn
 - `aggro_range`: optional detection range; defaults to `4`
 
+Paint from the `event_triggers_64.png` atlas source in the shared `map_markers_64_tileset.tres`; it is available on every map's marker layer. All cells are hidden event-trigger markers by default.
+
 Create tile alternatives when configuring different events so editing one event does not change other markers that share the base tile. Tiles with the same `event_id` execute only once, even if the party enters another linked tile or reloads the save. `spawn_enemies` places the requested enemies in the nearest valid, unoccupied cells around the tile that triggered the event. Spawned units use the `event_id` as their encounter ID and are restored with the map.
 
 ### NPC markers

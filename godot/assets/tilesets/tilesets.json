@@ -26,6 +26,7 @@
     { "id": "units-3", "mode": "external", "columns": 6, "rows": 6, "output": "assets/tilesets/units_3_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
     { "id": "general-items", "mode": "external", "columns": 5, "rows": 5, "output": "assets/tilesets/general_items_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
     { "id": "mine-cave-props", "mode": "external", "columns": 4, "rows": 3, "output": "assets/tilesets/mine_cave_props_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
-    { "id": "map-transitions", "mode": "external", "columns": 9, "rows": 9, "output": "assets/tilesets/map_transitions_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" }
+    { "id": "map-transitions", "mode": "external", "columns": 9, "rows": 9, "output": "assets/tilesets/map_transitions_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" },
+    { "id": "event-triggers", "mode": "external", "columns": 9, "rows": 9, "output": "assets/tilesets/event_triggers_64.png", "tileSet": "assets/tilesets/map_markers_64_tileset.tres" }
   ]
 }
