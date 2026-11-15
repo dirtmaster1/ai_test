@@ -3713,7 +3713,7 @@ public partial class HudController : Control
 
         var name = new Label
         {
-            Text = unit.IsDead ? $"{unit.UnitName} (Down)" : unit.UnitName,
+            Text = unit.IsDead ? $"{unit.UnitName} (Dead)" : unit.UnitName,
             MouseFilter = MouseFilterEnum.Ignore
         };
         name.AddThemeFontOverride("font", TacticalTheme.HeaderFont);

@@ -17,6 +17,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const int FogTexturePaddingCells = 1;
     private const float FogEdgeFeatherPixels = 32.0f;
     private const float GridLineThickness = 2.0f;
+    private const string WaterRippleCustomDataName = "water_ripple";
+    private const string WaterRippleOverlayName = "WaterRippleOverlay";
     private const ulong ManualEndTurnDebounceMs = 220;
     private const ulong PostPlayerActionMouseMoveLockMs = 300;
     private const float EnemyActionDelaySeconds = 0.24f;
@@ -60,8 +62,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private ImageTexture _fogOverlayTexture;
     private ImageTexture _fogPreviousOverlayTexture;
     private ShaderMaterial _fogOverlayMaterial;
-    private ShaderMaterial _waterRippleMaterial;
-    private TileMapLayer _waterRippleLayer;
+    private readonly List<(TileMapLayer Layer, ShaderMaterial Material)> _waterRippleOverlays = new();
     private float _fogStepBlend = 1.0f;
     private Rect2 _fogOverlayRect;
     private readonly Array<Dictionary> _mapDoors = new();
@@ -234,25 +235,122 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     // Architecture: Lifecycle, rendering, and combat-resolution orchestration.
     private void UpdateWaterRippleTransform()
     {
-        if (_waterRippleMaterial == null)
+        for (var index = _waterRippleOverlays.Count - 1; index >= 0; index--)
         {
-            return;
-        }
+            var ripple = _waterRippleOverlays[index];
+            if (!GodotObject.IsInstanceValid(ripple.Layer) || !GodotObject.IsInstanceValid(ripple.Material))
+            {
+                _waterRippleOverlays.RemoveAt(index);
+                continue;
+            }
 
-        var canvasToWorld = _waterRippleLayer.GetGlobalTransformWithCanvas().AffineInverse();
-        _waterRippleMaterial.SetShaderParameter("canvas_to_world_x", canvasToWorld.X);
-        _waterRippleMaterial.SetShaderParameter("canvas_to_world_y", canvasToWorld.Y);
-        _waterRippleMaterial.SetShaderParameter("canvas_to_world_origin", canvasToWorld.Origin);
+            var canvasToWorld = ripple.Layer.GetGlobalTransformWithCanvas().AffineInverse();
+            ripple.Material.SetShaderParameter("canvas_to_world_x", canvasToWorld.X);
+            ripple.Material.SetShaderParameter("canvas_to_world_y", canvasToWorld.Y);
+            ripple.Material.SetShaderParameter("canvas_to_world_origin", canvasToWorld.Origin);
+        }
     }
 
     private void InitializeWaterRipples()
     {
-        _waterRippleLayer = GetNodeOrNull<TileMapLayer>("Maps/forest-town-base");
-        _waterRippleMaterial = _waterRippleLayer?.Material as ShaderMaterial;
-        if (_waterRippleMaterial != null)
+        var mapsRoot = GetNodeOrNull<Node>("Maps");
+        if (mapsRoot == null)
         {
-            // Party-follow tweens run after _Process; use the final transform for this draw.
+            GD.PushError("Water ripple setup could not find the Maps node.");
+            return;
+        }
+
+        var tileMapLayers = new List<TileMapLayer>();
+        CollectTileMapLayers(mapsRoot, tileMapLayers);
+        var taggedLayers = new List<(TileMapLayer Layer, List<Vector2I> Cells)>();
+        foreach (var baseLayer in tileMapLayers)
+        {
+            if (baseLayer.Name == WaterRippleOverlayName
+                || baseLayer.GetNodeOrNull<TileMapLayer>(WaterRippleOverlayName) != null
+                || baseLayer.TileSet == null
+                || baseLayer.TileSet.GetCustomDataLayerByName(WaterRippleCustomDataName) < 0)
+            {
+                continue;
+            }
+
+            var waterCells = new List<Vector2I>();
+            foreach (var cell in baseLayer.GetUsedCells())
+            {
+                var tileData = baseLayer.GetCellTileData(cell);
+                if (tileData != null && tileData.GetCustomData(WaterRippleCustomDataName).AsBool())
+                {
+                    waterCells.Add(cell);
+                }
+            }
+
+            if (waterCells.Count > 0)
+            {
+                taggedLayers.Add((baseLayer, waterCells));
+            }
+        }
+
+        if (taggedLayers.Count == 0)
+        {
+            return;
+        }
+
+        var material = GD.Load<ShaderMaterial>("res://assets/vfx/forest_water_ripple_material.tres");
+        if (material == null)
+        {
+            GD.PushError("Water ripple material could not be loaded.");
+            return;
+        }
+
+        foreach (var taggedLayer in taggedLayers)
+        {
+            var baseLayer = taggedLayer.Layer;
+            var rippleLayer = new TileMapLayer
+            {
+                Name = WaterRippleOverlayName,
+                TileSet = baseLayer.TileSet,
+                TextureFilter = TextureFilterEnum.Nearest,
+                CollisionEnabled = false,
+                NavigationEnabled = false
+            };
+            foreach (var cell in taggedLayer.Cells)
+            {
+                rippleLayer.SetCell(
+                    cell,
+                    baseLayer.GetCellSourceId(cell),
+                    baseLayer.GetCellAtlasCoords(cell),
+                    baseLayer.GetCellAlternativeTile(cell));
+            }
+
+            var rippleMaterial = material.Duplicate() as ShaderMaterial;
+            if (rippleMaterial == null)
+            {
+                GD.PushError($"Water ripple material could not be duplicated for {baseLayer.GetPath()}.");
+                rippleLayer.Free();
+                continue;
+            }
+
+            rippleLayer.Material = rippleMaterial;
+            baseLayer.AddChild(rippleLayer);
+            _waterRippleOverlays.Add((rippleLayer, rippleMaterial));
+        }
+
+        if (_waterRippleOverlays.Count > 0)
+        {
+            // Party-follow tweens run after _Process; use each layer's final transform for this draw.
             RenderingServer.FramePreDraw += UpdateWaterRippleTransform;
+        }
+    }
+
+    private static void CollectTileMapLayers(Node node, List<TileMapLayer> layers)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is TileMapLayer tileMapLayer)
+            {
+                layers.Add(tileMapLayer);
+            }
+
+            CollectTileMapLayers(child, layers);
         }
     }
 

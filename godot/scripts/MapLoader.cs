@@ -219,6 +219,21 @@ public partial class MapLoader : Node
                 continue;
             }
 
+            var markerName = GetTileString(markerLayer, tileData, "name", "");
+            if (markerType == "rest_point" && markerName.Equals("Campfire", System.StringComparison.OrdinalIgnoreCase))
+            {
+                AddCampfireVisual(visualLayer, markerLayer, cell);
+                continue;
+            }
+
+            if (markerType == "cosmetic"
+                && (markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase)
+                    || markerName.Equals("Fire Pit", System.StringComparison.OrdinalIgnoreCase)))
+            {
+                AddCosmeticFireVisual(visualLayer, markerLayer, cell, markerName);
+                continue;
+            }
+
             visualLayer.SetCell(
                 cell,
                 markerLayer.GetCellSourceId(cell),
@@ -228,6 +243,88 @@ public partial class MapLoader : Node
         }
 
         return visualLayer;
+    }
+
+    private static void AddCampfireVisual(TileMapLayer visualLayer, TileMapLayer markerLayer, Vector2I cell)
+    {
+        AddAnimatedFireVisual(
+            visualLayer,
+            markerLayer,
+            cell,
+            "Campfire",
+            "res://assets/vfx/campfire_base.png",
+            "res://assets/vfx/campfire_flame_frames.png");
+    }
+
+    private static void AddCosmeticFireVisual(
+        TileMapLayer visualLayer,
+        TileMapLayer markerLayer,
+        Vector2I cell,
+        string markerName)
+    {
+        var (basePath, flamePath) = markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase)
+            ? ("res://assets/vfx/torch_base.png", "res://assets/vfx/torch_flame_frames.png")
+            : ("res://assets/vfx/fire_pit_base.png", "res://assets/vfx/fire_pit_flame_frames.png");
+        var visualName = markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase) ? "Torch" : "FirePit";
+        AddAnimatedFireVisual(visualLayer, markerLayer, cell, visualName, basePath, flamePath);
+    }
+
+    private static void AddAnimatedFireVisual(
+        TileMapLayer visualLayer,
+        TileMapLayer markerLayer,
+        Vector2I cell,
+        string visualName,
+        string basePath,
+        string flamePath)
+    {
+        var baseTexture = GD.Load<Texture2D>(basePath);
+        var flameSheet = GD.Load<Texture2D>(flamePath);
+        if (baseTexture == null || flameSheet == null)
+        {
+            GD.PushError($"{visualName} visual assets could not be loaded.");
+            return;
+        }
+
+        if (baseTexture.GetWidth() != 64 || baseTexture.GetHeight() != 64
+            || flameSheet.GetWidth() != 128 || flameSheet.GetHeight() != 64)
+        {
+            GD.PushError($"{visualName} visual assets have unexpected dimensions.");
+            return;
+        }
+
+        var center = markerLayer.MapToLocal(cell);
+        visualLayer.AddChild(new Sprite2D
+        {
+            Name = $"{visualName}Base_{cell.X}_{cell.Y}",
+            Texture = baseTexture,
+            Position = center,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest
+        });
+
+        var frames = new SpriteFrames();
+        frames.AddAnimation("flicker");
+        frames.SetAnimationSpeed("flicker", 8.0);
+        frames.SetAnimationLoopMode("flicker", SpriteFrames.LoopMode.Linear);
+        for (var frame = 0; frame < 8; frame++)
+        {
+            frames.AddFrame("flicker", new AtlasTexture
+            {
+                Atlas = flameSheet,
+                Region = new Rect2((frame % 4) * 32, (frame / 4) * 32, 32, 32)
+            });
+        }
+
+        var flame = new AnimatedSprite2D
+        {
+            Name = $"{visualName}Flame_{cell.X}_{cell.Y}",
+            SpriteFrames = frames,
+            Animation = "flicker",
+            Position = center + new Vector2(0, -16),
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            ZIndex = 1
+        };
+        visualLayer.AddChild(flame);
+        flame.Play("flicker");
     }
 
     public bool SetDoorVisual(string mapId, Vector2I cell, bool isOpen)

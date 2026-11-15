@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" path="res://ui/HUD.tscn" id="4_hud"]
 [ext_resource type="Script" uid="uid://byqoua51bdq62" path="res://scripts/MapLoader.cs" id="5_map"]
 [ext_resource type="Script" uid="uid://dc60outhnd6wh" path="res://scripts/BattleOverlay.cs" id="6_overlay"]
-[ext_resource type="TileSet" uid="uid://cws4usfj0p7r6" path="res://assets/tilesets/forest_terrain_64_tileset.tres" id="7_forest_tiles"]
+[ext_resource type="TileSet" uid="uid://lcyd33fr2dfw" path="res://assets/tilesets/forest_terrain_64_tileset.tres" id="7_forest_tiles"]
 [ext_resource type="TileSet" uid="uid://bqmm413f5xdun" path="res://assets/tilesets/dungeon_terrain_64_tileset.tres" id="8_dungeon_tiles"]
 [ext_resource type="TileSet" uid="uid://dhcruyyeji64j" path="res://assets/tilesets/map_markers_64_tileset.tres" id="9_marker_tiles"]
 [ext_resource type="TileSet" uid="uid://1a5nfv5xr615" path="res://assets/tilesets/cave_terrain_64_tileset.tres" id="10_cave_tiles"]

@@ -1909,7 +1909,13 @@ public partial class ActionFeedbackChecks : BattleController
             "Fallen party members must remain visible in the active party and persist in the party roster.");
         Call("SyncHudFromGameState");
         var partyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
-        Check(partyCards.GetChildren().OfType<PartyCard>().Any(card => card.UnitId == _ally.UnitId),
+        var fallenPartyCard = partyCards.GetChildren().OfType<PartyCard>()
+            .FirstOrDefault(card => card.UnitId == _ally.UnitId);
+        Check(fallenPartyCard != null
+            && fallenPartyCard.FindChildren("*", "Label", true, false)
+                .Cast<Label>().Any(label => label.Text == $"{_ally.UnitName} (Dead)"),
+            "The party HUD must label fallen members as Dead.");
+        Check(fallenPartyCard != null,
             "Fallen party members must remain visible as cards in the party HUD.");
         Call("OnHudReserveStoreRequested", _ally.UnitId);
         Check(Field<Array<Unit>>("_playerUnits").Contains(_ally)

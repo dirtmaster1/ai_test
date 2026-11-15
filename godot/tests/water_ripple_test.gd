@@ -21,15 +21,10 @@ func run_test() -> void:
 
     var main: Node = load("res://scenes/Main.tscn").instantiate()
     var forest := main.get_node("Gameworld/Maps/forest-town-base") as TileMapLayer
+    var forest_tileset: TileSet = forest.tile_set
     var layer := TileMapLayer.new()
-    layer.tile_set = forest.tile_set
+    layer.tile_set = forest_tileset
     layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    var material := forest.material.duplicate() as ShaderMaterial
-    check_wave_frames(material.get_shader_parameter("water_frames") as Texture2D)
-    var shader := Shader.new()
-    shader.code = material.shader.code.replace("void fragment()", "uniform float water_test_time;\nvoid fragment()").replace("TIME", "water_test_time")
-    material.shader = shader
-    layer.material = material
     main.free()
     var world: Node2D = load("res://tests/WaterRippleChecks.cs").new()
     var maps := Node2D.new()
@@ -37,7 +32,13 @@ func run_test() -> void:
     layer.name = "forest-town-base"
     world.add_child(maps)
     maps.add_child(layer)
-    viewport.add_child(world)
+
+    var path_layer := TileMapLayer.new()
+    path_layer.name = "forest-path-base"
+    path_layer.tile_set = forest_tileset
+    path_layer.position = Vector2(640, 0)
+    path_layer.set_cell(Vector2i.ZERO, 6, Vector2i(0, 4))
+    maps.add_child(path_layer)
 
     for y in range(4):
         for x in range(6):
@@ -47,10 +48,47 @@ func run_test() -> void:
         layer.set_cell(Vector2i(x, 4), 3, Vector2i(x + 1, 2))
         layer.set_cell(Vector2i(x, 5), 6, Vector2i(2, 1))
 
+    viewport.add_child(world)
+    var ripple_layer := layer.get_node("WaterRippleOverlay") as TileMapLayer
+    var path_ripple_layer := path_layer.get_node_or_null("WaterRippleOverlay") as TileMapLayer
+    check(ripple_layer.get_used_cells().size() == 30, "Ripple overlay must contain only the 30 explicitly tagged test tiles")
+    check(not ripple_layer.collision_enabled and not ripple_layer.navigation_enabled, "Ripple overlay must not duplicate terrain collision or navigation")
+    check(path_ripple_layer != null, "Any map layer using tagged water tiles must receive a ripple overlay")
+    if path_ripple_layer != null:
+        check(path_ripple_layer.get_used_cells().size() == 1, "The second map's overlay must contain only its tagged water tile")
+        check(
+            path_ripple_layer.get_cell_source_id(Vector2i.ZERO) == 6
+                and path_ripple_layer.get_cell_atlas_coords(Vector2i.ZERO) == Vector2i(0, 4),
+            "The second map overlay must preserve its tagged grass-water atlas tile")
+
+    var material := ripple_layer.material as ShaderMaterial
+    var path_material := path_ripple_layer.material as ShaderMaterial if path_ripple_layer != null else null
+    check(path_material != null and path_material != material, "Each map layer must have its own material for transform anchoring")
+    check_wave_frames(material.get_shader_parameter("water_frames") as Texture2D)
+    var shader := Shader.new()
+    shader.code = material.shader.code.replace("void fragment()", "uniform float water_test_time;\nvoid fragment()").replace("TIME", "water_test_time")
+    material.shader = shader
+
     viewport.canvas_transform = Transform2D.IDENTITY
     var strength: float = material.get_shader_parameter("blend_strength")
     material.set_shader_parameter("blend_strength", 0.0)
+    ripple_layer.visible = false
+    var baseline := await capture(viewport, material, 0.0)
+    if path_ripple_layer != null and path_material != null:
+        var path_expected := path_ripple_layer.get_global_transform_with_canvas().affine_inverse()
+        var path_actual := Transform2D(
+            path_material.get_shader_parameter("canvas_to_world_x"),
+            path_material.get_shader_parameter("canvas_to_world_y"),
+            path_material.get_shader_parameter("canvas_to_world_origin"))
+        check(path_actual.is_equal_approx(path_expected), "Every map layer's ripple transform must be updated before drawing")
+    ripple_layer.visible = true
     var original := await capture(viewport, material, 0.0)
+    var overlay_differences := 0
+    for y in range(viewport.size.y):
+        for x in range(viewport.size.x):
+            if color_difference(baseline.get_pixel(x, y), original.get_pixel(x, y)) > 1.0 / 255.0:
+                overlay_differences += 1
+    check(overlay_differences == 0, "Ripple overlay must preserve all base pixels when ripple strength is zero")
     material.set_shader_parameter("blend_strength", strength)
     var frames: Array[Image] = []
     for frame in range(21):
@@ -81,7 +119,7 @@ func run_test() -> void:
     var non_water_changes := 0
     for y in range(256, 384):
         for x in range(384):
-            var color := original.get_pixel(x, y)
+            var color := baseline.get_pixel(x, y)
             if color.b >= 0.025 and color.g >= color.r * 1.35 and color.b >= color.g * 1.2:
                 continue
             for frame in frames:
@@ -132,7 +170,7 @@ func run_test() -> void:
     while tween.is_running():
         await process_frame
         await RenderingServer.frame_post_draw
-        var expected := layer.get_global_transform_with_canvas().affine_inverse()
+        var expected := ripple_layer.get_global_transform_with_canvas().affine_inverse()
         var actual := Transform2D(
             material.get_shader_parameter("canvas_to_world_x"),
             material.get_shader_parameter("canvas_to_world_y"),

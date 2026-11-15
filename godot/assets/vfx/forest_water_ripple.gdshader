@@ -18,13 +18,9 @@ void fragment() {
 		* step(base_color.r * 1.35, base_color.g)
 		* step(base_color.g * 1.2, base_color.b);
 
-	if (water_mask > 0.5) {
-		vec2 local_uv = fract((world_position - TIME * flow_velocity) / ripple_pattern_size);
-		float frame = mod(floor(TIME * frame_rate), 4.0);
-		vec2 frame_uv = vec2((frame + local_uv.x) / 4.0, local_uv.y);
-		vec3 ripple_color = texture(water_frames, frame_uv).rgb;
-		base_color.rgb = mix(base_color.rgb, ripple_color, blend_strength);
-	}
-
-	COLOR = base_color;
+	vec2 local_uv = fract((world_position - TIME * flow_velocity) / ripple_pattern_size);
+	float frame = mod(floor(TIME * frame_rate), 4.0);
+	vec2 frame_uv = vec2((frame + local_uv.x) / 4.0, local_uv.y);
+	vec3 ripple_color = texture(water_frames, frame_uv).rgb;
+	COLOR = vec4(mix(base_color.rgb, ripple_color, blend_strength), base_color.a * water_mask);
 }

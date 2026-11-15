@@ -31,26 +31,36 @@ The dungeon atlas is the first manifest-managed atlas. Its source files are name
 
 A no-op build compares decoded pixels and does not rewrite the existing PNG, avoiding meaningless binary Git changes.
 
-## Forest Water Ripple POC
+## Forest Water Ripple
 
-The forest lake and bridge artwork shares atlas cells, including water pixels
-with bridge shadows. The POC therefore leaves the painted map and TileSet
-metadata unchanged and applies `assets/vfx/forest_water_ripple.gdshader` only
-to the `forest-town-base` layer in `scenes/Main.tscn`. The shader masks blue
-water pixels and blends in a four-frame ripple texture; shore, bridge, and
-terrain colors remain on their original atlas art. Ripple sampling uses map
-map-local coordinates reconstructed from screen fragments and the inverse of
-the water layer's full `GetGlobalTransformWithCanvas()` transform, including
-the map node's position and scale. Party follow moves that node, not just the
-viewport canvas. `BattleController` updates the shader in `FramePreDraw`,
-after movement tweens, and disconnects on tree exit. This keeps ripple
-placement continuous across tile edges and its flow speed independent of
-party movement, panning, and zooming, without a one-frame lag.
-A 96-pixel pattern period avoids repeating the same
-ripple placement at every 64-pixel tile edge. The shader uses the incoming
-`COLOR` value to avoid multiplying the atlas texture a second time.
-The pattern also travels continuously at `flow_velocity` world pixels per
-second, so ripples move through tile interiors between atlas frame changes.
+`scenes/Main.tscn` contains the authored `forest-town-base` `tile_map_data`
+override. Preserve it when editing layer materials or effects: removing it
+loads the older layout from `Gameworld.tscn`, including obsolete atlas references.
+Run `godot --headless --path . --script res://tests/forest_terrain_test.gd`
+to check the actual Main scene's terrain references. To render the starting
+area with ripples, omit `--headless` and set `FOREST_TERRAIN_SCREENSHOT` to a PNG path.
+
+The forest lake and bridge atlas mixes water with shore, bridge, and wall
+artwork. Its `water_ripple` TileSet custom-data layer explicitly tags
+water-bearing atlas tiles. `BattleController` copies only tagged cells from
+each `TileMapLayer` under `Maps` into its own visual-only overlay; layers are
+selected by their TileSet's `water_ripple` custom-data layer, not by map name.
+This also covers the grass-water atlas source in the shared forest TileSet.
+Each overlay has collision and navigation disabled and an independent shader
+material so its world transform stays aligned to its parent layer. The shader
+still masks water pixels inside each selected tile because shoreline and
+bridge cells contain non-water artwork.
+Pixels outside the mask are transparent, so the overlay cannot redraw or
+obscure the underlying floor and wall art.
+
+Ripple sampling uses map-local coordinates reconstructed from screen
+fragments and the inverse of the overlay's full
+`GetGlobalTransformWithCanvas()` transform. `BattleController` updates the
+shader in `FramePreDraw`, after movement tweens, and disconnects on tree exit.
+This keeps ripple placement continuous across tile edges and its flow speed
+independent of party movement, panning, and zooming. A 96-pixel pattern period
+avoids repeating at every 64-pixel tile edge, while `flow_velocity` moves the
+pattern continuously between atlas frame changes.
 
 `art/vfx/forest_water_ripples_source.png` keeps the original four-by-four
 Retro Diffusion animation sheet. Edit it in GIMP without changing its 256x256
@@ -70,13 +80,24 @@ Run `godot --path . --script res://tests/water_ripple_test.gd` with a graphics
 renderer (not `--headless`) to verify visible motion in every tile-interior
 quadrant (at least 60% of pixels within 0.8 seconds and 95% within 4 seconds),
 seamless frames without border-concentrated flicker, movement between atlas
-frames, unchanged non-water pixels, and map anchoring under pan/zoom.
+frames, tile-specific selection, unchanged non-water pixels, and map
+anchoring under pan/zoom.
 It uses the production controller's transform updates to compare moving-map
 pixels against stationary-map pixels at matching animation times, and checks
 the transform on every rendered frame of a party-follow-speed tween.
 Set `WATER_RIPPLE_SCREENSHOT` to a PNG path
 to capture the rendered test surface. The test does not start an adventure
 or modify saves.
+
+## Fire Marker Animation
+
+`MapLoader` replaces only the named Campfire, Torch, and Fire Pit markers'
+map visuals with their static prop base and an eight-frame
+`AnimatedSprite2D` flame overlay anchored to that marker cell. The Torch flame
+uses only its centered 17x24 flame crop; its handle remains part of the static
+base. The original marker tiles remain responsible for interaction and
+metadata, and other cosmetic marker visuals are unchanged. These are
+tile-associated sprite overlays rather than native animated TileSet tiles.
 
 ## Commands
 
