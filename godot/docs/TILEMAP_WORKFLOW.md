@@ -37,6 +37,17 @@ The church tiles use previously empty cells in `terrain_grass_water_64.png` and 
 
 The closed door tiles point to their matching open halves using `open_door_atlas`. Eldius's marker is at `(2,-10)` in the `Main.tscn` Forest Town override. His church occupies base-layer cells `(-1,-11)` through `(6,-5)`: stained-glass windows at `(2,-11)` and `(3,-11)`, marble floor across `(0,-10)` through `(5,-6)`, and the double-door entrance at `(2,-5)` and `(3,-5)`.
 
+## Forest Town Blacksmith Shop
+
+The blacksmith tiles extend source `6` of `forest_terrain_64_tileset.tres` into rows 8-11 of `terrain_grass_water_64.png`:
+
+- `(0,7)`, `(1,7)`, `(2,7)`, `(3,7)`: north-west corner, north wall, window wall, north-east corner
+- `(1,8)`: closed door, opening to `(2,8)`; `(2,8)`: open doorway; `(3,8)`: wood floor; `(4,8)` and `(5,8)`: left/right side walls
+- `(0,9)`: matching wood floor
+- `(0,10)`: south-facing wall; `(1,10)`: doorway threshold; `(3,10)`: matching wood floor
+
+The shop occupies base-layer cells `(9,-10)` through `(13,-5)`, directly east of the church with a one-cell path between them. The door is at `(11,-5)` and opens to `(2,8)` in the grass-water atlas. Interior markers use source `1`: forge `(2,5)` at `(10,-9)`, weapon rack `(3,5)` at `(12,-9)`, and armor rack `(4,5)` at `(12,-8)`. Angus uses the blacksmith sprite at source `5`, atlas cell `(1,0)`, and stands at `(11,-7)` with vendor and dialogue metadata set on that marker.
+
 ## Base Layer Tile Custom Data
 
 On tiles in each `*-base` layer, set custom data keys in the TileSet.

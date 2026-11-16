@@ -125,7 +125,7 @@ Use `Extract` only to bootstrap or intentionally reset source tiles from an atla
 4. Run `Validate`, then switch the atlas to `packed` when its source tiles are ready.
 
 Atlas dimensions are strict: `width = columns * 64` and `height = rows * 64`. Non-grid images such as portraits and launch art do not belong in this manifest.
-The grass-water atlas is 6x7 tiles (384x448px); its appended door duplicate is at row 7, column 1, with the same `door` terrain and open-door target as the original at row 6, column 4. The seamless wood floor tile occupies zero-based cell `(5, 6)` (row 7, column 6) in that atlas and is marked as `floor`.
+The grass-water atlas is 6x11 tiles (384x704px). Its original 6x7 cells remain in place; the blacksmith-shop 4x4 terrain sheet is appended at atlas rows 8-11. The appended door duplicate remains at row 7, column 1, and the seamless wood floor tile remains at `(5, 6)`.
 `event_triggers_64.png` duplicates the 9x9 `map_transitions_64.png` atlas and is registered as a separate source in the shared `map_markers_64_tileset.tres`. All of its cells default to `marker_type = event_trigger`; configure event metadata on tile alternatives when painting map marker layers.
 
 ## Extending the UI Icon Atlas

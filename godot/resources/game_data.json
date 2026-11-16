@@ -788,6 +788,55 @@
 		}
 	  ]
 	},
+	"angus": {
+	  "id": "angus",
+	  "title": "Angus the Blacksmith",
+	  "pages": [
+		{
+		  "text": "Name's Angus. I keep Forest Town's arms and armor in good repair. The forge is hot and the racks are stocked with practical gear.",
+		  "choices": [
+			{
+			  "label": "What do you make here?",
+			  "next_page": 1
+			},
+			{
+			  "label": "What do you sell?",
+			  "next_page": 2
+			},
+			{
+			  "label": "Farewell",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "I shape iron into dependable blades, mend armor, and keep the town's tools from falling apart. That forge and those racks are where the work gets done.",
+		  "choices": [
+			{
+			  "label": "Back",
+			  "next_page": 0
+			},
+			{
+			  "label": "Farewell",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "Nothing too fancy: daggers, short blades, spears, and one-handed axes, along with light and medium armor. No heavy plate here.",
+		  "choices": [
+			{
+			  "label": "Back",
+			  "next_page": 0
+			},
+			{
+			  "label": "Farewell",
+			  "end": true
+			}
+		  ]
+		}
+	  ]
+	},
 	"gord": {
 	  "id": "gord",
 	  "title": "Gord the Rogue",
@@ -913,6 +962,24 @@
 		"fireball-scroll",
 		"healing-potion",
 		"magic-potion"
+	  ]
+	},
+	"angus": {
+	  "id": "angus",
+	  "display_name": "Angus the Blacksmith",
+	  "starting_gold": 200,
+	  "buy_price_multiplier": 1.0,
+	  "sell_price_multiplier": 1.0,
+	  "starting_inventory_item_ids": [
+		"dagger",
+		"short-sword",
+		"spear",
+		"one-handed-axe",
+		"leather-armor",
+		"leather-helm",
+		"chain-mail",
+		"small-shield",
+		"metal-shield"
 	  ]
 	},
 	"mira": {
