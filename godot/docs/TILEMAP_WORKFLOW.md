@@ -247,6 +247,8 @@ If the active party is at max size, bringing a reserve member requires selecting
 
 The `map_markers_64_tileset.tres` TileSet contains both the unit marker atlas and the `general_items_64.png` atlas. Godot assigns one TileSet resource to a TileMapLayer, so both atlases are sources in that shared TileSet. Paint item source tiles directly onto a map's `*-markers` layer, such as `forest-town-markers`.
 
+The `Ritual Altar (Left)` and `Ritual Altar (Right)` cosmetic tiles are adjacent halves; paint them side by side to form the two-cell altar.
+
 General item tiles use these custom data keys:
 
 - `marker_type`: `chest`, `sign`, `trap`, or `cosmetic`
