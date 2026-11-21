@@ -25,6 +25,14 @@ public partial class QuestChecks : Node
         Check(elderNpcId == "forest-elder" && elderDialogueId == "forest-elder"
             && questGiverId == elderNpcId,
             "Elder Rowan's NPC ID, dialogue ID, and quest giver ID must match.");
+        var elderDialogue = gameData.GetDialogue(elderDialogueId);
+        var elderPages = (Godot.Collections.Array)elderDialogue["pages"];
+        var completionPageIndex = (int)(Variant)quest["completion_page"];
+        Check(completionPageIndex >= 0
+            && completionPageIndex < elderPages.Count
+            && (string)((Dictionary)elderPages[completionPageIndex])["text"]
+                == "Thank you for saving Forest Town, brave adventurers. We are forever indebted to you.",
+            "Completing the necromancer quest must lead to Elder Rowan's thank-you dialogue.");
 
         Check(manager.TryAcceptQuest(QuestId, defeatedEnemiesByMap), "The party must be able to accept the quest.");
         Check(manager.IsAccepted(QuestId) && !manager.IsReadyToTurnIn(QuestId),

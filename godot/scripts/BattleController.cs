@@ -8073,7 +8073,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
             if (action == "claim_quest")
             {
-                ClaimQuestReward(GetString(selectedChoice, "quest_id", ""));
+                var questId = GetString(selectedChoice, "quest_id", "");
+                if (ClaimQuestReward(questId))
+                {
+                    var quest = _gameData.GetQuest(questId);
+                    if (quest.ContainsKey("completion_page"))
+                    {
+                        var completionPage = GetInt(quest, "completion_page", -1);
+                        if (completionPage < 0 || completionPage >= pages.Count)
+                        {
+                            GD.PushError($"Quest '{questId}' references an invalid completion dialogue page.");
+                        }
+                        else
+                        {
+                            pageIndex = completionPage;
+                            continue;
+                        }
+                    }
+                }
+
                 break;
             }
 
@@ -8146,40 +8164,43 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _persistence.PersistSaveGame(false);
     }
 
-    private void ClaimQuestReward(string questId)
+    private bool ClaimQuestReward(string questId)
     {
         if (_questManager == null || !_questManager.IsReadyToTurnIn(questId))
         {
             RejectPlayerAction("This quest is not ready to turn in.");
-            return;
+            return false;
         }
 
         if (!_questManager.TryGetRewardData(questId, out var goldReward, out var itemRewards))
         {
             RejectPlayerAction("The quest reward could not be granted. Please report this issue.");
-            return;
+            return false;
         }
 
         var totalGold = (long)_partyGold + goldReward;
         if (totalGold > int.MaxValue)
         {
             RejectPlayerAction("The party cannot carry any more gold to claim this reward.");
-            return;
+            return false;
         }
 
         if (!_questManager.TryMarkCompleted(questId))
         {
             RejectPlayerAction("This quest reward has already been claimed.");
-            return;
+            return false;
         }
 
         _partyGold = (int)totalGold;
         _partyInventoryItemIds.AddRange(itemRewards);
         var quest = _gameData.GetQuest(questId);
+        var questName = GetString(quest, "title", questId);
+        _hud?.ShowCombatBanner($"Quest Completed: {questName}", new Color(0.3f, 1.0f, 0.45f, 1.0f));
         _hud?.AddCombatLogEntry(
-            $"Quest completed: {GetString(quest, "title", questId)}. Reward: {_questManager.GetRewardSummary(questId)}.");
+            $"Quest completed: {questName}. Reward: {_questManager.GetRewardSummary(questId)}.");
         SyncHudFromGameState();
         _persistence.PersistSaveGame(false);
+        return true;
     }
 
     private static void AddNpcDialogueActionChoices(

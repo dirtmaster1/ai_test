@@ -738,6 +738,7 @@
       "id": "defeat-necromancer",
       "title": "The Necromancer",
       "giver_npc_id": "forest-elder",
+      "completion_page": 3,
       "description": "Defeat the necromancer who is raising the dead in the graveyard.",
       "objectives": [
         {
@@ -889,6 +890,15 @@
 			},
 			{
 			  "label": "Understood",
+			  "end": true
+			}
+		  ]
+		},
+		{
+		  "text": "Thank you for saving Forest Town, brave adventurers. We are forever indebted to you.",
+		  "choices": [
+			{
+			  "label": "Farewell",
 			  "end": true
 			}
 		  ]
