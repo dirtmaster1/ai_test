@@ -214,6 +214,7 @@ public partial class BattleController
             actor.MarkAbilityCooldownOnly(profile.ActionId, profile.CooldownTurns);
         }
 
+        _combatEffectsDirector?.PlayUtility(CellCenter(cell), profile.ActionType == "disarm_trap");
         _hud?.ShowCombatBanner(message, new Color(0.3f, 1.0f, 0.45f));
         _hud?.AddCombatLogEntry($"{actor.UnitName}: {message}");
         SaveMapInteractionStateForCurrentMap();

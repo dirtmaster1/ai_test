@@ -4757,6 +4757,26 @@ public partial class HudController : Control
         return $"{name} [{type}]";
     }
 
+    public void ShowIdentifiedItemGlint(string itemId)
+    {
+        if (!_inventoryItemList.IsVisibleInTree()) return;
+        for (int index = 0; index < _inventoryItemList.ItemCount; index++)
+        {
+            if (_inventoryItemList.GetItemMetadata(index).AsString() != itemId) continue;
+            var rect = _inventoryItemList.GetItemRect(index);
+            var glint = new Label { Text = "+", MouseFilter = MouseFilterEnum.Ignore,
+                Modulate = new Color("fff1ab"), Position = rect.GetCenter() - new Vector2(6, 16),
+                ZIndex = 2 };
+            glint.AddThemeFontSizeOverride("font_size", 24);
+            _inventoryItemList.AddChild(glint);
+            var tween = glint.CreateTween().SetParallel();
+            tween.TweenProperty(glint, "position:y", glint.Position.Y - 10, 0.48f);
+            tween.TweenProperty(glint, "modulate:a", 0, 0.48f);
+            tween.Chain().TweenCallback(Callable.From(glint.QueueFree));
+            break;
+        }
+    }
+
     private static string BuildItemDetail(Dictionary item, bool equipped)
     {
         var id = GetString(item, "id", "item");

@@ -93,14 +93,17 @@ public partial class CombatEffectsDirector : Node2D
                     return;
                 }
 
-                PlayImpact(target.Position, impactColor);
+                if (isMagical) Cue(CombatEffectVisual.Mark.ArcaneHit, target.Position, new Color("99ddff"), 0.32f);
+                else PlayImpact(target.Position, impactColor);
+                if (actionId == "pin") Cue(CombatEffectVisual.Mark.Pin, target.Position, impactColor);
                 target.FlashFocusHighlight(new Color("ff5e57"), 0.32f);
                 ShowFloatingText(target.Position, damage > 0 ? $"-{damage}" : "BLOCK", damage > 0 ? new Color("ff766d") : new Color("b9c5d8"));
             });
         }
         else
         {
-            PlaySlash(attacker.Position, target.Position, actionId == "poison-strike" ? new Color("73d66f") : new Color("ffe1a3"));
+            PlaySlash(attacker.Position, target.Position, actionId == "shadow-strike" ? new Color("b8a2dd") : new Color("e3e0d9"));
+            if (actionId == "poison-strike") Cue(CombatEffectVisual.Mark.Drops, target.Position, new Color("95e264"));
             PlayImpact(target.Position, actionId == "poison-strike" ? new Color("62c95e") : new Color("ffb55e"));
             target.FlashFocusHighlight(new Color("ff5e57"), 0.32f);
             ShowFloatingText(target.Position, damage > 0 ? $"-{damage}" : "BLOCK", damage > 0 ? new Color("ff766d") : new Color("b9c5d8"));
@@ -122,6 +125,61 @@ public partial class CombatEffectsDirector : Node2D
         ShowFloatingText(target.Position, $"+{amount}", new Color("8ff0b2"));
     }
 
+    public void PlayHealingSpell(Unit caster, Unit target, int amount, bool greater)
+    {
+        if (!IsUsable(caster) || !IsUsable(target))
+            return;
+        var direction = (target.Position - caster.Position).Normalized();
+        caster.FaceDirection(direction);
+        var mint = new Color("8affe1");
+        var hand = caster.Position + (direction == Vector2.Zero ? Vector2.Right : direction) * 13 + Vector2.Up * 7;
+        AnimateAndFree(CreateVisual(CombatEffectVisual.EffectKind.HealGather, hand, mint), 0.20f, 1);
+        var at = target.Position;
+        void Pulse() => AnimateAndFree(CreateVisual(CombatEffectVisual.EffectKind.HealPulse, at, mint), 0.62f, 1);
+        var sequence = CreateTween();
+        sequence.TweenInterval(ScaleDuration(0.16f));
+        sequence.TweenCallback(Callable.From(() =>
+        {
+            Pulse();
+            ShowFloatingText(at, $"+{amount}", mint);
+        }));
+        if (greater)
+        {
+            sequence.TweenInterval(ScaleDuration(0.34f));
+            sequence.TweenCallback(Callable.From(Pulse));
+        }
+    }
+
+    public void PlayFireball(Vector2 from, Vector2 center, float cellSize, Vector2[] cells,
+        Godot.Collections.Dictionary<Vector2, int> hits)
+    {
+        var direction = (center - from).Normalized();
+        var sequence = CreateTween();
+        sequence.TweenInterval(ScaleDuration(0.15f));
+        sequence.TweenCallback(Callable.From(() => PlayProjectile(from + direction * 14, center,
+            new Color("ff802f"), "fireball", () =>
+        {
+            var wave = CreateVisual(CombatEffectVisual.EffectKind.FireFront, center, Colors.White);
+            wave.Cells = cells;
+            wave.Radius = cellSize / 2;
+            var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://assets/vfx/combat/fire_front.gdshader") };
+            wave.Material = material;
+            var extent = 0f;
+            foreach (var cell in cells)
+                extent = Mathf.Max(extent, center.DistanceTo(cell) + cellSize * 0.71f);
+            // Snapshot results, not Unit references: defeated units may already have left the tree.
+            var spread = wave.CreateTween().SetParallel();
+            const float speed = 560;
+            spread.TweenMethod(Callable.From<float>(r => material.SetShaderParameter("front", r)),
+                0f, extent + 90, ScaleDuration((extent + 90) / speed));
+            foreach (var hit in hits)
+                spread.TweenCallback(Callable.From(() => ShowFloatingText(hit.Key,
+                    hit.Value > 0 ? $"-{hit.Value}" : "IMMUNE", new Color("ff966e"))))
+                    .SetDelay(ScaleDuration(center.DistanceTo(hit.Key) / speed));
+            spread.Chain().TweenCallback(Callable.From(wave.QueueFree));
+        })));
+    }
+
     public void PlayCleansing(Unit target)
     {
         if (!IsUsable(target))
@@ -130,10 +188,7 @@ public partial class CombatEffectsDirector : Node2D
         }
 
         var color = new Color("74e6b2");
-        PlayRing(target.Position, color, 34.0f, 0.36f);
-        PlayRing(target.Position, new Color("c7ffe3"), 54.0f, 0.56f);
-        PlayImpact(target.Position, color, 0.72f);
-        PlaySpriteEffect("holy_aura", target.Position, Colors.White, 1.15f);
+        Cue(CombatEffectVisual.Mark.Cleanse, target.Position, color);
         target.FlashFocusHighlight(color, 0.56f);
         ShowFloatingText(target.Position, "CLEANSED", new Color("a5ffd0"));
     }
@@ -146,10 +201,7 @@ public partial class CombatEffectsDirector : Node2D
         }
 
         var color = new Color("ffd36b");
-        PlayRing(target.Position, color, 40.0f, 0.42f);
-        PlayRing(target.Position, new Color("fff0b0"), 78.0f, 0.72f);
-        PlayImpact(target.Position, new Color("fff0b0"), 1.12f);
-        PlaySpriteEffect("holy_aura", target.Position, Colors.White, 1.8f);
+        Cue(CombatEffectVisual.Mark.Revive, target.Position, color, 0.78f);
         target.FlashFocusHighlight(new Color("ffe79a"), 0.78f);
         ShowFloatingText(target.Position, "REVIVED", new Color("fff0b0"));
     }
@@ -157,8 +209,7 @@ public partial class CombatEffectsDirector : Node2D
     public void PlayBlessing(Vector2 center, float radius)
     {
         var color = new Color("f5d477");
-        PlayArea(center, radius, color, "BLESSING", "blessing");
-        PlayRing(center, new Color("b5edff"), Mathf.Max(28.0f, radius * 0.72f), 0.76f);
+        Cue(CombatEffectVisual.Mark.Sigil, center, color, 0.72f);
     }
 
     public void PlayDamageResult(Unit target, int damage, Color color)
@@ -180,21 +231,27 @@ public partial class CombatEffectsDirector : Node2D
             return;
         }
 
-        var effect = label switch
+        CombatEffectVisual.Mark? mark = label switch
         {
-            "ASLEEP" => "sleep",
-            "ROOTED" => "web",
-            "GUARD" or "PROTECTED" or "TAUNTED" => "guard_aura",
-            _ => "holy_aura",
+            "ASLEEP" => CombatEffectVisual.Mark.Sleep,
+            "ROOTED" => CombatEffectVisual.Mark.Bind,
+            "GUARD" or "PROTECTED" => CombatEffectVisual.Mark.Shield,
+            "TAUNTED" => CombatEffectVisual.Mark.Alert,
+            "BLESSED" => CombatEffectVisual.Mark.Sigil,
+            _ => null,
         };
-        PlaySpriteEffect(effect, target.Position, Colors.White, 1.0f);
-        PlayRing(target.Position, color, 30.0f, 0.46f);
+        if (mark.HasValue) Cue(mark.Value, target.Position, color);
         target.FlashFocusHighlight(color, 0.5f);
         ShowFloatingText(target.Position, label, color.Lightened(0.25f));
     }
 
     public void PlayArea(Vector2 center, float radius, Color color, string label = "", string actionId = "")
     {
+        if (actionId is "taunt" or "protection")
+        {
+            PlayRing(center, color, radius, 0.48f);
+            return;
+        }
         var effect = actionId switch
         {
             "fireball" => "fireball",
@@ -233,8 +290,11 @@ public partial class CombatEffectsDirector : Node2D
             return;
         }
 
-        PlaySpriteEffect(label == "GUARD" ? "guard_aura" : "holy_aura", caster.Position, Colors.White, 1.2f);
-        PlayRing(caster.Position, color, 52.0f, 0.62f);
+        if (label == "GUARD")
+        {
+            PlaySpriteEffect("guard_aura", caster.Position, Colors.White, 0.76f);
+            Cue(CombatEffectVisual.Mark.Shield, caster.Position, color);
+        }
         caster.FlashFocusHighlight(color, 0.6f);
         ShowFloatingText(caster.Position, label, color.Lightened(0.25f));
     }
@@ -269,7 +329,6 @@ public partial class CombatEffectsDirector : Node2D
     {
         var visual = CreateVisual(CombatEffectVisual.EffectKind.Slash, to, color);
         visual.Direction = (to - from).Normalized();
-        AddAnimatedEffect(visual, "weapon_slash", Colors.White, 1.0f, visual.Direction.Angle() + Mathf.Pi / 4.0f);
         visual.QueueRedraw();
         AnimateAndFree(visual, 0.24f, 1.15f);
     }
@@ -430,13 +489,18 @@ public partial class CombatEffectVisual : Node2D
         Slash,
         Impact,
         Ring,
-        SpriteOnly
+        SpriteOnly,
+        HealGather,
+        HealPulse,
+        FireFront,
+        ActionMark
     }
 
     public EffectKind Kind { get; set; }
     public Color EffectColor { get; set; } = Colors.White;
     public Vector2 Direction { get; set; } = Vector2.Right;
     public float Radius { get; set; } = 32.0f;
+    public Vector2[] Cells { get; set; }
 
     private float _progress;
     public float Progress
@@ -457,6 +521,42 @@ public partial class CombatEffectVisual : Node2D
 
         switch (Kind)
         {
+            case EffectKind.ActionMark: DrawActionMark(); break;
+            case EffectKind.FireFront:
+                foreach (var cell in Cells)
+                    DrawRect(new Rect2(cell - Position - Vector2.One * Radius, Vector2.One * Radius * 2), Colors.White);
+                break;
+            case EffectKind.HealGather:
+            case EffectKind.HealPulse:
+                var gather = Kind == EffectKind.HealGather;
+                var opacity = gather ? alpha : Mathf.Clamp(alpha * 3, 0, 1);
+                var mint = new Color(EffectColor, opacity);
+                var white = new Color(Colors.White, opacity);
+                var outline = new Color(new Color("16685e"), opacity);
+                for (var i = 0; i < 7; i++)
+                {
+                    var angle = Mathf.Tau * i / 7;
+                    var p = gather ? Vector2.Right.Rotated(angle) * (12 * alpha)
+                        : new Vector2(Mathf.Cos(angle) * (26 - 5 * _progress),
+                            20 - _progress * 45 + 4 * Mathf.Sin(angle));
+                    DrawRect(new Rect2(p.Round(), gather ? new Vector2(3, 4) : new Vector2(5, 6)),
+                        i % 2 == 0 ? mint : white);
+                }
+                var glint = new Vector2(0, gather ? 0 : 13 - 30 * _progress).Round();
+                var arm = gather ? 2 : 10;
+                var halfWidth = gather ? 1 : 3;
+                var bar = new Rect2(glint - new Vector2(arm, halfWidth), new Vector2(2 * arm + 1, 2 * halfWidth + 1));
+                var stem = new Rect2(glint - new Vector2(halfWidth, arm), new Vector2(bar.Size.Y, bar.Size.X));
+                if (!gather)
+                {
+                    DrawRect(bar.Grow(2), outline);
+                    DrawRect(stem.Grow(2), outline);
+                }
+                DrawRect(bar, mint);
+                DrawRect(stem, mint);
+                DrawRect(bar.Grow(-1), white);
+                DrawRect(stem.Grow(-1), white);
+                break;
             case EffectKind.Projectile:
                 DrawLine(-Direction * 30.0f, Direction * 5.0f, new Color(EffectColor, alpha * 0.28f), 12.0f, true);
                 DrawCircle(Vector2.Zero, 8.0f, color);

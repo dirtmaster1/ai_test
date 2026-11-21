@@ -26,6 +26,8 @@ Mark a run as BLOCKER FAIL if any of these occur:
 
 ## Test Environment
 
+For combat-effect changes, build the C# project and run `godot --path . --script tests/combat_effects_test.gd` with rendering enabled. This checks animation and cleanup in a viewport; a headless run cannot verify the pixels. When reviewing clips, compare Lightning Bolt with its resolved line, Rain of Arrows with its affected tiles, and Teleport with the transported unit's two endpoints.
+
 - OS: Windows 10 and Windows 11.
 - Resolution targets: 1920x1080 and 2560x1440.
 - Session lengths: 10m smoke, 30m normal, 60m endurance.

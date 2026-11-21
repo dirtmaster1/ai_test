@@ -1787,6 +1787,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _hud?.AddCombatLogEntry($"{actor.UnitName} identifies {GetString(itemData, "name", "an unidentified item")}.");
         CancelAttackMode(false);
         SyncHudFromGameState();
+        _hud?.ShowIdentifiedItemGlint(itemId);
         if (_flowState == BattleFlowState.Combat)
         {
             ApplyActionResult(ResolveSuccessfulAction(profile.ActionType));
@@ -2406,7 +2407,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     blessedNames.Add(unit.UnitName);
                 }
 
-                _combatEffectsDirector?.PlayBlessing(target.Position, areaRadius * CellSize);
                 resultText = $"{string.Join(", ", blessedNames)} gained {statusName.ToLowerInvariant()} protection for {durationTurns} turns.";
                 return true;
             default:
@@ -2556,7 +2556,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("8f72e8"), "SLEEP", actionProfile.ActionId);
+        _combatEffectsDirector?.PlayField(actionProfile.ActionId, AreaCellCenters(centerCell, radius));
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
 
         var log = $"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", sleptUnits)} fall asleep for {durationTurns} turns.";
@@ -2574,6 +2574,19 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         SyncHudFromGameState();
         QueueRedraw();
         return true;
+    }
+
+    private Vector2[] AreaCellCenters(Vector2I center, int radius)
+    {
+        var cells = new List<Vector2>();
+        for (int y = -radius; y <= radius; y++)
+        for (int x = -radius; x <= radius; x++)
+        {
+            var cell = center + new Vector2I(x, y);
+            if (IsInBounds(cell) && Unit.IsWithinRange(center, cell, radius))
+                cells.Add(CellCenter(cell));
+        }
+        return cells.ToArray();
     }
 
     private bool TryCastAreaAttackAtCell(Unit caster, Vector2I centerCell, ActionProfile actionProfile)
@@ -2598,7 +2611,23 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var actionData = GetActionData(actionProfile.ActionId, out _);
         var damageType = GetString(actionData, "damage_type", "magic");
         var affected = new List<string>();
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant(), actionProfile.ActionId);
+        var fireball = actionProfile.ActionId == "fireball";
+        var blastCells = new List<Vector2>();
+        var fireHits = new Godot.Collections.Dictionary<Vector2, int>();
+        if (fireball)
+        {
+            caster.FaceDirection(CellCenter(centerCell) - caster.Position);
+            var radius = actionProfile.AreaRadius;
+            for (var y = -radius; y <= radius; y++)
+            for (var x = -radius; x <= radius; x++)
+            {
+                var cell = centerCell + new Vector2I(x, y);
+                if (IsInBounds(cell) && Unit.IsWithinRange(centerCell, cell, radius))
+                    blastCells.Add(CellCenter(cell));
+            }
+        }
+        else
+            _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant(), actionProfile.ActionId);
         foreach (var unit in _allUnits)
         {
             if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), actionProfile.AreaRadius))
@@ -2606,8 +2635,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
+            var hitPosition = CellCenter(unit.GetClosestCell(centerCell));
             var damageDealt = unit.ApplyDamage(actionProfile.Damage);
-            _combatEffectsDirector?.PlayDamageResult(unit, damageDealt, new Color("ff6847"));
+            if (fireball)
+                fireHits[hitPosition] = damageDealt;
+            else
+                _combatEffectsDirector?.PlayDamageResult(unit, damageDealt, new Color("ff6847"));
             var outcome = unit.IsDead ? " and is defeated" : "";
             if (damageDealt > 0 && !unit.IsDead)
             {
@@ -2618,6 +2651,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
             affected.Add($"{unit.UnitName} takes {damageDealt}{outcome}");
         }
+
+        if (fireball)
+            _combatEffectsDirector?.PlayFireball(caster.Position, CellCenter(centerCell), CellSize, blastCells.ToArray(), fireHits);
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, centerCell.ToString());
@@ -2673,7 +2709,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("7fd6ff"), "WEB", actionProfile.ActionId);
+        _combatEffectsDirector?.PlayField(actionProfile.ActionId, AreaCellCenters(centerCell, radius));
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, centerCell.ToString());
         var affectedText = rootedUnits.Count == 0
             ? "No units were caught in the web."
@@ -2709,6 +2745,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var affected = new HashSet<string>(System.StringComparer.Ordinal);
         var results = new List<string>();
 
+        var boltPath = new List<Vector2>();
         for (var distance = 1; distance <= actionProfile.Range; distance++)
         {
             var cell = caster.GridPos + direction * distance;
@@ -2717,6 +2754,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 break;
             }
 
+            boltPath.Add(CellCenter(cell));
             foreach (var unit in _allUnits)
             {
                 if (!IsUsableUnit(unit) || unit.IsDead || !unit.OccupiesCell(cell)
@@ -2742,7 +2780,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("9deaff"), "LIGHTNING", actionProfile.ActionId);
+        caster.FaceDirection(direction);
+        _combatEffectsDirector?.PlayLightning(caster.Position, boltPath.ToArray());
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, targetCell.ToString());
         var affectedText = results.Count == 0
             ? "No units were struck."
@@ -2794,7 +2833,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         archer.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("ffb65c"), "RAIN OF ARROWS", actionProfile.ActionId);
+        archer.FaceDirection(CellCenter(centerCell) - archer.Position);
+        _combatEffectsDirector?.PlayField(actionProfile.ActionId, AreaCellCenters(centerCell, radius));
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, archer, actionProfile.ActionId, centerCell.ToString());
         _hud?.AddCombatLogEntry(
             $"{archer.UnitName} uses {actionProfile.ActionName}, attacking all units within {radius} tiles for up to {weaponDamage} weapon damage. " +
@@ -2870,11 +2910,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 return RejectPlayerAction("Choose an unoccupied reachable tile within 5 tiles.");
             }
 
+            var departure = thief.Position;
             if (!TryMoveUnit(thief, targetCell))
             {
                 return RejectPlayerAction("That destination cannot be reached.");
             }
 
+            _combatEffectsDirector?.PlayShadowDeparture(thief, departure);
             _shadowStrikeDestination = targetCell;
             _awaitingShadowStrikeAttack = true;
             ShowActionTargetingPrompt(actionProfile, 2);
@@ -2968,8 +3010,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(fromCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT", actionProfile.ActionId);
-        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT", actionProfile.ActionId);
+        _combatEffectsDirector?.PlayTeleport(CellCenter(fromCell), CellCenter(targetCell));
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, teleportTarget.UnitId);
         _hud?.AddCombatLogEntry(
             $"{caster.UnitName} casts Teleport, moving {teleportTarget.UnitName} from {fromCell} to {targetCell}." +
@@ -3042,6 +3083,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (destinationCell != attacker.GridPos)
         {
             var fromCell = attacker.GridPos;
+            _combatEffectsDirector?.PlayChargeTrail(CellCenter(fromCell), CellCenter(destinationCell), cellsUsed, ExplorationStepSeconds * cellsUsed);
             await attacker.AnimateWalkToAsync(destinationCell, ExplorationStepSeconds * cellsUsed);
             if (!TryMoveUnit(attacker, destinationCell))
             {
@@ -4313,11 +4355,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
+        var shadowDeparture = actor.Position;
         if (!foundDestination || !TryMoveUnit(actor, destination))
         {
             return false;
         }
 
+        _combatEffectsDirector?.PlayShadowDeparture(actor, shadowDeparture);
         var multiplier = Mathf.Max(1, GetInt(GetActionData(actionProfile.ActionId, out _), "damage_multiplier", 4));
         return TryAttackTarget(
             actor,
@@ -4820,7 +4864,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var healed = target.ApplyHealing(effectiveHealAmount);
-        _combatEffectsDirector?.PlayHeal(actor, target, healed);
+        if (actionId is "lesser-heal" or "greater-heal")
+            _combatEffectsDirector?.PlayHealingSpell(actor, target, healed, actionId == "greater-heal");
+        else
+            _combatEffectsDirector?.PlayHeal(actor, target, healed);
 
         if (_flowState == BattleFlowState.Combat)
         {
@@ -5541,6 +5588,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             if (damage > 0)
             {
                 var message = $"{activeUnit.UnitName} takes {damage} damage from {statusName.ToLowerInvariant()}";
+                if (GetString(entry, "status_id", "") == "poison")
+                    _combatEffectsDirector?.PlayPoisonTick(activeUnit.Position);
                 if (stacks > 1)
                 {
                     message += $" ({stacks} stacks)";
