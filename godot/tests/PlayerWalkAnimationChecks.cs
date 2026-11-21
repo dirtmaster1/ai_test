@@ -7,8 +7,44 @@ public partial class PlayerWalkAnimationChecks : Node
 {
     private int _failures;
     private int _checks;
+    private bool _started;
+    private bool _isFinished;
+    private int _exitCode;
+    private Task _runTask;
 
-    public override async void _Ready()
+    public override void _Ready()
+    {
+        Run();
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_runTask != null && _runTask.IsFaulted)
+        {
+            GD.PushError(_runTask.Exception.ToString());
+            _failures++;
+            _exitCode = 1;
+            _isFinished = true;
+            _runTask = null;
+        }
+    }
+
+    public void Run()
+    {
+        if (_started)
+        {
+            return;
+        }
+
+        _started = true;
+        _runTask = RunChecksAsync();
+    }
+
+    public bool IsFinished() => _isFinished;
+
+    public int ExitCode() => _exitCode;
+
+    private async Task RunChecksAsync()
     {
         try
         {
@@ -16,6 +52,7 @@ public partial class PlayerWalkAnimationChecks : Node
             foreach (var classId in new[] { "warrior", "wizard", "ranger", "cleric", "thief" })
             {
                 CheckDirectionalPlayback(classId);
+                CheckActionPlayback(classId);
                 CheckFrameRateIndependence(classId);
                 await CheckTween(classId);
                 await CheckExploration(classId);
@@ -30,7 +67,8 @@ public partial class PlayerWalkAnimationChecks : Node
         }
 
         GD.Print($"{(_failures == 0 ? "PASS" : "FAIL")}: {_checks} player walk animation checks, {_failures} failures");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        _exitCode = _failures == 0 ? 0 : 1;
+        _isFinished = true;
     }
 
     private Unit CreateUnit(string classId, string team = "player", string customTexture = "")
@@ -104,6 +142,41 @@ public partial class PlayerWalkAnimationChecks : Node
             unit.BeginWalking(Vector2.Right);
         }
         CheckAssets(classId);
+        unit.Free();
+    }
+
+    private void CheckActionPlayback(string classId)
+    {
+        var unit = CreateUnit(classId);
+        var sprite = unit.GetNode<Sprite2D>("Sprite2D");
+        var directions = new[] { Vector2.Up, Vector2.Right, Vector2.Down, Vector2.Left };
+
+        for (var row = 0; row < directions.Length; row++)
+        {
+            unit.FaceDirection(directions[row]);
+            unit.PlayAttackAnimation();
+            Check(sprite.Texture.ResourcePath.EndsWith($"{classId}_attack.png"),
+                $"{classId}: attack animation selects its action sheet");
+            Check(sprite.RegionRect == new Rect2(0, row * 64, 64, 64),
+                $"{classId}: attack animation uses direction row {row}");
+            unit._Process(0.08);
+            Check(sprite.RegionRect.Position.X == 64, $"{classId}: attack animation advances frames");
+            unit._Process(0.5);
+            Check(sprite.Texture.ResourcePath.EndsWith($"{classId}_idle.png"),
+                $"{classId}: attack animation returns to idle");
+
+            unit.PlayCastAnimation();
+            Check(sprite.Texture.ResourcePath.EndsWith($"{classId}_cast.png"),
+                $"{classId}: cast animation selects its action sheet");
+            Check(sprite.RegionRect == new Rect2(0, row * 64, 64, 64),
+                $"{classId}: cast animation uses direction row {row}");
+            unit._Process(0.08);
+            Check(sprite.RegionRect.Position.X == 64, $"{classId}: cast animation advances frames");
+            unit._Process(0.5);
+            Check(sprite.Texture.ResourcePath.EndsWith($"{classId}_idle.png"),
+                $"{classId}: cast animation returns to idle");
+        }
+
         unit.Free();
     }
 
@@ -194,10 +267,12 @@ public partial class PlayerWalkAnimationChecks : Node
     {
         var enemy = CreateUnit("warrior", "enemy");
         enemy.BeginWalking(Vector2.Right);
+        enemy.PlayAttackAnimation();
         Check(enemy.GetNode<Sprite2D>("Sprite2D").Texture.ResourcePath.EndsWith("units_2_64.png"), "Enemy visuals remain unchanged");
         enemy.Free();
         var custom = CreateUnit("wizard", customTexture: "res://assets/tilesets/units_2_64.png");
         custom.BeginWalking(Vector2.Right);
+        custom.PlayCastAnimation();
         custom.SetWalkPosition(custom.Position + Vector2.Right * 64);
         Check(!custom.GetNode<Sprite2D>("Sprite2D").RegionEnabled, "Custom sprites still override walk sheets");
         custom.Setup(new Dictionary { ["id"] = "ranger", ["class_id"] = "ranger" });
@@ -235,6 +310,33 @@ public partial class PlayerWalkAnimationChecks : Node
                 Check(clearBorder, $"{classId}: row {row} frame {frame} has no edge clipping");
             }
             Check(hashes.Count == 8, $"{classId}: row {row} contains eight distinct poses");
+        }
+
+        CheckActionSheet(classId, "attack");
+        CheckActionSheet(classId, "cast");
+    }
+
+    private void CheckActionSheet(string classId, string action)
+    {
+        var texture = GD.Load<Texture2D>($"res://assets/animations/player/{classId}_{action}.png");
+        Check(texture != null && texture.GetSize() == new Vector2(384, 256),
+            $"{classId}: {action} sheet is six 64px frames across four directions");
+        if (texture == null || texture.GetSize() != new Vector2(384, 256))
+        {
+            return;
+        }
+
+        var image = texture.GetImage();
+        for (var row = 0; row < 4; row++)
+        {
+            var hashes = new System.Collections.Generic.HashSet<string>();
+            for (var frame = 0; frame < 6; frame++)
+            {
+                var cell = image.GetRegion(new Rect2I(frame * 64, row * 64, 64, 64));
+                Check(cell.GetUsedRect().HasArea(), $"{classId}: {action} row {row} frame {frame} is not empty");
+                hashes.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cell.GetData())));
+            }
+            Check(hashes.Count > 1, $"{classId}: {action} row {row} contains animated poses");
         }
     }
 

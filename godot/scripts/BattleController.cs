@@ -2467,7 +2467,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(caster.Position, radius * CellSize, new Color("5aaeff"));
+        _combatEffectsDirector?.PlayArea(caster.Position, radius * CellSize, new Color("5aaeff"), actionId: actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
 
         if (buffedUnits.Count > 0)
@@ -2556,7 +2556,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("8f72e8"), "SLEEP");
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("8f72e8"), "SLEEP", actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, caster.UnitId);
 
         var log = $"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", sleptUnits)} fall asleep for {durationTurns} turns.";
@@ -2598,7 +2598,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var actionData = GetActionData(actionProfile.ActionId, out _);
         var damageType = GetString(actionData, "damage_type", "magic");
         var affected = new List<string>();
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant());
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant(), actionProfile.ActionId);
         foreach (var unit in _allUnits)
         {
             if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), actionProfile.AreaRadius))
@@ -2673,7 +2673,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("7fd6ff"), "WEB");
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("7fd6ff"), "WEB", actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, centerCell.ToString());
         var affectedText = rootedUnits.Count == 0
             ? "No units were caught in the web."
@@ -2742,7 +2742,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("9deaff"), "LIGHTNING");
+        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("9deaff"), "LIGHTNING", actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, targetCell.ToString());
         var affectedText = results.Count == 0
             ? "No units were struck."
@@ -2794,7 +2794,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         archer.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("ffb65c"), "RAIN OF ARROWS");
+        _combatEffectsDirector?.PlayArea(CellCenter(centerCell), radius * CellSize, new Color("ffb65c"), "RAIN OF ARROWS", actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, archer, actionProfile.ActionId, centerCell.ToString());
         _hud?.AddCombatLogEntry(
             $"{archer.UnitName} uses {actionProfile.ActionName}, attacking all units within {radius} tiles for up to {weaponDamage} weapon damage. " +
@@ -2840,7 +2840,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         warrior.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(warrior.Position, radius * CellSize, new Color("f4a46b"), "TAUNT");
+        _combatEffectsDirector?.PlayArea(warrior.Position, radius * CellSize, new Color("f4a46b"), "TAUNT", actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, warrior, actionProfile.ActionId, warrior.UnitId);
         _hud?.AddCombatLogEntry(
             $"{warrior.UnitName} uses {actionProfile.ActionName}. " +
@@ -2968,8 +2968,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         caster.MarkAbilityUsed(actionProfile.ActionId, actionProfile.CooldownTurns);
-        _combatEffectsDirector?.PlayArea(CellCenter(fromCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT");
-        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT");
+        _combatEffectsDirector?.PlayArea(CellCenter(fromCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT", actionProfile.ActionId);
+        _combatEffectsDirector?.PlayArea(CellCenter(targetCell), CellSize / 2.0f, new Color("a88cff"), "TELEPORT", actionProfile.ActionId);
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, actionProfile.ActionId, teleportTarget.UnitId);
         _hud?.AddCombatLogEntry(
             $"{caster.UnitName} casts Teleport, moving {teleportTarget.UnitName} from {fromCell} to {targetCell}." +

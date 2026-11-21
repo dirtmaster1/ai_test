@@ -3,13 +3,69 @@ using Godot;
 public partial class CombatEffectsDirector : Node2D
 {
     private const float PopupRise = 34.0f;
+    private const float EffectAnimationDuration = 16.0f / 24.0f;
     private GameOptionsManager _gameOptionsManager;
+    private EventBus _eventBus;
+    private GameData _gameData;
+    private readonly System.Collections.Generic.Dictionary<string, SpriteFrames> _effectFrames = new();
 
     public override void _Ready()
     {
         ZIndex = 100;
         ZAsRelative = false;
         _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
+        _eventBus = GetNode<EventBus>("/root/EventBus");
+        _eventBus.ActionUsed += OnActionUsed;
+        _gameData = GetNode<GameData>("/root/GameData");
+    }
+
+    public override void _ExitTree()
+    {
+        if (_eventBus != null)
+        {
+            _eventBus.ActionUsed -= OnActionUsed;
+        }
+    }
+
+    private void OnActionUsed(Variant unitValue, Variant actionIdValue, Variant payload)
+    {
+        if (unitValue.VariantType != Variant.Type.Object
+            || unitValue.AsGodotObject() is not Unit actor
+            || !IsUsable(actor)
+            || actionIdValue.VariantType != Variant.Type.String)
+        {
+            return;
+        }
+
+        var actionId = actionIdValue.AsString();
+        if (actionId == "identify")
+        {
+            return;
+        }
+
+        var spell = _gameData.GetSpell(actionId);
+        if (spell.Count > 0)
+        {
+            actor.PlayCastAnimation();
+            return;
+        }
+
+        var ability = _gameData.GetAbility(actionId);
+        if (ability.Count == 0 || !ability.ContainsKey("type"))
+        {
+            return;
+        }
+
+        var actionType = ((Variant)ability["type"]).AsString();
+        if (actionType is "attack" or "ranged" or "charge" or "pin"
+            or "rain_of_arrows" or "shadow_strike" or "poison_strike")
+        {
+            actor.PlayAttackAnimation();
+        }
+        else
+        {
+            actor.PlayCastAnimation();
+        }
     }
 
     public void PlayAttack(Unit attacker, Unit target, string actionId, bool isMagical, int damage)
@@ -19,12 +75,18 @@ public partial class CombatEffectsDirector : Node2D
             return;
         }
 
+        attacker.FaceDirection(target.Position - attacker.Position);
         attacker.FlashFocusHighlight(isMagical ? new Color("8f7cff") : new Color("ffd27a"), 0.28f);
         var isProjectile = isMagical || attacker.DistanceToUnitAt(attacker.GridPos, target) > 1 || actionId is "ranged" or "pin";
         if (isProjectile)
         {
             var impactColor = isMagical ? new Color("b5a6ff") : new Color("ffcf73");
-            PlayProjectile(attacker.Position, target.Position, isMagical ? new Color("a895ff") : new Color("f3d08a"), () =>
+            PlayProjectile(
+                attacker.Position,
+                target.Position,
+                isMagical ? new Color("a895ff") : new Color("f3d08a"),
+                isMagical ? "arcane_projectile" : "arrow",
+                () =>
             {
                 if (!IsUsable(target))
                 {
@@ -52,8 +114,10 @@ public partial class CombatEffectsDirector : Node2D
             return;
         }
 
+        caster.FaceDirection(target.Position - caster.Position);
         PlayRing(caster.Position, new Color("78e6b0"), 22.0f, 0.34f);
         PlayRing(target.Position, new Color("9dffd0"), 42.0f, 0.52f);
+        PlaySpriteEffect("holy_aura", target.Position, Colors.White, 1.2f);
         target.FlashFocusHighlight(new Color("83f0b7"), 0.5f);
         ShowFloatingText(target.Position, $"+{amount}", new Color("8ff0b2"));
     }
@@ -69,6 +133,7 @@ public partial class CombatEffectsDirector : Node2D
         PlayRing(target.Position, color, 34.0f, 0.36f);
         PlayRing(target.Position, new Color("c7ffe3"), 54.0f, 0.56f);
         PlayImpact(target.Position, color, 0.72f);
+        PlaySpriteEffect("holy_aura", target.Position, Colors.White, 1.15f);
         target.FlashFocusHighlight(color, 0.56f);
         ShowFloatingText(target.Position, "CLEANSED", new Color("a5ffd0"));
     }
@@ -84,6 +149,7 @@ public partial class CombatEffectsDirector : Node2D
         PlayRing(target.Position, color, 40.0f, 0.42f);
         PlayRing(target.Position, new Color("fff0b0"), 78.0f, 0.72f);
         PlayImpact(target.Position, new Color("fff0b0"), 1.12f);
+        PlaySpriteEffect("holy_aura", target.Position, Colors.White, 1.8f);
         target.FlashFocusHighlight(new Color("ffe79a"), 0.78f);
         ShowFloatingText(target.Position, "REVIVED", new Color("fff0b0"));
     }
@@ -91,7 +157,7 @@ public partial class CombatEffectsDirector : Node2D
     public void PlayBlessing(Vector2 center, float radius)
     {
         var color = new Color("f5d477");
-        PlayArea(center, radius, color, "BLESSING");
+        PlayArea(center, radius, color, "BLESSING", "blessing");
         PlayRing(center, new Color("b5edff"), Mathf.Max(28.0f, radius * 0.72f), 0.76f);
     }
 
@@ -114,13 +180,44 @@ public partial class CombatEffectsDirector : Node2D
             return;
         }
 
+        var effect = label switch
+        {
+            "ASLEEP" => "sleep",
+            "ROOTED" => "web",
+            "GUARD" or "PROTECTED" or "TAUNTED" => "guard_aura",
+            _ => "holy_aura",
+        };
+        PlaySpriteEffect(effect, target.Position, Colors.White, 1.0f);
         PlayRing(target.Position, color, 30.0f, 0.46f);
         target.FlashFocusHighlight(color, 0.5f);
         ShowFloatingText(target.Position, label, color.Lightened(0.25f));
     }
 
-    public void PlayArea(Vector2 center, float radius, Color color, string label = "")
+    public void PlayArea(Vector2 center, float radius, Color color, string label = "", string actionId = "")
     {
+        var effect = actionId switch
+        {
+            "fireball" => "fireball",
+            "sleep" => "sleep",
+            "web" => "web",
+            "lightning-bolt" => "lightning",
+            "rain-of-arrows" => "arrow",
+            "teleport" => "teleport",
+            "blessing" => "holy_aura",
+            "protection" or "taunt" => "guard_aura",
+            _ => label switch
+            {
+                "FIREBALL" => "fireball",
+                "SLEEP" => "sleep",
+                "WEB" => "web",
+                "LIGHTNING" => "lightning",
+                "RAIN OF ARROWS" => "arrow",
+                "TELEPORT" => "teleport",
+                "BLESSING" => "holy_aura",
+                _ => "guard_aura",
+            },
+        };
+        PlaySpriteEffect(effect, center, Colors.White, Mathf.Clamp(radius / 32.0f, 0.8f, 4.0f));
         PlayRing(center, color, Mathf.Max(32.0f, radius), 0.58f);
         PlayImpact(center, color, 1.45f);
         if (!string.IsNullOrEmpty(label))
@@ -136,6 +233,7 @@ public partial class CombatEffectsDirector : Node2D
             return;
         }
 
+        PlaySpriteEffect(label == "GUARD" ? "guard_aura" : "holy_aura", caster.Position, Colors.White, 1.2f);
         PlayRing(caster.Position, color, 52.0f, 0.62f);
         caster.FlashFocusHighlight(color, 0.6f);
         ShowFloatingText(caster.Position, label, color.Lightened(0.25f));
@@ -146,10 +244,11 @@ public partial class CombatEffectsDirector : Node2D
         PlayBuff(actor, new Color("70b7ff"), "GUARD");
     }
 
-    private void PlayProjectile(Vector2 from, Vector2 to, Color color, System.Action onImpact)
+    private void PlayProjectile(Vector2 from, Vector2 to, Color color, string effect, System.Action onImpact)
     {
         var visual = CreateVisual(CombatEffectVisual.EffectKind.Projectile, from, color);
         visual.Direction = (to - from).Normalized();
+        AddAnimatedEffect(visual, effect, Colors.White, 1.0f, visual.Direction.Angle() + Mathf.Pi / 4.0f);
         visual.QueueRedraw();
 
         var distance = from.DistanceTo(to);
@@ -170,6 +269,7 @@ public partial class CombatEffectsDirector : Node2D
     {
         var visual = CreateVisual(CombatEffectVisual.EffectKind.Slash, to, color);
         visual.Direction = (to - from).Normalized();
+        AddAnimatedEffect(visual, "weapon_slash", Colors.White, 1.0f, visual.Direction.Angle() + Mathf.Pi / 4.0f);
         visual.QueueRedraw();
         AnimateAndFree(visual, 0.24f, 1.15f);
     }
@@ -178,7 +278,80 @@ public partial class CombatEffectsDirector : Node2D
     {
         var visual = CreateVisual(CombatEffectVisual.EffectKind.Impact, position, color);
         visual.Scale = Vector2.One * scale;
+        AddAnimatedEffect(visual, "impact", color, scale);
         AnimateAndFree(visual, 0.38f, 1.35f);
+    }
+
+    private void PlaySpriteEffect(string effect, Vector2 position, Color color, float scale = 1.0f)
+    {
+        var visual = CreateVisual(CombatEffectVisual.EffectKind.SpriteOnly, position, Colors.White);
+        visual.Scale = Vector2.One * scale;
+        AddAnimatedEffect(visual, effect, color);
+    }
+
+    private void AddAnimatedEffect(
+        CombatEffectVisual visual,
+        string effect,
+        Color color,
+        float scale = 1.0f,
+        float rotation = 0.0f)
+    {
+        var frames = GetEffectFrames(effect);
+        if (frames == null)
+        {
+            visual.QueueFree();
+            return;
+        }
+
+        var sprite = new AnimatedSprite2D
+        {
+            SpriteFrames = frames,
+            Animation = "default",
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            Modulate = color,
+            Scale = Vector2.One * scale,
+            Rotation = rotation,
+            ZIndex = 1,
+        };
+        visual.AddChild(sprite);
+        sprite.AnimationFinished += visual.QueueFree;
+        sprite.SpeedScale = EffectAnimationDuration / ScaleDuration(EffectAnimationDuration);
+        sprite.Play("default");
+    }
+
+    private SpriteFrames GetEffectFrames(string effect)
+    {
+        if (_effectFrames.TryGetValue(effect, out var frames))
+        {
+            return frames;
+        }
+
+        var path = $"res://assets/vfx/combat/{effect}.png";
+        var atlas = GD.Load<Texture2D>(path);
+        if (atlas == null || atlas.GetSize() != new Vector2(256, 256))
+        {
+            GD.PushError($"Invalid combat VFX sheet at '{path}': expected a 256x256, 4x4 sheet.");
+            return null;
+        }
+
+        frames = new SpriteFrames();
+        frames.Clear("default");
+        frames.SetAnimationSpeed("default", 24.0f);
+        frames.SetAnimationLoopMode("default", SpriteFrames.LoopMode.None);
+        for (var row = 0; row < 4; row++)
+        {
+            for (var column = 0; column < 4; column++)
+            {
+                frames.AddFrame("default", new AtlasTexture
+                {
+                    Atlas = atlas,
+                    Region = new Rect2(column * 64, row * 64, 64, 64),
+                });
+            }
+        }
+
+        _effectFrames.Add(effect, frames);
+        return frames;
     }
 
     private void PlayRing(Vector2 position, Color color, float radius, float duration)
@@ -256,7 +429,8 @@ public partial class CombatEffectVisual : Node2D
         Projectile,
         Slash,
         Impact,
-        Ring
+        Ring,
+        SpriteOnly
     }
 
     public EffectKind Kind { get; set; }
@@ -306,6 +480,8 @@ public partial class CombatEffectVisual : Node2D
                 var ringRadius = Mathf.Lerp(Radius * 0.35f, Radius, _progress);
                 DrawArc(Vector2.Zero, ringRadius, 0.0f, Mathf.Tau, 48, color, 5.0f, true);
                 DrawArc(Vector2.Zero, ringRadius * 0.72f, 0.0f, Mathf.Tau, 48, new Color(pale, alpha * 0.55f), 2.0f, true);
+                break;
+            case EffectKind.SpriteOnly:
                 break;
         }
     }

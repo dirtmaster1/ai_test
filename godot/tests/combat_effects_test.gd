@@ -27,10 +27,18 @@ func run_test() -> void:
     var target := unit_scene.instantiate() as Node2D
     viewport.add_child(attacker)
     viewport.add_child(target)
-    attacker.call("Setup", {"id": "knight", "team": "player"})
+    attacker.call("Setup", {"id": "wizard", "class_id": "wizard", "team": "player"})
     target.call("Setup", {"id": "enemy", "team": "enemy"})
     attacker.call("SetGridPos", Vector2i(1, 1))
     target.call("SetGridPos", Vector2i(2, 1))
+    var attacker_sprite := attacker.get_node("Sprite2D") as Sprite2D
+    var event_bus := root.get_node("EventBus")
+    event_bus.emit_signal("ActionUsed", attacker, "fireball", "target")
+    check(attacker_sprite.texture.resource_path.ends_with("wizard_cast.png"),
+        "Spell action-used signals must play the caster's class cast animation")
+    event_bus.emit_signal("ActionUsed", attacker, "melee", "target")
+    check(attacker_sprite.texture.resource_path.ends_with("wizard_attack.png"),
+        "Physical ability action-used signals must play the class attack animation")
     attacker.hide()
     target.hide()
     await RenderingServer.frame_post_draw

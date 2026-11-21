@@ -30,6 +30,8 @@ public partial class Unit : Node2D
     private const int AtlasTileSize = 64;
     private const string UnitAtlasPath = "res://assets/tilesets/units_2_64.png";
     private const int DirectionalWalkFrameCount = 8;
+    private const int DirectionalActionFrameCount = 6;
+    private const float ActionAnimationFrameDuration = 0.075f;
     private const float WalkStopGraceSeconds = 0.08f;
     public const int MaxMovementPerTurn = 3;
     public const int DefendDamageReductionPercent = 10;
@@ -119,15 +121,21 @@ public partial class Unit : Node2D
     private Texture2D _unitAtlas;
     private Texture2D _walkAtlas;
     private Texture2D _walkIdleAtlas;
+    private Texture2D _attackAtlas;
+    private Texture2D _castAtlas;
+    private Texture2D _actionAnimationAtlas;
     private Texture2D _customSpriteTexture;
     private string _spriteTexturePath = "";
     private bool _isWalking;
+    private bool _isActionAnimating;
     private GameOptionsManager _gameOptionsManager;
     private int _walkAnimationFrame = -1;
     private int _walkAnimationDirection;
+    private int _actionAnimationFrame;
     private float _walkCycleDistance;
     private float _walkDistance;
     private float _walkStopRemaining;
+    private float _actionAnimationElapsed;
     private bool _spriteFlipH;
     private bool _spriteFlipV;
     private bool _spriteTranspose;
@@ -166,6 +174,24 @@ public partial class Unit : Node2D
 
     public override void _Process(double delta)
     {
+        if (_isActionAnimating)
+        {
+            _actionAnimationElapsed += (float)delta;
+            var frame = Mathf.FloorToInt(_actionAnimationElapsed / ActionAnimationFrameDuration);
+            if (frame >= DirectionalActionFrameCount)
+            {
+                _isActionAnimating = false;
+                _actionAnimationAtlas = null;
+                _actionAnimationFrame = 0;
+                ConfigureSpriteRegion();
+            }
+            else if (frame != _actionAnimationFrame)
+            {
+                _actionAnimationFrame = frame;
+                ConfigureSpriteRegion();
+            }
+        }
+
         if (!_isWalking || _walkStopRemaining <= 0.0f)
         {
             return;
@@ -194,9 +220,15 @@ public partial class Unit : Node2D
         var walkAtlasPath = Team == "player" ? GetWalkAtlasPath(ClassId) : "";
         _walkAtlas = null;
         _walkIdleAtlas = null;
+        _attackAtlas = null;
+        _castAtlas = null;
+        _actionAnimationAtlas = null;
         _isWalking = false;
+        _isActionAnimating = false;
         _walkDistance = 0.0f;
         _walkStopRemaining = 0.0f;
+        _actionAnimationElapsed = 0.0f;
+        _actionAnimationFrame = 0;
         _walkAnimationDirection = 2;
         _walkAnimationFrame = -1;
         if (!string.IsNullOrEmpty(walkAtlasPath))
@@ -208,12 +240,21 @@ public partial class Unit : Node2D
             }
             var idlePath = $"res://assets/animations/player/{ClassId}_idle.png";
             _walkIdleAtlas = GD.Load<Texture2D>(idlePath);
+            _attackAtlas = GD.Load<Texture2D>($"res://assets/animations/player/{ClassId}_attack.png");
+            _castAtlas = GD.Load<Texture2D>($"res://assets/animations/player/{ClassId}_cast.png");
             if (_walkIdleAtlas == null || _walkIdleAtlas.GetSize() != new Vector2(64, 256)
                 || _walkAtlas == null || _walkAtlas.GetSize() != new Vector2(512, 256))
             {
                 GD.PushError($"Invalid directional animation assets for '{ClassId}': expected 512x256 walk and 64x256 idle sheets.");
                 _walkAtlas = null;
                 _walkIdleAtlas = null;
+            }
+            if (_attackAtlas == null || _attackAtlas.GetSize() != new Vector2(384, 256)
+                || _castAtlas == null || _castAtlas.GetSize() != new Vector2(384, 256))
+            {
+                GD.PushError($"Invalid directional action animation assets for '{ClassId}': expected 384x256 attack and cast sheets.");
+                _attackAtlas = null;
+                _castAtlas = null;
             }
             _walkCycleDistance = ClassId switch
             {
@@ -1186,6 +1227,29 @@ public partial class Unit : Node2D
         SyncWorldPosition();
     }
 
+    public void FaceDirection(Vector2 direction)
+    {
+        if (Team != "player" || _walkAtlas == null || direction.IsZeroApprox())
+        {
+            return;
+        }
+
+        _walkAnimationDirection = Mathf.Abs(direction.X) >= Mathf.Abs(direction.Y)
+            ? direction.X >= 0.0f ? 1 : 3
+            : direction.Y >= 0.0f ? 2 : 0;
+        ConfigureSpriteRegion();
+    }
+
+    public void PlayAttackAnimation()
+    {
+        PlayActionAnimation(_attackAtlas);
+    }
+
+    public void PlayCastAnimation()
+    {
+        PlayActionAnimation(_castAtlas);
+    }
+
     public void BeginWalking(Vector2 direction)
     {
         if (Team != "player" || _walkAtlas == null)
@@ -1246,6 +1310,20 @@ public partial class Unit : Node2D
         _isWalking = false;
         _walkStopRemaining = 0.0f;
         _walkAnimationFrame = -1;
+        ConfigureSpriteRegion();
+    }
+
+    private void PlayActionAnimation(Texture2D atlas)
+    {
+        if (Team != "player" || atlas == null || _customSpriteTexture != null)
+        {
+            return;
+        }
+
+        _actionAnimationAtlas = atlas;
+        _actionAnimationFrame = 0;
+        _actionAnimationElapsed = 0.0f;
+        _isActionAnimating = true;
         ConfigureSpriteRegion();
     }
 
@@ -1573,6 +1651,20 @@ public partial class Unit : Node2D
             _sprite.Texture = _customSpriteTexture;
             _sprite.RegionEnabled = false;
             ConfigureSpriteTransform(Vector2.One * (FootprintSize * CellSize) / _customSpriteTexture.GetSize());
+            return;
+        }
+
+        if (_isActionAnimating && _actionAnimationAtlas != null)
+        {
+            _sprite.Texture = _actionAnimationAtlas;
+            _sprite.RegionEnabled = true;
+            ConfigureSpriteTransform(Vector2.One * FootprintSize);
+            _sprite.RegionRect = new Rect2(
+                _actionAnimationFrame * AtlasTileSize,
+                _walkAnimationDirection * AtlasTileSize,
+                AtlasTileSize,
+                AtlasTileSize
+            );
             return;
         }
 
