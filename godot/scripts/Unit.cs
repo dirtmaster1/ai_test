@@ -49,6 +49,14 @@ public partial class Unit : Node2D
     public string UnitName { get; private set; } = "";
     public string ClassId { get; private set; } = "";
     public string Race { get; private set; } = "human";
+    public bool IsBoss { get; private set; }
+    public bool IsUndead => string.Equals(Race, "undead", System.StringComparison.OrdinalIgnoreCase);
+    private Array<string> _actionImmunities = new();
+
+    public bool IsImmuneToAction(string actionId) =>
+        (actionId == "sleep" && IsUndead)
+        || _actionImmunities.Contains(actionId);
+
     public string Team { get; private set; } = "player";
     public Vector2I GridPos { get; private set; } = Vector2I.Zero;
     public int FootprintSize { get; private set; } = 1;
@@ -210,6 +218,8 @@ public partial class Unit : Node2D
         UnitName = GetString(config, "name", "Unit");
         ClassId = GetString(config, "class_id", UnitId).Trim().ToLowerInvariant();
         Race = GetString(config, "race", "human");
+        IsBoss = GetBool(config, "is_boss", false);
+        _actionImmunities = TryGetStringArray(config, "action_immunities");
         Team = GetString(config, "team", "player");
         FootprintSize = Mathf.Clamp(GetInt(config, "footprint_size", 1), 1, 4);
         _spriteTexturePath = GetString(config, "sprite_texture", "");
@@ -293,10 +303,7 @@ public partial class Unit : Node2D
         PrimaryAbilityId = GetString(config, "primary_ability_id", Team == "enemy" ? "melee" : "melee");
         AbilityIds = BuildAbilityIds(config, PrimaryAbilityId);
         LastLevelUpLearnedAbilityIds.Clear();
-        if (Level >= 3)
-        {
-            LearnConfiguredLevelUpAbility(3, false);
-        }
+        RestoreConfiguredLevelUpAbilities();
         BaseUnarmedDamage = Mathf.Max(1, GetInt(config, "base_unarmed_damage", 1));
         WeaponAttackDamageBonus = GetInt(config, "weapon_attack_damage_bonus", GetInt(config, "base_attack_damage", 0));
         WeaponAttackRangeBonus = GetInt(config, "weapon_attack_range_bonus", GetInt(config, "base_attack_range", 1));
@@ -852,9 +859,10 @@ public partial class Unit : Node2D
             Level += 1;
             levelsGained += 1;
             ApplyLevelUpGains();
-            if (Level == 3)
+            var abilityId = GetString(GetConfiguredLevelUpAbilities(), Level.ToString(), "");
+            if (LearnAbility(abilityId))
             {
-                LearnConfiguredLevelUpAbility(Level, true);
+                LastLevelUpLearnedAbilityIds.Add(abilityId);
             }
             if (Level == 4 || Level == 9)
             {
@@ -1127,10 +1135,7 @@ public partial class Unit : Node2D
 
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
         LastLevelUpLearnedAbilityIds.Clear();
-        if (Level >= 3)
-        {
-            LearnConfiguredLevelUpAbility(3, false);
-        }
+        RestoreConfiguredLevelUpAbilities();
         if (Team != "enemy")
         {
             ActionPoints = Mathf.Max(0, GetInt(snapshot, "action_points", ActionPoints));
@@ -1585,6 +1590,14 @@ public partial class Unit : Node2D
 
     public override void _Draw()
     {
+        if (IsBoss && !IsDead)
+        {
+            var badge = new Vector2(-10, -(CellSize * FootprintSize * 0.5f) - 23);
+            DrawColoredPolygon(new[] { badge, badge + new Vector2(5, 4), badge + new Vector2(10, -3),
+                badge + new Vector2(15, 4), badge + new Vector2(20, 0), badge + new Vector2(17, 9),
+                badge + new Vector2(3, 9) }, new Color("ffcf55"));
+        }
+
         if (_isSelectionHighlighted && !IsDead)
         {
             var rect = new Rect2(
@@ -1967,27 +1980,22 @@ public partial class Unit : Node2D
         MagicPointRegenPerTurn += 1;
     }
 
-    private void LearnConfiguredLevelUpAbility(int level, bool trackAsNewlyLearned)
+    private Dictionary GetConfiguredLevelUpAbilities()
     {
-        if (Team != "player")
-        {
-            return;
-        }
+        var gameData = Team == "player" && IsInsideTree() ? GetNodeOrNull<GameData>("/root/GameData") : null;
+        return gameData == null ? new Dictionary() : GetDictionary(gameData.GetCharacterTemplate(ClassId), "level_up_abilities");
+    }
 
-        var gameData = GetNodeOrNull<GameData>("/root/GameData");
-        if (gameData == null)
+    private void RestoreConfiguredLevelUpAbilities()
+    {
+        var abilities = GetConfiguredLevelUpAbilities();
+        foreach (var key in abilities.Keys)
         {
-            return;
+            if (int.TryParse(key.AsString(), out var level) && level <= Level)
+            {
+                LearnAbility(abilities[key].AsString());
+            }
         }
-
-        var levelUpAbilities = GetDictionary(gameData.GetCharacterTemplate(ClassId), "level_up_abilities");
-        var abilityId = GetString(levelUpAbilities, level.ToString(), "");
-        if (!LearnAbility(abilityId) || !trackAsNewlyLearned)
-        {
-            return;
-        }
-
-        LastLevelUpLearnedAbilityIds.Add(abilityId);
     }
 
     public bool TryAllocateStatPoint(string statName)

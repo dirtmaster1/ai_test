@@ -147,6 +147,7 @@ public partial class HudController : Control
         ["blessing-scroll"] = new(6, 7),
         ["web-scroll"] = new(0, 9),
         ["greater-heal-scroll"] = new(1, 9),
+        ["mass-heal-scroll"] = new(1, 9),
         ["lightning-bolt-scroll"] = new(2, 9),
         ["identify-scroll"] = new(3, 9),
         ["teleport-scroll"] = new(4, 9),
@@ -161,6 +162,7 @@ public partial class HudController : Control
         ["ranged"] = new(5, 5),
         ["defend"] = new(6, 5),
         ["charge"] = new(0, 6),
+        ["weapon-sweep"] = new(0, 10),
         ["pin"] = new(1, 6),
         ["rain-of-arrows"] = new(2, 6),
         ["shadow-strike"] = new(3, 6),
@@ -169,6 +171,7 @@ public partial class HudController : Control
         ["poison"] = new(5, 6),
         ["lesser-heal"] = new(0, 4),
         ["greater-heal"] = new(1, 4),
+        ["mass-heal"] = new(1, 4),
         ["magic-missile"] = new(2, 4),
         ["sleep"] = new(3, 4),
         ["protection"] = new(4, 4),
@@ -1790,7 +1793,10 @@ public partial class HudController : Control
     private bool CanDropInventoryItemToSlot(string itemId, string targetSlotKey)
     {
         return _inventoryItemsById.TryGetValue(itemId, out var itemData)
-            && EquipmentSlotRules.CanEquipItemToSlot(itemData, targetSlotKey);
+            && EquipmentSlotRules.CanEquipItemToSlot(itemData, targetSlotKey)
+            && (GetString(itemData, "slot", "") != "1-handed"
+                || !_inventoryEquippedEntriesBySlot.TryGetValue(targetSlotKey == "1-handed-a" ? "1-handed-b" : "1-handed-a", out var otherItem)
+                || EquipmentSlotRules.CanPairHandItems(_inventoryClassEquipmentRules, itemData, otherItem));
     }
 
     private bool CanEquipInventoryItemToSlot(Dictionary itemData, string targetSlotKey)
@@ -5496,7 +5502,7 @@ public partial class HudController : Control
                 TextureNormal = unit.GetTurnOrderIcon(),
                 IgnoreTextureSize = true,
                 StretchMode = TextureButton.StretchModeEnum.Scale,
-                TooltipText = $"{unit.UnitName} - {unit.Team}\nClick to focus",
+                TooltipText = $"{unit.UnitName} - {(unit.IsBoss ? "Boss" : unit.Team)}\nClick to focus",
                 FocusMode = FocusModeEnum.None,
                 MouseDefaultCursorShape = CursorShape.PointingHand
             };

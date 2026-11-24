@@ -179,9 +179,15 @@ public partial class BattleController
                 return;
             }
 
-            if (actionProfile.ActionType == "taunt")
+            if (actionProfile.ActionType == "mass_heal")
             {
-                if (TryUseTaunt(active, actionProfile))
+                ResolvePlayerMassHeal(active, actionProfile);
+                return;
+            }
+
+            if (actionProfile.ActionType is "taunt" or "weapon_sweep")
+            {
+                if (TryUseImmediateAreaAbility(active, actionProfile))
                 {
                     ApplyActionResult(ResolveSuccessfulAction("attack"));
                     CancelAttackMode(false);
@@ -646,7 +652,7 @@ public partial class BattleController
         if (!TryGetDirectionalActionTargetCell(active, delta, actionProfile, out var targetCell))
         {
             RejectPlayerAction(actionProfile.ActionType == "heal"
-                ? "No ally in that direction."
+                ? "No healing target in that direction."
                 : "No visible enemy in range in that direction.");
             return;
         }

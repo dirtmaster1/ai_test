@@ -62,6 +62,13 @@ target should leave targeting active for another attempt. Free actions must
 remain usable after the normal action is spent; Fireball can still target empty
 areas and area spells can still affect allies.
 
+Eldius sells the Mass Heal scroll for 300 gp to teach a cleric or healer.
+Selecting Mass Heal in combat immediately restores 8 HP plus the caster's
+healing bonus to wounded allies within 2 tiles (including the caster) and
+deals the same healing power as damage to enemy undead. A successful cast
+costs 10 MP and 1 AP and starts a 3-turn cooldown. Lesser Heal and Greater
+Heal can also target enemy undead, even at full health.
+
 Repeated identical failures must not restart or queue copies of the warning.
 An existing combat/zone banner finishes first, then the latest pending failure
 is shown. Other queued combat/zone banners are preserved.
@@ -73,6 +80,8 @@ godot --headless --path . --script res://tests/action_feedback_test.gd
 godot --headless --path . --script res://tests/utility_abilities_test.gd
 godot --headless --path . --script res://tests/action_feedback_test.gd -- --class-ability-only
 ```
+
+The class-ability check includes the level-5 warrior’s Weapon Sweep reward, HUD activation, friendly fire, immunity, AP cost, and cooldown.
 
 For level-up layout only, run
 `godot --headless --path . --script res://tests/action_feedback_test.gd -- --level-up-only`.

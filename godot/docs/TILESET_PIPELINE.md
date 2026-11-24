@@ -149,7 +149,7 @@ To add artwork without breaking existing icons:
 5. Reimport the PNG in Godot and restart a running game to refresh its cached
    icon textures.
 
-The atlas is now 224x288px. Headgear and the appended 2x2 block use these cells:
+The atlas is 224x352px. Selected icon cells:
 
 | Icon ID | Column, row (zero-based) | Human-readable position |
 |---|---|---|
@@ -161,6 +161,7 @@ The atlas is now 224x288px. Headgear and the appended 2x2 block use these cells:
 | `rusty-key` | `(1, 8)` | Row 9, column 2 |
 | `pick-lock` | `(2, 8)` | Row 9, column 3 |
 | `disarm-trap` | `(3, 8)` | Row 9, column 4 |
+| `weapon-sweep` | `(0, 10)` | Row 11, column 1 |
 
 The Healer's Circlet mapping uses the requested first headgear sprite, and the
 Mage's Amulet uses the second. `gold` intentionally replaces the previous

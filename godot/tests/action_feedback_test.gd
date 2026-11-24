@@ -50,6 +50,16 @@ func run_test() -> void:
             print("PASS: Defend indicators clear at combat end and on the unit's next turn")
         quit(0 if defend_failures.is_empty() else 1)
         return
+    if OS.get_cmdline_user_args().has("--boss-immunity-only"):
+        var failures = checks.call("RunBossImmunityChecks")
+        for failure in failures:
+            push_error(failure)
+        checks.queue_free()
+        await process_frame
+        if failures.is_empty():
+            print("PASS: boss classification, per-unit action immunity, targeting, and AI")
+        quit(0 if failures.is_empty() else 1)
+        return
     if OS.get_cmdline_user_args().has("--tactical-ai-only"):
         var tactical_ai_failures = checks.call("RunTacticalAiChecks")
         for failure in tactical_ai_failures:
@@ -87,7 +97,7 @@ func run_test() -> void:
         checks.queue_free()
         await process_frame
         if ability_failures.is_empty():
-            print("PASS: class level-3 abilities unlock and appear with icons and hover details")
+            print("PASS: class ability rewards, Weapon Sweep targeting, damage, AP, cooldown, and immunity")
         quit(0 if ability_failures.is_empty() else 1)
         return
     if OS.get_cmdline_user_args().has("--consumables-only"):

@@ -37,6 +37,7 @@ public partial class ActionFeedbackChecks : BattleController
         SetupFixture();
         CheckExtendedIconAtlas();
         CheckHealerServices();
+        CheckMassHeal();
         CheckCombatHealingSpells();
         CheckDeadPartyDefeat();
         Cleanup();
@@ -55,6 +56,7 @@ public partial class ActionFeedbackChecks : BattleController
     {
         SetupFixture();
         CheckClassAbilityUnlocks();
+        CheckWeaponSweep();
         Cleanup();
         return _failures;
     }
@@ -63,6 +65,14 @@ public partial class ActionFeedbackChecks : BattleController
     {
         SetupFixture();
         CheckAiActionScoring();
+        Cleanup();
+        return _failures;
+    }
+
+    public Array<string> RunBossImmunityChecks()
+    {
+        SetupFixture();
+        CheckBossImmunities();
         Cleanup();
         return _failures;
     }
@@ -206,11 +216,14 @@ public partial class ActionFeedbackChecks : BattleController
         CheckHealerServices();
         CheckAllowedActions();
         CheckNewHealerSpell();
+        CheckMassHeal();
         CheckAreaSpellEffects();
         CheckRainOfArrows();
+        CheckWeaponSweep();
         CheckShadowStrike();
         CheckTauntTargeting();
         CheckAiActionScoring();
+        CheckBossImmunities();
         CheckIdentifyInventoryFlow();
         CheckCombatEndClearsCombatStatuses();
         CheckCombatTargetClickReleaseDoesNotMoveInExploration();
@@ -422,6 +435,7 @@ public partial class ActionFeedbackChecks : BattleController
             ["rain-of-arrows"] = new(2, 6),
             ["shadow-strike"] = new(3, 6),
             ["taunt"] = new(6, 6),
+            ["weapon-sweep"] = new(0, 10),
             ["remove-malady"] = new(4, 8),
             ["resurrect"] = new(5, 8),
             ["blessing"] = new(6, 8)
@@ -433,8 +447,8 @@ public partial class ActionFeedbackChecks : BattleController
             Check(icon != null && icon.Region == expectedRegion,
                 $"{entry.Key} must use its assigned 32px atlas cell");
             if (icon == null) continue;
-            Check(icon.Atlas.GetWidth() == 224 && icon.Atlas.GetHeight() == 320,
-                "Extended icon atlas must retain seven columns and contain ten rows");
+            Check(icon.Atlas.GetWidth() == 224 && icon.Atlas.GetHeight() == 352,
+                "Extended icon atlas must retain seven columns and contain eleven rows");
             using var image = icon.Atlas.GetImage();
             using var cell = image.GetRegion(new Rect2I(entry.Value * 32, new Vector2I(32, 32)));
             Check(!cell.IsInvisible(), $"{entry.Key} atlas cell must contain visible artwork");
@@ -531,13 +545,39 @@ public partial class ActionFeedbackChecks : BattleController
             && _actor.ArmorClass == baseEquipmentArmorClass,
             "Trailblazer Leggings must grant +1 movement and no armor class.");
 
-        var miloStock = Field<GameData>("_gameData").GetVendorStartingInventory("milo");
+        var shopGameData = Field<GameData>("_gameData");
+        var miloStock = shopGameData.GetVendorStartingInventory("milo");
+        var miloProfile = shopGameData.GetVendorProfile("milo");
+        var bootsOfSpeed = shopGameData.GetItem("boots-of-speed");
+        var everyItemHasBasePrice = true;
+        foreach (var itemKey in shopGameData.Items.Keys)
+        {
+            var itemId = ((Variant)itemKey).AsString();
+            if (ReadInt(shopGameData.GetItem(itemId), "base_price", 0) <= 0)
+            {
+                everyItemHasBasePrice = false;
+                break;
+            }
+        }
         Check(miloStock.Contains("boots-of-speed")
+            && everyItemHasBasePrice
+            && ReadInt(bootsOfSpeed, "base_price", 0) == 150
             && (int)Call("GetItemBuyPrice", "milo", "boots-of-speed") == 150,
-            "Milo's stock must include Boots of Speed for 150 gold.");
+            "All items must define a base price and Milo must sell Boots of Speed for 150 gold.");
+        bootsOfSpeed["base_price"] = 200;
+        Check((int)Call("GetItemBuyPrice", "milo", "boots-of-speed") == 200,
+            "Vendor item prices must be read from the item's game data.");
+        bootsOfSpeed["base_price"] = 150;
+        miloProfile["base_sell_price_multiplier"] = 0.25f;
+        Check((int)Call("GetItemSellPrice", "milo", "boots-of-speed") == 37,
+            "The base sell-price fraction must be read from the vendor's game data.");
+        miloProfile["base_sell_price_multiplier"] = 0.5f;
 
         Reset();
         var gameData = Field<GameData>("_gameData");
+        var warriorConfig = Config(_actor.UnitId, "player", _actor.GridPos);
+        warriorConfig["class_id"] = "warrior";
+        _actor.Setup(warriorConfig);
         gameData.Items["test-odd-offhand-weapon"] = new Dictionary
         {
             { "id", "test-odd-offhand-weapon" },
@@ -554,10 +594,10 @@ public partial class ActionFeedbackChecks : BattleController
             ["1-handed-b"] = "test-odd-offhand-weapon"
         };
         Call("ApplyEquippedItemBonuses", _actor);
-        Check(_actor.WeaponAttackDamageBonus == 8,
-            "Dual wielding must halve off-hand damage and round odd damage down.");
+        Check(_actor.WeaponAttackDamageBonus == 7,
+            "Dual wielding must add 30% of off-hand damage rounded down.");
         Call("ApplyEquippedItemBonuses", _actor);
-        Check(_actor.WeaponAttackDamageBonus == 8,
+        Check(_actor.WeaponAttackDamageBonus == 7,
             "Recalculating dual-wield bonuses must not apply the off-hand penalty repeatedly.");
 
         equippedByUnit[_actor.UnitId] = new System.Collections.Generic.Dictionary<string, string>
@@ -584,6 +624,26 @@ public partial class ActionFeedbackChecks : BattleController
         Check(_enemy.WeaponAttackDamageBonus == 11,
             "The player dual-wield penalty must not change enemy weapon damage.");
         gameData.Items.Remove("test-odd-offhand-weapon");
+
+        var dagger = gameData.GetItem("dagger");
+        foreach (var classId in new[] { "thief", "ranger", "warrior", "wizard", "cleric" })
+        {
+            var config = Config(_actor.UnitId, "player", _actor.GridPos);
+            config["class_id"] = classId;
+            _actor.Setup(config);
+            var slots = equippedByUnit[_actor.UnitId] = new() { ["1-handed-a"] = "dagger" };
+            var allowed = classId is "thief" or "ranger" or "warrior";
+            Check((bool)Call("EquipItemToSpecificSlot", _actor, dagger, "dagger", "1-handed-b") == allowed,
+                $"{classId}: explicit off-hand equip must respect dual-wield proficiency.");
+            slots.Remove("1-handed-b");
+            Check((bool)Call("EquipItemToUnit", _actor, dagger, "dagger")
+                && slots.ContainsKey("1-handed-b") == allowed,
+                $"{classId}: automatic equip must respect the same hand-pair rule.");
+            slots["1-handed-b"] = "dagger";
+            Call("ReturnClassIneligibleEquippedItemsToInventory", _actor);
+            Check(slots.ContainsKey("1-handed-a") && slots.ContainsKey("1-handed-b") == allowed,
+                $"{classId}: loading old equipment must keep only legal hand combinations.");
+        }
     }
 
     private void CheckClassAbilityUnlocks()
@@ -737,7 +797,7 @@ public partial class ActionFeedbackChecks : BattleController
 
         Reset();
         ConfigureActor("wizard", "teleport", "melee");
-        Check((bool)Call("IsValidTeleportTarget", _actor, _ally, _ally.GridPos, 6),
+        Check((bool)Call("IsValidTeleportTarget", _actor, _ally, _ally.GridPos, 6, "teleport"),
             "Teleport may target a living ally as well as an enemy.");
         Call("OnHudAbilityPressed", "teleport");
         var profile = Call("ResolveActionProfile", _actor, "teleport");
@@ -1551,7 +1611,7 @@ public partial class ActionFeedbackChecks : BattleController
         Reset();
         ExpectTargetFailure("magic-missile", new Vector2I(4, 1), "No enemy at that location.");
         Reset();
-        ExpectTargetFailure("lesser-heal", _enemy.GridPos, "Select a living ally to heal.");
+        ExpectTargetFailure("lesser-heal", _enemy.GridPos, "Select a wounded ally or enemy undead.");
         Reset();
         ExpectTargetFailure("lesser-heal", _ally.GridPos, "ally is already at full health.");
         Reset();
@@ -1860,7 +1920,7 @@ public partial class ActionFeedbackChecks : BattleController
             && ((Dictionary)blessingScroll["use_effect"])["spell_id"].AsString() == "blessing"
             && !gameData.HealingServices.ContainsKey("blessing"),
             "Eldius must offer Blessing as a scroll instead of a healing service.");
-        var healingSpellIds = new[] { "remove-malady", "resurrect", "blessing" };
+        var healingSpellIds = new[] { "remove-malady", "resurrect", "blessing", "mass-heal" };
         Check(healingSpellIds.All(spellId => !clericAbilityIds.Contains(spellId)
                 && !wizardAbilityIds.Contains(spellId)
                 && !necromancerAbilityIds.Contains(spellId)),
@@ -1873,13 +1933,14 @@ public partial class ActionFeedbackChecks : BattleController
             "The Blessing scroll must only be learnable by clerics and healers.");
 
         var serviceItems = (Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius");
-        Check(serviceItems.Count == 3
+        Check(serviceItems.Count == 4
             && serviceItems.All(item => item.ContainsKey("price") && item.ContainsKey("icon_id"))
+            && serviceItems.Any(item => item["id"].AsString() == "mass-heal-scroll" && (int)item["price"] == 300)
             && serviceItems.Any(item => item["id"].AsString() == "blessing-scroll"
                 && (int)item["price"] == 100
                 && (int)item["quantity"] == 1)
             && (int)Field<GameData>("_gameData").GetHealingService("resurrect")["price"] == 150,
-            "Eldius's shop must expose two icon-backed healing services and one 100 gp Blessing scroll.");
+            "Eldius must stock both healing services, a 100 gp Blessing scroll and a 300 gp Mass Heal scroll.");
         Call("OpenVendor", "eldius");
         var storeTabs = _testHud.GetNode<TabContainer>("VendorPanel/VendorVBox/StoreTabs");
         Check(storeTabs.Visible
@@ -1910,7 +1971,7 @@ public partial class ActionFeedbackChecks : BattleController
         Call("SyncHudFromGameState");
         var partyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList");
         var fallenPartyCard = partyCards.GetChildren().OfType<PartyCard>()
-            .FirstOrDefault(card => card.UnitId == _ally.UnitId);
+            .LastOrDefault(card => card.UnitId == _ally.UnitId);
         Check(fallenPartyCard != null
             && fallenPartyCard.FindChildren("*", "Label", true, false)
                 .Cast<Label>().Any(label => label.Text == $"{_ally.UnitName} (Dead)"),
@@ -1922,6 +1983,7 @@ public partial class ActionFeedbackChecks : BattleController
             && Field<Array<Dictionary>>("_reservePartyRoster").Count == 0,
             "Fallen party members must not disappear into reserves before they are resurrected.");
         _ally.SetGridPos(new Vector2I(0, 10));
+        ResetBanner();
         Call("BeginHealerServiceTargeting", "resurrect");
         var resurrectionPartyCards = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList")
             .GetChildren().OfType<PartyCard>().ToArray();
@@ -1949,14 +2011,15 @@ public partial class ActionFeedbackChecks : BattleController
             "Resurrection target highlighting must clear after a party member is selected.");
 
         Check((int)Field<int>("_partyGold") == 800
-            && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 3,
-            "Both remaining healing services and the Blessing scroll must remain listed after service use.");
+            && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 4,
+            "Both scrolls and healing services must remain listed after service use.");
         Call("OnHudVendorBuyRequested", "blessing-scroll");
         var partyInventory = (List<string>)PrivateField("_partyInventoryItemIds").GetValue(this);
         Check((int)Field<int>("_partyGold") == 700
             && partyInventory.Contains("blessing-scroll")
-            && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 2,
+            && ((Array<Dictionary>)Call("BuildVendorBuyItemsForHud", "eldius")).Count == 3,
             "The Blessing scroll must be purchasable for 100 gp and leave Eldius's finite stock.");
+        Call("OnHudPartyUnitSelected", _actor.UnitId);
         Call("SyncHudFromGameState");
         Check(!HudField<Button>("_inventoryLearnSpellButton").Visible,
             "The Learn Spell button must stay hidden when the selected party member cannot learn a scroll's spell.");
@@ -1980,6 +2043,11 @@ public partial class ActionFeedbackChecks : BattleController
         Check(Field<bool>("_awaitingHealerServiceTarget") && (int)Field<int>("_partyGold") == 700,
             "An out-of-range service target must not consume gold or end targeting.");
         Call("CancelHealerServiceTargeting");
+        Call("OpenVendor", "eldius");
+        Call("OnHudVendorBuyRequested", "mass-heal-scroll");
+        Call("OnHudUseItemRequested", "mass-heal-scroll");
+        Check(Field<int>("_partyGold") == 400 && _actor.HasAbility("mass-heal") && !partyInventory.Contains("mass-heal-scroll"),
+            "A cleric must be able to buy Mass Heal for 300 gp and learn it from the scroll.");
     }
 
     private void CheckDeadPartyDefeat()
@@ -2035,7 +2103,8 @@ public partial class ActionFeedbackChecks : BattleController
         var deadAllyCard = _testHud.GetNode<VBoxContainer>("PartyPanel/PartyVBox/PartyList")
             .GetChildren().OfType<PartyCard>().Last(card => card.UnitId == _ally.UnitId);
         Check(deadAllyCard.TargetHighlighted
-            && _testHud.GetNode<Label>("CombatBanner/CombatBannerLabel").Text.Contains("Select a highlighted fallen party portrait"),
+            && _testHud.GetNode<Label>("CombatBanner/CombatBannerLabel").Text.Contains(
+                Field<GameData>("_gameData").GetSpell("resurrect")["targeting_prompt"].AsString(), StringComparison.OrdinalIgnoreCase),
             "Combat Resurrection must show the same target guidance and highlight fallen party portraits.");
         Call("OnHudPartyUnitSelected", _ally.UnitId);
         Check(!_ally.IsDead
@@ -2068,11 +2137,12 @@ public partial class ActionFeedbackChecks : BattleController
         ineligibleActorConfig["ability_ids"] = new Array<string> { "remove-malady" };
         ineligibleActorConfig["primary_ability_id"] = "remove-malady";
         _actor.Setup(ineligibleActorConfig);
+        var manaBeforeRejectedCast = _actor.MagicPoints;
         _ally.ApplyStatusEffect("wizard-test-poison", "Poisoned", false, 3, damagePerTurn: 1);
         Call("OnHudAbilityPressed", "remove-malady");
         Check(!Field<bool>("_awaitingPlayerAttackDirection")
             && _ally.HasNegativeStatusEffects()
-            && _actor.MagicPoints == 20
+            && _actor.MagicPoints == manaBeforeRejectedCast
             && _actor.RemainingActionPoints > 0,
             "A wizard must not cast a restricted healing spell even if the spell ID is manually assigned.");
         Reset();
@@ -2260,6 +2330,98 @@ public partial class ActionFeedbackChecks : BattleController
             "Greater Heal must restore 10 HP and spend 4 MP");
     }
 
+    private void CheckBossImmunities()
+    {
+        Reset();
+        var data = GetNode<GameData>("/root/GameData");
+        foreach (var id in new[] { "goblin-chieftain", "necromancer", "spider-queen" })
+        {
+            _enemy.Setup(data.GetCharacterTemplate(id));
+            Check(_enemy.IsBoss && new[] { "pin", "sleep", "web", "teleport" }.All(_enemy.IsImmuneToAction)
+                && !_enemy.IsImmuneToAction("fireball"), $"{id} must resist control but not ordinary damage");
+        }
+
+        _enemy.SetGridPos(new Vector2I(5, 2));
+        var targetCell = _enemy.GridPos + Vector2I.Down; // Inside the Queen's footprint.
+        ConfigureActor("wizard", "teleport", "sleep", "web");
+        var mp = _actor.MagicPoints;
+        var teleport = Call("ResolveActionProfile", _actor, "teleport");
+        Check(!(bool)Call("TryUseTeleportAtCell", _actor, targetCell, teleport)
+            && !Field<bool>("_awaitingTeleportDestination") && _actor.MagicPoints == mp,
+            "Teleport on any boss footprint cell must not select a destination or spend mana");
+        var sleep = Call("ResolveActionProfile", _actor, "sleep");
+        var web = Call("ResolveActionProfile", _actor, "web");
+        Check(!(bool)Call("ValidatePlayerTarget", _actor, sleep, targetCell)
+            && !(bool)Call("ValidatePlayerTarget", _actor, web, targetCell),
+            "An area containing only the immune boss must reject control targeting");
+        _ally.SetGridPos(targetCell + Vector2I.Left);
+        Check((bool)Call("TryCastSleepAtCell", _actor, targetCell, sleep)
+            && _ally.HasStatusEffect("sleep") && !_enemy.HasStatusEffect("sleep"),
+            "Sleep must still affect a susceptible neighbor of a boss");
+        Check((bool)Call("TryCastWebAtCell", _actor, targetCell, web)
+            && _ally.HasStatusEffect("webbed") && !_enemy.HasStatusEffect("webbed"),
+            "Web must still affect a susceptible neighbor of a boss");
+
+        ConfigureActor("ranger", "pin");
+        Field<System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, string>>>("_equippedItemsByUnitId")[_actor.UnitId] =
+            new System.Collections.Generic.Dictionary<string, string> { { "2-handed", "short-bow" } };
+        Call("ApplyEquippedItemBonuses", _actor);
+        var pin = Call("ResolveActionProfile", _actor, "pin");
+        var hp = _enemy.HitPoints;
+        var option = new AiDirector.ActionOption("pin", "pin", 6, true, true);
+        Check(!(bool)Call("CanAiActionTarget", _actor, _enemy, option)
+            && !(bool)Call("CanAiPlanActionOnTarget", _actor, _enemy, option),
+            "AI must not attack or approach an immune Pin target");
+        Check(!(bool)Call("TryUsePinShot", _actor, targetCell, pin) && !_enemy.HasStatusEffect("pinned")
+            && _enemy.HitPoints == hp && _actor.GetAbilityCooldownRemaining("pin") == 0,
+            "Pin immunity must negate the entire action, including damage and cooldown");
+
+        Reset();
+        var config = Config("enemy", "enemy", _enemy.GridPos);
+        config["action_immunities"] = new Array<string> { "fireball" };
+        _enemy.Setup(config);
+        _ally.SetGridPos(_enemy.GridPos + Vector2I.Down);
+        hp = _enemy.HitPoints;
+        Check(!_enemy.IsBoss && (bool)Call("TryCastAreaAttackAtCell", _actor, _enemy.GridPos, Call("ResolveActionProfile", _actor, "fireball"))
+            && _enemy.HitPoints == hp && _ally.HitPoints < _ally.MaxHitPoints,
+            "A non-boss can be configured to ignore an arbitrary spell without suppressing nearby hits");
+        Reset();
+    }
+
+    private void CheckMassHeal()
+    {
+        Reset();
+        ConfigureActor("healer", "mass-heal", "lesser-heal");
+        var undead = Config("enemy", "enemy", new Vector2I(4, 2));
+        undead["race"] = "undead";
+        _enemy.Setup(undead);
+        _actor.ApplyDamage(15);
+        _ally.ApplyDamage(15);
+        _actor.SetEquipmentStatBonuses(0, 0, 2);
+        var ap = _actor.RemainingActionPoints;
+        Call("OnHudAbilityPressed", "mass-heal");
+        Check(_actor.HitPoints == 45 && _ally.HitPoints == 45 && _enemy.HitPoints == 40,
+            "Selecting Mass Heal must restore base 8 plus bonuses to caster and nearby allies, and damage undead equally.");
+        Check(_actor.MagicPoints == 20 && _actor.RemainingActionPoints == ap - 1 && _actor.GetAbilityCooldownRemaining("mass-heal") == 3,
+            "Mass Heal must spend 10 MP and one action and start a three-turn cooldown once per cast.");
+
+        Reset();
+        ConfigureActor("cleric", "mass-heal");
+        _ally.ApplyDamage(15);
+        _ally.SetGridPos(new Vector2I(2, 5));
+        _enemy.SetGridPos(new Vector2I(4, 2));
+        Call("OnHudAbilityPressed", "mass-heal");
+        Check(_ally.HitPoints == 35 && _enemy.HitPoints == 50 && _actor.MagicPoints == 30,
+            "An out-of-radius ally and living enemy cannot trigger Mass Heal or consume resources.");
+
+        Reset();
+        _enemy.Setup(undead);
+        Call("SetSelectedAbilityId", _actor, "lesser-heal");
+        Call("TryResolvePlayerActionAtCell", _actor, _enemy.GridPos);
+        Check(_enemy.HitPoints == 46 && _actor.MagicPoints == 28,
+            "Lesser Heal must allow a full-health undead enemy as a damage target.");
+    }
+
     private void CheckAreaSpellEffects()
     {
         Reset();
@@ -2332,6 +2494,62 @@ public partial class ActionFeedbackChecks : BattleController
             && _log.ItemCount > 0
             && _log.GetItemText(_log.ItemCount - 1).Contains("ally wakes up"),
             "Rain of Arrows must log when it wakes a sleeping unit.");
+    }
+
+    private void CheckWeaponSweep()
+    {
+        const string id = "weapon-sweep";
+        Reset();
+        var config = Config("caster", "player", new Vector2I(2, 2));
+        config["class_id"] = "warrior";
+        config["ability_ids"] = new Array<string> { "melee" };
+        config["level"] = 4;
+        config["action_points"] = 2;
+        config["weapon_attack_damage_bonus"] = 7;
+        _actor.Setup(config);
+        Check(!_actor.HasAbility(id), "Weapon Sweep must not unlock before level 5.");
+        _actor.GrantExperience(_actor.ExperienceToNextLevel);
+        Check(_actor.HasAbility(id) && _actor.LastLevelUpLearnedAbilityIds.Contains(id),
+            "Reaching level 5 must grant Weapon Sweep as a learned ability reward.");
+        Call("RecordLevelUpNotice", _actor, 4, 1, 2, 1, 1, 0);
+        Call("RecordLevelUpLearnedAbilities", _actor);
+        Call("OnHudLevelUpRequested", _actor.UnitId);
+        var overlay = _testHud.GetNode<CenterContainer>("LevelUpOverlay");
+        var reward = overlay.FindChildren("LevelUpLearnedAbility_weapon-sweep", "Button", true, false).FirstOrDefault() as Button;
+        Check(reward?.Text == "Weapon Sweep" && reward.Icon != null,
+            "Level-up must display the named Weapon Sweep reward and its icon.");
+        overlay.Free();
+        Field<System.Collections.Generic.Dictionary<string, Dictionary>>("_pendingLevelUpNoticesByUnitId").Clear();
+
+        _enemy.SetGridPos(new Vector2I(3, 3));
+        _ally.SetGridPos(new Vector2I(1, 2));
+        var selfHp = _actor.HitPoints;
+        var enemyHp = _enemy.HitPoints;
+        var allyHp = _ally.HitPoints;
+        Call("OnHudAbilityPressed", id);
+        Check(_enemy.HitPoints == enemyHp - 6 && _ally.HitPoints == allyHp - 6 && _actor.HitPoints == selfHp,
+            "A 7-damage sweep must deal 6 to adjacent enemies and allies, including diagonals, but never the warrior.");
+        Check(_actor.RemainingActionPoints == 1 && _actor.GetAbilityCooldownRemaining(id) == 3,
+            "Activating Weapon Sweep from the HUD must cost exactly one AP and start a three-turn cooldown.");
+        Call("OnHudAbilityPressed", id);
+        Check(_actor.RemainingActionPoints == 1 && _enemy.HitPoints == enemyHp - 6,
+            "Weapon Sweep must not resolve again on cooldown even with an AP remaining.");
+
+        var snapshot = _actor.BuildRuntimeSnapshot();
+        _actor.Setup(config);
+        _actor.ApplyRuntimeSnapshot(snapshot);
+        Check(_actor.HasAbility(id) && _actor.LastLevelUpLearnedAbilityIds.Count == 0,
+            "Restoring a level-5 warrior must restore Weapon Sweep without reporting a new unlock.");
+        _actor.ClearAbilityCooldowns();
+        var immune = Config("enemy", "enemy", new Vector2I(2, 3));
+        immune["action_immunities"] = new Array<string> { id };
+        _enemy.Setup(immune);
+        _ally.SetGridPos(new Vector2I(4, 2));
+        enemyHp = _enemy.HitPoints;
+        allyHp = _ally.HitPoints;
+        var profile = Call("ResolveActionProfile", _actor, id);
+        Check((bool)Call("TryUseWeaponSweep", _actor, profile) && _enemy.HitPoints == enemyHp && _ally.HitPoints == allyHp,
+            "Weapon Sweep must skip immune units and units two tiles away.");
     }
 
     private void CheckShadowStrike()
@@ -2500,6 +2718,23 @@ public partial class ActionFeedbackChecks : BattleController
         Check(_actor.HasStatusEffect("pinned"),
             "Enemy AI must execute ranged Pin attacks and apply their movement-preventing effect.");
         pinDirector.QueueFree();
+
+        Reset();
+        var healer = Config("enemy", "enemy", new Vector2I(4, 2));
+        healer["class_id"] = "healer";
+        healer["ability_ids"] = new Array<string> { "mass-heal", "lesser-heal" };
+        _enemy.Setup(healer);
+        _enemy.ApplyDamage(12);
+        var undead = Config("caster", "player", _actor.GridPos);
+        undead["race"] = "undead";
+        _actor.Setup(undead);
+        var healDirector = new AiDirector();
+        AddChild(healDirector);
+        Set("_aiDirector", healDirector);
+        Call("TryExecuteAiAction", _enemy);
+        Check(_actor.HitPoints == 42 && _enemy.HitPoints == 46 && _enemy.MagicPoints == 20,
+            "Healer AI must value the combined healing and undead damage of Mass Heal.");
+        healDirector.QueueFree();
 
         Reset();
         var spiderConfig = Config("enemy", "enemy", new Vector2I(3, 2));

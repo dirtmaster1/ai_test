@@ -3,6 +3,13 @@ using Godot.Collections;
 
 public static class EquipmentSlotRules
 {
+    public static bool CanPairHandItems(Dictionary classRules, Dictionary item, Dictionary oppositeItem)
+    {
+        return item == null || GetString(item, "type") != "weapon"
+            || oppositeItem == null || GetString(oppositeItem, "type") != "weapon"
+            || (classRules != null && classRules.TryGetValue("can_dual_wield", out var allowed) && allowed.AsBool());
+    }
+
     public static bool CanClassEquipItem(Dictionary item, string classId, Dictionary classRules)
     {
         if (item == null)

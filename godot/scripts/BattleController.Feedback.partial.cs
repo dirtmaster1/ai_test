@@ -34,6 +34,11 @@ public partial class BattleController
             return $"{actor.UnitName} cannot act while {status.ToLowerInvariant()}.";
         }
 
+        if (profile.ActionType == "defend" && actor.IsImmuneToAction(profile.ActionId))
+        {
+            return $"{actor.UnitName} is immune to {profile.ActionName}.";
+        }
+
         if (_flowState == BattleFlowState.Combat && !profile.IgnoresActionCost && actor.RemainingActionPoints <= 0)
         {
             return $"No action points left to use {profile.ActionName}.";
@@ -139,28 +144,10 @@ public partial class BattleController
             return RejectPlayerAction("No trap at that location.");
         }
 
-        if (profile.ActionType == "sleep")
+        if (profile.ActionType is "sleep" or "web")
         {
-            var hasImmuneTarget = false;
-            foreach (var unit in _allUnits)
-            {
-                if (!IsUsableUnit(unit) || unit.IsDead
-                    || !Unit.IsWithinRange(cell, unit.GetClosestCell(cell), profile.AreaRadius))
-                {
-                    continue;
-                }
-
-                if (!IsUndead(unit))
-                {
-                    return true;
-                }
-
-                hasImmuneTarget = true;
-            }
-
-            return RejectPlayerAction(hasImmuneTarget
-                ? "Undead are immune to Sleep."
-                : "No living targets in the Sleep area.");
+            var failure = GetControlAreaFailure(profile, cell);
+            return failure == "" || RejectPlayerAction(failure);
         }
 
         if (areaAction)
@@ -168,15 +155,23 @@ public partial class BattleController
             return true;
         }
 
+        if (target != null && target.IsImmuneToAction(profile.ActionId))
+        {
+            return RejectPlayerAction($"{target.UnitName} is immune to {profile.ActionName}.");
+        }
+
         if (profile.ActionType == "heal")
         {
+            if (CanReceiveHealing(actor, target, profile.ActionId, profile.IsMagical))
+                return true;
             if (target == null || target.Team != actor.Team)
             {
-                return RejectPlayerAction("Select a living ally to heal.");
+                return RejectPlayerAction(profile.IsMagical && _flowState == BattleFlowState.Combat
+                    ? "Select a wounded ally or enemy undead."
+                    : "Select a living ally to heal.");
             }
 
-            return target.HitPoints < target.MaxHitPoints
-                || RejectPlayerAction($"{target.UnitName} is already at full health.");
+            return RejectPlayerAction($"{target.UnitName} is already at full health.");
         }
 
         if (target == null)

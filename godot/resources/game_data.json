@@ -78,6 +78,16 @@
 		"Select an adjacent enemy to attack for 4x weapon damage."
 	  ]
 	},
+	"weapon-sweep": {
+	  "id": "weapon-sweep",
+	  "name": "Weapon Sweep",
+	  "type": "weapon_sweep",
+	  "range": 0,
+	  "area_radius": 1,
+	  "cooldown": 3,
+	  "allowed_classes": ["warrior"],
+	  "description": "Hit every adjacent unit, friend or foe, for 3/4 weapon attack damage (rounded up)."
+	},
 	"taunt": {
 	  "id": "taunt",
 	  "name": "Taunt",
@@ -146,6 +156,18 @@
 	  "cooldown": 2,
 	  "allowed_classes": ["cleric", "healer"],
 	  "description": "My leg came back!"
+	},
+	"mass-heal": {
+	  "id": "mass-heal",
+	  "name": "Mass Heal",
+	  "type": "mass_heal",
+	  "range": 0,
+	  "area_radius": 2,
+	  "heal_amount": 8,
+	  "mp_cost": 10,
+	  "cooldown": 3,
+	  "allowed_classes": ["cleric", "healer"],
+	  "description": "Restores HP to allies and damages enemy undead within 2 tiles of the caster."
 	},
 	"web": {
 	  "id": "web",
@@ -291,6 +313,7 @@
 	  "id": "small-shield",
 	  "name": "Small Shield",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "armor_weight": "light",
 	  "base_armor_class": 1,
@@ -301,6 +324,7 @@
 	  "id": "metal-shield",
 	  "name": "Metal Shield",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "armor_weight": "medium",
 	  "base_armor_class": 2,
@@ -311,6 +335,7 @@
 	  "id": "dagger",
 	  "name": "Dagger",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "weapon_type": "dagger",
 	  "base_damage": 4,
@@ -322,6 +347,7 @@
 	  "id": "short-sword",
 	  "name": "Short Sword",
 	  "type": "weapon",
+	  "base_price": 20,
 	  "slot": "1-handed",
 	  "weapon_type": "sword",
 	  "base_damage": 6,
@@ -333,6 +359,7 @@
 	  "id": "spear",
 	  "name": "Spear",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "weapon_type": "spear",
 	  "base_damage": 6,
@@ -344,6 +371,7 @@
 	  "id": "one-handed-axe",
 	  "name": "One-Handed Axe",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "weapon_type": "axe",
 	  "base_damage": 6,
@@ -355,6 +383,7 @@
 	  "id": "broad-sword",
 	  "name": "Broad Sword",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "weapon_type": "sword",
 	  "base_damage": 8,
@@ -366,6 +395,7 @@
 	  "id": "one-handed-mace",
 	  "name": "One-Handed Mace",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "weapon_type": "mace",
 	  "base_damage": 6,
@@ -377,6 +407,7 @@
 	  "id": "long-sword",
 	  "name": "Long Sword",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "1-handed",
 	  "weapon_type": "sword",
 	  "base_damage": 8,
@@ -388,6 +419,7 @@
 	  "id": "short-bow",
 	  "name": "Short Bow",
 	  "type": "weapon",
+	  "base_price": 18,
 	  "slot": "2-handed",
 	  "weapon_type": "bow",
 	  "base_damage": 6,
@@ -399,6 +431,7 @@
 	  "id": "leather-armor",
 	  "name": "Leather Armor",
 	  "type": "armor",
+	  "base_price": 15,
 	  "slot": "body",
 	  "armor_weight": "light",
 	  "base_armor_class": 1,
@@ -409,6 +442,7 @@
 	  "id": "cloth-robe",
 	  "name": "Cloth Robe",
 	  "type": "armor",
+	  "base_price": 5,
 	  "slot": "body",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -419,6 +453,7 @@
 	  "id": "iron-helmet",
 	  "name": "Iron Helmet",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "head",
 	  "armor_weight": "heavy",
 	  "base_armor_class": 1,
@@ -429,6 +464,7 @@
 	  "id": "leather-helm",
 	  "name": "Leather Helm",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "head",
 	  "armor_weight": "light",
 	  "base_armor_class": 1,
@@ -439,6 +475,7 @@
 	  "id": "plate-mail",
 	  "name": "Plate Mail",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "body",
 	  "armor_weight": "heavy",
 	  "base_armor_class": 3,
@@ -449,6 +486,7 @@
 	  "id": "full-plate-armor",
 	  "name": "Full Plate Armor",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "body",
 	  "armor_weight": "heavy",
 	  "base_armor_class": 4,
@@ -459,6 +497,7 @@
 	  "id": "war-axe",
 	  "name": "War Axe",
 	  "type": "weapon",
+	  "base_price": 60,
 	  "slot": "2-handed",
 	  "weapon_type": "axe",
 	  "base_damage": 8,
@@ -470,6 +509,7 @@
 	  "id": "long-bow",
 	  "name": "Long Bow",
 	  "type": "weapon",
+	  "base_price": 55,
 	  "slot": "2-handed",
 	  "weapon_type": "bow",
 	  "base_damage": 8,
@@ -481,6 +521,7 @@
 	  "id": "chain-mail",
 	  "name": "Chain Mail",
 	  "type": "armor",
+	  "base_price": 30,
 	  "slot": "body",
 	  "armor_weight": "medium",
 	  "base_armor_class": 2,
@@ -491,6 +532,7 @@
 	  "id": "boots-of-speed",
 	  "name": "Boots of Speed",
 	  "type": "armor",
+	  "base_price": 150,
 	  "slot": "feet",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -502,6 +544,7 @@
 	  "id": "silverleaf-pendant",
 	  "name": "Silverleaf Pendant",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "neck",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -512,6 +555,7 @@
 	  "id": "trailblazer-leggings",
 	  "name": "Trailblazer Leggings",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "legs",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -522,6 +566,7 @@
 	  "id": "ranger-cloak",
 	  "name": "Ranger Cloak",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "back",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -532,6 +577,7 @@
 	  "id": "copper-ring",
 	  "name": "Copper Ring",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "ring",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -542,6 +588,7 @@
 	  "id": "iron-ring",
 	  "name": "Iron Ring",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "ring",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -552,6 +599,7 @@
 	  "id": "silver-ring",
 	  "name": "Silver Ring",
 	  "type": "armor",
+	  "base_price": 10,
 	  "slot": "ring",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -562,6 +610,7 @@
 	  "id": "healers-circlet",
 	  "name": "Healer's Circlet",
 	  "type": "armor",
+	  "base_price": 250,
 	  "slot": "head",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -574,6 +623,7 @@
 	  "id": "mages-amulet",
 	  "name": "Mage's Amulet",
 	  "type": "armor",
+	  "base_price": 250,
 	  "slot": "neck",
 	  "armor_weight": "light",
 	  "base_armor_class": 0,
@@ -586,6 +636,7 @@
 	  "id": "chieftain-club",
 	  "name": "Chieftain Club",
 	  "type": "weapon",
+	  "base_price": 450,
 	  "slot": "2-handed",
 	  "weapon_type": "club",
 	  "base_damage": 12,
@@ -597,6 +648,7 @@
 	  "id": "staff",
 	  "name": "Staff",
 	  "type": "weapon",
+	  "base_price": 10,
 	  "slot": "2-handed",
 	  "weapon_type": "staff",
 	  "base_damage": 5,
@@ -608,6 +660,7 @@
 	  "id": "fireball-scroll",
 	  "name": "Fireball Scroll",
 	  "type": "scroll",
+	  "base_price": 300,
 	  "slot": "none",
 	  "description": "The ink is warm to the touch. This is probably fine.",
 	  "allowed_classes": [
@@ -623,6 +676,7 @@
 	  "id": "web-scroll",
 	  "name": "Web Scroll",
 	  "type": "scroll",
+	  "base_price": 10,
 	  "slot": "none",
 	  "description": "The margins are full of tiny, eight-legged corrections.",
 	  "allowed_classes": ["wizard"],
@@ -636,6 +690,7 @@
 	  "id": "greater-heal-scroll",
 	  "name": "Greater Heal Scroll",
 	  "type": "scroll",
+	  "base_price": 10,
 	  "slot": "none",
 	  "description": "Written in a hand that has seen many patients and few thank-you notes.",
 	  "allowed_classes": ["cleric", "healer"],
@@ -645,10 +700,23 @@
 	  },
 	  "consumed_on_use": true
 	},
+	"mass-heal-scroll": {
+	  "id": "mass-heal-scroll",
+	  "name": "Mass Heal Scroll",
+	  "icon_id": "mass-heal-scroll",
+	  "type": "scroll",
+	  "base_price": 300,
+	  "slot": "none",
+	  "description": "Teaches Mass Heal.",
+	  "allowed_classes": ["cleric", "healer"],
+	  "use_effect": { "type": "learn_spell", "spell_id": "mass-heal" },
+	  "consumed_on_use": true
+	},
 	"lightning-bolt-scroll": {
 	  "id": "lightning-bolt-scroll",
 	  "name": "Lightning Bolt Scroll",
 	  "type": "scroll",
+	  "base_price": 10,
 	  "slot": "none",
 	  "description": "The script occasionally crackles when read aloud.",
 	  "allowed_classes": ["wizard"],
@@ -662,6 +730,7 @@
 	  "id": "identify-scroll",
 	  "name": "Identify Scroll",
 	  "type": "scroll",
+	  "base_price": 10,
 	  "slot": "none",
 	  "description": "The promise of fewer mysteries.",
 	  "use_effect": {
@@ -674,6 +743,7 @@
 	  "id": "teleport-scroll",
 	  "name": "Teleport Scroll",
 	  "type": "scroll",
+	  "base_price": 10,
 	  "slot": "none",
 	  "description": "The last page is missing, but seems to have arrived somewhere.",
 	  "allowed_classes": ["wizard"],
@@ -687,6 +757,7 @@
 	  "id": "blessing-scroll",
 	  "name": "Blessing Scroll",
 	  "type": "scroll",
+	  "base_price": 100,
 	  "slot": "none",
 	  "description": "The calligraphy is so neat it feels slightly judgmental.",
 	  "icon_id": "blessing-scroll",
@@ -704,6 +775,7 @@
 	  "id": "healing-potion",
 	  "name": "Healing Potion",
 	  "type": "potion",
+	  "base_price": 50,
 	  "slot": "consumable",
 	  "description": "Smells like herbs and optimism.",
 	  "use_effect": {
@@ -716,6 +788,7 @@
 	  "id": "magic-potion",
 	  "name": "Magic Potion",
 	  "type": "potion",
+	  "base_price": 50,
 	  "slot": "consumable",
 	  "description": "Glows just enough to make you distrust the bottle.",
 	  "use_effect": {
@@ -728,6 +801,7 @@
 	  "id": "rusty-key",
 	  "name": "Rusty Key",
 	  "type": "key",
+	  "base_price": 10,
 	  "key_id": "rusty-key",
 	  "slot": "none",
 	  "description": "It opens something nearby."
@@ -959,6 +1033,9 @@
 	  ]
 	}
   },
+  "vendor_defaults": {
+	"base_sell_price_multiplier": 0.5
+  },
   "vendors": {
 	"milo": {
 	  "id": "milo",
@@ -966,6 +1043,7 @@
 	  "starting_gold": 120,
 	  "buy_price_multiplier": 1.0,
 	  "sell_price_multiplier": 1.0,
+	  "base_sell_price_multiplier": 0.5,
 	  "starting_inventory_item_ids": [
 		"small-shield",
 		"boots-of-speed",
@@ -980,6 +1058,7 @@
 	  "starting_gold": 200,
 	  "buy_price_multiplier": 1.0,
 	  "sell_price_multiplier": 1.0,
+	  "base_sell_price_multiplier": 0.5,
 	  "starting_inventory_item_ids": [
 		"dagger",
 		"short-sword",
@@ -998,6 +1077,7 @@
 	  "starting_gold": 90,
 	  "buy_price_multiplier": 1.15,
 	  "sell_price_multiplier": 0.9,
+	  "base_sell_price_multiplier": 0.5,
 	  "starting_inventory_item_ids": [
 		"cloth-robe",
 		"mages-amulet",
@@ -1012,8 +1092,10 @@
 	  "starting_gold": 100,
 	  "buy_price_multiplier": 1.0,
 	  "sell_price_multiplier": 0.9,
+	  "base_sell_price_multiplier": 0.5,
 	  "starting_inventory_item_ids": [
-		"blessing-scroll"
+		"blessing-scroll",
+		"mass-heal-scroll"
 	  ]
 	}
   },
@@ -1034,6 +1116,7 @@
 		"allowed_weapon_types": ["dagger", "staff"]
 	  },
 	  "warrior": {
+		"can_dual_wield": true,
 		"allowed_armor_weights": ["light", "medium", "heavy"],
 		"allowed_weapon_types": ["*"]
 	  },
@@ -1042,10 +1125,12 @@
 		"allowed_weapon_types": ["dagger", "mace", "spear", "staff"]
 	  },
 	  "ranger": {
+		"can_dual_wield": true,
 		"allowed_armor_weights": ["light", "medium"],
 		"allowed_weapon_types": ["axe", "bow", "dagger", "spear", "sword"]
 	  },
 	  "thief": {
+		"can_dual_wield": true,
 		"allowed_armor_weights": ["light"],
 		"allowed_weapon_types": ["bow", "dagger", "sword"]
 	  }
@@ -1098,7 +1183,8 @@
 		  "defend"
 		],
 		"level_up_abilities": {
-		  "3": "taunt"
+		  "3": "taunt",
+		  "5": "weapon-sweep"
 		},
 		"initiative": 11,
 		"hit_points": 14,
@@ -1225,6 +1311,8 @@
 	  "goblin-chieftain": {
 		"id": "goblin-chieftain",
 		"name": "Goblin Chieftain",
+		"is_boss": true,
+		"action_immunities": ["sleep", "pin", "web", "teleport"],
 		"race": "goblin",
 		"team": "enemy",
 		"experience": 60,
@@ -1310,6 +1398,8 @@
 	  "necromancer": {
 		"id": "necromancer",
 		"name": "Necromancer",
+		"is_boss": true,
+		"action_immunities": ["sleep", "pin", "web", "teleport"],
 		"race": "human",
 		"team": "enemy",
 		"experience": 450,
@@ -1443,6 +1533,8 @@
 	  "spider-queen": {
 		"id": "spider-queen",
 		"name": "Spider Queen",
+		"is_boss": true,
+		"action_immunities": ["sleep", "pin", "web", "teleport"],
 		"level": 4,
 		"action_points": 2,
 		"race": "beast",

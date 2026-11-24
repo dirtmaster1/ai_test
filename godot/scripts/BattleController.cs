@@ -869,14 +869,20 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
-        if (actionProfile.ActionType == "taunt")
+        if (actionProfile.ActionType is "taunt" or "weapon_sweep")
         {
-            if (TryUseTaunt(active, actionProfile))
+            if (TryUseImmediateAreaAbility(active, actionProfile))
             {
                 ApplyActionResult(ResolveSuccessfulAction("attack"));
                 _awaitingPlayerAttackDirection = false;
                 QueueRedraw();
             }
+            return;
+        }
+
+        if (actionProfile.ActionType == "mass_heal")
+        {
+            ResolvePlayerMassHeal(active, actionProfile);
             return;
         }
 
@@ -1357,6 +1363,13 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (!CanClassEquipItem(target, itemData))
         {
             RejectPlayerAction($"{target.UnitName} cannot equip {itemName} because of class restrictions.");
+            return;
+        }
+
+        if (_equippedItemsByUnitId.TryGetValue(target.UnitId, out var slots)
+            && !CanPairWithOppositeHand(target, itemData, slotKey, slots))
+        {
+            RejectPlayerAction($"{target.UnitName} cannot dual wield. Only thieves, rangers, and warriors can equip two weapons.");
             return;
         }
 
@@ -1878,6 +1891,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return;
         }
 
+        if (actionProfile.ActionType == "weapon_sweep")
+        {
+            if (TryUseWeaponSweep(active, actionProfile))
+            {
+                CancelAttackMode(false);
+                ApplyActionResult(ResolveSuccessfulAction("attack"));
+                BeginPostPlayerActionMouseMoveLock();
+            }
+            return;
+        }
+
         if (actionProfile.ActionType == "protection")
         {
             if (!TryUseProtectionAura(active, actionProfile))
@@ -1889,6 +1913,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var result = ResolveSuccessfulAction(actionProfile.ActionType);
             ApplyActionResult(result);
             BeginPostPlayerActionMouseMoveLock();
+            return;
+        }
+
+        if (actionProfile.ActionType == "mass_heal")
+        {
+            ResolvePlayerMassHeal(active, actionProfile);
             return;
         }
 
@@ -2061,10 +2091,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (actionProfile.ActionType == "heal")
         {
-            var allyTarget = GetLivingAllyAtCell(active.Team, targetCell);
-            if (allyTarget != null)
+            var healTarget = GetLivingUnitAtCell(targetCell);
+            if (healTarget != null)
             {
-                if (!TryHealTarget(active, allyTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical))
+                if (!TryHealTarget(active, healTarget, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical))
                 {
                     return;
                 }
@@ -2294,6 +2324,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var spellType = GetString(spell, "type", "");
+        var spellId = GetString(spell, "id", "");
+        if (spellType != "blessing" && target.IsImmuneToAction(spellId))
+        {
+            failureText = $"{target.UnitName} is immune to {GetString(spell, "name", spellId)}.";
+            return false;
+        }
         switch (spellType)
         {
             case "remove_malady":
@@ -2388,7 +2424,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                 foreach (var unit in _allUnits)
                 {
-                    if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != target.Team
+                    if (!IsUsableUnit(unit) || unit.IsDead || unit.Team != target.Team || unit.IsImmuneToAction(statusId)
                         || !Unit.IsWithinRange(target.GridPos, unit.GridPos, areaRadius))
                     {
                         continue;
@@ -2440,7 +2476,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (caster.DistanceToUnitAt(caster.GridPos, unit) > radius)
+            if (unit.IsImmuneToAction(actionProfile.ActionId) || caster.DistanceToUnitAt(caster.GridPos, unit) > radius)
             {
                 continue;
             }
@@ -2509,7 +2545,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (IsUndead(unit))
+            if (unit.IsImmuneToAction(actionProfile.ActionId))
             {
                 immuneUnits.Add(unit.UnitName);
                 continue;
@@ -2530,7 +2566,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius) || IsUndead(unit))
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius) || unit.IsImmuneToAction(actionProfile.ActionId))
             {
                 continue;
             }
@@ -2562,7 +2598,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var log = $"{caster.UnitName} casts {actionProfile.ActionName}. {string.Join(", ", sleptUnits)} fall asleep for {durationTurns} turns.";
         if (immuneUnits.Count > 0)
         {
-            log += $" Undead are immune: {string.Join(", ", immuneUnits)}.";
+            log += $" Immune: {string.Join(", ", immuneUnits)}.";
         }
 
         if (actionProfile.MagicPointCost > 0)
@@ -2630,7 +2666,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _combatEffectsDirector?.PlayArea(CellCenter(centerCell), actionProfile.AreaRadius * CellSize, new Color("ff713d"), actionProfile.ActionName.ToUpperInvariant(), actionProfile.ActionId);
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), actionProfile.AreaRadius))
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.IsImmuneToAction(actionProfile.ActionId) || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), actionProfile.AreaRadius))
             {
                 continue;
             }
@@ -2672,7 +2708,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool TryCastWebAtCell(Unit caster, Vector2I centerCell, ActionProfile actionProfile)
     {
-        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat)
+        if (!IsUsableUnit(caster) || caster.IsDead || _flowState != BattleFlowState.Combat
+            || GetControlAreaFailure(actionProfile, centerCell) != "")
         {
             return false;
         }
@@ -2689,7 +2726,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.IsImmuneToAction(actionProfile.ActionId)
                 || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius))
             {
                 continue;
@@ -2757,7 +2794,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             boltPath.Add(CellCenter(cell));
             foreach (var unit in _allUnits)
             {
-                if (!IsUsableUnit(unit) || unit.IsDead || !unit.OccupiesCell(cell)
+                if (!IsUsableUnit(unit) || unit.IsDead || unit.IsImmuneToAction(actionProfile.ActionId) || !unit.OccupiesCell(cell)
                     || !affected.Add(unit.UnitId))
                 {
                     continue;
@@ -2812,7 +2849,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var weaponDamage = Mathf.Max(0, archer.AttackDamage);
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.IsImmuneToAction(actionProfile.ActionId)
                 || !Unit.IsWithinRange(centerCell, unit.GetClosestCell(centerCell), radius))
             {
                 continue;
@@ -2845,6 +2882,52 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
+    private bool TryUseImmediateAreaAbility(Unit actor, ActionProfile profile)
+    {
+        return profile.ActionType switch
+        {
+            "weapon_sweep" => TryUseWeaponSweep(actor, profile),
+            "taunt" => TryUseTaunt(actor, profile),
+            _ => false
+        };
+    }
+
+    private static bool IsWeaponSweepRecipient(Unit actor, Unit unit, string actionId, int radius)
+    {
+        return IsUsableUnit(unit) && unit != actor && !unit.IsDead && !unit.IsImmuneToAction(actionId)
+            && actor.DistanceToUnitAt(actor.GridPos, unit) <= radius;
+    }
+
+    private bool TryUseWeaponSweep(Unit actor, ActionProfile profile)
+    {
+        if (_flowState != BattleFlowState.Combat || !CanUseActionProfileNow(actor, profile) || !actor.HasAbility(profile.ActionId))
+        {
+            return false;
+        }
+
+        var hits = new List<string>();
+        foreach (var unit in _allUnits)
+        {
+            if (!IsWeaponSweepRecipient(actor, unit, profile.ActionId, profile.AreaRadius))
+                continue;
+
+            var dealt = unit.ApplyDamage(Mathf.Max(0, profile.Damage - unit.ArmorClass));
+            _combatEffectsDirector?.PlayDamageResult(unit, dealt, new Color("ffb65c"));
+            var outcome = unit.IsDead ? " and is defeated"
+                : dealt > 0 && unit.ClearWakeOnDamageStatusEffects().Count > 0 ? " and wakes up" : "";
+            hits.Add($"{unit.UnitName} takes {dealt}{outcome}");
+        }
+
+        actor.MarkAbilityUsed(profile.ActionId, profile.CooldownTurns);
+        _combatEffectsDirector?.PlayArea(actor.Position, profile.AreaRadius * CellSize, new Color("ffb65c"), "SWEEP", profile.ActionId);
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, profile.ActionId, actor.UnitId);
+        _hud?.AddCombatLogEntry($"{actor.UnitName} uses {profile.ActionName}. " +
+            (hits.Count == 0 ? "No units were hit." : string.Join("; ", hits) + "."), CombatLogEntryType.PhysicalAttack);
+        SyncHudFromGameState();
+        QueueRedraw();
+        return true;
+    }
+
     private bool TryUseTaunt(Unit warrior, ActionProfile actionProfile)
     {
         if (!IsUsableUnit(warrior) || warrior.IsDead || _flowState != BattleFlowState.Combat
@@ -2860,7 +2943,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var affected = new List<string>();
         foreach (var unit in _allUnits)
         {
-            if (!IsUsableUnit(unit) || unit.IsDead || unit.Team == warrior.Team
+            if (!IsUsableUnit(unit) || unit.IsDead || unit.Team == warrior.Team || unit.IsImmuneToAction(actionProfile.ActionId)
                 || warrior.DistanceToUnitAt(warrior.GridPos, unit) > radius)
             {
                 continue;
@@ -2931,6 +3014,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var target = GetLivingEnemyAtCell(thief.Team, targetCell);
+        if (target != null && target.IsImmuneToAction(actionProfile.ActionId))
+        {
+            return RejectPlayerAction($"{target.UnitName} is immune to {actionProfile.ActionName}.");
+        }
         if (!IsUsableUnit(target) || target.IsDead
             || !thief.CanAttackTarget(target, 1, _allUnits)
             || !HasClearUnitLineOfSight(thief, target))
@@ -2976,7 +3063,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         if (!_awaitingTeleportDestination)
         {
             var target = GetLivingUnitAtCell(targetCell);
-            if (!IsValidTeleportTarget(caster, target, targetCell, actionProfile.Range))
+            if (target != null && IsFogCellCurrentlyVisible(targetCell) && target.IsImmuneToAction(actionProfile.ActionId))
+            {
+                return RejectPlayerAction($"{target.UnitName} is immune to {actionProfile.ActionName}.");
+            }
+            if (!IsValidTeleportTarget(caster, target, targetCell, actionProfile.Range, actionProfile.ActionId))
             {
                 return RejectPlayerAction($"Select a visible living unit within {actionProfile.Range} tiles.");
             }
@@ -2991,7 +3082,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var teleportTarget = _teleportTarget;
         var destinationRange = GetTeleportDestinationRange(actionProfile);
         if (!IsUsableUnit(teleportTarget) || teleportTarget.IsDead
-            || !IsValidTeleportDestination(caster, teleportTarget, targetCell, destinationRange))
+            || !IsValidTeleportDestination(caster, teleportTarget, targetCell, destinationRange, actionProfile.ActionId))
         {
             return RejectPlayerAction(
                 $"Select a visible unoccupied tile within {destinationRange} tiles of the caster.");
@@ -3023,23 +3114,25 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return true;
     }
 
-    private bool IsValidTeleportTarget(Unit caster, Unit target, Vector2I targetCell, int maxRange)
+    private bool IsValidTeleportTarget(Unit caster, Unit target, Vector2I targetCell, int maxRange, string actionId)
     {
         return IsUsableUnit(caster)
             && IsUsableUnit(target)
             && !target.IsDead
             && target.OccupiesCell(targetCell)
+            && !target.IsImmuneToAction(actionId)
             && caster.DistanceToUnitAt(caster.GridPos, target) <= maxRange
             && IsFogCellCurrentlyVisible(targetCell)
             && HasClearUnitLineOfSight(caster, target);
     }
 
-    private bool IsValidTeleportDestination(Unit caster, Unit target, Vector2I destinationCell, int maxRange)
+    private bool IsValidTeleportDestination(Unit caster, Unit target, Vector2I destinationCell, int maxRange, string actionId)
     {
         return IsUsableUnit(caster)
             && IsUsableUnit(target)
             && !target.IsDead
             && destinationCell != target.GridPos
+            && !target.IsImmuneToAction(actionId)
             && IsInBounds(destinationCell)
             && Unit.IsWithinRange(caster.GridPos, destinationCell, maxRange)
             && IsFogCellCurrentlyVisible(destinationCell)
@@ -3059,7 +3152,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var target = GetLivingEnemyAtCell(attacker.Team, targetCell);
-        if (!IsUsableUnit(target) || target.IsDead)
+        if (!IsUsableUnit(target) || target.IsDead || target.IsImmuneToAction(actionProfile.ActionId))
         {
             return false;
         }
@@ -3907,6 +4000,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         SetSelectedAbilityId(actor, choice.AbilityId);
         var actionSuccess = IsHealingSpellAction(actionProfile.ActionType)
             ? TryCastCombatHealingSpell(actor, choice.Target, actionProfile)
+            : actionProfile.ActionType == "mass_heal"
+                ? TryMassHeal(actor, actionProfile)
             : actionProfile.ActionType == "heal"
                 ? TryHealTarget(actor, choice.Target, actionProfile.HealAmount, actionProfile.Range, actionProfile.ActionId, actionProfile.ActionName, actionProfile.CooldownTurns, actionProfile.MagicPointCost, actionProfile.IsMagical, consumeAction: !actionProfile.IgnoresActionCost)
                 : actionProfile.ActionType == "sleep"
@@ -3919,8 +4014,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                         ? TryCastLightningBoltAtCell(actor, choice.Target.GridPos, actionProfile)
                         : actionProfile.ActionType == "rain_of_arrows"
                             ? TryUseRainOfArrowsAtCell(actor, choice.Target.GridPos, actionProfile)
-                            : actionProfile.ActionType == "taunt"
-                                ? TryUseTaunt(actor, actionProfile)
+                            : actionProfile.ActionType is "taunt" or "weapon_sweep"
+                                ? TryUseImmediateAreaAbility(actor, actionProfile)
                                 : actionProfile.ActionType == "pin"
                                     ? TryUsePinShot(actor, choice.Target.GridPos, actionProfile)
                                 : actionProfile.ActionType == "shadow_strike"
@@ -3932,7 +4027,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return CombatActionResult.Failed;
         }
 
-        var resolvedActionType = actionProfile.ActionType is "pin" or "poison_strike"
+        var resolvedActionType = actionProfile.ActionType is "pin" or "poison_strike" or "weapon_sweep"
             ? "attack"
             : actionProfile.ActionType;
         return ResolveSuccessfulAction(resolvedActionType);
@@ -4019,7 +4114,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool CanAiPlanActionOnTarget(Unit actor, Unit target, AiDirector.ActionOption option)
     {
-        if (!IsUsableUnit(actor) || !IsUsableUnit(target))
+        if (!IsUsableUnit(actor) || !IsUsableUnit(target) || !CanAiAffectTarget(actor, target, option))
         {
             return false;
         }
@@ -4032,9 +4127,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (option.ActionType == "heal")
         {
-            return !target.IsDead
-                && target.Team == actor.Team
-                && target.HitPoints < target.MaxHitPoints;
+            return CanReceiveHealing(actor, target, option.AbilityId, ResolveActionProfile(actor, option.AbilityId).IsMagical);
         }
 
         if (IsHealingSpellAction(option.ActionType))
@@ -4062,7 +4155,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var actionData = GetActionData(option.AbilityId, out _);
         var score = 0.0f;
 
-        if (profile.ActionType == "heal")
+        if (profile.ActionType == "mass_heal")
+        {
+            foreach (var recipient in MassHealTargets(actor, profile))
+                score += HealingImpact(actor, recipient, profile.HealAmount + actor.HealingSpellBonus);
+        }
+        else if (profile.ActionType == "heal" && target.Team != actor.Team)
+        {
+            score = HealingImpact(actor, target, profile.HealAmount + actor.HealingSpellBonus);
+        }
+        else if (profile.ActionType == "heal")
         {
             var missingHitPoints = Mathf.Max(0, target.MaxHitPoints - target.HitPoints);
             var effectiveHealing = Mathf.Min(missingHitPoints, profile.HealAmount);
@@ -4086,7 +4188,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 {
                     if (IsUsableUnit(unit) && !unit.IsDead && unit.Team == actor.Team
                         && Unit.IsWithinRange(target.GridPos, unit.GetClosestCell(target.GridPos), radius)
-                        && !unit.HasStatusEffect("protection"))
+                        && !unit.IsImmuneToAction(profile.ActionId) && !unit.HasStatusEffect("protection"))
                     {
                         score += 2.0f;
                     }
@@ -4099,7 +4201,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 if (IsUsableUnit(unit) && !unit.IsDead && unit.Team != actor.Team
                     && Unit.IsWithinRange(actor.GridPos, unit.GetClosestCell(actor.GridPos), profile.AreaRadius)
-                    && !unit.HasStatusEffect("taunted"))
+                    && !unit.IsImmuneToAction(profile.ActionId) && !unit.HasStatusEffect("taunted"))
                 {
                     score += 2.0f;
                 }
@@ -4109,11 +4211,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             foreach (var affectedUnit in GetAiActionAffectedUnits(actor, target, profile))
             {
-                if (profile.ActionType == "sleep" && IsUndead(affectedUnit))
-                {
-                    continue;
-                }
-
                 var damage = EstimateAiActionDamage(actor, affectedUnit, profile, actionData);
                 if (affectedUnit.Team == actor.Team)
                 {
@@ -4169,7 +4266,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var isAffected = unit == target;
-            if (isAreaAction)
+            if (profile.ActionType == "weapon_sweep")
+            {
+                isAffected = IsWeaponSweepRecipient(actor, unit, profile.ActionId, profile.AreaRadius);
+            }
+            else if (isAreaAction)
             {
                 isAffected = Unit.IsWithinRange(target.GridPos, unit.GetClosestCell(target.GridPos), profile.AreaRadius);
             }
@@ -4192,7 +4293,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
             }
 
-            if (isAffected)
+            if (isAffected && !unit.IsImmuneToAction(profile.ActionId))
             {
                 affected.Add(unit);
             }
@@ -4229,8 +4330,24 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         return Mathf.Max(0.0f, damageAfterArmor - damageBlockedByDefend);
     }
 
+    private bool CanAiAffectTarget(Unit actor, Unit target, AiDirector.ActionOption option)
+    {
+        if (!target.IsImmuneToAction(option.AbilityId) || option.ActionType is "taunt" or "blessing" or "mass_heal")
+            return true;
+
+        // The chosen unit can still be a useful aim point for an area spell.
+        if (option.ActionType is "area_attack" or "sleep" or "web" or "rain_of_arrows" or "lightning_bolt")
+            return GetAiActionAffectedUnits(actor, target, ResolveActionProfile(actor, option.AbilityId))
+                .Exists(unit => unit.Team != actor.Team);
+
+        return false;
+    }
+
     private bool CanAiActionTarget(Unit actor, Unit target, AiDirector.ActionOption option)
     {
+        if (!IsUsableUnit(target) || !CanAiAffectTarget(actor, target, option))
+            return false;
+
         if (option.ActionType == "taunt")
         {
             return target == actor;
@@ -4242,6 +4359,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
+        if (option.ActionType == "weapon_sweep")
+        {
+            return target.Team != actor.Team && IsWeaponSweepRecipient(actor, target, option.AbilityId,
+                ResolveActionProfile(actor, option.AbilityId).AreaRadius);
+        }
+
         if (IsHealingSpellAction(option.ActionType))
         {
             return CanCastHealingSpellOnTarget(actor, target, ResolveActionProfile(actor, option.AbilityId), out _);
@@ -4249,9 +4372,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (option.ActionType == "heal")
         {
-            return IsValidAllyTarget(actor, target)
-                && actor.CanHealTarget(target, option.Range, _allUnits)
-                && HasClearUnitLineOfSight(actor, target);
+            return CanTargetHealing(actor, target, option.AbilityId, ResolveActionProfile(actor, option.AbilityId).IsMagical, option.Range);
+        }
+
+        if (option.ActionType == "mass_heal")
+        {
+            return actor == target;
         }
 
         if (option.ActionType == "shadow_strike")
@@ -4327,7 +4453,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private bool TryUseAiShadowStrike(Unit actor, Unit target, ActionProfile actionProfile)
     {
-        if (!CanAiShadowStrikeTarget(actor, target, actionProfile.Range))
+        if (!CanAiShadowStrikeTarget(actor, target, actionProfile.Range) || target.IsImmuneToAction(actionProfile.ActionId))
         {
             return false;
         }
@@ -4377,7 +4503,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private CombatActionResult ResolveSuccessfulAction(string actionType)
     {
-        if (actionType == "attack")
+        if (actionType is "attack" or "heal" or "mass_heal")
         {
             CleanupDefeatedUnits();
         }
@@ -4504,7 +4630,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!attacker.CanAttackTarget(target, range, _allUnits))
+        if (!attacker.CanAttackTarget(target, range, _allUnits) || target.IsImmuneToAction(actionId))
         {
             return false;
         }
@@ -4602,7 +4728,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private CombatActionResult TryDefend(Unit actor, ActionProfile actionProfile)
     {
-        if (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn())
+        if (actor.IsImmuneToAction(actionProfile.ActionId) || (_flowState == BattleFlowState.Combat && !actor.CanUseAbilityThisTurn()))
         {
             return CombatActionResult.Failed;
         }
@@ -4829,6 +4955,79 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
     }
 
+    private bool CanReceiveHealing(Unit actor, Unit target, string actionId, bool magical)
+    {
+        if (!IsUsableUnit(actor) || actor.IsDead || !IsUsableUnit(target) || target.IsDead || target.IsImmuneToAction(actionId))
+            return false;
+        return target.Team == actor.Team
+            ? IsValidAllyTarget(actor, target) && target.HitPoints < target.MaxHitPoints
+            : magical && _flowState == BattleFlowState.Combat && target.IsUndead && IsValidAttackTarget(actor, target);
+    }
+
+    private bool CanTargetHealing(Unit actor, Unit target, string actionId, bool magical, int range) =>
+        CanReceiveHealing(actor, target, actionId, magical)
+        && actor.CanUseActionAtRange(target, range, _allUnits) && HasClearUnitLineOfSight(actor, target);
+
+    private IEnumerable<Unit> MassHealTargets(Unit caster, ActionProfile profile)
+    {
+        foreach (var unit in _allUnits)
+            if (CanReceiveHealing(caster, unit, profile.ActionId, true)
+                && Unit.IsWithinRange(caster.GridPos, unit.GetClosestCell(caster.GridPos), profile.AreaRadius))
+                yield return unit;
+    }
+
+    private static int HealingImpact(Unit caster, Unit target, int amount) =>
+        Mathf.Min(amount, target.Team == caster.Team ? target.MaxHitPoints - target.HitPoints : target.HitPoints);
+
+    private string ApplyHealingPower(Unit caster, Unit target, int amount, string actionId)
+    {
+        if (caster.Team != target.Team)
+        {
+            var dealt = target.ApplyDamage(amount);
+            if (dealt > 0 && !target.IsDead)
+                target.ClearWakeOnDamageStatusEffects();
+            _combatEffectsDirector?.PlayDamageResult(target, dealt, new Color("8affe1"));
+            return $"{target.UnitName} takes {dealt} damage";
+        }
+        var healed = target.ApplyHealing(amount);
+        if (actionId is "lesser-heal" or "greater-heal" or "mass-heal")
+            _combatEffectsDirector?.PlayHealingSpell(caster, target, healed, actionId != "lesser-heal");
+        else
+            _combatEffectsDirector?.PlayHeal(caster, target, healed);
+        return $"{target.UnitName} recovers {healed} HP";
+    }
+
+    private bool TryMassHeal(Unit caster, ActionProfile profile)
+    {
+        if (_flowState != BattleFlowState.Combat || !CanUseActionProfileNow(caster, profile))
+            return false;
+        var targets = new List<Unit>(MassHealTargets(caster, profile));
+        if (targets.Count == 0)
+        {
+            if (caster.Team == "player")
+                RejectPlayerAction("No wounded allies or enemy undead in range.");
+            return false;
+        }
+        if (!caster.TrySpendMagicPoints(profile.MagicPointCost))
+            return false;
+        var results = new List<string>();
+        foreach (var target in targets)
+            results.Add(ApplyHealingPower(caster, target, profile.HealAmount + caster.HealingSpellBonus, profile.ActionId));
+        caster.MarkAbilityUsed(profile.ActionId, profile.CooldownTurns);
+        _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, caster, profile.ActionId, caster.UnitId);
+        _hud?.AddCombatLogEntry($"{caster.UnitName} casts {profile.ActionName}: {string.Join("; ", results)}. (MP -{profile.MagicPointCost})", CombatLogEntryType.Healing);
+        return true;
+    }
+
+    private void ResolvePlayerMassHeal(Unit caster, ActionProfile profile)
+    {
+        if (!TryMassHeal(caster, profile))
+            return;
+        CancelAttackMode(false);
+        ApplyActionResult(ResolveSuccessfulAction(profile.ActionType));
+        BeginPostPlayerActionMouseMoveLock();
+    }
+
     private bool TryHealTarget(Unit actor, Unit target, int healAmount, int range, string actionId, string actionName, int cooldownTurns = 0, int magicPointCost = 0, bool isMagical = false, bool consumeAction = true)
     {
         if (_flowState == BattleFlowState.Combat && consumeAction && !actor.CanUseAbilityThisTurn())
@@ -4836,12 +5035,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        if (!actor.CanHealTarget(target, range, _allUnits))
-        {
-            return false;
-        }
-
-        if (!HasClearUnitLineOfSight(actor, target))
+        if (!CanTargetHealing(actor, target, actionId, isMagical, range))
         {
             return false;
         }
@@ -4852,8 +5046,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var effectiveHealAmount = Mathf.Max(0, healAmount + (isMagical ? actor.HealingSpellBonus : 0));
-        var healable = Mathf.Min(effectiveHealAmount, Mathf.Max(0, target.MaxHitPoints - target.HitPoints));
-        if (healable <= 0)
+        if (effectiveHealAmount <= 0)
         {
             return false;
         }
@@ -4863,11 +5056,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             return false;
         }
 
-        var healed = target.ApplyHealing(effectiveHealAmount);
-        if (actionId is "lesser-heal" or "greater-heal")
-            _combatEffectsDirector?.PlayHealingSpell(actor, target, healed, actionId == "greater-heal");
-        else
-            _combatEffectsDirector?.PlayHeal(actor, target, healed);
+        var effectText = ApplyHealingPower(actor, target, effectiveHealAmount, actionId);
 
         if (_flowState == BattleFlowState.Combat)
         {
@@ -4882,14 +5071,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _eventBus?.EmitSignal(EventBus.SignalName.ActionUsed, actor, actionId, target.UnitId);
-        var resultText = isMagical
-            ? $"{actor.UnitName} casts {actionName} on {target.UnitName}, restoring {healed} HP."
-            : $"{actor.UnitName} heals {target.UnitName} for {healed}.";
+        var resultText = $"{actor.UnitName} {(isMagical ? "casts" : "uses")} {actionName}: {effectText}.";
         if (magicPointCost > 0)
         {
             resultText += $" (MP -{magicPointCost})";
         }
-        _hud?.AddCombatLogEntry(resultText, CombatLogEntryType.Healing);
+        _hud?.AddCombatLogEntry(resultText, actor.Team == target.Team ? CombatLogEntryType.Healing : CombatLogEntryType.MagicalAttack);
         return true;
     }
 
@@ -5425,7 +5612,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             range = 1;
         }
 
-        range = actionType is "defend" or "protection" or "taunt" or "identify"
+        if (actionType == "weapon_sweep")
+        {
+            damage = actor.AttackDamage - actor.AttackDamage / 4;
+        }
+
+        range = actionType is "defend" or "protection" or "taunt" or "weapon_sweep" or "identify" or "mass_heal"
             ? 0
             : actionType == "resurrect" && range < 0
                 ? range
@@ -5936,7 +6128,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 : profile.ActionType == "pick_lock"
                     ? "Effect: unlock an adjacent door"
                 : profile.ActionType == "heal"
-                ? $"Heal: {profile.HealAmount}"
+                ? $"Heal: {profile.HealAmount}" + (profile.IsMagical ? " (damages enemy undead)" : "")
+                : profile.ActionType == "mass_heal"
+                ? $"Heal: {profile.HealAmount} (caster radius {profile.AreaRadius}; damages enemy undead)"
+                : profile.ActionType == "weapon_sweep"
+                    ? $"Damage: {profile.Damage} to all other units within {profile.AreaRadius} tile"
                 : profile.ActionType == "defend"
                     ? $"Effect: damage taken -{Unit.DefendDamageReductionPercent}%"
                     : profile.ActionType == "sleep"
@@ -6186,15 +6382,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             : false;
     }
 
-    private static bool IsUndead(Unit unit)
+    private string GetControlAreaFailure(ActionProfile profile, Vector2I center)
     {
-        if (!IsUsableUnit(unit))
+        Unit immune = null;
+        foreach (var unit in _allUnits)
         {
-            return false;
+            if (!IsUsableUnit(unit) || unit.IsDead || !Unit.IsWithinRange(center, unit.GetClosestCell(center), profile.AreaRadius))
+                continue;
+            if (!unit.IsImmuneToAction(profile.ActionId))
+                return "";
+            immune = unit;
         }
 
-        return string.Equals(unit.Race, "undead", System.StringComparison.OrdinalIgnoreCase);
+        if (immune != null)
+            return profile.ActionType == "sleep" && immune.IsUndead
+                ? "Undead are immune to Sleep."
+                : $"{immune.UnitName} is immune to {profile.ActionName}.";
+        return profile.ActionType == "sleep" ? "No living targets in the Sleep area." : "";
     }
+
+    private static bool IsUndead(Unit unit) => IsUsableUnit(unit) && unit.IsUndead;
 
     private static int GetInt(Dictionary dict, string key, int fallback)
     {
@@ -6332,16 +6539,17 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     : IsHealingSpellAction(actionProfile.ActionType)
                     ? GetPartyUnitAtCell(cell)
                     : actionProfile.ActionType == "heal"
-                        ? GetLivingAllyAtCell(active.Team, cell)
+                        ? GetLivingUnitAtCell(cell)
                         : GetLivingEnemyAtCell(active.Team, cell);
                 var areaAction = actionProfile.ActionType is "sleep" or "area_attack" or "web" or "lightning_bolt" or "rain_of_arrows";
                 var valid = actionProfile.ActionType == "teleport"
                     ? _awaitingTeleportDestination
-                        ? IsValidTeleportDestination(active, _teleportTarget, cell, previewRange)
-                        : IsValidTeleportTarget(active, target, cell, actionProfile.Range)
+                        ? IsValidTeleportDestination(active, _teleportTarget, cell, previewRange, actionProfile.ActionId)
+                        : IsValidTeleportTarget(active, target, cell, actionProfile.Range, actionProfile.ActionId)
                     : actionProfile.ActionType == "shadow_strike"
                     ? _awaitingShadowStrikeAttack
                         ? target != null
+                            && !target.IsImmuneToAction(actionProfile.ActionId)
                             && active.CanAttackTarget(target, 1, _allUnits)
                             && HasClearUnitLineOfSight(active, target)
                         : Unit.IsWithinRange(active.GridPos, cell, actionProfile.Range)
@@ -6351,11 +6559,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                         ? TryGetUtilityTarget(active, actionProfile, cell, out _)
                         : areaAction
                             ? HasClearLineOfSight(active.GridPos, cell)
+                                && (actionProfile.ActionType is not ("sleep" or "web") || GetControlAreaFailure(actionProfile, cell) == "")
                                 && (actionProfile.ActionType != "lightning_bolt" || IsEightDirectionLine(active.GridPos, cell))
-                            : target != null && (IsHealingSpellAction(actionProfile.ActionType)
+                            : target != null && (actionProfile.ActionType == "blessing" || !target.IsImmuneToAction(actionProfile.ActionId)) && (IsHealingSpellAction(actionProfile.ActionType)
                         ? CanCastHealingSpellOnTarget(active, target, actionProfile, out _)
                         : actionProfile.ActionType == "heal"
-                            ? active.CanHealTarget(target, actionProfile.Range, _allUnits) && HasClearUnitLineOfSight(active, target)
+                            ? CanTargetHealing(active, target, actionProfile.ActionId, actionProfile.IsMagical, actionProfile.Range)
                             : active.CanUseActionAtRange(target, actionProfile.Range, _allUnits));
 
                 var fill = valid ? new Color(0.2f, 0.9f, 0.3f, 0.25f) : new Color(0.9f, 0.25f, 0.25f, 0.12f);
@@ -6519,12 +6728,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (actionProfile.ActionType == "heal")
         {
-            var ally = GetLivingAllyAtCell(active.Team, hoveredCell);
-            if (ally != null && active.CanHealTarget(ally, actionProfile.Range, _allUnits)
-                && HasClearUnitLineOfSight(active, ally))
+            var target = GetLivingUnitAtCell(hoveredCell);
+            if (CanTargetHealing(active, target, actionProfile.ActionId, actionProfile.IsMagical, actionProfile.Range))
             {
-                var healing = Mathf.Min(actionProfile.HealAmount, Mathf.Max(0, ally.MaxHitPoints - ally.HitPoints));
-                DrawCombatPreviewLabel(canvas, hoveredCell, $"Healing: +{healing} HP");
+                var amount = HealingImpact(active, target, actionProfile.HealAmount + (actionProfile.IsMagical ? active.HealingSpellBonus : 0));
+                DrawCombatPreviewLabel(canvas, hoveredCell, target.Team == active.Team ? $"Healing: +{amount} HP" : $"Damage: {amount}");
             }
 
             return;
@@ -6544,7 +6752,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 if (IsUsableUnit(unit) && !unit.IsDead && unit.Team == active.Team
                     && Unit.IsWithinRange(center.GridPos, unit.GetClosestCell(center.GridPos), actionProfile.AreaRadius)
-                    && !unit.HasStatusEffect("protection"))
+                    && !unit.IsImmuneToAction(actionProfile.ActionId) && !unit.HasStatusEffect("protection"))
                 {
                     protectedCount++;
                 }
@@ -6572,11 +6780,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             var actionData = GetActionData(actionProfile.ActionId, out _);
             foreach (var target in previewTargets)
             {
-                if (actionProfile.ActionType == "sleep" && IsUndead(target))
-                {
-                    continue;
-                }
-
                 actionableCount++;
                 var damage = Mathf.RoundToInt(EstimateAiActionDamage(active, target, actionProfile, actionData));
                 if (target.Team == active.Team)
@@ -6613,7 +6816,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         var enemy = GetLivingEnemyAtCell(active.Team, hoveredCell);
-        if (enemy == null || !active.CanUseActionAtRange(enemy,
+        if (enemy == null || enemy.IsImmuneToAction(actionProfile.ActionId) || !active.CanUseActionAtRange(enemy,
                 actionProfile.ActionType == "shadow_strike" ? 1 : actionProfile.Range,
                 _allUnits)
             || !HasClearUnitLineOfSight(active, enemy))
@@ -6657,7 +6860,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 foreach (var unit in _allUnits)
                 {
                     if (IsUsableUnit(unit) && !unit.IsDead && unit.OccupiesCell(cell)
-                        && seenUnitIds.Add(unit.UnitId))
+                        && !unit.IsImmuneToAction(actionProfile.ActionId) && seenUnitIds.Add(unit.UnitId))
                     {
                         targets.Add(unit);
                     }
@@ -6675,7 +6878,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            targets.Add(unit);
+            if (!unit.IsImmuneToAction(actionProfile.ActionId))
+                targets.Add(unit);
         }
 
         return targets;
@@ -7884,34 +8088,41 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private int GetItemSellPrice(string vendorId, string itemId)
     {
-        var baseSellPrice = Mathf.Max(1, GetBaseItemBuyPrice(itemId) / 2);
+        var baseSellPrice = Mathf.Max(1, Mathf.FloorToInt(
+            GetBaseItemBuyPrice(itemId) * GetBaseSellPriceMultiplier(vendorId)));
         var multiplier = GetVendorSellMultiplier(vendorId);
         return Mathf.Max(1, Mathf.RoundToInt(baseSellPrice * multiplier));
     }
 
     private int GetBaseItemBuyPrice(string itemId)
     {
-        return itemId switch
+        var item = _gameData?.GetItem(itemId) ?? new Dictionary();
+        var basePrice = GetInt(item, "base_price", 0);
+        if (basePrice <= 0)
         {
-            "blessing-scroll" => 100,
-            "cloth-robe" => 5,
-            "small-shield" => 10,
-            "iron-helmet" => 10,
-            "leather-armor" => 15,
-            "short-bow" => 18,
-            "short-sword" => 20,
-            "healers-circlet" => 250,
-            "mages-amulet" => 250,
-            "boots-of-speed" => 150,
-            "chain-mail" => 30,
-            "fireball-scroll" => 300,
-            "healing-potion" => 50,
-            "magic-potion" => 50,
-            "long-bow" => 55,
-            "war-axe" => 60,
-            "chieftain-club" => 450,
-            _ => 10
-        };
+            GD.PushError($"Item '{itemId}' has no positive base_price configured in game_data.json.");
+            return 1;
+        }
+
+        return basePrice;
+    }
+
+    private float GetBaseSellPriceMultiplier(string vendorId)
+    {
+        var profile = _gameData?.GetVendorProfile(vendorId) ?? new Dictionary();
+        var defaults = GetDictionary(_gameData?.RawData ?? new Dictionary(), "vendor_defaults");
+        if (profile.ContainsKey("base_sell_price_multiplier"))
+        {
+            return Mathf.Max(0.0f, GetFloat(profile, "base_sell_price_multiplier", 0.0f));
+        }
+
+        if (defaults.ContainsKey("base_sell_price_multiplier"))
+        {
+            return Mathf.Max(0.0f, GetFloat(defaults, "base_sell_price_multiplier", 0.0f));
+        }
+
+        GD.PushError($"Vendor '{vendorId}' has no base sell price multiplier configured.");
+        return 0.0f;
     }
 
     private string GetItemName(string itemId)
@@ -9114,8 +9325,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 }
 
                 var valid = _awaitingTeleportDestination
-                    ? IsValidTeleportDestination(active, _teleportTarget, cell, range)
-                    : IsValidTeleportTarget(active, GetLivingUnitAtCell(cell), cell, range);
+                    ? IsValidTeleportDestination(active, _teleportTarget, cell, range, actionProfile.ActionId)
+                    : IsValidTeleportTarget(active, GetLivingUnitAtCell(cell), cell, range, actionProfile.ActionId);
                 if (valid)
                 {
                     targetCell = cell;
@@ -9160,7 +9371,9 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
 
             var target = GetLivingUnitAtCell(cell);
-            if (target != null && (distance <= actionProfile.Range || IsFogCellCurrentlyVisible(cell)))
+            if (target != null && (actionProfile.ActionType is "blessing" or "web" or "lightning_bolt" or "rain_of_arrows"
+                    || !target.IsImmuneToAction(actionProfile.ActionId))
+                && (distance <= actionProfile.Range || IsFogCellCurrentlyVisible(cell)))
             {
                 targetCell = cell;
                 return true;
@@ -9702,7 +9915,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 var weaponDamage = base_dmg + bonus_dmg;
                 if (hasDualWieldWeapons && entry.Key == "1-handed-b")
                 {
-                    weaponDamage = Mathf.FloorToInt(weaponDamage / 2.0f);
+                    weaponDamage = Mathf.FloorToInt(weaponDamage * 0.30f);
                 }
 
                 totalWeaponDamage += weaponDamage;
@@ -9869,6 +10082,18 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 _gameData?.GetClassEquipmentRules(unit.ClassId));
     }
 
+    private bool CanPairWithOppositeHand(Unit unit, Dictionary item, string targetSlotKey,
+        System.Collections.Generic.Dictionary<string, string> equipped)
+    {
+        if (unit.Team != "player" || GetString(item, "slot", "") != "1-handed"
+            || targetSlotKey is not ("1-handed-a" or "1-handed-b")
+            || !equipped.TryGetValue(targetSlotKey == "1-handed-a" ? "1-handed-b" : "1-handed-a", out var otherId))
+        {
+            return true;
+        }
+        return EquipmentSlotRules.CanPairHandItems(_gameData.GetClassEquipmentRules(unit.ClassId), item, _gameData.GetItem(otherId));
+    }
+
     private bool EquipItemToSpecificSlot(Unit unit, Dictionary itemData, string itemId, string targetSlotKey)
     {
         if (unit == null || string.IsNullOrEmpty(unit.UnitId) || !CanClassEquipItem(unit, itemData))
@@ -9900,6 +10125,11 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         {
             equippedBySlot = new System.Collections.Generic.Dictionary<string, string>();
             _equippedItemsByUnitId[unit.UnitId] = equippedBySlot;
+        }
+
+        if (!CanPairWithOppositeHand(unit, itemData, targetSlotKey, equippedBySlot))
+        {
+            return false;
         }
 
         if (GetString(itemData, "slot", "") == "2-handed")
@@ -10008,31 +10238,12 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         if (slot == "1-handed")
         {
-            if (equippedBySlot.Remove("2-handed", out var removedTwoHanded))
-            {
-                EnsureSharedInventoryHasUnequippedCount(removedTwoHanded, 1);
-            }
-
-            if (!equippedBySlot.ContainsKey("1-handed-a"))
-            {
-                equippedBySlot["1-handed-a"] = itemId;
-                return true;
-            }
-
-            if (!equippedBySlot.ContainsKey("1-handed-b"))
-            {
-                equippedBySlot["1-handed-b"] = itemId;
-                return true;
-            }
-
-            if (equippedBySlot.TryGetValue("1-handed-a", out var replacedOneHanded))
-            {
-                equippedBySlot["1-handed-a"] = itemId;
-                EnsureSharedInventoryHasUnequippedCount(replacedOneHanded, 1);
-                return true;
-            }
-
-            return false;
+            const string main = "1-handed-a", off = "1-handed-b";
+            var canUseMain = CanPairWithOppositeHand(unit, itemData, main, equippedBySlot);
+            var canUseOff = CanPairWithOppositeHand(unit, itemData, off, equippedBySlot);
+            // Prefer an empty legal hand; otherwise replace the main weapon if possible.
+            var useOff = canUseOff && (!canUseMain || (equippedBySlot.ContainsKey(main) && !equippedBySlot.ContainsKey(off)));
+            return EquipItemToSpecificSlot(unit, itemData, itemId, useOff ? off : main);
         }
 
         if (slot == "ring")
@@ -10075,7 +10286,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         foreach (var entry in equippedBySlot)
         {
             var itemData = _gameData.GetItem(entry.Value);
-            if (itemData.Count > 0 && !CanClassEquipItem(unit, itemData))
+            if (itemData.Count > 0 && (!CanClassEquipItem(unit, itemData)
+                || (entry.Key == "1-handed-b" && equippedBySlot.TryGetValue("1-handed-a", out var mainId)
+                    && CanClassEquipItem(unit, _gameData.GetItem(mainId))
+                    && !CanPairWithOppositeHand(unit, itemData, entry.Key, equippedBySlot))))
             {
                 invalidSlots.Add(entry.Key);
             }
