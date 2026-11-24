@@ -2500,6 +2500,38 @@ public partial class ActionFeedbackChecks : BattleController
         Check(_actor.HasStatusEffect("pinned"),
             "Enemy AI must execute ranged Pin attacks and apply their movement-preventing effect.");
         pinDirector.QueueFree();
+
+        Reset();
+        var spiderConfig = Config("enemy", "enemy", new Vector2I(3, 2));
+        spiderConfig["name"] = "Spider Queen";
+        spiderConfig["level"] = 4;
+        spiderConfig["action_points"] = 2;
+        spiderConfig["base_unarmed_damage"] = 10;
+        spiderConfig["ability_ids"] = new Array<string> { "melee", "poison" };
+        spiderConfig["primary_ability_id"] = "melee";
+        _enemy.Setup(spiderConfig);
+        _enemy.ApplyRuntimeSnapshot(new Dictionary
+        {
+            { "level", 1 },
+            { "action_points", 1 },
+            { "remaining_action_points", 1 }
+        });
+        Check(_enemy.Level == 4 && _enemy.ActionPoints == 2 && _enemy.RemainingActionPoints == 1,
+            "Saved enemy snapshots must preserve current template level and action points while restoring remaining actions.");
+        _enemy.ResetTurnResources();
+        _ally.SetGridPos(new Vector2I(10, 6));
+        var spiderDirector = new AiDirector();
+        AddChild(spiderDirector);
+        Set("_aiDirector", spiderDirector);
+        var spiderAttackDamage = Mathf.Max(0, _enemy.AttackDamage - _actor.ArmorClass);
+        var actorHitPoints = _actor.HitPoints;
+        Call("TryExecuteAiAction", _enemy);
+        Call("TryExecuteAiAction", _enemy);
+        Check(_enemy.RemainingActionPoints == 0
+            && actorHitPoints - _actor.HitPoints == spiderAttackDamage * 2
+            && _actor.HasStatusEffect("poison"),
+            "Spider Queen AI must spend both action points on melee attacks and apply her passive poison on hit.");
+        spiderDirector.QueueFree();
     }
 
     private void CheckIdentifyInventoryFlow()

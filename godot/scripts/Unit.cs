@@ -1120,14 +1120,22 @@ public partial class Unit : Node2D
         _baseMaxMagicPoints = Mathf.Max(0, GetInt(snapshot, "max_magic_points", _baseMaxMagicPoints));
         MagicPoints = Mathf.Clamp(GetInt(snapshot, "magic_points", MagicPoints), 0, MaxMagicPoints);
         MagicPointRegenPerTurn = Mathf.Max(0, GetInt(snapshot, "magic_point_regen_per_turn", MagicPointRegenPerTurn));
-        Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
+        if (Team != "enemy")
+        {
+            Level = Mathf.Max(1, GetInt(snapshot, "level", Level));
+        }
+
         Experience = Mathf.Max(0, GetInt(snapshot, "experience", Experience));
         LastLevelUpLearnedAbilityIds.Clear();
         if (Level >= 3)
         {
             LearnConfiguredLevelUpAbility(3, false);
         }
-        ActionPoints = Mathf.Max(0, GetInt(snapshot, "action_points", ActionPoints));
+        if (Team != "enemy")
+        {
+            ActionPoints = Mathf.Max(0, GetInt(snapshot, "action_points", ActionPoints));
+        }
+
         UnallocatedStatPoints = Mathf.Max(0, GetInt(snapshot, "unallocated_stat_points", UnallocatedStatPoints));
         Intelligence = GetInt(snapshot, "intelligence", Intelligence);
         Strength = GetInt(snapshot, "strength", Strength);

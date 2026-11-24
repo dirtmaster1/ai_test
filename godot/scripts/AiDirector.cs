@@ -169,6 +169,32 @@ public partial class AiDirector : Node
             return false;
         }
 
+        foreach (var target in targets)
+        {
+            if (target == null)
+            {
+                continue;
+            }
+
+            foreach (var option in options)
+            {
+                if (!option.CanPlanFromMovement
+                    || target.IsDead && option.ActionType != "resurrect"
+                    || !canPlanActionOnTarget(actor, target, option))
+                {
+                    continue;
+                }
+
+                var fromCell = actor.GetClosestCellAt(actor.GridPos, target.GridPos);
+                if (actor.DistanceToUnitAt(actor.GridPos, target) <= option.Range
+                    && hasLineOfSight(fromCell, target.GetClosestCell(fromCell)))
+                {
+                    step = actor.GridPos;
+                    return true;
+                }
+            }
+        }
+
         var bestPath = new Array<Vector2I>();
         var bestScore = float.NegativeInfinity;
 

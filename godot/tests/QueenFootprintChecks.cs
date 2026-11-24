@@ -109,6 +109,11 @@ public partial class QueenFootprintChecks : RefCounted
             var choseStep = director.TryChooseStepTowardActionRange(queen, new Array<Unit> { hero }, options,
                 target => target == hero, cell => Stand(controller, queen, cell), (_, _) => true, finder, out var step);
             Check(choseStep && Stand(controller, queen, step), "Queen AI must choose a legal movement step");
+            hero.SetGridPos(new Vector2I(3, 2));
+            var holdsPosition = director.TryChooseStepTowardActionRange(queen, new Array<Unit> { hero }, options,
+                target => target == hero, cell => Stand(controller, queen, cell), (_, _) => true, finder, out step);
+            Check(holdsPosition && step == queen.GridPos,
+                "Queen AI must hold position when already in melee range so it can spend another action point attacking");
             upperBlocker.Setup(new Godot.Collections.Dictionary
             {
                 { "id", "upper-blocker" },
