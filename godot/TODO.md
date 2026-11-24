@@ -9,6 +9,8 @@ Items here are being tracked for a larger future effort and are not currently in
 
 - [ ] Add a map feature menu where players can view discovered maps with key locations marked.
 - [ ] Give camp rest-site fires limited uses (1 use initially).
+- [ ] Give marker type = trap an opacity to make them harder to see and require awareness by the party.
+- [ ] Add cave/dungeon darkness and lighting changes, party visbility will be less. Add new marker type (light_source) for torches and other light sources help illuminate the darkness. 
 
 ## Audio
 
