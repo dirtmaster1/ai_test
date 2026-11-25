@@ -25,6 +25,10 @@ Recommended folder layout:
 
 Each `TokenMapDef` can configure its own terrain atlas and atlas cells with `Terrain = new MapTerrainDef { ... }`. If omitted, the map uses the dungeon terrain defaults.
 
+### Marker transparency
+
+All marker custom data includes the integer `percent_transparency` property. It defaults to `0` when unset, accepts values from `0` (fully opaque) through `100` (fully transparent), and applies to rendered marker tiles and generated fire visuals.
+
 ### Map-Level Fog of War
 
 Set `FogOfWarVisionRange` on a map's `TokenMapDef` in [MapTokenCatalog.cs](../scripts/MapTokenCatalog.cs) to override its visible radius in tiles. The default is `7` when a map has no override; Spider Mines uses `3` because it is a dark mine. The range uses the same eight-direction tile distance as movement, and walls still block line of sight.

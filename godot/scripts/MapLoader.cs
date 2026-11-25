@@ -221,9 +221,11 @@ public partial class MapLoader : Node
             }
 
             var markerName = GetTileString(markerLayer, tileData, "name", "");
+            var transparency = Mathf.Clamp(GetTileInt(markerLayer, tileData, "percent_transparency", 0), 0, 100);
+            var opacity = (100 - transparency) / 100.0f;
             if (markerType == "rest_point" && markerName.Equals("Campfire", System.StringComparison.OrdinalIgnoreCase))
             {
-                AddCampfireVisual(visualLayer, markerLayer, cell);
+                AddCampfireVisual(visualLayer, markerLayer, cell, opacity);
                 continue;
             }
 
@@ -231,10 +233,12 @@ public partial class MapLoader : Node
                 && (markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase)
                     || markerName.Equals("Fire Pit", System.StringComparison.OrdinalIgnoreCase)))
             {
-                AddCosmeticFireVisual(visualLayer, markerLayer, cell, markerName);
+                AddCosmeticFireVisual(visualLayer, markerLayer, cell, markerName, opacity);
                 continue;
             }
 
+            var modulate = tileData.Modulate;
+            tileData.Modulate = new Color(modulate.R, modulate.G, modulate.B, opacity);
             visualLayer.SetCell(
                 cell,
                 markerLayer.GetCellSourceId(cell),
@@ -246,7 +250,7 @@ public partial class MapLoader : Node
         return visualLayer;
     }
 
-    private static void AddCampfireVisual(TileMapLayer visualLayer, TileMapLayer markerLayer, Vector2I cell)
+    private static void AddCampfireVisual(TileMapLayer visualLayer, TileMapLayer markerLayer, Vector2I cell, float opacity)
     {
         AddAnimatedFireVisual(
             visualLayer,
@@ -254,20 +258,22 @@ public partial class MapLoader : Node
             cell,
             "Campfire",
             "res://assets/vfx/campfire_base.png",
-            "res://assets/vfx/campfire_flame_frames.png");
+            "res://assets/vfx/campfire_flame_frames.png",
+            opacity);
     }
 
     private static void AddCosmeticFireVisual(
         TileMapLayer visualLayer,
         TileMapLayer markerLayer,
         Vector2I cell,
-        string markerName)
+        string markerName,
+        float opacity)
     {
         var (basePath, flamePath) = markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase)
             ? ("res://assets/vfx/torch_base.png", "res://assets/vfx/torch_flame_frames.png")
             : ("res://assets/vfx/fire_pit_base.png", "res://assets/vfx/fire_pit_flame_frames.png");
         var visualName = markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase) ? "Torch" : "FirePit";
-        AddAnimatedFireVisual(visualLayer, markerLayer, cell, visualName, basePath, flamePath);
+        AddAnimatedFireVisual(visualLayer, markerLayer, cell, visualName, basePath, flamePath, opacity);
     }
 
     private static void AddAnimatedFireVisual(
@@ -276,7 +282,8 @@ public partial class MapLoader : Node
         Vector2I cell,
         string visualName,
         string basePath,
-        string flamePath)
+        string flamePath,
+        float opacity)
     {
         var baseTexture = GD.Load<Texture2D>(basePath);
         var flameSheet = GD.Load<Texture2D>(flamePath);
@@ -299,6 +306,7 @@ public partial class MapLoader : Node
             Name = $"{visualName}Base_{cell.X}_{cell.Y}",
             Texture = baseTexture,
             Position = center,
+            Modulate = new Color(1.0f, 1.0f, 1.0f, opacity),
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest
         });
 
@@ -321,6 +329,7 @@ public partial class MapLoader : Node
             SpriteFrames = frames,
             Animation = "flicker",
             Position = center + new Vector2(0, -16),
+            Modulate = new Color(1.0f, 1.0f, 1.0f, opacity),
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             ZIndex = 1
         };

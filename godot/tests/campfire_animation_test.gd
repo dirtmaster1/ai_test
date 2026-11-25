@@ -22,11 +22,20 @@ func run_test() -> void:
         quit(1)
         return
 
+    tileset = tileset.duplicate(true) as TileSet
     var fireSource := tileset.get_source(1) as TileSetAtlasSource
     var torchData := fireSource.get_tile_data(Vector2i(3, 1), 0) if fireSource != null else null
-    check(torchData != null, "Torch tile data must load")
+    var firePitData := fireSource.get_tile_data(Vector2i(4, 1), 0) if fireSource != null else null
+    check(torchData != null and firePitData != null, "Torch and Fire Pit tile data must load")
     if torchData != null:
         torchData.set_custom_data("marker_type", "cosmetic")
+        torchData.set_custom_data("percent_transparency", 50)
+    if firePitData != null:
+        firePitData.set_custom_data("marker_type", "light_source")
+        firePitData.set_custom_data("percent_transparency", 25)
+    var invisibleMarkerData := fireSource.get_tile_data(Vector2i(1, 2), 0) if fireSource != null else null
+    if invisibleMarkerData != null:
+        invisibleMarkerData.set_custom_data("percent_transparency", 100)
 
     var scene_root := Node2D.new()
     var maps := Node2D.new()
@@ -40,6 +49,7 @@ func run_test() -> void:
     markers.set_cell(Vector2i(2, 2), 1, Vector2i(3, 1))
     markers.set_cell(Vector2i(3, 2), 1, Vector2i(4, 1))
     markers.set_cell(Vector2i(4, 2), 1, Vector2i(0, 2))
+    markers.set_cell(Vector2i(5, 2), 1, Vector2i(1, 2))
     maps.add_child(markers)
 
     var loader = load("res://scripts/MapLoader.cs").new()
@@ -71,12 +81,23 @@ func run_test() -> void:
             and visuals.get_cell_source_id(Vector2i(4, 2)) == 1
             and visuals.get_cell_atlas_coords(Vector2i(4, 2)) == Vector2i(0, 2),
         "Unrelated cosmetic markers must keep their original tile visuals")
+    if visuals != null:
+        var defaultOpacityData := visuals.get_cell_tile_data(Vector2i(4, 2))
+        var invisibleOpacityData := visuals.get_cell_tile_data(Vector2i(5, 2))
+        check(defaultOpacityData != null and is_equal_approx(defaultOpacityData.modulate.a, 1.0),
+            "Unset percent_transparency must leave regular marker visuals fully opaque")
+        check(invisibleOpacityData != null and is_zero_approx(invisibleOpacityData.modulate.a),
+            "percent_transparency 100 must make regular marker visuals fully transparent")
 
     if visuals != null:
         var torchBase := visuals.get_node_or_null("TorchBase_2_2") as Sprite2D
         var torchFlame := visuals.get_node_or_null("TorchFlame_2_2") as AnimatedSprite2D
         check(torchBase != null and torchBase.texture != null, "Torch must keep its static prop base")
         check(torchFlame != null, "Torch must have a flame sprite")
+        check(torchBase != null and is_equal_approx(torchBase.modulate.a, 0.5),
+            "Cosmetic Torch base must respect percent_transparency")
+        check(torchFlame != null and is_equal_approx(torchFlame.modulate.a, 0.5),
+            "Cosmetic Torch flame must respect percent_transparency")
         if torchFlame != null and torchFlame.sprite_frames != null:
             check(torchFlame.sprite_frames.get_frame_count("flicker") == 8, "Torch must use all eight Retro Diffusion frames")
             check(torchFlame.is_playing(), "Torch flame animation must start automatically")
@@ -88,6 +109,10 @@ func run_test() -> void:
         var firePitFlame := visuals.get_node_or_null("FirePitFlame_3_2") as AnimatedSprite2D
         check(firePitBase != null and firePitBase.texture != null, "Fire Pit must keep its static prop base")
         check(firePitFlame != null, "Fire Pit must have a flame sprite")
+        check(firePitBase != null and is_equal_approx(firePitBase.modulate.a, 0.75),
+            "Light-source Fire Pit base must respect percent_transparency")
+        check(firePitFlame != null and is_equal_approx(firePitFlame.modulate.a, 0.75),
+            "Light-source Fire Pit flame must respect percent_transparency")
         if firePitFlame != null and firePitFlame.sprite_frames != null:
             check(firePitFlame.sprite_frames.get_frame_count("flicker") == 8, "Fire Pit must use all eight Retro Diffusion frames")
             check(firePitFlame.is_playing(), "Fire Pit flame animation must start automatically")
