@@ -22,6 +22,12 @@ func run_test() -> void:
         quit(1)
         return
 
+    var fireSource := tileset.get_source(1) as TileSetAtlasSource
+    var torchData := fireSource.get_tile_data(Vector2i(3, 1), 0) if fireSource != null else null
+    check(torchData != null, "Torch tile data must load")
+    if torchData != null:
+        torchData.set_custom_data("marker_type", "cosmetic")
+
     var scene_root := Node2D.new()
     var maps := Node2D.new()
     maps.name = "Maps"
@@ -90,7 +96,7 @@ func run_test() -> void:
             check(firePitFlame.frame != initialFirePitFrame, "Fire Pit flame frame must advance")
 
     if failure_count == 0:
-        print("PASS: Campfire, Torch, and Fire Pit markers keep their map cells and display eight-frame flames")
+        print("PASS: Campfire and both cosmetic/light-source Torch and Fire Pit markers keep their map cells and display eight-frame flames")
     scene_root.free()
     await process_frame
     quit(0 if failure_count == 0 else 1)

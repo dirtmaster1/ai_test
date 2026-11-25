@@ -18,6 +18,19 @@ func run_test() -> void:
     root.add_child(viewport)
     var checks = load("res://tests/FogOfWarChecks.cs").new()
     viewport.add_child(checks)
+    check(checks.call("VisionRangeForMap", "spider-mines") == 3, "Spider Mines must use its configured 3-tile fog range")
+    check(checks.call("VisionRangeForMap", "forest-town") == 7, "Maps without a fog override must keep the 7-tile default")
+    check(checks.call("VisionRangeForMap", "unknown-map") == 7, "Unlisted maps must keep the 7-tile default")
+    var spider_fog_alphas: Dictionary = checks.call("FogAlphaSamplesForMap", "spider-mines", Vector2i(3, 2))
+    check(spider_fog_alphas["visible_alpha"] == 158, "Spider Mines visible cells must use the existing explored-shadow darkness")
+    check(spider_fog_alphas["revealed_alpha"] == 178, "Spider Mines explored shadows must be slightly darker than its visible cells")
+    var default_fog_alphas: Dictionary = checks.call("FogAlphaSamplesForMap", "forest-town", Vector2i(0, 2))
+    check(default_fog_alphas["visible_alpha"] == 0 && default_fog_alphas["revealed_alpha"] == 158,
+        "Maps without darkness overrides must preserve the existing fog alpha levels")
+    var light_samples: Dictionary = checks.call("LightSourceFogAlphaSamples")
+    check(light_samples["lit_explored_alpha"] == 0, "A light source must clear fog over previously explored cells in range")
+    check(light_samples["unexplored_alpha"] == 255, "A light source must not reveal unexplored cells")
+    check(light_samples["unlit_explored_alpha"] == 178, "Explored cells outside the light range must keep their map darkness")
     await RenderingServer.frame_post_draw
 
     var directions := [Vector2i.RIGHT, Vector2i.UP, Vector2i.LEFT]

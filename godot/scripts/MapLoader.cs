@@ -92,6 +92,7 @@ public partial class MapLoader : Node
             { "players", BuildPlayersFromMarkerSpawns(new System.Collections.Generic.Dictionary<int, Vector2I>(), null) },
             { "encounters", new Array<Dictionary>() },
             { "event_triggers", new Array<Dictionary>() },
+            { "light_sources", new Array<Dictionary>() },
             { "props", new Array<Dictionary>() },
             { "transitions", new Array<Dictionary>() }
         };
@@ -226,7 +227,7 @@ public partial class MapLoader : Node
                 continue;
             }
 
-            if (markerType == "cosmetic"
+            if ((markerType == "cosmetic" || markerType == "light_source")
                 && (markerName.Equals("Torch", System.StringComparison.OrdinalIgnoreCase)
                     || markerName.Equals("Fire Pit", System.StringComparison.OrdinalIgnoreCase)))
             {
@@ -600,6 +601,7 @@ public partial class MapLoader : Node
 
         var transitions = new Array<Dictionary>();
         var eventTriggers = new Array<Dictionary>();
+        var lightSources = new Array<Dictionary>();
         var props = new Array<Dictionary>();
         var playerSpawnBySlot = new System.Collections.Generic.Dictionary<int, Vector2I>();
         Vector2I? playerLeaderSpawn = null;
@@ -792,6 +794,22 @@ public partial class MapLoader : Node
                         eventTriggers.Add(eventTrigger);
                         break;
                     }
+                    case "light_source":
+                    {
+                        var lightRange = GetTileInt(markerLayer, tileData, "light_range", -1);
+                        if (lightRange < 0)
+                        {
+                            GD.PushError($"MapLoader light source at {mapId} ({cell.X},{cell.Y}) requires a non-negative light_range.");
+                            break;
+                        }
+
+                        lightSources.Add(new Dictionary
+                        {
+                            { "grid_pos", cell },
+                            { "light_range", lightRange }
+                        });
+                        break;
+                    }
                     case "prop":
                     case "chest":
                     case "sign":
@@ -881,6 +899,11 @@ public partial class MapLoader : Node
         if (eventTriggers.Count > 0)
         {
             mapData["event_triggers"] = eventTriggers;
+        }
+
+        if (lightSources.Count > 0)
+        {
+            mapData["light_sources"] = lightSources;
         }
 
         if (props.Count > 0)

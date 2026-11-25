@@ -62,6 +62,11 @@ public partial class EventTriggerChecks : BattleController
         followerEventTileData.SetCustomData("enemy_spawn_groups", followerSpawnGroups);
         followerEventTileData.SetCustomData("uses_tile_visual", false);
 
+        var lightSourceAtlas = (TileSetAtlasSource)tileSet.GetSource(6);
+        var lightSourceTileData = lightSourceAtlas.GetTileData(new Vector2I(1, 0), 0);
+        lightSourceTileData.SetCustomData("marker_type", "light_source");
+        lightSourceTileData.SetCustomData("light_range", 2);
+
         var markers = new TileMapLayer
         {
             Name = TestMapId + "-markers",
@@ -70,6 +75,7 @@ public partial class EventTriggerChecks : BattleController
         markers.SetCell(new Vector2I(3, 3), 0, new Vector2I(2, 1));
         markers.SetCell(new Vector2I(6, 6), 0, new Vector2I(2, 1));
         markers.SetCell(new Vector2I(2, 3), 0, new Vector2I(0, 1));
+        markers.SetCell(new Vector2I(4, 4), 6, new Vector2I(1, 0));
         maps.AddChild(markers);
 
         var mapLoader = new MapLoader { MapsRootPath = "../Maps" };
@@ -91,6 +97,11 @@ public partial class EventTriggerChecks : BattleController
             && (string)parsedGroups[1]["enemy_unit_id"] == "zombie"
             && (int)parsedGroups[1]["enemy_count"] == 1,
             "Map loading must retain every enemy spawn group and its count.");
+        var lightSources = (Array<Dictionary>)_testMapData["light_sources"];
+        Check(lightSources.Count == 1
+            && (Vector2I)lightSources[0]["grid_pos"] == new Vector2I(4, 4)
+            && (int)lightSources[0]["light_range"] == 2,
+            "Map loading must retain light-source positions and ranges.");
 
         Set("_currentMapId", TestMapId);
         Set("_gameData", GetNode<GameData>("/root/GameData"));
@@ -144,8 +155,9 @@ public partial class EventTriggerChecks : BattleController
         var markerVisuals = GetNode<TileMapLayer>("Maps/" + TestMapId + "-item-visuals");
         Check(markerVisuals.GetCellSourceId(new Vector2I(3, 3)) == -1
             && markerVisuals.GetCellSourceId(new Vector2I(6, 6)) == -1
-            && markerVisuals.GetCellSourceId(new Vector2I(2, 3)) == -1,
-            "Event-trigger markers must not create party-visible tile visuals.");
+            && markerVisuals.GetCellSourceId(new Vector2I(2, 3)) == -1
+            && markerVisuals.GetCellSourceId(new Vector2I(4, 4)) == -1,
+            "Event-trigger and hidden light-source markers must not create party-visible tile visuals.");
         Check(((Array<Dictionary>)_testMapData["props"]).Count == 0,
             "Event-trigger markers must not appear as hoverable map interactables.");
     }

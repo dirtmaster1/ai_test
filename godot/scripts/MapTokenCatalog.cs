@@ -18,11 +18,47 @@ public sealed class TokenMapDef
     public string Id { get; init; } = "";
     public string Name { get; init; } = "";
     public MapTerrainDef Terrain { get; init; } = new();
+    public int? FogOfWarVisionRange { get; init; }
+    public int? FogOfWarVisibleAlpha { get; init; }
+    public int? FogOfWarRevealedAlpha { get; init; }
 }
 
 public static class MapTokenCatalog
 {
+    public const int DefaultFogOfWarVisionRange = 7;
+    public const int DefaultFogOfWarVisibleAlpha = 0;
+    public const int DefaultFogOfWarRevealedAlpha = 158;
     public static readonly Dictionary<string, TokenMapDef> Maps = BuildMaps();
+
+    public static int GetFogOfWarVisionRange(string mapId)
+    {
+        if (!string.IsNullOrWhiteSpace(mapId)
+            && Maps.TryGetValue(mapId, out var definition)
+            && definition.FogOfWarVisionRange.HasValue)
+        {
+            return System.Math.Max(0, definition.FogOfWarVisionRange.Value);
+        }
+
+        return DefaultFogOfWarVisionRange;
+    }
+
+    public static int GetFogOfWarVisibleAlpha(string mapId) => GetFogOfWarAlpha(mapId, true);
+
+    public static int GetFogOfWarRevealedAlpha(string mapId) => GetFogOfWarAlpha(mapId, false);
+
+    private static int GetFogOfWarAlpha(string mapId, bool visibleCells)
+    {
+        if (!string.IsNullOrWhiteSpace(mapId) && Maps.TryGetValue(mapId, out var definition))
+        {
+            var configuredAlpha = visibleCells ? definition.FogOfWarVisibleAlpha : definition.FogOfWarRevealedAlpha;
+            if (configuredAlpha.HasValue)
+            {
+                return System.Math.Max(0, System.Math.Min(255, configuredAlpha.Value));
+            }
+        }
+
+        return visibleCells ? DefaultFogOfWarVisibleAlpha : DefaultFogOfWarRevealedAlpha;
+    }
 
     private static Dictionary<string, TokenMapDef> BuildMaps()
     {
@@ -74,7 +110,10 @@ public static class MapTokenCatalog
             ["spider-mines"] = new TokenMapDef
             {
                 Id = "spider-mines",
-                Name = "Spider Mines"
+                Name = "Spider Mines",
+                FogOfWarVisionRange = 3,
+                FogOfWarVisibleAlpha = 158,
+                FogOfWarRevealedAlpha = 178
             },
             ["graveyard"] = new TokenMapDef
             {

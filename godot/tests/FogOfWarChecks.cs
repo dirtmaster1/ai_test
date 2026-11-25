@@ -29,6 +29,125 @@ public partial class FogOfWarChecks : BattleController
 
     public override void _Draw() => DrawRect(new Rect2(-4096, -4096, 8192, 8192), Colors.White);
 
+    public int VisionRangeForMap(string mapId) => MapTokenCatalog.GetFogOfWarVisionRange(mapId);
+
+    public Dictionary FogAlphaSamplesForMap(string mapId, Vector2I exploredCell)
+    {
+        var currentMapIdField = Field("_currentMapId");
+        var previousMapId = (string)currentMapIdField.GetValue(this);
+        var previousLeaderCell = _leader.GridPos;
+        var revealedByMap = (System.Collections.Generic.Dictionary<string, HashSet<string>>)
+            Field("_revealedFogCellIdsByMap").GetValue(this);
+        var hadPreviousRevealedCells = revealedByMap.TryGetValue(mapId, out var previousRevealedCells);
+        if (hadPreviousRevealedCells)
+        {
+            previousRevealedCells = new HashSet<string>(previousRevealedCells);
+        }
+
+        try
+        {
+            currentMapIdField.SetValue(this, mapId);
+            _leader.SetGridPos(new Vector2I(10, 2));
+            revealedByMap[mapId] = new HashSet<string> { $"{exploredCell.X},{exploredCell.Y}" };
+            Field("_fogVisibilityActor").SetValue(this, null);
+            CallPrivate("UpdateFogOfWar");
+
+            var texture = (ImageTexture)Field("_fogOverlayTexture").GetValue(this);
+            using var image = texture.GetImage();
+            var overlayRect = (Rect2)Field("_fogOverlayRect").GetValue(this);
+            var textureMinX = Mathf.RoundToInt(overlayRect.Position.X / 64.0f);
+            var textureMinY = Mathf.RoundToInt(overlayRect.Position.Y / 64.0f);
+            return new Dictionary
+            {
+                { "visible_alpha", SampleFogAlpha(image, _leader.GridPos, textureMinX, textureMinY) },
+                { "revealed_alpha", SampleFogAlpha(image, exploredCell, textureMinX, textureMinY) }
+            };
+        }
+        finally
+        {
+            _leader.SetGridPos(previousLeaderCell);
+            currentMapIdField.SetValue(this, previousMapId);
+            if (hadPreviousRevealedCells)
+            {
+                revealedByMap[mapId] = previousRevealedCells;
+            }
+            else
+            {
+                revealedByMap.Remove(mapId);
+            }
+
+            Field("_fogVisibilityActor").SetValue(this, null);
+            CallPrivate("UpdateFogOfWar");
+        }
+    }
+
+    public Dictionary LightSourceFogAlphaSamples()
+    {
+        var currentMapIdField = Field("_currentMapId");
+        var previousMapId = (string)currentMapIdField.GetValue(this);
+        var previousLeaderCell = _leader.GridPos;
+        var revealedByMap = (System.Collections.Generic.Dictionary<string, HashSet<string>>)
+            Field("_revealedFogCellIdsByMap").GetValue(this);
+        var hadPreviousRevealedCells = revealedByMap.TryGetValue("spider-mines", out var previousRevealedCells);
+        if (hadPreviousRevealedCells)
+        {
+            previousRevealedCells = new HashSet<string>(previousRevealedCells);
+        }
+
+        var lightSourceCoverageCells = (HashSet<Vector2I>)Field("_lightSourceCoverageCells").GetValue(this);
+        var previousLightSourceCoverageCells = new HashSet<Vector2I>(lightSourceCoverageCells);
+        try
+        {
+            currentMapIdField.SetValue(this, "spider-mines");
+            _leader.SetGridPos(new Vector2I(10, 2));
+            revealedByMap["spider-mines"] = new HashSet<string> { "5,2", "0,2" };
+            var lightSources = new Array<Dictionary>();
+            lightSources.Add(new Dictionary
+            {
+                { "grid_pos", new Vector2I(5, 2) },
+                { "light_range", 3 }
+            });
+            CallPrivate("LoadLightSourceCoverageFromMap", new Dictionary { { "light_sources", lightSources } });
+            Field("_fogVisibilityActor").SetValue(this, null);
+            CallPrivate("UpdateFogOfWar");
+
+            var texture = (ImageTexture)Field("_fogOverlayTexture").GetValue(this);
+            using var image = texture.GetImage();
+            var overlayRect = (Rect2)Field("_fogOverlayRect").GetValue(this);
+            var textureMinX = Mathf.RoundToInt(overlayRect.Position.X / 64.0f);
+            var textureMinY = Mathf.RoundToInt(overlayRect.Position.Y / 64.0f);
+            return new Dictionary
+            {
+                { "visible_alpha", SampleFogAlpha(image, _leader.GridPos, textureMinX, textureMinY) },
+                { "lit_explored_alpha", SampleFogAlpha(image, new Vector2I(5, 2), textureMinX, textureMinY) },
+                { "unexplored_alpha", SampleFogAlpha(image, new Vector2I(4, 2), textureMinX, textureMinY) },
+                { "unlit_explored_alpha", SampleFogAlpha(image, new Vector2I(0, 2), textureMinX, textureMinY) }
+            };
+        }
+        finally
+        {
+            _leader.SetGridPos(previousLeaderCell);
+            currentMapIdField.SetValue(this, previousMapId);
+            if (hadPreviousRevealedCells)
+            {
+                revealedByMap["spider-mines"] = previousRevealedCells;
+            }
+            else
+            {
+                revealedByMap.Remove("spider-mines");
+            }
+
+            lightSourceCoverageCells.Clear();
+            foreach (var cell in previousLightSourceCoverageCells)
+            {
+                lightSourceCoverageCells.Add(cell);
+            }
+
+            Field("_fogVisibilityActor").SetValue(this, null);
+            CallPrivate("UpdateFogOfWar");
+        }
+    }
+
     public void ResetScenario()
     {
         _leader.SetGridPos(new Vector2I(8, 2));
@@ -118,6 +237,15 @@ public partial class FogOfWarChecks : BattleController
 
     private static FieldInfo Field(string name) =>
         typeof(BattleController).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+
+    private static int SampleFogAlpha(Image image, Vector2I cell, int textureMinX, int textureMinY)
+    {
+        const int PixelsPerCell = 8;
+        const int CellCenterPixel = PixelsPerCell / 2;
+        var pixelX = (cell.X - textureMinX) * PixelsPerCell + CellCenterPixel;
+        var pixelY = (cell.Y - textureMinY) * PixelsPerCell + CellCenterPixel;
+        return Mathf.RoundToInt(image.GetPixel(pixelX, pixelY).A * 255.0f);
+    }
 
     private object CallPrivate(string name, params object[] arguments) =>
         typeof(BattleController).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(this, arguments);

@@ -25,6 +25,16 @@ Recommended folder layout:
 
 Each `TokenMapDef` can configure its own terrain atlas and atlas cells with `Terrain = new MapTerrainDef { ... }`. If omitted, the map uses the dungeon terrain defaults.
 
+### Map-Level Fog of War
+
+Set `FogOfWarVisionRange` on a map's `TokenMapDef` in [MapTokenCatalog.cs](../scripts/MapTokenCatalog.cs) to override its visible radius in tiles. The default is `7` when a map has no override; Spider Mines uses `3` because it is a dark mine. The range uses the same eight-direction tile distance as movement, and walls still block line of sight.
+
+`FogOfWarVisibleAlpha` and `FogOfWarRevealedAlpha` optionally tune the black overlay alpha for currently visible and previously revealed cells (`0` is clear, `255` is black). Defaults are `0` and `158`; Spider Mines uses `158` for visible cells and `178` for explored shadows. Unexplored cells remain fully black.
+
+### Light-source markers
+
+Set `marker_type` to `light_source` and configure the integer `light_range` on a marker tile or alternative. It clears the fog overlay on cells within that eight-direction tile radius only when those cells have already been explored; it does not reveal unexplored cells or change enemy visibility. `light_range = 0` lights only the source cell. Set `uses_tile_visual = true` if the marker tile itself should be drawn; otherwise the marker remains hidden. Named `Torch` and `Fire Pit` markers keep their animated fire visuals with either `cosmetic` or `light_source` as the marker type.
+
 ## Forest Town Church Tiles
 
 The church tiles use previously empty cells in `terrain_grass_water_64.png` and source `6` of `forest_terrain_64_tileset.tres`:

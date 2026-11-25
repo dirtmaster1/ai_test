@@ -12,7 +12,6 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private const int CellSize = 64;
     private const int MaxPartyMembers = 5;
     private const int DefaultAggroTriggerRange = 4;
-    private const int FogOfWarVisionRange = 7;
     private const int FogTexturePixelsPerCell = 8;
     private const int FogTexturePaddingCells = 1;
     private const float FogEdgeFeatherPixels = 32.0f;
@@ -60,6 +59,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
     private readonly HashSet<Vector2I> _mapFogCellSet = new();
     private readonly HashSet<Vector2I> _visibleFogCells = new();
     private readonly HashSet<Vector2I> _fogOccludedCells = new();
+    private readonly HashSet<Vector2I> _lightSourceCoverageCells = new();
     private ImageTexture _fogOverlayTexture;
     private ImageTexture _fogPreviousOverlayTexture;
     private ShaderMaterial _fogOverlayMaterial;
@@ -230,6 +230,46 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             IsMagical = isMagical;
             IgnoresActionCost = ignoresActionCost;
             RequiresRangedWeapon = requiresRangedWeapon;
+        }
+    }
+
+    private void LoadLightSourceCoverageFromMap(Dictionary mapData)
+    {
+        _lightSourceCoverageCells.Clear();
+        foreach (var lightSource in TryGetDictionaryArray(mapData, "light_sources"))
+        {
+            var lightRange = GetInt(lightSource, "light_range", -1);
+            var lightCell = GetVector2I(lightSource, "grid_pos", new Vector2I(-9999, -9999));
+            if (lightRange < 0 || lightCell == new Vector2I(-9999, -9999))
+            {
+                GD.PushError($"Map '{_currentMapId}' has a light_source with an invalid grid_pos or negative light_range.");
+                continue;
+            }
+
+            if (_mapFogCells.Count > 0)
+            {
+                foreach (var cell in _mapFogCells)
+                {
+                    if (Unit.IsWithinRange(lightCell, cell, lightRange))
+                    {
+                        _lightSourceCoverageCells.Add(cell);
+                    }
+                }
+
+                continue;
+            }
+
+            for (var x = 0; x < _gridWidth; x++)
+            {
+                for (var y = 0; y < _gridHeight; y++)
+                {
+                    var cell = new Vector2I(x, y);
+                    if (Unit.IsWithinRange(lightCell, cell, lightRange))
+                    {
+                        _lightSourceCoverageCells.Add(cell);
+                    }
+                }
+            }
         }
     }
 
@@ -3564,6 +3604,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         _mapFogCellSet.Clear();
         _visibleFogCells.Clear();
         _fogOccludedCells.Clear();
+        _lightSourceCoverageCells.Clear();
         _fogOverlayTexture = null;
         _fogPreviousOverlayTexture = null;
         SetFogStepBlend(1.0f);
@@ -3615,6 +3656,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             _walkableCells.Add(walkableCell);
             AddFogMapCell(walkableCell);
         }
+
+        LoadLightSourceCoverageFromMap(mapData);
 
         var doors = TryGetDictionaryArray(mapData, "doors");
         foreach (var door in doors)
@@ -7068,9 +7111,10 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             }
         }
 
+        var visionRange = MapTokenCatalog.GetFogOfWarVisionRange(_currentMapId);
         foreach (var cell in _mapFogCells)
         {
-            if (!Unit.IsWithinRange(anchorCell, cell, FogOfWarVisionRange + 1))
+            if (!Unit.IsWithinRange(anchorCell, cell, visionRange + 1))
             {
                 continue;
             }
@@ -7081,7 +7125,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                 continue;
             }
 
-            if (!Unit.IsWithinRange(anchorCell, cell, FogOfWarVisionRange))
+            if (!Unit.IsWithinRange(anchorCell, cell, visionRange))
             {
                 continue;
             }
@@ -7159,17 +7203,26 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         var textureWidth = cellWidth * FogTexturePixelsPerCell;
         var textureHeight = cellHeight * FogTexturePixelsPerCell;
         var fogAlphaByCell = new byte[cellWidth * cellHeight];
+        var visibleFogByCell = new bool[cellWidth * cellHeight];
+        var visibleAlpha = (byte)MapTokenCatalog.GetFogOfWarVisibleAlpha(_currentMapId);
+        var revealedAlpha = (byte)MapTokenCatalog.GetFogOfWarRevealedAlpha(_currentMapId);
         System.Array.Fill(fogAlphaByCell, (byte)255);
         var canFeatherByCell = new bool[cellWidth * cellHeight];
         foreach (var cell in _mapFogCells)
         {
             var cellIndex = (cell.Y - textureMinY) * cellWidth + cell.X - textureMinX;
-            var alpha = _visibleFogCells.Contains(cell)
+            var isVisible = _visibleFogCells.Contains(cell);
+            var isExplored = revealedCells.Contains(GetFogCellId(cell));
+            var isLitByLightSource = isExplored && _lightSourceCoverageCells.Contains(cell);
+            var alpha = isLitByLightSource
                 ? 0
-                : revealedCells.Contains(GetFogCellId(cell))
-                    ? 158
-                    : 255;
+                : isVisible
+                    ? visibleAlpha
+                    : isExplored
+                        ? revealedAlpha
+                        : 255;
             fogAlphaByCell[cellIndex] = (byte)alpha;
+            visibleFogByCell[cellIndex] = isVisible;
             canFeatherByCell[cellIndex] = !_fogOccludedCells.Contains(cell);
         }
 
@@ -7203,6 +7256,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
             {
                 var cellIndex = cellY * cellWidth + cellX;
                 var baseAlpha = fogAlphaByCell[cellIndex];
+                var isVisible = visibleFogByCell[cellIndex];
                 if (baseAlpha == 0)
                 {
                     continue;
@@ -7215,7 +7269,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
                     var pixelIndex = (pixelY * textureWidth + cellX * FogTexturePixelsPerCell) * 4 + 3;
                     for (var localPixelX = 0; localPixelX < FogTexturePixelsPerCell; localPixelX++, pixelIndex += 4)
                     {
-                        if (visibleNeighborMask == 0)
+                        if (isVisible || visibleNeighborMask == 0)
                         {
                             pixels[pixelIndex] = baseAlpha;
                             continue;
@@ -7241,7 +7295,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
                         var feather = Mathf.Clamp(nearestVisibleDistance / FogEdgeFeatherPixels, 0.0f, 1.0f);
                         var easedFeather = feather * feather * (3.0f - 2.0f * feather);
-                        pixels[pixelIndex] = (byte)Mathf.RoundToInt(baseAlpha * easedFeather);
+                        pixels[pixelIndex] = (byte)Mathf.RoundToInt(visibleAlpha + (baseAlpha - visibleAlpha) * easedFeather);
                     }
                 }
             }
