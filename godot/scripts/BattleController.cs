@@ -4879,6 +4879,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
     private void RecordLevelUpNotice(Unit unit, int previousLevel, int levelsGained, int maxHitPointGain, int maxMagicPointGain, int magicRegenGain, int actionPointGain)
     {
+        GetNodeOrNull<AudioManager>("/root/AudioManager")?.PlaySoundEffect("level-up");
         if (!_pendingLevelUpNoticesByUnitId.TryGetValue(unit.UnitId, out var notice))
         {
             notice = new Dictionary
@@ -11766,6 +11767,8 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         door["is_open"] = shouldOpen;
+        if (shouldOpen)
+            GetNodeOrNull<AudioManager>("/root/AudioManager")?.PlaySoundEffect("door-open");
         _fogVisibilityActor = null;
         _mapLoader?.SetDoorVisual(_currentMapId, doorCell, shouldOpen);
         _hud?.AddCombatLogEntry(shouldOpen

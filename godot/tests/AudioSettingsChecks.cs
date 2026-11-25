@@ -3,6 +3,20 @@ using Godot.Collections;
 
 public partial class AudioSettingsChecks : Node
 {
+    public static bool ConsumeCue(Node scene, string cue)
+    {
+        foreach (var child in scene.GetNode<AudioManager>("/root/AudioManager").GetChildren())
+        {
+            if (child is AudioStreamPlayer voice && voice.Bus == "SoundEffects" && voice.Playing
+                && voice.Stream.ResourcePath == $"res://assets/audio/sfx/{cue}.wav")
+            {
+                voice.Stop();
+                return true;
+            }
+        }
+        return false;
+    }
+
     public Array<string> Run()
     {
         var failures = new Array<string>();

@@ -197,8 +197,11 @@ public partial class UtilityAbilityChecks : BattleController
             Check(partyInventory.Contains(KeyId), "Unlocking a door must not consume its key");
             Call("TryOpenDoorAtCell", _doorCell);
             Check((bool)Call("IsDoorOpen", door), "A key-unlocked door must open normally");
+            Check(AudioSettingsChecks.ConsumeCue(this, "door-open") == (GetNode<AudioManager>("/root/AudioManager").SoundEffectsVolume > 0),
+                "Opening a door must play its cue unless effects are muted.");
             Call("TryOpenDoorAtCell", _doorCell);
             Check(!(bool)Call("IsDoorOpen", door), "A key-unlocked door must close normally");
+            Check(!AudioSettingsChecks.ConsumeCue(this, "door-open"), "Closing a door must not play its opening sound.");
             door.Remove("key_id");
             Field<System.Collections.Generic.Dictionary<string, HashSet<string>>>("_unlockedDoorIdsByMap").Clear();
 
@@ -348,10 +351,13 @@ public partial class UtilityAbilityChecks : BattleController
         Check(_testLoader.TryResolveExplorationInteractionById(_thief, "prop:trap-loot-check", props, bags, opened,
             new HashSet<string>(), inventory, ref gold, gameData, rng, out _, out _, out var chestChanged)
             && chestChanged && bags.Count == 1, "Normal containers must still reveal loot");
+        Check(AudioSettingsChecks.ConsumeCue(this, "chest-open") == (GetNode<AudioManager>("/root/AudioManager").SoundEffectsVolume > 0),
+            "Opening a chest must play its cue unless effects are muted.");
         Check(_testLoader.GetBagItemIds(bags[0]).Contains(KeyId), "Chest loot configuration must support key item IDs");
         Check(_testLoader.TryResolveExplorationInteractionById(_thief, $"bag-item:{bags[0]["id"]}:0", props, bags, opened,
             new HashSet<string>(), inventory, ref gold, gameData, rng, out _, out _, out var lootedKey)
             && lootedKey && inventory.Contains(KeyId), "Looting a key must add it to shared party inventory");
+        Check(!AudioSettingsChecks.ConsumeCue(this, "chest-open"), "Taking revealed loot must not replay the opening sound.");
     }
 
     private void CheckTerrainMetadata()

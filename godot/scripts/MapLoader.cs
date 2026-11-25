@@ -2056,6 +2056,8 @@ public partial class MapLoader : Node
 
             openedPropIds.Add(propId);
             changedState = true;
+            if (GetString(prop, "type", "prop") == "chest")
+                GetNodeOrNull<AudioManager>("/root/AudioManager")?.PlaySoundEffect("chest-open");
 
             var drops = BuildPropLootDrops(prop, lootRng);
             var goldAmount = Mathf.Max(0, GetInt(prop, "gold_amount", 0));

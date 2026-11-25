@@ -139,6 +139,8 @@ public partial class ActionFeedbackChecks : BattleController
             _actor.MagicPointRegenPerTurn - previousMagicRegen,
             _actor.ActionPoints - previousActionPoints);
 
+        Check(AudioSettingsChecks.ConsumeCue(this, "level-up") == (GetNode<AudioManager>("/root/AudioManager").SoundEffectsVolume > 0),
+            "Gaining levels must play the level-up ding unless effects are muted.");
         var buildSaveData = typeof(GamePersistence).GetMethod(
             "BuildSaveData",
             BindingFlags.Instance | BindingFlags.NonPublic);

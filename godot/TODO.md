@@ -10,4 +10,5 @@ Items here are being tracked for a larger future effort and are not currently in
 ## Audio
 
 - [x] Add sound effects for spells, attacks, and other abilities, with independent Music Volume and Sound Effects Volume controls in Settings > Sound FX.
+- [x] Play a ding on level-up and distinct sounds when doors and chests open.
 - [ ] Add distinctive background music for other maps, such as Goblin Caves and the Graveyard, to play when the party enters.
