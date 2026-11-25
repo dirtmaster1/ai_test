@@ -6,6 +6,7 @@ public partial class CombatEffectsDirector : Node2D
     private const float EffectAnimationDuration = 16.0f / 24.0f;
     private GameOptionsManager _gameOptionsManager;
     private EventBus _eventBus;
+    private AudioManager _audio;
     private GameData _gameData;
     private readonly System.Collections.Generic.Dictionary<string, SpriteFrames> _effectFrames = new();
 
@@ -15,6 +16,7 @@ public partial class CombatEffectsDirector : Node2D
         ZAsRelative = false;
         _gameOptionsManager = GetNode<GameOptionsManager>("/root/GameOptionsManager");
         _eventBus = GetNode<EventBus>("/root/EventBus");
+        _audio = GetNode<AudioManager>("/root/AudioManager");
         _eventBus.ActionUsed += OnActionUsed;
         _gameData = GetNode<GameData>("/root/GameData");
     }
@@ -88,6 +90,7 @@ public partial class CombatEffectsDirector : Node2D
                 isMagical ? "arcane_projectile" : "arrow",
                 () =>
             {
+                _audio?.PlaySoundEffect(isMagical ? "arcane-impact" : "arrow-impact");
                 if (!IsUsable(target))
                 {
                     return;
@@ -159,6 +162,7 @@ public partial class CombatEffectsDirector : Node2D
         sequence.TweenCallback(Callable.From(() => PlayProjectile(from + direction * 14, center,
             new Color("ff802f"), "fireball", () =>
         {
+            _audio?.PlaySoundEffect("fire-impact");
             var wave = CreateVisual(CombatEffectVisual.EffectKind.FireFront, center, Colors.White);
             wave.Cells = cells;
             wave.Radius = cellSize / 2;

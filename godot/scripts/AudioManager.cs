@@ -6,8 +6,15 @@ public partial class AudioManager : Node
     private const string CombatMusicPath = "res://assets/audio/combat_1.wav";
     private const string SettingsPath = "user://dark_dungeon_tactics_audio.cfg";
     private const string MusicBusName = "BackgroundMusic";
+    private const string SfxBusName = "SoundEffects";
+    private const string CueDirectory = "res://assets/audio/sfx/";
+    private readonly ConfigFile _settings = new();
+    private readonly System.Collections.Generic.Dictionary<string, AudioStream> _cues = new();
+    private readonly AudioStreamPlayer[] _voices = new AudioStreamPlayer[6];
+    private EventBus _eventBus;
     private const float SilentVolumeDb = -80.0f;
     private const float MusicMakeupGainDb = 4.0f;
+    private const float SoundEffectsMakeupGainDb = 6.0f;
     private const float CombatToExplorationFadeOutSeconds = 1.25f;
     private const float CombatToExplorationFadeInSeconds = 1.75f;
 
@@ -19,11 +26,22 @@ public partial class AudioManager : Node
     private float _musicFade = 1.0f;
 
     public float BackgroundMusicVolume => _backgroundMusicVolume;
+    public float SoundEffectsVolume { get; private set; }
 
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
-        _backgroundMusicVolume = LoadBackgroundMusicVolume();
+        if (FileAccess.FileExists(SettingsPath))
+        {
+            var error = _settings.Load(SettingsPath);
+            if (error != Error.Ok)
+                GD.PushError($"Could not load audio settings from '{SettingsPath}': {error}.");
+        }
+        _backgroundMusicVolume = ReadVolume("background_music_volume", 1f);
+        SoundEffectsVolume = ReadVolume("sound_effects_volume", 0.8f);
+        ConfigureSoundEffects();
+        _eventBus = GetNode<EventBus>("/root/EventBus");
+        _eventBus.ActionUsed += OnActionUsed;
 
         _explorationMusic = LoadLoopingMusic(ExplorationMusicPath);
         if (_explorationMusic == null)
@@ -33,9 +51,8 @@ public partial class AudioManager : Node
 
         _combatMusic = LoadLoopingMusic(CombatMusicPath);
 
-        var eventBus = GetNode<EventBus>("/root/EventBus");
-        eventBus.CombatStarted += SwitchToCombatMusic;
-        eventBus.CombatEnded += SwitchToExplorationMusic;
+        _eventBus.CombatStarted += SwitchToCombatMusic;
+        _eventBus.CombatEnded += SwitchToExplorationMusic;
 
         ConfigureMusicBus();
         _musicPlayer = new AudioStreamPlayer
@@ -48,6 +65,76 @@ public partial class AudioManager : Node
         AddChild(_musicPlayer);
         ApplyBackgroundMusicVolume();
         _musicPlayer.Play();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_eventBus != null)
+        {
+            _eventBus.ActionUsed -= OnActionUsed;
+            _eventBus.CombatStarted -= SwitchToCombatMusic;
+            _eventBus.CombatEnded -= SwitchToExplorationMusic;
+        }
+    }
+
+    private void ConfigureSoundEffects()
+    {
+        var bus = AudioServer.GetBusIndex(SfxBusName);
+        if (bus < 0)
+        {
+            AudioServer.AddBus();
+            bus = AudioServer.BusCount - 1;
+            AudioServer.SetBusName(bus, SfxBusName);
+            AudioServer.SetBusSend(bus, "Master");
+        }
+        var hasLimiter = false;
+        for (var effectIndex = 0; effectIndex < AudioServer.GetBusEffectCount(bus); effectIndex++)
+        {
+            hasLimiter |= AudioServer.GetBusEffect(bus, effectIndex) is AudioEffectHardLimiter;
+        }
+        if (!hasLimiter)
+        {
+            AudioServer.AddBusEffect(bus, new AudioEffectHardLimiter
+            {
+                CeilingDb = -1.0f,
+                PreGainDb = 0.0f,
+                Release = 0.1f
+            });
+        }
+        ApplySoundEffectsVolume();
+        foreach (var file in ResourceLoader.ListDirectory(CueDirectory))
+        {
+            if (file.EndsWith(".wav"))
+                _cues[file[..^4]] = GD.Load<AudioStream>(CueDirectory + file);
+        }
+        for (var i = 0; i < _voices.Length; i++)
+        {
+            _voices[i] = new AudioStreamPlayer { Bus = SfxBusName };
+            AddChild(_voices[i]);
+        }
+    }
+
+    private void OnActionUsed(Variant actor, Variant actionId, Variant payload)
+    {
+        var id = actionId.AsString();
+        PlaySoundEffect(id == "attack" ? "melee" : id);
+    }
+
+    public void PlaySoundEffect(string cue)
+    {
+        if (SoundEffectsVolume == 0f) return;
+        if (!_cues.TryGetValue(cue, out var stream) || stream == null)
+        {
+            GD.PushWarning($"Missing action sound: {cue}");
+            return;
+        }
+        foreach (var voice in _voices)
+        {
+            if (voice.Playing) continue;
+            voice.Stream = stream;
+            voice.Play();
+            return;
+        }
     }
 
     private static AudioStreamWav LoadLoopingMusic(string path)
@@ -147,36 +234,44 @@ public partial class AudioManager : Node
     {
         _backgroundMusicVolume = Mathf.Clamp(volume, 0.0f, 1.0f);
         ApplyBackgroundMusicVolume();
+        SaveVolume("background_music_volume", _backgroundMusicVolume);
+    }
 
-        var config = new ConfigFile();
-        config.SetValue("audio", "background_music_volume", _backgroundMusicVolume);
-        var error = config.Save(SettingsPath);
+    public void SetSoundEffectsVolume(float volume)
+    {
+        SoundEffectsVolume = Mathf.Clamp(volume, 0f, 1f);
+        ApplySoundEffectsVolume();
+        SaveVolume("sound_effects_volume", SoundEffectsVolume);
+    }
+
+    private void ApplySoundEffectsVolume()
+    {
+        var bus = AudioServer.GetBusIndex(SfxBusName);
+        AudioServer.SetBusMute(bus, SoundEffectsVolume == 0f);
+        AudioServer.SetBusVolumeDb(
+            bus,
+            SoundEffectsVolume > 0f
+                ? Mathf.LinearToDb(SoundEffectsVolume) + SoundEffectsMakeupGainDb
+                : SilentVolumeDb);
+    }
+
+    private void SaveVolume(string key, float value)
+    {
+        _settings.SetValue("audio", key, value);
+        var error = _settings.Save(SettingsPath);
         if (error != Error.Ok)
         {
             GD.PushError($"Could not save audio settings to '{SettingsPath}': {error}.");
         }
     }
 
-    private float LoadBackgroundMusicVolume()
+    private float ReadVolume(string key, float defaultValue)
     {
-        if (!FileAccess.FileExists(SettingsPath))
-        {
-            return 1.0f;
-        }
-
-        var config = new ConfigFile();
-        var error = config.Load(SettingsPath);
-        if (error != Error.Ok)
-        {
-            GD.PushError($"Could not load audio settings from '{SettingsPath}': {error}.");
-            return 1.0f;
-        }
-
-        var storedVolume = config.GetValue("audio", "background_music_volume", 1.0f);
+        var storedVolume = _settings.GetValue("audio", key, defaultValue);
         if (storedVolume.VariantType != Variant.Type.Float && storedVolume.VariantType != Variant.Type.Int)
         {
-            GD.PushError($"Audio setting 'background_music_volume' in '{SettingsPath}' must be numeric.");
-            return 1.0f;
+            GD.PushError($"Audio setting '{key}' in '{SettingsPath}' must be numeric.");
+            return defaultValue;
         }
 
         return Mathf.Clamp((float)storedVolume.AsDouble(), 0.0f, 1.0f);

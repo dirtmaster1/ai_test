@@ -7828,6 +7828,7 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         }
 
         _partyGold -= price;
+        GetNodeOrNull<AudioManager>("/root/AudioManager")?.PlaySoundEffect(_selectedHealerServiceId);
         _hud?.AddCombatLogEntry($"Eldius: {resultText} Cost: {price} gp.");
         _awaitingHealerServiceTarget = false;
         _selectedHealerServiceId = "";

@@ -6,6 +6,9 @@ func _initialize() -> void:
 
 
 func run_test() -> void:
+    const settings_path := "user://dark_dungeon_tactics_audio.cfg"
+    var had_settings := FileAccess.file_exists(settings_path)
+    var original := FileAccess.get_file_as_bytes(settings_path) if had_settings else PackedByteArray()
     var checks = load("res://tests/AudioSettingsChecks.cs").new()
     root.add_child(checks)
     var failures = checks.call("Run")
@@ -48,8 +51,16 @@ func run_test() -> void:
             or not is_equal_approx(music_player.volume_db, 4.0):
         transition_failures.append("Combat re-entry must remain immediate and cancel the exploration fade.")
 
+    music_player.stop()
+    await create_timer(0.2).timeout
     for failure in transition_failures:
         push_error(failure)
+    if had_settings:
+        var file := FileAccess.open(settings_path, FileAccess.WRITE)
+        file.store_buffer(original)
+        file.close()
+    else:
+        DirAccess.remove_absolute(settings_path)
     if failures.is_empty() and transition_failures.is_empty():
-        print("PASS: combat-to-exploration music fades smoothly while combat entry stays immediate")
+        print("PASS: independent audio settings, action sound routing, and combat music transitions")
     quit(0 if failures.is_empty() and transition_failures.is_empty() else 1)

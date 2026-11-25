@@ -76,11 +76,17 @@ public partial class CombatEffectsDirector
         fade.TweenCallback(Callable.From(ghost.QueueFree));
     }
 
-    public void PlayPoisonTick(Vector2 at) =>
+    public void PlayPoisonTick(Vector2 at)
+    {
+        _audio?.PlaySoundEffect("poison");
         Cue(CombatEffectVisual.Mark.Drops, at, new Color("95e264"), 0.35f, scale: 0.7f);
+    }
 
-    public void PlayUtility(Vector2 at, bool disarm) =>
+    public void PlayUtility(Vector2 at, bool disarm)
+    {
+        _audio?.PlaySoundEffect(disarm ? "disarm-trap" : "pick-lock");
         Cue(disarm ? CombatEffectVisual.Mark.Trap : CombatEffectVisual.Mark.Latch, at, new Color("ffe19c"));
+    }
 }
 
 public partial class CombatEffectVisual

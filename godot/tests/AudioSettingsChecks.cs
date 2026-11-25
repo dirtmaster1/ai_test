@@ -184,6 +184,54 @@ public partial class AudioSettingsChecks : Node
             failures.Add("The background volume slider must update the music level and percentage live.");
         }
 
+        var originalEffects = audioManager.SoundEffectsVolume;
+        var effectsSlider = soundFxPanel.GetNode<HSlider>("SoundFxVBox/SoundEffectsVolume/Slider");
+        var effectsBus = AudioServer.GetBusIndex("SoundEffects");
+        effectsSlider.Value = 0;
+        if (effectsBus < 0 || !AudioServer.IsBusMute(effectsBus) || musicPlayer.StreamPaused
+            || !Mathf.IsEqualApprox(audioManager.BackgroundMusicVolume, .37f))
+            failures.Add("Muting action sounds must not affect music playback.");
+
+        effectsSlider.Value = 63;
+        var effectsGainAtSixtyThreePercent = Mathf.LinearToDb(.63f) + 6.0f;
+        var hasEffectsLimiter = false;
+        for (var effectIndex = 0; effectsBus >= 0 && effectIndex < AudioServer.GetBusEffectCount(effectsBus); effectIndex++)
+            hasEffectsLimiter |= AudioServer.GetBusEffect(effectsBus, effectIndex) is AudioEffectHardLimiter;
+        audioManager.SetSoundEffectsVolume(1.0f);
+        var fullEffectsGain = AudioServer.GetBusVolumeDb(effectsBus);
+        audioManager.SetSoundEffectsVolume(.63f);
+        if (!hasEffectsLimiter
+            || !Mathf.IsEqualApprox(fullEffectsGain, 6.0f)
+            || !Mathf.IsEqualApprox(AudioServer.GetBusVolumeDb(effectsBus), effectsGainAtSixtyThreePercent))
+            failures.Add("Sound effects must receive clear makeup gain at the top end while remaining limited against clipping.");
+        slider.Value = 0;
+        var settings = new ConfigFile();
+        if (settings.Load("user://dark_dungeon_tactics_audio.cfg") != Error.Ok
+            || !Mathf.IsEqualApprox(settings.GetValue("audio", "sound_effects_volume", -1f).AsSingle(), .63f)
+            || settings.GetValue("audio", "background_music_volume", -1f).AsSingle() != 0f)
+            failures.Add("Changing music volume must preserve the independently saved effects volume.");
+
+        foreach (var team in new[] { "player", "ally", "enemy" })
+        {
+            var actor = new Unit();
+            actor.Setup(new Dictionary { { "id", "audio-test" }, { "team", team } });
+            eventBus.EmitSignal(EventBus.SignalName.ActionUsed, actor, "magic-missile", "target");
+            var playing = 0;
+            foreach (var child in audioManager.GetChildren())
+            {
+                if (child is AudioStreamPlayer voice && voice.Bus == "SoundEffects" && voice.Playing)
+                {
+                    if (voice.Stream.ResourcePath.EndsWith("/magic-missile.wav"))
+                        playing++;
+                    voice.Stop();
+                }
+            }
+            if (playing != 1 || effectsBus < 0 || AudioServer.IsBusMute(effectsBus))
+                failures.Add($"{team} spell use must play its cue once even while music is muted.");
+            actor.Free();
+        }
+
+        audioManager.SetSoundEffectsVolume(originalEffects);
         audioManager.SetBackgroundMusicVolume(originalVolume);
         startScreen.Free();
         return failures;

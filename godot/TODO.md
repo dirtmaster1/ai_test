@@ -9,5 +9,5 @@ Items here are being tracked for a larger future effort and are not currently in
 
 ## Audio
 
-- [ ] Add sound effects for spells, attacks, and other abilities.
+- [x] Add sound effects for spells, attacks, and other abilities, with independent Music Volume and Sound Effects Volume controls in Settings > Sound FX.
 - [ ] Add distinctive background music for other maps, such as Goblin Caves and the Graveyard, to play when the party enters.
