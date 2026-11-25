@@ -720,6 +720,33 @@ public partial class InventoryDragDropChecks : Node
             "Activating a class-restricted item must reach the equip handler for a rejection banner.");
         hud.EquipItemRequested -= equipRequestedHandler;
 
+        equippedItems[wizard.UnitId] = new System.Collections.Generic.Dictionary<string, string>
+        {
+            { "1-handed-a", "dagger" }
+        };
+        partyInventory.AddRange(new[] { "dagger", "dagger" });
+        hud.SetInventoryEquippedItems(new Array<Dictionary>
+        {
+            new()
+            {
+                { "slot_key", "1-handed-a" },
+                { "label", "Dagger" },
+                { "type", "weapon" },
+                { "slot", "1-handed" }
+            }
+        });
+        Check((bool)canDropInventoryItem.Invoke(hud, new object[] { "dagger", "1-handed-b" }),
+            "The HUD must forward a blocked off-hand equip attempt so the equip handler can show a warning.");
+        typeof(BattleController)
+            .GetMethod("OnHudEquipItemToSlotRequested", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(controller, new object[] { "dagger", "1-handed-b" });
+        bannerStyle = bannerPanel.GetThemeStylebox("panel") as StyleBoxFlat;
+        Check(bannerLabel.Text.Contains("cannot dual wield")
+            && bannerStyle != null
+            && bannerStyle.BorderColor == new Color("ff5555")
+            && !equippedItems[wizard.UnitId].ContainsKey("1-handed-b"),
+            "A class that cannot dual wield must get a red alert when its second weapon is rejected.");
+
         hud.SetInventoryItems(new Array<Dictionary>(), new Array<string>());
         wizard.Free();
         controller.Free();

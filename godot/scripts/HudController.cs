@@ -1793,10 +1793,7 @@ public partial class HudController : Control
     private bool CanDropInventoryItemToSlot(string itemId, string targetSlotKey)
     {
         return _inventoryItemsById.TryGetValue(itemId, out var itemData)
-            && EquipmentSlotRules.CanEquipItemToSlot(itemData, targetSlotKey)
-            && (GetString(itemData, "slot", "") != "1-handed"
-                || !_inventoryEquippedEntriesBySlot.TryGetValue(targetSlotKey == "1-handed-a" ? "1-handed-b" : "1-handed-a", out var otherItem)
-                || EquipmentSlotRules.CanPairHandItems(_inventoryClassEquipmentRules, itemData, otherItem));
+            && EquipmentSlotRules.CanEquipItemToSlot(itemData, targetSlotKey);
     }
 
     private bool CanEquipInventoryItemToSlot(Dictionary itemData, string targetSlotKey)
