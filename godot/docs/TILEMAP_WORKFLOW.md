@@ -201,9 +201,10 @@ Set these custom data keys on an event trigger tile or tile alternative:
 - `marker_type`: `event_trigger`
 - `event_id`: stable, globally unique ID shared by all tiles that activate the same one-time event
 - `event_type`: currently `spawn_enemies`
-- `enemy_unit_id`: enemy character template ID from `characters.templates` in `resources/game_data.json`
-- `enemy_count`: number of enemies to spawn
+- `enemy_spawn_groups`: array of `{ "enemy_unit_id": "<template id>", "enemy_count": <positive count> }` entries; each template ID comes from `characters.templates` in `resources/game_data.json`
 - `aggro_range`: optional detection range; defaults to `4`
+
+For example, set `enemy_spawn_groups` to `[{ "enemy_unit_id": "wolf", "enemy_count": 2 }, { "enemy_unit_id": "zombie", "enemy_count": 1 }]` to spawn two wolves and one zombie.
 
 Paint from the `event_triggers_64.png` atlas source in the shared `map_markers_64_tileset.tres`; it is available on every map's marker layer. All cells are hidden event-trigger markers by default.
 

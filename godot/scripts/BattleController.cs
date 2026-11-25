@@ -3753,50 +3753,63 @@ public partial class BattleController : Node2D, IGamePersistenceHost
         private bool SpawnEnemiesForMapEvent(Dictionary trigger)
         {
             var eventId = GetString(trigger, "event_id", "");
-            var enemyUnitId = GetString(trigger, "enemy_unit_id", "");
-            var enemyCount = GetInt(trigger, "enemy_count", 0);
-            if (_gameData == null || string.IsNullOrWhiteSpace(enemyUnitId) || enemyCount <= 0)
+            var enemySpawnGroups = TryGetDictionaryArray(trigger, "enemy_spawn_groups");
+            if (_gameData == null || enemySpawnGroups.Count == 0)
             {
-                GD.PushError($"Map event '{eventId}' must specify a valid enemy_unit_id and positive enemy_count.");
-                return false;
-            }
-
-            var enemyTemplate = _gameData.GetCharacterTemplate(enemyUnitId);
-            if (enemyTemplate.Count == 0 || GetString(enemyTemplate, "team", "") != "enemy")
-            {
-                GD.PushError($"Map event '{eventId}' references unknown or non-enemy character template '{enemyUnitId}'.");
-                return false;
-            }
-
-            var footprintSize = Mathf.Clamp(GetInt(enemyTemplate, "footprint_size", 1), 1, 4);
-            var spawnCells = FindAvailableEventSpawnCells(
-                GetVector2I(trigger, "grid_pos", Vector2I.Zero),
-                footprintSize,
-                enemyCount);
-            if (spawnCells.Count < enemyCount)
-            {
-                GD.PushWarning($"Map event '{eventId}' needs {enemyCount} valid spawn cells but only {spawnCells.Count} are available.");
+                GD.PushError($"Map event '{eventId}' must specify enemy_spawn_groups and loaded game data.");
                 return false;
             }
 
             var aggroRange = Mathf.Max(0, GetInt(trigger, "aggro_range", DefaultAggroTriggerRange));
             var spawnConfigs = new Array<Dictionary>();
-            for (var i = 0; i < enemyCount; i++)
+            var reservedCells = new HashSet<Vector2I>();
+            var triggerCell = GetVector2I(trigger, "grid_pos", Vector2I.Zero);
+            foreach (var spawnGroup in enemySpawnGroups)
             {
-                var unitId = $"{eventId}-spawn-{i + 1}";
-                if (FindUnitById(unitId) != null)
+                var enemyUnitId = GetString(spawnGroup, "enemy_unit_id", "");
+                var enemyCount = GetInt(spawnGroup, "enemy_count", 0);
+                if (string.IsNullOrWhiteSpace(enemyUnitId) || enemyCount <= 0)
                 {
-                    GD.PushError($"Map event '{eventId}' cannot spawn duplicate unit id '{unitId}'.");
+                    GD.PushError($"Map event '{eventId}' has an invalid enemy_spawn_groups entry; each entry needs enemy_unit_id and a positive enemy_count.");
                     return false;
                 }
 
-                var config = CopyDictionary(enemyTemplate);
-                config["id"] = unitId;
-                config["team"] = "enemy";
-                config["grid_pos"] = spawnCells[i];
-                config["encounter_id"] = eventId;
-                config["aggro_range"] = aggroRange;
-                spawnConfigs.Add(config);
+                var enemyTemplate = _gameData.GetCharacterTemplate(enemyUnitId);
+                if (enemyTemplate.Count == 0 || GetString(enemyTemplate, "team", "") != "enemy")
+                {
+                    GD.PushError($"Map event '{eventId}' references unknown or non-enemy character template '{enemyUnitId}'.");
+                    return false;
+                }
+
+                var footprintSize = Mathf.Clamp(GetInt(enemyTemplate, "footprint_size", 1), 1, 4);
+                var spawnCells = FindAvailableEventSpawnCells(
+                    triggerCell,
+                    footprintSize,
+                    enemyCount,
+                    reservedCells);
+                if (spawnCells.Count < enemyCount)
+                {
+                    GD.PushWarning($"Map event '{eventId}' needs {enemyCount} valid spawn cells for '{enemyUnitId}' but only {spawnCells.Count} are available.");
+                    return false;
+                }
+
+                for (var i = 0; i < enemyCount; i++)
+                {
+                    var unitId = $"{eventId}-spawn-{spawnConfigs.Count + 1}";
+                    if (FindUnitById(unitId) != null)
+                    {
+                        GD.PushError($"Map event '{eventId}' cannot spawn duplicate unit id '{unitId}'.");
+                        return false;
+                    }
+
+                    var config = CopyDictionary(enemyTemplate);
+                    config["id"] = unitId;
+                    config["team"] = "enemy";
+                    config["grid_pos"] = spawnCells[i];
+                    config["encounter_id"] = eventId;
+                    config["aggro_range"] = aggroRange;
+                    spawnConfigs.Add(config);
+                }
             }
 
             if (!_eventSpawnedUnitConfigsByMap.TryGetValue(_currentMapId, out var storedConfigs))
@@ -3822,8 +3835,16 @@ public partial class BattleController : Node2D, IGamePersistenceHost
 
         private List<Vector2I> FindAvailableEventSpawnCells(Vector2I start, int footprintSize, int requestedCount)
         {
+            return FindAvailableEventSpawnCells(start, footprintSize, requestedCount, new HashSet<Vector2I>());
+        }
+
+        private List<Vector2I> FindAvailableEventSpawnCells(
+            Vector2I start,
+            int footprintSize,
+            int requestedCount,
+            HashSet<Vector2I> reservedCells)
+        {
             var availableCells = new List<Vector2I>();
-            var reservedCells = new HashSet<Vector2I>();
             var visited = new HashSet<Vector2I> { start };
             var frontier = new System.Collections.Generic.Queue<Vector2I>();
             frontier.Enqueue(start);

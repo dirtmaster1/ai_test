@@ -26,7 +26,7 @@ public partial class EventTriggerChecks : BattleController
         {
             SetupFixture();
             CheckMarkerIsHiddenAndParsed();
-            CheckPartyMovementSpawnsEnemiesOnce();
+            CheckSpawnGroupsTriggerEventsOnce();
         }
         catch (System.Exception exception)
         {
@@ -47,16 +47,19 @@ public partial class EventTriggerChecks : BattleController
         eventTileData.SetCustomData("marker_type", "event_trigger");
         eventTileData.SetCustomData("event_id", EventId);
         eventTileData.SetCustomData("event_type", "spawn_enemies");
-        eventTileData.SetCustomData("enemy_unit_id", "wolf");
-        eventTileData.SetCustomData("enemy_count", 2);
+        var eventSpawnGroups = new Array<Dictionary>();
+        eventSpawnGroups.Add(CreateSpawnGroup("wolf", 2));
+        eventSpawnGroups.Add(CreateSpawnGroup("zombie", 1));
+        eventTileData.SetCustomData("enemy_spawn_groups", eventSpawnGroups);
         eventTileData.SetCustomData("uses_tile_visual", false);
 
         var followerEventTileData = markerSource.GetTileData(new Vector2I(0, 1), 0);
         followerEventTileData.SetCustomData("marker_type", "event_trigger");
         followerEventTileData.SetCustomData("event_id", FollowerEventId);
         followerEventTileData.SetCustomData("event_type", "spawn_enemies");
-        followerEventTileData.SetCustomData("enemy_unit_id", "wolf");
-        followerEventTileData.SetCustomData("enemy_count", 1);
+        var followerSpawnGroups = new Array<Dictionary>();
+        followerSpawnGroups.Add(CreateSpawnGroup("wolf", 1));
+        followerEventTileData.SetCustomData("enemy_spawn_groups", followerSpawnGroups);
         followerEventTileData.SetCustomData("uses_tile_visual", false);
 
         var markers = new TileMapLayer
@@ -80,6 +83,14 @@ public partial class EventTriggerChecks : BattleController
         {
             eventTriggersByCell[(Vector2I)trigger["grid_pos"]] = trigger;
         }
+
+        var parsedGroups = (Array<Dictionary>)eventTriggersByCell[new Vector2I(3, 3)]["enemy_spawn_groups"];
+        Check(parsedGroups.Count == 2
+            && (string)parsedGroups[0]["enemy_unit_id"] == "wolf"
+            && (int)parsedGroups[0]["enemy_count"] == 2
+            && (string)parsedGroups[1]["enemy_unit_id"] == "zombie"
+            && (int)parsedGroups[1]["enemy_count"] == 1,
+            "Map loading must retain every enemy spawn group and its count.");
 
         Set("_currentMapId", TestMapId);
         Set("_gameData", GetNode<GameData>("/root/GameData"));
@@ -139,17 +150,27 @@ public partial class EventTriggerChecks : BattleController
             "Event-trigger markers must not appear as hoverable map interactables.");
     }
 
-    private void CheckPartyMovementSpawnsEnemiesOnce()
+    private void CheckSpawnGroupsTriggerEventsOnce()
     {
-        var moved = (bool)Call("TryMoveExplorationParty", Vector2I.Right);
+        Call("TriggerMapEventAtCell", new Vector2I(3, 3));
+        Call("TriggerMapEventAtCell", new Vector2I(2, 3));
         var enemies = Field<Array<Unit>>("_enemyUnits");
         var triggeredEventIds = Field<HashSet<string>>("_triggeredEventIds");
-        Check(moved && enemies.Count == 3, "Leader and follower movement onto event tiles must spawn their configured enemies.");
+        Check(enemies.Count == 4, "Each event must spawn its configured enemy groups.");
+        var wolfCount = 0;
+        var zombieCount = 0;
+        foreach (var enemy in enemies)
+        {
+            wolfCount += enemy.UnitName == "Wolf" ? 1 : 0;
+            zombieCount += enemy.UnitName == "Zombie" ? 1 : 0;
+        }
+        Check(wolfCount == 3 && zombieCount == 1,
+            "A spawn event must create the configured mix of enemy template types.");
         Check(triggeredEventIds.Contains(EventId) && triggeredEventIds.Contains(FollowerEventId),
             "Events entered by any party member must be recorded as triggered.");
 
         Call("TriggerMapEventAtCell", new Vector2I(6, 6));
-        Check(enemies.Count == 3, "Another tile with the same event_id must not trigger the event again.");
+        Check(enemies.Count == 4, "Another tile with the same event_id must not trigger the event again.");
 
         var players = Field<Array<Unit>>("_playerUnits");
         var occupiedCells = new HashSet<Vector2I>();
@@ -195,5 +216,14 @@ public partial class EventTriggerChecks : BattleController
         {
             _failures.Add(message);
         }
+    }
+
+    private static Dictionary CreateSpawnGroup(string enemyUnitId, int enemyCount)
+    {
+        return new Dictionary
+        {
+            { "enemy_unit_id", enemyUnitId },
+            { "enemy_count", enemyCount }
+        };
     }
 }

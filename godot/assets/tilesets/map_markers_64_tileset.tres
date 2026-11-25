@@ -155,13 +155,13 @@ texture_region_size = Vector2i(64, 64)
 1:5/1/custom_data_5 = "forest-town-northeast-bandits"
 1:5/1/custom_data_7 = "bandit-warrior"
 1:5/1/custom_data_8 = "forest-town-encounter-main-bandit-warrior-69--11"
-1:5/1/custom_data_34 = "forest-town-bandit-intro"
+1:5/1/custom_data_33 = "forest-town-bandit-intro"
 1:5/2 = 2
 1:5/2/custom_data_0 = "enemy_spawn"
 1:5/2/custom_data_5 = "forest-town-northeast-bandits"
 1:5/2/custom_data_7 = "bandit-warrior"
 1:5/2/custom_data_8 = "forest-town-encounter-main-bandit-warrior-71--11"
-1:5/2/custom_data_34 = "forest-town-bandit-intro"
+1:5/2/custom_data_33 = "forest-town-bandit-intro"
 0:5/0 = 0
 0:5/0/custom_data_0 = "enemy_spawn"
 0:5/0/custom_data_7 = "orc-chieftain"
@@ -401,8 +401,8 @@ texture_region_size = Vector2i(64, 64)
 0:1/1/custom_data_9 = "Nest Hoard"
 0:1/1/custom_data_15 = "The missing miners' valuables lie beneath the queen's webs."
 0:1/1/custom_data_16 = "war-axe, healers-circlet"
-0:1/1/custom_data_17 = "1"
-0:1/1/custom_data_18 = "1"
+0:1/1/custom_data_17 = "2"
+0:1/1/custom_data_18 = "2"
 0:1/1/custom_data_19 = true
 0:1/1/custom_data_20 = 35
 1:1/0 = 0
@@ -443,10 +443,19 @@ texture_region_size = Vector2i(64, 64)
 0:2/0/custom_data_0 = "cosmetic"
 0:2/0/custom_data_9 = "mining tools"
 0:2/0/custom_data_19 = true
+1:2/next_alternative_id = 2
 1:2/0 = 0
 1:2/0/custom_data_0 = "cosmetic"
 1:2/0/custom_data_9 = "broken wheelbarrow"
 1:2/0/custom_data_19 = true
+1:2/1 = 1
+1:2/1/custom_data_0 = "chest"
+1:2/1/custom_data_9 = "Old mining cart"
+1:2/1/custom_data_16 = "iron-helmet"
+1:2/1/custom_data_17 = "1"
+1:2/1/custom_data_18 = "1"
+1:2/1/custom_data_19 = true
+1:2/1/custom_data_20 = 13
 2:2/0 = 0
 2:2/0/custom_data_0 = "cosmetic"
 2:2/0/custom_data_9 = "rock pile"
@@ -652,10 +661,12 @@ texture = ExtResource("6_event_triggers")
 texture_region_size = Vector2i(64, 64)
 0:0/0 = 0
 0:0/0/custom_data_0 = "event_trigger"
-0:0/0/custom_data_30 = "1"
+0:0/0/custom_data_30 = "forest_town_tombstone_1"
 0:0/0/custom_data_31 = "spawn_enemies"
-0:0/0/custom_data_32 = "zombie"
-0:0/0/custom_data_33 = 5
+0:0/0/custom_data_32 = [{
+"enemy_count": 5,
+"enemy_unit_id": "zombie"
+}]
 1:0/0 = 0
 1:0/0/custom_data_0 = "event_trigger"
 2:0/0 = 0
@@ -728,6 +739,15 @@ texture_region_size = Vector2i(64, 64)
 8:3/0/custom_data_0 = "event_trigger"
 0:4/0 = 0
 0:4/0/custom_data_0 = "event_trigger"
+0:4/0/custom_data_30 = "spider_mines_ambush_cart_1"
+0:4/0/custom_data_31 = "spawn_enemies"
+0:4/0/custom_data_32 = [{
+"enemy_count": "3",
+"enemy_unit_id": "giant-spider"
+}, {
+"enemy_count": "3",
+"enemy_unit_id": "cave-spider"
+}]
 1:4/0 = 0
 1:4/0/custom_data_0 = "event_trigger"
 2:4/0 = 0
@@ -782,6 +802,15 @@ texture_region_size = Vector2i(64, 64)
 8:6/0/custom_data_0 = "event_trigger"
 0:7/0 = 0
 0:7/0/custom_data_0 = "event_trigger"
+0:7/0/custom_data_30 = "spider_mines_ambush_entrance_1"
+0:7/0/custom_data_31 = "spawn_enemies"
+0:7/0/custom_data_32 = [{
+"enemy_count": "1",
+"enemy_unit_id": "giant-spider"
+}, {
+"enemy_count": "2",
+"enemy_unit_id": "cave-spider"
+}]
 1:7/0 = 0
 1:7/0/custom_data_0 = "event_trigger"
 2:7/0 = 0
@@ -800,6 +829,15 @@ texture_region_size = Vector2i(64, 64)
 8:7/0/custom_data_0 = "event_trigger"
 0:8/0 = 0
 0:8/0/custom_data_0 = "event_trigger"
+0:8/0/custom_data_30 = "spider_mines_ambush_1"
+0:8/0/custom_data_31 = "spawn_enemies"
+0:8/0/custom_data_32 = [{
+"enemy_count": "3",
+"enemy_unit_id": "giant-spider"
+}, {
+"enemy_count": "2",
+"enemy_unit_id": "cave-spider"
+}]
 1:8/0 = 0
 1:8/0/custom_data_0 = "event_trigger"
 2:8/0 = 0
@@ -883,12 +921,10 @@ custom_data_layer_30/name = "event_id"
 custom_data_layer_30/type = 4
 custom_data_layer_31/name = "event_type"
 custom_data_layer_31/type = 4
-custom_data_layer_32/name = "enemy_unit_id"
-custom_data_layer_32/type = 4
-custom_data_layer_33/name = "enemy_count"
-custom_data_layer_33/type = 2
-custom_data_layer_34/name = "combat_intro_dialogue_id"
-custom_data_layer_34/type = 4
+custom_data_layer_32/name = "enemy_spawn_groups"
+custom_data_layer_32/type = 28
+custom_data_layer_33/name = "combat_intro_dialogue_id"
+custom_data_layer_33/type = 4
 sources/0 = SubResource("TileSetAtlasSource_markers")
 sources/1 = SubResource("TileSetAtlasSource_items")
 sources/2 = SubResource("TileSetAtlasSource_mjv3m")

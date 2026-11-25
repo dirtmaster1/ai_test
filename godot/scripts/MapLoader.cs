@@ -765,8 +765,14 @@ public partial class MapLoader : Node
                         };
                         if (eventType == "spawn_enemies")
                         {
-                            eventTrigger["enemy_unit_id"] = GetTileString(markerLayer, tileData, "enemy_unit_id", "");
-                            eventTrigger["enemy_count"] = GetTileInt(markerLayer, tileData, "enemy_count", 0);
+                            if (!TryGetTileDictionaryArray(markerLayer, tileData, "enemy_spawn_groups", out var enemySpawnGroups)
+                                || enemySpawnGroups.Count == 0)
+                            {
+                                GD.PushError($"MapLoader event trigger at {mapId} ({cell.X},{cell.Y}) requires a non-empty enemy_spawn_groups array of dictionaries.");
+                                break;
+                            }
+
+                            eventTrigger["enemy_spawn_groups"] = enemySpawnGroups;
                             eventTrigger["aggro_range"] = GetTileInt(markerLayer, tileData, "aggro_range", 4);
                         }
 
@@ -954,9 +960,55 @@ public partial class MapLoader : Node
     {
         return GetString(left, "event_id", "") == GetString(right, "event_id", "")
             && GetString(left, "event_type", "") == GetString(right, "event_type", "")
-            && GetString(left, "enemy_unit_id", "") == GetString(right, "enemy_unit_id", "")
-            && GetInt(left, "enemy_count", 0) == GetInt(right, "enemy_count", 0)
+            && HaveSameEnemySpawnGroups(left, right)
             && GetInt(left, "aggro_range", 4) == GetInt(right, "aggro_range", 4);
+    }
+
+    private static bool HaveSameEnemySpawnGroups(Dictionary left, Dictionary right)
+    {
+        var leftGroups = GetEventEnemySpawnGroups(left);
+        var rightGroups = GetEventEnemySpawnGroups(right);
+        if (leftGroups.Count != rightGroups.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < leftGroups.Count; i++)
+        {
+            if (GetString(leftGroups[i], "enemy_unit_id", "") != GetString(rightGroups[i], "enemy_unit_id", "")
+                || GetInt(leftGroups[i], "enemy_count", 0) != GetInt(rightGroups[i], "enemy_count", 0))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static Array<Dictionary> GetEventEnemySpawnGroups(Dictionary eventDefinition)
+    {
+        var groups = new Array<Dictionary>();
+        if (!eventDefinition.ContainsKey("enemy_spawn_groups"))
+        {
+            return groups;
+        }
+
+        var value = (Variant)eventDefinition["enemy_spawn_groups"];
+        if (value.VariantType != Variant.Type.Array)
+        {
+            return groups;
+        }
+
+        foreach (var entry in (Array)value)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType == Variant.Type.Dictionary)
+            {
+                groups.Add((Dictionary)variant);
+            }
+        }
+
+        return groups;
     }
 
     private static int GetTileInt(TileMapLayer layer, TileData tileData, string key, int fallback)
@@ -1055,6 +1107,34 @@ public partial class MapLoader : Node
         }
 
         return result;
+    }
+
+    private static bool TryGetTileDictionaryArray(TileMapLayer layer, TileData tileData, string key, out Array<Dictionary> result)
+    {
+        result = new Array<Dictionary>();
+        if (!HasCustomDataLayer(layer, key))
+        {
+            return false;
+        }
+
+        var value = tileData.GetCustomData(key);
+        if (value.VariantType != Variant.Type.Array)
+        {
+            return false;
+        }
+
+        foreach (var entry in (Array)value)
+        {
+            var variant = (Variant)entry;
+            if (variant.VariantType != Variant.Type.Dictionary)
+            {
+                return false;
+            }
+
+            result.Add((Dictionary)variant);
+        }
+
+        return true;
     }
 
     private static bool TryGetOpenDoorAtlasCoords(TileMapLayer layer, TileData tileData, out Vector2I atlasCoords)
